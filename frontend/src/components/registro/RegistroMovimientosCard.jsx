@@ -56,12 +56,12 @@ export const RegistroMovimientosCard = ({
                 const diferencia = enviada - recibida;
                 const isLast = idx === lastIdx;
                 return (
-                  <div key={mov.id} className={`rounded-lg border p-3 ${isLast ? 'bg-muted/50 border-l-[3px] border-l-foreground' : ''} ${diferencia > 0 && !isLast ? 'border-l-4 border-l-amber-400' : ''}`} data-testid={`movimiento-card-${mov.id}`}>
+                  <div key={mov.id} className={`rounded-lg border p-3 ${isLast ? 'bg-gray-50 dark:bg-gray-900 border-l-2 border-l-gray-900 dark:border-l-white' : ''} ${diferencia > 0 && !isLast ? 'border-l-4 border-l-amber-400' : ''}`} data-testid={`movimiento-card-${mov.id}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0">
                         <Cog className="h-4 w-4 text-blue-500 shrink-0" />
                         <span className="font-medium text-sm truncate">{mov.servicio_nombre}</span>
-                        {isLast && <Badge variant="secondary" className="text-[9px] px-1.5 py-0 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">activo</Badge>}
+                        {isLast && <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800 rounded-full px-2 py-0 font-medium">activo</span>}
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -109,9 +109,9 @@ export const RegistroMovimientosCard = ({
                   </div>
                 );
               })}
-              <div className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2">
-                <span className="text-xs text-muted-foreground font-medium">Cantidad efectiva actual</span>
-                <span className="font-mono font-bold text-primary">{cantidadEfectiva}</span>
+              <div className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-gray-900 px-3 py-2">
+                <span className="text-xs text-gray-500 font-medium">Cantidad efectiva actual</span>
+                <span className="font-mono font-bold text-lg">{cantidadEfectiva}</span>
               </div>
             </div>
 
@@ -119,14 +119,14 @@ export const RegistroMovimientosCard = ({
             <div className="border rounded-lg overflow-x-auto hidden sm:block">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead>Servicio / Persona</TableHead>
-                    <TableHead className="text-center">F. Inicio</TableHead>
-                    <TableHead className="text-right">Enviada</TableHead>
-                    <TableHead className="text-right">Recibida</TableHead>
-                    <TableHead className="text-right">Merma</TableHead>
-                    {showAvance && <TableHead className="text-center hidden md:table-cell">Avance</TableHead>}
-                    <TableHead className="w-[50px] text-right">Acciones</TableHead>
+                  <TableRow className="bg-gray-50 dark:bg-gray-900">
+                    <TableHead className="text-xs uppercase tracking-wide text-gray-500 font-medium">Servicio / Persona</TableHead>
+                    <TableHead className="text-center text-xs uppercase tracking-wide text-gray-500 font-medium">F. Inicio</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wide text-gray-500 font-medium">Enviada</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wide text-gray-500 font-medium">Recibida</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wide text-gray-500 font-medium">Merma</TableHead>
+                    {showAvance && <TableHead className="text-center hidden md:table-cell text-xs uppercase tracking-wide text-gray-500 font-medium">Avance</TableHead>}
+                    <TableHead className="w-[50px] text-right text-xs uppercase tracking-wide text-gray-500 font-medium">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -138,7 +138,7 @@ export const RegistroMovimientosCard = ({
                     return (
                       <TableRow
                         key={mov.id}
-                        className={isLast ? 'bg-muted/50 border-l-[3px] border-l-foreground' : ''}
+                        className={isLast ? 'bg-gray-50 dark:bg-gray-900 border-l-2 border-l-gray-900 dark:border-l-white' : ''}
                         data-testid={`movimiento-row-${mov.id}`}
                       >
                         <TableCell>
@@ -146,7 +146,7 @@ export const RegistroMovimientosCard = ({
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="font-medium">{mov.servicio_nombre}</span>
-                                {isLast && <Badge variant="secondary" className="text-[9px] px-1.5 py-0 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 shrink-0">activo</Badge>}
+                                {isLast && <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800 rounded-full px-2 py-0 font-medium shrink-0">activo</span>}
                               </div>
                               {mov.persona_nombre && (
                                 <span className="text-xs text-muted-foreground">{mov.persona_nombre}</span>
@@ -215,12 +215,12 @@ export const RegistroMovimientosCard = ({
                       </TableRow>
                     );
                   })}
-                  <TableRow className="bg-muted/30">
-                    <TableCell colSpan={2} className="font-semibold text-xs text-muted-foreground">Cantidad efectiva actual</TableCell>
-                    <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                  <TableRow className="bg-gray-50 dark:bg-gray-900">
+                    <TableCell colSpan={2} className="font-medium text-xs text-gray-500">Cantidad efectiva actual</TableCell>
+                    <TableCell className="text-right font-mono text-xs text-gray-400">
                       {movimientosProduccion.length > 0 ? movimientosProduccion[0].cantidad_enviada : '—'}
                     </TableCell>
-                    <TableCell className="text-right font-mono font-bold text-primary" colSpan={showAvance ? 3 : 2}>
+                    <TableCell className="text-right font-mono font-bold text-lg" colSpan={showAvance ? 3 : 2}>
                       {cantidadEfectiva}
                     </TableCell>
                     <TableCell />

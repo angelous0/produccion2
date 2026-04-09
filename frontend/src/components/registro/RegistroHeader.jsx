@@ -127,18 +127,18 @@ export const RegistroHeader = ({
           {/* Ruta visual */}
           {estados.length > 1 && (
             <div className="space-y-2">
-              <div className="flex items-center gap-0.5 overflow-x-auto pb-0.5">
+              <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
                 {estados.map((e, idx) => {
                   const isPast = idx < currentIdx;
                   const isCurrent = idx === currentIdx;
                   const allowed = canChangeStates && canChangeToState(e);
                   return (
-                    <div key={e} className="flex items-center gap-0.5 shrink-0">
-                      {idx > 0 && <div className={`w-3 h-0.5 ${isPast ? 'bg-green-500' : 'bg-muted-foreground/20'}`} />}
-                      <div className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap transition-colors ${
-                        isCurrent ? 'bg-foreground text-background font-semibold' :
-                        isPast ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' :
-                        'bg-muted text-muted-foreground border border-border'
+                    <div key={e} className="flex items-center gap-1 shrink-0">
+                      {idx > 0 && <div className={`w-3 h-px ${isPast ? 'bg-green-400' : 'bg-gray-200 dark:bg-gray-700'}`} />}
+                      <div className={`rounded-full whitespace-nowrap transition-colors ${
+                        isCurrent ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900 font-semibold text-xs px-3 py-1' :
+                        isPast ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 text-xs px-2 py-0.5' :
+                        'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500 border border-gray-200 dark:border-gray-700 text-xs px-2 py-0.5'
                       } ${allowed && !isCurrent ? 'cursor-pointer hover:ring-1 hover:ring-primary/50' : ''} ${!allowed && !isCurrent ? 'opacity-40 cursor-not-allowed' : ''}`}
                         onClick={() => allowed && handleEstadoChange(e)}
                         title={!allowed ? 'Sin permiso para este estado' : e}
@@ -148,9 +148,9 @@ export const RegistroHeader = ({
                 })}
               </div>
               {/* Barra de progreso lineal */}
-              <div className="h-[3px] bg-muted rounded-full overflow-hidden">
+              <div className="h-0.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-foreground rounded-full transition-all duration-500"
+                  className="h-full bg-gray-900 dark:bg-white rounded-full transition-all duration-500"
                   style={{ width: `${progressPct}%` }}
                 />
               </div>

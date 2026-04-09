@@ -789,34 +789,34 @@ export const RegistroForm = () => {
             {/* Stats rápidos (solo edición) */}
             {isEditing && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="rounded-xl border bg-card p-3 shadow-sm">
+                <div className="rounded-xl bg-gray-50 dark:bg-gray-900 p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <Package className="h-3.5 w-3.5 text-blue-500" />
-                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Prendas</span>
+                    <span className="text-xs text-muted-foreground">Prendas</span>
                   </div>
-                  <p className="text-2xl font-mono font-semibold">{prendasEfectivas}</p>
+                  <p className="text-2xl font-semibold">{prendasEfectivas}</p>
                 </div>
-                <div className="rounded-xl border bg-card p-3 shadow-sm">
+                <div className="rounded-xl bg-gray-50 dark:bg-gray-900 p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <Activity className="h-3.5 w-3.5 text-emerald-500" />
-                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Movimientos</span>
+                    <span className="text-xs text-muted-foreground">Movimientos</span>
                   </div>
-                  <p className="text-2xl font-mono font-semibold">{movimientosProduccion.length}</p>
+                  <p className="text-2xl font-semibold">{movimientosProduccion.length}</p>
                 </div>
-                <div className="rounded-xl border bg-card p-3 shadow-sm">
+                <div className="rounded-xl bg-gray-50 dark:bg-gray-900 p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <AlertTriangleIcon className="h-3.5 w-3.5 text-red-500" />
-                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Incidencias</span>
+                    <span className="text-xs text-muted-foreground">Incidencias</span>
                   </div>
-                  <p className={`text-2xl font-mono font-semibold ${incidenciasAbiertas > 0 ? 'text-red-600' : ''}`}>{incidencias.length}</p>
+                  <p className={`text-2xl font-semibold ${incidenciasAbiertas > 0 ? 'text-red-600' : ''}`}>{incidencias.length}</p>
                   {incidenciasAbiertas > 0 && <p className="text-[10px] text-red-500 font-medium">{incidenciasAbiertas} abiertas</p>}
                 </div>
-                <div className="rounded-xl border bg-card p-3 shadow-sm">
+                <div className="rounded-xl bg-gray-50 dark:bg-gray-900 p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <Clock className="h-3.5 w-3.5 text-amber-500" />
-                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Días</span>
+                    <span className="text-xs text-muted-foreground">Días</span>
                   </div>
-                  <p className="text-2xl font-mono font-semibold">
+                  <p className="text-2xl font-semibold">
                     {movimientosProduccion.length > 0 && movimientosProduccion[0].fecha_inicio
                       ? Math.max(0, Math.ceil((new Date() - new Date(movimientosProduccion[0].fecha_inicio)) / (1000 * 60 * 60 * 24)))
                       : '—'}

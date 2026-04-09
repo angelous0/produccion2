@@ -48,20 +48,20 @@ export const RegistroPanelLateral = ({
       <div className="sticky top-4 space-y-3" data-testid="panel-derecho">
 
         {/* Card Resumen del Lote */}
-        <div className="rounded-xl border bg-card p-4 space-y-2.5 shadow-sm">
+        <div className="rounded-xl border bg-card p-4 space-y-2.5 shadow-sm hover:shadow transition-shadow">
           <div className="flex items-center justify-between">
             <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Lote</span>
-            <span className="font-mono font-bold text-xl leading-none">{formData.n_corte || '—'}</span>
+            <span className="font-mono font-bold text-2xl leading-none">{formData.n_corte || '—'}</span>
           </div>
           <Separator />
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
+          <div className="divide-y divide-border space-y-0">
+            <div className="flex items-center justify-between py-1.5">
               <span className="text-xs text-muted-foreground">Estado</span>
               <Badge variant={isParalizado ? 'destructive' : 'outline'} className="text-xs font-medium">
                 {isParalizado ? 'PARALIZADO' : formData.estado}
               </Badge>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between py-1.5">
               <span className="text-xs text-muted-foreground">Prendas</span>
               {(() => {
                 const cantOriginal = tallasSeleccionadas.reduce((sum, t) => sum + (t.cantidad || 0), 0);
@@ -82,11 +82,11 @@ export const RegistroPanelLateral = ({
             </div>
             {isEditing && (
               <>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between py-1.5">
                   <span className="text-xs text-muted-foreground">Movimientos</span>
                   <span className="text-xs font-semibold font-mono">{movimientosProduccion.length}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between py-1.5">
                   <span className="text-xs text-muted-foreground">Incidencias</span>
                   <div className="flex items-center gap-1.5">
                     {incidenciasAbiertas > 0 && (
@@ -98,7 +98,7 @@ export const RegistroPanelLateral = ({
               </>
             )}
             {formData.linea_negocio_id && (
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between py-1.5">
                 <span className="text-xs text-muted-foreground">Línea</span>
                 <span className="text-xs font-medium truncate max-w-[140px] text-right">{lineasNegocio.find(l => l.id === formData.linea_negocio_id)?.nombre || '—'}</span>
               </div>
@@ -108,7 +108,7 @@ export const RegistroPanelLateral = ({
 
         {/* Card Modelo */}
         {modeloSeleccionado && (
-          <div className="rounded-xl border bg-card p-3 shadow-sm">
+          <div className="rounded-xl border bg-card p-3 shadow-sm hover:shadow transition-shadow">
             <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">Modelo</p>
             <p className="font-semibold text-sm leading-snug mb-2">{modeloSeleccionado.nombre}</p>
             <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
@@ -144,7 +144,7 @@ export const RegistroPanelLateral = ({
 
         {/* Botones de acción */}
         <div className="space-y-2">
-          <Button type="submit" className="w-full h-10" disabled={loading || isParalizado} data-testid="btn-guardar-registro">
+          <Button type="submit" className="w-full h-10 shadow-sm" disabled={loading || isParalizado} data-testid="btn-guardar-registro">
             <Save className="h-4 w-4 mr-2" />
             {loading ? 'Guardando...' : (isEditing ? 'Actualizar Registro' : 'Crear Registro')}
           </Button>
