@@ -7,8 +7,16 @@ import {
   ArrowRight, GitBranch, Shield, BarChart3,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return { text: 'Buenos días', emoji: '☀️' };
+  if (hour >= 12 && hour < 19) return { text: 'Buenas tardes', emoji: '🌤' };
+  return { text: 'Buenas noches', emoji: '🌙' };
+}
 
 const WIP_COLORS = [
   'bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500',
@@ -21,6 +29,8 @@ export const Dashboard = () => {
   const [alertas, setAlertas] = useState(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const greeting = getGreeting();
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -37,14 +47,14 @@ export const Dashboard = () => {
   const atrasados = dashboard?.atrasados || 0;
 
   return (
-    <div className="space-y-5" data-testid="dashboard">
+    <div className="space-y-6" data-testid="dashboard">
       <div>
-        <h2 className="page-title">Dashboard</h2>
-        <p className="text-sm text-muted-foreground">Panel de control operativo</p>
+        <h2 className="dashboard-title">{greeting.emoji} {greeting.text}, {user?.nombre_completo?.split(' ')[0] || user?.username}</h2>
+        <p className="text-sm text-muted-foreground mt-1">Panel de control operativo</p>
       </div>
 
       {/* KPIs */}
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <Card className="card-elevated kpi-border-blue cursor-pointer hover:border-primary/40" onClick={() => navigate('/reportes/seguimiento')} data-testid="kpi-en-proceso">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">

@@ -2,10 +2,12 @@
 
 .sidebar-item {
     @apply flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-foreground hover:bg-muted;
+    border-left: 3px solid transparent;
 }
 
 .sidebar-item.active {
     @apply bg-muted text-foreground font-medium;
+    border-left: 3px solid hsl(var(--primary));
 }
 
 /* Status badge colors */
@@ -54,8 +56,39 @@
     transition: background-color 0.2s ease;
 }
 
+.data-table-row:nth-child(even) {
+    background-color: hsl(var(--muted) / 0.25);
+}
+
 .data-table-cell {
     @apply p-4 align-middle;
+}
+
+/* ── Global table enhancements ── */
+table thead th,
+table thead td {
+    background-color: hsl(var(--muted) / 0.5);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: hsl(var(--muted-foreground));
+}
+
+table tbody tr:nth-child(even) {
+    background-color: hsl(var(--muted) / 0.18);
+}
+.dark table tbody tr:nth-child(even) {
+    background-color: hsl(var(--muted) / 0.12);
+}
+
+table tbody tr:hover {
+    background-color: hsl(var(--muted) / 0.5) !important;
+}
+
+table td, table th {
+    border-color: hsl(var(--border) / 0.6);
+    border-width: 0.5px;
 }
 
 /* Card widget */
@@ -102,17 +135,18 @@
 
 /* ── Enhanced cards ── */
 .card-elevated {
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    border-radius: 12px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
 }
 .card-elevated:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 .dark .card-elevated {
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 .dark .card-elevated:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 /* ── Table row hover transition ── */
@@ -165,9 +199,125 @@ table tbody tr {
     height: 28px;
     border-radius: 6px;
     transition: width 0.5s ease;
+    max-width: 70%;
 }
 
 /* ── h2 page titles ── */
 h2 {
     font-weight: 600;
+}
+
+/* ── Primary button gradient ── */
+button[class*="bg-primary"],
+.btn-primary,
+[data-slot="button"]:not([data-variant]) {
+    background-image: linear-gradient(to bottom, hsl(var(--primary)), hsl(var(--primary) / 0.85));
+}
+button[class*="bg-primary"]:hover,
+.btn-primary:hover {
+    background-image: linear-gradient(to bottom, hsl(var(--primary) / 0.95), hsl(var(--primary) / 0.8));
+}
+
+/* ── Input & select enhanced styling ── */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea,
+[role="combobox"] {
+    border-radius: 8px !important;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+select:focus,
+textarea:focus,
+[role="combobox"]:focus {
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.25);
+    border-color: hsl(var(--primary)) !important;
+}
+
+/* ── Global card border-radius ── */
+[data-slot="card"],
+.rounded-lg[class*="border"][class*="bg-card"],
+.rounded-xl[class*="border"] {
+    border-radius: 12px !important;
+}
+
+/* ── Badge pills ── */
+[data-slot="badge"],
+.badge,
+span[class*="rounded-full"][class*="text-xs"],
+span[class*="rounded-md"][class*="text-xs"][class*="px-"] {
+    border-radius: 20px !important;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+/* ── Sidebar nav group labels ── */
+.nav-group-label {
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: hsl(var(--muted-foreground) / 0.7);
+}
+
+/* ── Header shadow ── */
+.header-elevated {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.dark .header-elevated {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* ── Logo badge ── */
+.logo-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    flex-shrink: 0;
+}
+
+/* ── Sidebar background ── */
+.sidebar-bg {
+    background-color: hsl(var(--muted) / 0.35);
+}
+.dark .sidebar-bg {
+    background-color: hsl(var(--card));
+}
+
+/* ── User avatar ── */
+.user-avatar-initials {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.7));
+    color: hsl(var(--primary-foreground));
+    font-weight: 700;
+    font-size: 0.875rem;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+}
+
+/* ── Greeting text ── */
+.greeting-text {
+    font-size: 0.8125rem;
+    color: hsl(var(--muted-foreground));
+    font-weight: 500;
+}
+
+/* ── Dashboard page title ── */
+.dashboard-title {
+    font-family: 'Manrope', sans-serif;
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
 }

@@ -72,6 +72,27 @@ import { usePermissions, RUTA_A_TABLA } from '../hooks/usePermissions';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+// ── Saludo dinámico ────────────────────────────────────────────────────────
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return { text: 'Buenos días', emoji: '☀️' };
+  if (hour >= 12 && hour < 19) return { text: 'Buenas tardes', emoji: '🌤' };
+  return { text: 'Buenas noches', emoji: '🌙' };
+}
+
+function getUserInitials(user) {
+  if (user?.nombre_completo) {
+    return user.nombre_completo
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0].toUpperCase())
+      .join('');
+  }
+  return (user?.username || 'U')[0].toUpperCase();
+}
+
 // ── Grupos de navegación ────────────────────────────────────────────────────
 
 const operacionesItems = [
@@ -157,7 +178,7 @@ function NavGroup({ label, items, collapsed: sidebarCollapsed, storageKey, defau
           onClick={toggle}
           className="w-full flex items-center justify-between px-3 py-1.5 mt-3 mb-0.5 rounded-md hover:bg-muted/50 transition-colors group"
         >
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground group-hover:text-foreground transition-colors">
+          <span className="nav-group-label group-hover:text-foreground transition-colors">
             {label}
           </span>
           <ChevronDown
@@ -280,7 +301,7 @@ export const Layout = () => {
     <div className="h-screen flex flex-col bg-background overflow-hidden">
 
       {/* ── Header ── */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b flex-shrink-0">
+      <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b flex-shrink-0 header-elevated">
         <div className="flex h-16 items-center px-4 md:px-6">
 
           <Button
@@ -293,9 +314,16 @@ export const Layout = () => {
             {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
 
-          <div className="flex items-center gap-2">
-            <Scissors className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold tracking-tight">Producción Textil</h1>
+          <div className="flex items-center gap-3">
+            <div className="logo-badge">
+              <Scissors className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold tracking-tight leading-tight">Producción Textil</h1>
+              <span className="greeting-text hidden md:block">
+                {getGreeting().emoji} {getGreeting().text}, {user?.nombre_completo?.split(' ')[0] || user?.username}
+              </span>
+            </div>
           </div>
 
           <div className="ml-auto flex items-center gap-2">
@@ -429,7 +457,7 @@ export const Layout = () => {
 
         {/* ── Sidebar ── */}
         <aside className={`
-          fixed inset-y-0 left-0 z-40 transform bg-card border-r pt-16 transition-all duration-300 ease-in-out
+          fixed inset-y-0 left-0 z-40 transform sidebar-bg border-r pt-16 transition-all duration-300 ease-in-out
           md:translate-x-0 md:relative md:pt-0 md:flex-shrink-0
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           ${sidebarCollapsed ? 'md:w-16' : 'md:w-60'} w-64
@@ -522,6 +550,23 @@ export const Layout = () => {
                 onItemClick={closeMobileSidebar}
               />
             )}
+
+            {/* ── Avatar usuario ── */}
+            <div className="mt-auto pt-4 border-t border-border/50">
+              <div className={`flex items-center gap-3 px-3 py-2 ${sidebarCollapsed ? 'md:justify-center md:px-0' : ''}`}>
+                <div className="user-avatar-initials" title={user?.nombre_completo || user?.username}>
+                  {getUserInitials(user)}
+                </div>
+                {!sidebarCollapsed && (
+                  <div className="hidden md:block min-w-0">
+                    <p className="text-sm font-medium truncate">{user?.nombre_completo || user?.username}</p>
+                    <p className="text-[10px] text-muted-foreground capitalize">
+                      {user?.rol === 'admin' ? 'Administrador' : user?.rol === 'lectura' ? 'Solo Lectura' : 'Usuario'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
 
           </nav>
         </aside>
