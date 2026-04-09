@@ -51,7 +51,7 @@ export const RegistroPanelLateral = ({
         <div className="rounded-xl border bg-card p-4 space-y-2.5 shadow-sm hover:shadow transition-shadow">
           <div className="flex items-center justify-between">
             <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Lote</span>
-            <span className="font-mono font-bold text-2xl leading-none">{formData.n_corte || '—'}</span>
+            <span className="registro-panel-lote-num">{formData.n_corte || '—'}</span>
           </div>
           <Separator />
           <div className="divide-y divide-border space-y-0">

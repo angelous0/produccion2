@@ -56,12 +56,12 @@ export const RegistroMovimientosCard = ({
                 const diferencia = enviada - recibida;
                 const isLast = idx === lastIdx;
                 return (
-                  <div key={mov.id} className={`rounded-lg border p-3 ${isLast ? 'bg-gray-50 dark:bg-gray-900 border-l-2 border-l-gray-900 dark:border-l-white' : ''} ${diferencia > 0 && !isLast ? 'border-l-4 border-l-amber-400' : ''}`} data-testid={`movimiento-card-${mov.id}`}>
+                  <div key={mov.id} className={`rounded-lg border p-3 ${isLast ? 'registro-mov-activo' : ''} ${diferencia > 0 && !isLast ? 'border-l-4 border-l-amber-400' : ''}`} data-testid={`movimiento-card-${mov.id}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0">
                         <Cog className="h-4 w-4 text-blue-500 shrink-0" />
                         <span className="font-medium text-sm truncate">{mov.servicio_nombre}</span>
-                        {isLast && <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800 rounded-full px-2 py-0 font-medium">activo</span>}
+                        {isLast && <span className="registro-mov-badge-activo">activo</span>}
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -138,7 +138,7 @@ export const RegistroMovimientosCard = ({
                     return (
                       <TableRow
                         key={mov.id}
-                        className={isLast ? 'bg-gray-50 dark:bg-gray-900 border-l-2 border-l-gray-900 dark:border-l-white' : ''}
+                        className={isLast ? 'registro-mov-activo' : ''}
                         data-testid={`movimiento-row-${mov.id}`}
                       >
                         <TableCell>
@@ -146,7 +146,7 @@ export const RegistroMovimientosCard = ({
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="font-medium">{mov.servicio_nombre}</span>
-                                {isLast && <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800 rounded-full px-2 py-0 font-medium shrink-0">activo</span>}
+                                {isLast && <span className="registro-mov-badge-activo">activo</span>}
                               </div>
                               {mov.persona_nombre && (
                                 <span className="text-xs text-muted-foreground">{mov.persona_nombre}</span>

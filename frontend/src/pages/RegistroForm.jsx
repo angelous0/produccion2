@@ -789,34 +789,34 @@ export const RegistroForm = () => {
             {/* Stats rápidos (solo edición) */}
             {isEditing && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="rounded-xl bg-gray-50 dark:bg-gray-900 p-3">
+                <div className="registro-stat-card">
                   <div className="flex items-center gap-2 mb-1">
                     <Package className="h-3.5 w-3.5 text-blue-500" />
-                    <span className="text-xs text-muted-foreground">Prendas</span>
+                    <span className="registro-stat-label">Prendas</span>
                   </div>
-                  <p className="text-2xl font-semibold">{prendasEfectivas}</p>
+                  <p className="registro-stat-numero">{prendasEfectivas}</p>
                 </div>
-                <div className="rounded-xl bg-gray-50 dark:bg-gray-900 p-3">
+                <div className="registro-stat-card">
                   <div className="flex items-center gap-2 mb-1">
                     <Activity className="h-3.5 w-3.5 text-emerald-500" />
-                    <span className="text-xs text-muted-foreground">Movimientos</span>
+                    <span className="registro-stat-label">Movimientos</span>
                   </div>
-                  <p className="text-2xl font-semibold">{movimientosProduccion.length}</p>
+                  <p className="registro-stat-numero">{movimientosProduccion.length}</p>
                 </div>
-                <div className="rounded-xl bg-gray-50 dark:bg-gray-900 p-3">
+                <div className="registro-stat-card">
                   <div className="flex items-center gap-2 mb-1">
                     <AlertTriangleIcon className="h-3.5 w-3.5 text-red-500" />
-                    <span className="text-xs text-muted-foreground">Incidencias</span>
+                    <span className="registro-stat-label">Incidencias</span>
                   </div>
-                  <p className={`text-2xl font-semibold ${incidenciasAbiertas > 0 ? 'text-red-600' : ''}`}>{incidencias.length}</p>
+                  <p className={`registro-stat-numero ${incidenciasAbiertas > 0 ? 'text-red-600' : ''}`}>{incidencias.length}</p>
                   {incidenciasAbiertas > 0 && <p className="text-[10px] text-red-500 font-medium">{incidenciasAbiertas} abiertas</p>}
                 </div>
-                <div className="rounded-xl bg-gray-50 dark:bg-gray-900 p-3">
+                <div className="registro-stat-card">
                   <div className="flex items-center gap-2 mb-1">
                     <Clock className="h-3.5 w-3.5 text-amber-500" />
-                    <span className="text-xs text-muted-foreground">Días</span>
+                    <span className="registro-stat-label">Días</span>
                   </div>
-                  <p className="text-2xl font-semibold">
+                  <p className="registro-stat-numero">
                     {movimientosProduccion.length > 0 && movimientosProduccion[0].fecha_inicio
                       ? Math.max(0, Math.ceil((new Date() - new Date(movimientosProduccion[0].fecha_inicio)) / (1000 * 60 * 60 * 24)))
                       : '—'}

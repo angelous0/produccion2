@@ -135,10 +135,10 @@ export const RegistroHeader = ({
                   return (
                     <div key={e} className="flex items-center gap-1 shrink-0">
                       {idx > 0 && <div className={`w-3 h-px ${isPast ? 'bg-green-400' : 'bg-gray-200 dark:bg-gray-700'}`} />}
-                      <div className={`rounded-full whitespace-nowrap transition-colors ${
-                        isCurrent ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900 font-semibold text-xs px-3 py-1' :
-                        isPast ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400 text-xs px-2 py-0.5' :
-                        'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500 border border-gray-200 dark:border-gray-700 text-xs px-2 py-0.5'
+                      <div className={`${
+                        isCurrent ? 'registro-etapa-actual' :
+                        isPast ? 'registro-etapa-pasada' :
+                        'registro-etapa-futura'
                       } ${allowed && !isCurrent ? 'cursor-pointer hover:ring-1 hover:ring-primary/50' : ''} ${!allowed && !isCurrent ? 'opacity-40 cursor-not-allowed' : ''}`}
                         onClick={() => allowed && handleEstadoChange(e)}
                         title={!allowed ? 'Sin permiso para este estado' : e}
