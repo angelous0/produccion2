@@ -35,8 +35,14 @@ export const RegistroHeader = ({
     } else { await autoGuardarEstado(value); }
   };
 
+  const currentIdx = estados.indexOf(formData.estado);
+  const progressPct = estados.length > 1 ? Math.round((currentIdx / (estados.length - 1)) * 100) : 0;
+
   return (
-    <div className="rounded-xl border bg-card shadow-sm p-4 space-y-3" data-testid="header-operativo">
+    <div
+      className={`rounded-xl border bg-card shadow-sm p-4 space-y-3 ${isParalizado ? 'border-destructive bg-destructive/5' : ''}`}
+      data-testid="header-operativo"
+    >
       {/* Fila 1: Navegación + Identidad + Guardar */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" className="shrink-0" onClick={() => navigate('/registros')} data-testid="btn-volver">
@@ -44,16 +50,27 @@ export const RegistroHeader = ({
         </Button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-xl font-bold tracking-tight">Corte {formData.n_corte || '—'}</h2>
+            <h2 className="text-2xl font-semibold tracking-tight">Corte {formData.n_corte || '—'}</h2>
             {modeloSeleccionado && (
               <span className="text-sm text-muted-foreground">· {modeloSeleccionado.nombre}</span>
             )}
-            {formData.urgente && <Badge variant="destructive" className="text-[10px]">URGENTE</Badge>}
-            {isParalizado && <Badge className="bg-red-600 text-[10px]">PARALIZADO</Badge>}
+            {formData.urgente && (
+              <Badge variant="destructive" className="text-xs px-2.5 py-0.5 font-bold">URGENTE</Badge>
+            )}
+            {isParalizado && (
+              <Badge className="bg-red-600 text-xs px-2.5 py-0.5 font-bold">PARALIZADO</Badge>
+            )}
           </div>
           {!isEditing && <p className="text-sm text-muted-foreground">Crear un nuevo registro de producción</p>}
         </div>
-        <Button type="button" size="sm" disabled={loading} onClick={async () => { await handleSubmit(null, true); }} data-testid="btn-guardar-rapido">
+        <Button
+          type="button"
+          size="sm"
+          disabled={loading || isParalizado}
+          onClick={async () => { await handleSubmit(null, true); }}
+          className={isParalizado ? 'opacity-50' : ''}
+          data-testid="btn-guardar-rapido"
+        >
           <Save className="h-4 w-4 mr-1" />
           {loading ? 'Guardando...' : 'Guardar'}
         </Button>
@@ -61,7 +78,7 @@ export const RegistroHeader = ({
 
       {/* Fila 2: Estado + Ruta (solo edición) */}
       {isEditing && (
-        <div className="rounded-lg border bg-muted/30 p-3 space-y-2" data-testid="estado-banner">
+        <div className="rounded-lg border bg-muted/30 p-3 space-y-3" data-testid="estado-banner">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <Play className="h-4 w-4 text-primary shrink-0" />
@@ -106,44 +123,56 @@ export const RegistroHeader = ({
               </label>
             )}
           </div>
+
           {/* Ruta visual */}
           {estados.length > 1 && (
-            <div className="flex items-center gap-0.5 overflow-x-auto pb-0.5">
-              {estados.map((e, idx) => {
-                const currentIdx = estados.indexOf(formData.estado);
-                const isPast = idx < currentIdx;
-                const isCurrent = idx === currentIdx;
-                const allowed = canChangeStates && canChangeToState(e);
-                return (
-                  <div key={e} className="flex items-center gap-0.5 shrink-0">
-                    {idx > 0 && <div className={`w-3 h-0.5 ${isPast ? 'bg-primary' : 'bg-muted-foreground/20'}`} />}
-                    <div className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap transition-colors ${
-                      isCurrent ? 'bg-primary text-primary-foreground font-semibold' :
-                      isPast ? 'bg-primary/20 text-primary' :
-                      'bg-muted text-muted-foreground'
-                    } ${allowed && !isCurrent ? 'cursor-pointer hover:ring-1 hover:ring-primary/50' : ''} ${!allowed && !isCurrent ? 'opacity-40 cursor-not-allowed' : ''}`}
-                      onClick={() => allowed && handleEstadoChange(e)}
-                      title={!allowed ? 'Sin permiso para este estado' : e}
-                    >{e}</div>
-                  </div>
-                );
-              })}
+            <div className="space-y-2">
+              <div className="flex items-center gap-0.5 overflow-x-auto pb-0.5">
+                {estados.map((e, idx) => {
+                  const isPast = idx < currentIdx;
+                  const isCurrent = idx === currentIdx;
+                  const allowed = canChangeStates && canChangeToState(e);
+                  return (
+                    <div key={e} className="flex items-center gap-0.5 shrink-0">
+                      {idx > 0 && <div className={`w-3 h-0.5 ${isPast ? 'bg-green-500' : 'bg-muted-foreground/20'}`} />}
+                      <div className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap transition-colors ${
+                        isCurrent ? 'bg-foreground text-background font-semibold' :
+                        isPast ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' :
+                        'bg-muted text-muted-foreground border border-border'
+                      } ${allowed && !isCurrent ? 'cursor-pointer hover:ring-1 hover:ring-primary/50' : ''} ${!allowed && !isCurrent ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        onClick={() => allowed && handleEstadoChange(e)}
+                        title={!allowed ? 'Sin permiso para este estado' : e}
+                      >{e}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Barra de progreso lineal */}
+              <div className="h-[3px] bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-foreground rounded-full transition-all duration-500"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Banners contextuales */}
+      {/* Banner PARALIZADO */}
       {isEditing && isParalizado && (
-        <div className="rounded-lg border-2 border-red-500 bg-red-50 dark:bg-red-950/30 p-3 flex items-center gap-3" data-testid="banner-paralizado">
-          <AlertTriangle className="h-5 w-5 text-red-600 shrink-0" />
+        <div className="rounded-lg border-2 border-red-500 bg-red-50 dark:bg-red-950/30 p-4 flex items-center gap-4" data-testid="banner-paralizado">
+          <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/50 flex items-center justify-center shrink-0">
+            <AlertTriangle className="h-6 w-6 text-red-600" />
+          </div>
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-red-800 text-sm">Registro PARALIZADO</p>
-            <p className="text-xs text-red-600">No se puede cambiar de estado ni crear/editar movimientos hasta resolver la incidencia.</p>
+            <p className="font-bold text-red-800 dark:text-red-300 text-base">Registro PARALIZADO</p>
+            <p className="text-sm text-red-600 dark:text-red-400">No se puede cambiar de estado ni crear/editar movimientos hasta resolver la incidencia.</p>
           </div>
         </div>
       )}
 
+      {/* Banner inconsistencias */}
       {analisisEstado && analisisEstado.inconsistencias && analisisEstado.inconsistencias.length > 0 && !formData.skip_validacion_estado && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700 p-2.5 space-y-1" data-testid="inconsistencias-banner">
           <div className="flex items-center gap-2">

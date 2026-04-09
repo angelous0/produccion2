@@ -8,7 +8,6 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../ui/select';
-import { Separator } from '../ui/separator';
 import { NumericInput } from '../ui/numeric-input';
 import { Trash2, Palette } from 'lucide-react';
 
@@ -17,10 +16,18 @@ export const RegistroTallasCard = ({
   onAddTalla, onCantidadChange, onRemoveTalla,
   tieneColores, onOpenColoresDialog, distribucionColores,
 }) => {
+  const totalPrendas = tallasSeleccionadas.reduce((sum, t) => sum + (t.cantidad || 0), 0);
+  const totalColores = tieneColores
+    ? distribucionColores.reduce((sum, t) => sum + (t.colores?.length || 0), 0)
+    : 0;
+
   return (
     <Card>
       <CardHeader className="py-3 px-4">
-        <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Tallas y Cantidades</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Tallas y Cantidades</CardTitle>
+          <span className="text-lg font-mono font-bold text-primary">{totalPrendas}</span>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex gap-2">
@@ -78,7 +85,7 @@ export const RegistroTallasCard = ({
                 <TableRow className="bg-muted/30">
                   <TableCell className="font-semibold">Total</TableCell>
                   <TableCell className="font-mono font-bold text-center text-lg">
-                    {tallasSeleccionadas.reduce((sum, t) => sum + (t.cantidad || 0), 0)}
+                    {totalPrendas}
                   </TableCell>
                   <TableCell></TableCell>
                 </TableRow>
@@ -91,26 +98,23 @@ export const RegistroTallasCard = ({
           </div>
         )}
 
-        {/* Botón Agregar Colores */}
+        {/* Botón Colores */}
         {tallasSeleccionadas.length > 0 && (
-          <div className="pt-4">
-            <Separator className="mb-4" />
-            <Button
-              type="button"
-              variant={tieneColores ? "default" : "outline"}
-              onClick={onOpenColoresDialog}
-              className="w-full"
-              data-testid="btn-agregar-colores"
-            >
-              <Palette className="h-4 w-4 mr-2" />
-              {tieneColores ? 'Editar Colores' : 'Agregar Colores'}
-              {tieneColores && (
-                <Badge variant="secondary" className="ml-2">
-                  {distribucionColores.reduce((sum, t) => sum + (t.colores?.length || 0), 0)} colores
-                </Badge>
-              )}
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant={tieneColores ? "default" : "outline"}
+            onClick={onOpenColoresDialog}
+            className="w-full"
+            data-testid="btn-agregar-colores"
+          >
+            <Palette className="h-4 w-4 mr-2" />
+            {tieneColores ? 'Editar Colores' : 'Agregar Colores'}
+            {tieneColores && totalColores > 0 && (
+              <Badge variant="secondary" className="ml-2">
+                {totalColores} colores
+              </Badge>
+            )}
+          </Button>
         )}
       </CardContent>
     </Card>

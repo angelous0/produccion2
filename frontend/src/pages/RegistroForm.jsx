@@ -7,7 +7,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Save, Scissors } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { ClipboardList, Play, ShieldAlert, Package } from 'lucide-react';
+import { ClipboardList, Play, ShieldAlert, Package, Activity, Clock, AlertTriangle as AlertTriangleIcon, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { SalidaRollosDialog } from '../components/SalidaRollosDialog';
 import { TrazabilidadPanel } from '../components/TrazabilidadPanel';
@@ -223,8 +223,17 @@ export const RegistroForm = () => {
   };
 
   // ========== EFFECTS ==========
-  const [activeTab, setActiveTab] = useState('produccion');
+  const [activeTab, setActiveTab] = useState('movimientos');
   const [tabsLoaded, setTabsLoaded] = useState({ general: false, produccion: false, control: false });
+
+  // Stats calculados
+  const prendasEfectivas = (() => {
+    const cantOriginal = tallasSeleccionadas.reduce((sum, t) => sum + (t.cantidad || 0), 0);
+    const ultimoMov = movimientosProduccion.length > 0 ? movimientosProduccion[movimientosProduccion.length - 1] : null;
+    return ultimoMov ? (ultimoMov.cantidad_recibida ?? ultimoMov.cantidad ?? cantOriginal) : cantOriginal;
+  })();
+
+  const incidenciasAbiertas = incidencias.filter(i => i.estado === 'ABIERTA').length;
 
   // Carga inicial: solo datos del formulario + datos ligeros del panel lateral
   useEffect(() => {
@@ -716,7 +725,8 @@ export const RegistroForm = () => {
 
   // ========== RENDER ==========
   return (
-    <div className="space-y-4 pb-8 min-w-0" data-testid="registro-form-page">
+    <div className="space-y-4 p-4 md:p-6 pb-8 min-w-0" data-testid="registro-form-page">
+      {/* HEADER FULL WIDTH */}
       <RegistroHeader
         formData={formData} setFormData={setFormData} modeloSeleccionado={modeloSeleccionado}
         isEditing={isEditing} isParalizado={isParalizado} estados={estados} usaRuta={usaRuta}
@@ -726,28 +736,44 @@ export const RegistroForm = () => {
         handleSubmit={handleSubmit} permisos={perms}
       />
 
+      {/* Banner incidencias abiertas (no paralizado) */}
+      {isEditing && incidenciasAbiertas > 0 && !isParalizado && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700 px-4 py-2.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangleIcon className="h-4 w-4 text-amber-600 shrink-0" />
+            <span className="text-sm font-medium text-amber-800 dark:text-amber-300">
+              {incidenciasAbiertas} incidencia{incidenciasAbiertas > 1 ? 's' : ''} abierta{incidenciasAbiertas > 1 ? 's' : ''}
+            </span>
+          </div>
+          <button type="button" className="text-xs text-amber-700 hover:text-amber-900 dark:text-amber-400 flex items-center gap-1 shrink-0"
+            onClick={() => setActiveTab('incidencias')}>
+            Ver incidencias <ArrowRight className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_288px] gap-4">
           {/* COLUMNA IZQUIERDA */}
           <div className="space-y-4 min-w-0">
-            {/* Resumen mobile (visible solo en pantallas < lg donde el panel lateral esta oculto) */}
+            {/* Resumen mobile */}
             {isEditing && (
               <div className="lg:hidden flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2 overflow-x-auto" data-testid="resumen-mobile">
                 <div className="flex items-center gap-1.5 shrink-0">
                   <span className="text-xs text-muted-foreground">Prendas</span>
-                  <span className="font-mono font-bold text-sm">{tallasSeleccionadas.reduce((s,t) => s + (t.cantidad || 0), 0)}</span>
+                  <span className="font-mono font-bold text-sm">{prendasEfectivas}</span>
                 </div>
                 <div className="w-px h-5 bg-border shrink-0" />
                 <div className="flex items-center gap-1.5 shrink-0">
                   <span className="text-xs text-muted-foreground">Movs</span>
                   <span className="font-mono font-bold text-sm">{movimientosProduccion.length}</span>
                 </div>
-                {incidencias.filter(i => i.estado === 'ABIERTA').length > 0 && (
+                {incidenciasAbiertas > 0 && (
                   <>
                     <div className="w-px h-5 bg-border shrink-0" />
                     <div className="flex items-center gap-1.5 shrink-0">
                       <span className="text-xs text-red-600">Inc. abiertas</span>
-                      <span className="font-mono font-bold text-sm text-red-600">{incidencias.filter(i => i.estado === 'ABIERTA').length}</span>
+                      <span className="font-mono font-bold text-sm text-red-600">{incidenciasAbiertas}</span>
                     </div>
                   </>
                 )}
@@ -759,6 +785,46 @@ export const RegistroForm = () => {
                 )}
               </div>
             )}
+
+            {/* Stats rápidos (solo edición) */}
+            {isEditing && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="rounded-xl border bg-card p-3 shadow-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Package className="h-3.5 w-3.5 text-blue-500" />
+                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Prendas</span>
+                  </div>
+                  <p className="text-2xl font-mono font-semibold">{prendasEfectivas}</p>
+                </div>
+                <div className="rounded-xl border bg-card p-3 shadow-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Activity className="h-3.5 w-3.5 text-emerald-500" />
+                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Movimientos</span>
+                  </div>
+                  <p className="text-2xl font-mono font-semibold">{movimientosProduccion.length}</p>
+                </div>
+                <div className="rounded-xl border bg-card p-3 shadow-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertTriangleIcon className="h-3.5 w-3.5 text-red-500" />
+                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Incidencias</span>
+                  </div>
+                  <p className={`text-2xl font-mono font-semibold ${incidenciasAbiertas > 0 ? 'text-red-600' : ''}`}>{incidencias.length}</p>
+                  {incidenciasAbiertas > 0 && <p className="text-[10px] text-red-500 font-medium">{incidenciasAbiertas} abiertas</p>}
+                </div>
+                <div className="rounded-xl border bg-card p-3 shadow-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="h-3.5 w-3.5 text-amber-500" />
+                    <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Días</span>
+                  </div>
+                  <p className="text-2xl font-mono font-semibold">
+                    {movimientosProduccion.length > 0 && movimientosProduccion[0].fecha_inicio
+                      ? Math.max(0, Math.ceil((new Date() - new Date(movimientosProduccion[0].fecha_inicio)) / (1000 * 60 * 60 * 24)))
+                      : '—'}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {!isEditing ? (
               /* Modo creación: sin pestañas */
               <>
@@ -784,18 +850,21 @@ export const RegistroForm = () => {
             ) : (
               /* Modo edición: con pestañas */
               <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
-                <TabsList className="h-9 w-full justify-start">
-                  <TabsTrigger value="general" className="text-xs gap-1.5" data-testid="tab-general">
-                    <ClipboardList className="h-3.5 w-3.5" /> General
+                <TabsList className="h-9 w-full justify-start overflow-x-auto">
+                  <TabsTrigger value="movimientos" className="text-xs gap-1.5" data-testid="tab-produccion">
+                    <Play className="h-3.5 w-3.5" /> Movimientos
                   </TabsTrigger>
-                  <TabsTrigger value="produccion" className="text-xs gap-1.5" data-testid="tab-produccion">
-                    <Play className="h-3.5 w-3.5" /> Produccion
+                  <TabsTrigger value="tallas" className="text-xs gap-1.5" data-testid="tab-general">
+                    <Scissors className="h-3.5 w-3.5" /> Tallas
                   </TabsTrigger>
-                  <TabsTrigger value="control" className="text-xs gap-1.5" data-testid="tab-control">
-                    <ShieldAlert className="h-3.5 w-3.5" /> Control
-                    {incidencias.filter(i => i.estado === 'ABIERTA').length > 0 && (
+                  <TabsTrigger value="materiales" className="text-xs gap-1.5" data-testid="tab-materiales">
+                    <Package className="h-3.5 w-3.5" /> Materiales
+                  </TabsTrigger>
+                  <TabsTrigger value="incidencias" className="text-xs gap-1.5" data-testid="tab-control">
+                    <ShieldAlert className="h-3.5 w-3.5" /> Incidencias
+                    {incidenciasAbiertas > 0 && (
                       <span className="ml-1 inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold">
-                        {incidencias.filter(i => i.estado === 'ABIERTA').length}
+                        {incidenciasAbiertas}
                       </span>
                     )}
                   </TabsTrigger>
@@ -804,8 +873,19 @@ export const RegistroForm = () => {
                   </TabsTrigger>
                 </TabsList>
 
-                {/* TAB GENERAL: Datos + Tallas + Colores */}
-                <TabsContent value="general" className="space-y-4 mt-0">
+                {/* TAB MOVIMIENTOS */}
+                <TabsContent value="movimientos" className="space-y-4 mt-0">
+                  <RegistroMovimientosCard
+                    movimientosProduccion={movimientosProduccion} serviciosProduccion={serviciosProduccion}
+                    isParalizado={isParalizado} onOpenDialog={handleOpenMovimientoDialog}
+                    onDelete={handleDeleteMovimiento} onGenerarGuia={handleGenerarGuia}
+                    totalCantidad={totalCantidadMovimientos}
+                    permisos={permsMovimientos}
+                  />
+                </TabsContent>
+
+                {/* TAB TALLAS: Datos + Tallas + Colores */}
+                <TabsContent value="tallas" className="space-y-4 mt-0">
                   <RegistroDatosCard
                     formData={formData} setFormData={setFormData} divisionInfo={divisionInfo}
                     navigate={navigate} esCierreable={esCierreable} cierreExistente={cierreExistente}
@@ -826,15 +906,8 @@ export const RegistroForm = () => {
                   />
                 </TabsContent>
 
-                {/* TAB PRODUCCION: Movimientos + Materiales */}
-                <TabsContent value="produccion" className="space-y-4 mt-0">
-                  <RegistroMovimientosCard
-                    movimientosProduccion={movimientosProduccion} serviciosProduccion={serviciosProduccion}
-                    isParalizado={isParalizado} onOpenDialog={handleOpenMovimientoDialog}
-                    onDelete={handleDeleteMovimiento} onGenerarGuia={handleGenerarGuia}
-                    totalCantidad={totalCantidadMovimientos}
-                    permisos={permsMovimientos}
-                  />
+                {/* TAB MATERIALES */}
+                <TabsContent value="materiales" className="space-y-4 mt-0">
                   <Card><CardContent className="pt-4">
                     <MaterialesTab registroId={id} totalPrendas={1} modeloId={formData.modelo_id} lineaNegocioId={formData.linea_negocio_id}
                       permisos={permsInventario}
@@ -842,8 +915,8 @@ export const RegistroForm = () => {
                   </CardContent></Card>
                 </TabsContent>
 
-                {/* TAB CONTROL: Incidencias + Trazabilidad */}
-                <TabsContent value="control" className="space-y-4 mt-0">
+                {/* TAB INCIDENCIAS */}
+                <TabsContent value="incidencias" className="space-y-4 mt-0">
                   <RegistroIncidenciasCard
                     incidencias={incidencias} showResueltas={showResueltas}
                     onToggleResueltas={() => setShowResueltas(prev => !prev)}
@@ -854,11 +927,9 @@ export const RegistroForm = () => {
                   <ArreglosPanel registroId={id} servicios={serviciosProduccion} personas={personasProduccion} />
                 </TabsContent>
 
-                {/* TAB PT ODOO: Distribucion PT y Conciliacion */}
+                {/* TAB PT ODOO */}
                 <TabsContent value="pt_odoo" className="space-y-4 mt-0">
-                  <DistribucionPTPanel
-                    registroId={id}
-                  />
+                  <DistribucionPTPanel registroId={id} />
                 </TabsContent>
               </Tabs>
             )}
@@ -878,7 +949,7 @@ export const RegistroForm = () => {
             </div>
           </div>
 
-          {/* COLUMNA DERECHA */}
+          {/* COLUMNA DERECHA (w-72 = 288px) */}
           <RegistroPanelLateral
             formData={formData} modeloSeleccionado={modeloSeleccionado}
             tallasSeleccionadas={tallasSeleccionadas} lineasNegocio={lineasNegocio}

@@ -27,9 +27,9 @@ const ConversacionStats = ({ registroId, API }) => {
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <span className="text-sm font-semibold">{stats.total} mensajes</span>
-      {stats.importantes > 0 && <span className="text-[10px] px-1.5 py-0 rounded-full bg-red-100 text-red-700 font-medium">{stats.importantes} imp.</span>}
-      {stats.pendientes > 0 && <span className="text-[10px] px-1.5 py-0 rounded-full bg-amber-100 text-amber-700 font-medium">{stats.pendientes} pend.</span>}
-      {stats.fijados > 0 && <span className="text-[10px] px-1.5 py-0 rounded-full bg-blue-100 text-blue-700 font-medium">{stats.fijados} fijados</span>}
+      {stats.importantes > 0 && <span className="text-[10px] px-1.5 py-0 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 font-medium">{stats.importantes} imp.</span>}
+      {stats.pendientes > 0 && <span className="text-[10px] px-1.5 py-0 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-medium">{stats.pendientes} pend.</span>}
+      {stats.fijados > 0 && <span className="text-[10px] px-1.5 py-0 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-medium">{stats.fijados} fijados</span>}
     </div>
   );
 };
@@ -41,21 +41,25 @@ export const RegistroPanelLateral = ({
   loading, navigate, onSubmit, onOpenDivision,
   id, API, convOpen, setConvOpen, user, permisos,
 }) => {
+  const incidenciasAbiertas = incidencias.filter(i => i.estado === 'ABIERTA').length;
+
   return (
     <div className="hidden lg:block">
       <div className="sticky top-4 space-y-3" data-testid="panel-derecho">
 
-        {/* Resumen del Lote */}
+        {/* Card Resumen del Lote */}
         <div className="rounded-xl border bg-card p-4 space-y-2.5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Lote</span>
+            <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Lote</span>
             <span className="font-mono font-bold text-xl leading-none">{formData.n_corte || '—'}</span>
           </div>
           <Separator />
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Estado</span>
-              <Badge variant={isParalizado ? 'destructive' : 'outline'} className="text-xs font-medium">{isParalizado ? 'PARALIZADO' : formData.estado}</Badge>
+              <Badge variant={isParalizado ? 'destructive' : 'outline'} className="text-xs font-medium">
+                {isParalizado ? 'PARALIZADO' : formData.estado}
+              </Badge>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Prendas</span>
@@ -76,36 +80,71 @@ export const RegistroPanelLateral = ({
                 );
               })()}
             </div>
-            {formData.linea_negocio_id && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Línea</span>
-                <span className="text-xs font-medium truncate max-w-[160px] text-right">{lineasNegocio.find(l => l.id === formData.linea_negocio_id)?.nombre || '—'}</span>
-              </div>
-            )}
             {isEditing && (
               <>
-                <Separator />
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">Movimientos</span>
-                  <span className="text-xs font-semibold">{movimientosProduccion.length}</span>
+                  <span className="text-xs font-semibold font-mono">{movimientosProduccion.length}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">Incidencias</span>
                   <div className="flex items-center gap-1.5">
-                    {incidencias.filter(i => i.estado === 'ABIERTA').length > 0 && (
-                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">{incidencias.filter(i => i.estado === 'ABIERTA').length} abiertas</Badge>
+                    {incidenciasAbiertas > 0 && (
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">{incidenciasAbiertas} abiertas</Badge>
                     )}
-                    <span className="text-xs font-semibold">{incidencias.length}</span>
+                    <span className="text-xs font-semibold font-mono">{incidencias.length}</span>
                   </div>
                 </div>
               </>
             )}
+            {formData.linea_negocio_id && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Línea</span>
+                <span className="text-xs font-medium truncate max-w-[140px] text-right">{lineasNegocio.find(l => l.id === formData.linea_negocio_id)?.nombre || '—'}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Acciones */}
+        {/* Card Modelo */}
+        {modeloSeleccionado && (
+          <div className="rounded-xl border bg-card p-3 shadow-sm">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">Modelo</p>
+            <p className="font-semibold text-sm leading-snug mb-2">{modeloSeleccionado.nombre}</p>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              <span className="text-muted-foreground">Marca</span>
+              <span className="font-medium">{modeloSeleccionado.marca_nombre || '—'}</span>
+              <span className="text-muted-foreground">Tipo</span>
+              <span className="font-medium">{modeloSeleccionado.tipo_nombre || '—'}</span>
+              <span className="text-muted-foreground">Entalle</span>
+              <span className="font-medium">{modeloSeleccionado.entalle_nombre || '—'}</span>
+              <span className="text-muted-foreground">Tela</span>
+              <span className="font-medium">{modeloSeleccionado.tela_nombre || '—'}</span>
+              <span className="text-muted-foreground">Hilo</span>
+              <span className="font-medium">{modeloSeleccionado.hilo_nombre || '—'}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Card Mensajes */}
+        {isEditing && (
+          <button
+            type="button"
+            onClick={() => setConvOpen(true)}
+            className="w-full rounded-xl border bg-card p-3 hover:bg-accent/50 transition-colors text-left group shadow-sm"
+            data-testid="btn-abrir-conversacion-panel"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Mensajes</span>
+              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+            </div>
+            <ConversacionStats registroId={id} API={API} />
+          </button>
+        )}
+
+        {/* Botones de acción */}
         <div className="space-y-2">
-          <Button type="submit" className="w-full h-9" disabled={loading} data-testid="btn-guardar-registro">
+          <Button type="submit" className="w-full h-10" disabled={loading || isParalizado} data-testid="btn-guardar-registro">
             <Save className="h-4 w-4 mr-2" />
             {loading ? 'Guardando...' : (isEditing ? 'Actualizar Registro' : 'Crear Registro')}
           </Button>
@@ -130,44 +169,6 @@ export const RegistroPanelLateral = ({
             )}
           </div>
         </div>
-
-        {/* Datos del Modelo */}
-        {modeloSeleccionado && (
-          <div className="rounded-lg border bg-muted/30 p-3">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mb-0.5">Modelo</p>
-            <p className="font-semibold text-sm leading-snug">{modeloSeleccionado.nombre}</p>
-            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 mt-2 text-xs">
-              <span className="text-muted-foreground">Marca</span>
-              <span className="font-medium">{modeloSeleccionado.marca_nombre || '-'}</span>
-              <span className="text-muted-foreground">Tipo</span>
-              <span className="font-medium">{modeloSeleccionado.tipo_nombre || '-'}</span>
-              <span className="text-muted-foreground">Entalle</span>
-              <span className="font-medium">{modeloSeleccionado.entalle_nombre || '-'}</span>
-              <span className="text-muted-foreground">Tela</span>
-              <span className="font-medium">{modeloSeleccionado.tela_nombre || '-'}</span>
-              <span className="text-muted-foreground">Hilo</span>
-              <span className="font-medium">{modeloSeleccionado.hilo_nombre || '-'}</span>
-              <span className="text-muted-foreground">Hilo Específico</span>
-              <span className="font-medium">{modeloSeleccionado.hilo_especifico_nombre || '-'}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Conversación integrada */}
-        {isEditing && (
-          <button
-            type="button"
-            onClick={() => setConvOpen(true)}
-            className="w-full rounded-lg border bg-card p-3 hover:bg-accent/50 transition-colors text-left group"
-            data-testid="btn-abrir-conversacion-panel"
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">Conversación</span>
-              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
-            </div>
-            <ConversacionStats registroId={id} API={API} />
-          </button>
-        )}
       </div>
     </div>
   );
