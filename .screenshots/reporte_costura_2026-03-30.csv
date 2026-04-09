@@ -1,0 +1,15 @@
+﻿Persona,Tipo,Corte,Modelo,Tipo Prenda,Entalle,Tela,Cant.,Inicio,F. Esperada,Días,Avance %,Últ. Act.,D/s Act.,Inc.,Riesgo
+Ana Torres,INTERNO,106,Denim Raw,Pantalon Denim,Slim Fit,Rigido,300,2026-03-27,2026-04-11,3,15,30/3/2026,0,1,Atención
+Ana Torres,INTERNO,107 URG,Classic 501,Pantalon Denim,Semipitillo,Rigido,500,2026-03-18,2026-03-31,12,60,28/3/2026,2,2,Crítico
+Ana Torres,INTERNO,108,Trendy X,Pantalon Denim,Baggy,Stretch,180,2026-03-23,2026-03-29,7,70,24/3/2026,6,1,Vencido
+Carlos Gutierrez,EXTERNO,104,Urban Pro,Casaca,Slim Fit,Rigido,600,2026-03-15,2026-03-28,15,85,30/3/2026,0,1,Vencido
+Carlos Gutierrez,EXTERNO,105,Street 90,Pantalon Denim,Semipitillo,Stretch,400,2026-03-22,2026-04-09,8,45,30/3/2026,0,1,Atención
+Jorge Diaz,EXTERNO,114,Trendy X,Pantalon Denim,Baggy,Stretch,550,2026-03-28,2026-04-19,2,5,30/3/2026,0,0,Normal
+Jorge Diaz,EXTERNO,118,Cargo Max,Pantalon Denim,Baggy,Rigido,320,2026-03-16,2026-03-27,14,90,29/3/2026,1,0,Vencido
+Luis Mendoza,EXTERNO,109,Cargo Max,Pantalon Denim,Baggy,Rigido,450,2026-03-24,2026-04-07,6,40,30/3/2026,0,1,Atención
+Luis Mendoza,EXTERNO,111 URG,Urban Pro,Casaca,Slim Fit,Rigido,800,2026-03-10,2026-03-25,20,55,23/3/2026,7,2,Vencido
+Maria Rodriguez,INTERNO,102,Classic 501,Pantalon Denim,Semipitillo,Rigido,350,2026-03-20,2026-04-04,10,75,29/3/2026,1,0,Normal
+Maria Rodriguez,INTERNO,103 URG,Trendy X,Pantalon Denim,Baggy,Stretch,200,2026-03-25,2026-04-01,5,30,30/3/2026,0,2,Crítico
+Pepe Perez,INTERNO,01 URG,Eduard,Pantalon Denim,Baggy,Rigido,500,2026-03-27,2026-04-11,3,60,29/3/2026,0,2,Atención
+Rosa Huaman,INTERNO,112,Street 90,Pantalon Denim,Semipitillo,Stretch,350,2026-03-26,2026-04-13,4,20,30/3/2026,0,0,Normal
+Rosa Huaman,INTERNO,113,Denim Raw,Pantalon Denim,Slim Fit,Rigido,280,2026-03-21,2026-04-02,9,50,27/3/2026,3,1,Atención

@@ -1,0 +1,173 @@
+/* App specific styles */
+
+.sidebar-item {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-foreground hover:bg-muted;
+}
+
+.sidebar-item.active {
+    @apply bg-muted text-foreground font-medium;
+}
+
+/* Status badge colors */
+.status-corte {
+    @apply bg-orange-100 text-orange-700 border-orange-200;
+}
+.dark .status-corte {
+    @apply bg-orange-900/30 text-orange-300 border-orange-800;
+}
+
+.status-costura {
+    @apply bg-blue-100 text-blue-700 border-blue-200;
+}
+.dark .status-costura {
+    @apply bg-blue-900/30 text-blue-300 border-blue-800;
+}
+
+.status-lavanderia {
+    @apply bg-cyan-100 text-cyan-700 border-cyan-200;
+}
+.dark .status-lavanderia {
+    @apply bg-cyan-900/30 text-cyan-300 border-cyan-800;
+}
+
+.status-acabado {
+    @apply bg-purple-100 text-purple-700 border-purple-200;
+}
+.dark .status-acabado {
+    @apply bg-purple-900/30 text-purple-300 border-purple-800;
+}
+
+.status-almacen {
+    @apply bg-emerald-100 text-emerald-700 border-emerald-200;
+}
+.dark .status-almacen {
+    @apply bg-emerald-900/30 text-emerald-300 border-emerald-800;
+}
+
+/* Data table styles */
+.data-table-header {
+    @apply bg-muted/50 text-muted-foreground font-medium text-xs uppercase tracking-wider;
+}
+
+.data-table-row {
+    @apply hover:bg-muted/50;
+    transition: background-color 0.2s ease;
+}
+
+.data-table-cell {
+    @apply p-4 align-middle;
+}
+
+/* Card widget */
+.dashboard-widget {
+    @apply flex flex-col gap-2 p-6 rounded-xl border bg-card shadow-sm hover:shadow-md transition-shadow duration-200;
+}
+
+/* Urgente badge animation */
+@keyframes pulse-urgent {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}
+
+.badge-urgent {
+    animation: pulse-urgent 2s ease-in-out infinite;
+}
+
+/* ── Page title ── */
+.page-title {
+    font-family: 'Manrope', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.3;
+}
+
+/* ── KPI styling ── */
+.kpi-label {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: hsl(var(--muted-foreground));
+}
+
+.kpi-value {
+    font-weight: 700;
+    letter-spacing: -0.025em;
+}
+
+/* ── Enhanced cards ── */
+.card-elevated {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.card-elevated:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+.dark .card-elevated {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.dark .card-elevated:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* ── Table row hover transition ── */
+table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+/* ── Pill badges for status ── */
+[class*="status-"] {
+    border-radius: 20px !important;
+    padding-left: 0.625rem;
+    padding-right: 0.625rem;
+}
+
+/* ── KPI progress bar ── */
+.kpi-progress {
+    height: 3px;
+    border-radius: 2px;
+    background: hsl(var(--muted));
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+.kpi-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.6s ease;
+}
+
+/* ── KPI colored left border ── */
+.kpi-border-blue { border-left: 4px solid #3b82f6; }
+.kpi-border-green { border-left: 4px solid #22c55e; }
+.kpi-border-red { border-left: 4px solid #ef4444; }
+.kpi-border-amber { border-left: 4px solid #f59e0b; }
+
+/* ── Alerta urgente ── */
+@keyframes pulse-bg {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.85; }
+}
+.alerta-urgente {
+    background-color: hsl(0 84% 60% / 0.08);
+    animation: pulse-bg 2s ease-in-out infinite;
+}
+.dark .alerta-urgente {
+    background-color: hsl(0 62% 30% / 0.15);
+}
+
+/* ── WIP bar ── */
+.wip-bar {
+    height: 28px;
+    border-radius: 6px;
+    transition: width 0.5s ease;
+}
+
+/* ── h2 page titles ── */
+h2 {
+    font-weight: 600;
+}

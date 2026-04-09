@@ -1,0 +1,152 @@
+{
+  "identity": {
+    "name": "E1: The Anti-AI Designer",
+    "archetype": "Swiss & High-Contrast (Modified for Industrial Utility)",
+    "principles": [
+      "Fusion over Imitation: Mix Industrial Precision with Swiss Typography.",
+      "Content is King: Data density is the aesthetic. No fluff.",
+      "Contrast: High contrast for readability in factory environments.",
+      "Negative Space: Use whitespace to group functional areas, not just for decoration."
+    ]
+  },
+  "typography": {
+    "fonts": {
+      "headings": {
+        "family": "Manrope",
+        "weights": ["600", "700", "800"],
+        "usage": "Page titles, Section headers, Modal titles",
+        "fallback": "sans-serif"
+      },
+      "body": {
+        "family": "IBM Plex Sans",
+        "weights": ["400", "500"],
+        "usage": "Table data, Form labels, General text",
+        "fallback": "sans-serif"
+      },
+      "mono": {
+        "family": "JetBrains Mono",
+        "weights": ["400", "500"],
+        "usage": "IDs, SKUs, Matrix Input Numbers, Status Codes",
+        "fallback": "monospace"
+      }
+    },
+    "rules": [
+      "Headings must use 'tracking-tight'.",
+      "Data cells must use 'text-sm' or 'text-xs' for density.",
+      "Labels must be 'uppercase tracking-wider text-xs font-semibold text-muted-foreground'."
+    ]
+  },
+  "colors": {
+    "theme": {
+      "light": {
+        "background": "hsl(210 40% 98%)",
+        "foreground": "hsl(222 47% 11%)",
+        "card": "hsl(0 0% 100%)",
+        "card_foreground": "hsl(222 47% 11%)",
+        "primary": "hsl(221 83% 53%)",
+        "primary_foreground": "hsl(210 40% 98%)",
+        "secondary": "hsl(210 40% 96.1%)",
+        "secondary_foreground": "hsl(222 47% 11%)",
+        "muted": "hsl(210 40% 96.1%)",
+        "muted_foreground": "hsl(215 16% 47%)",
+        "accent": "hsl(210 40% 96.1%)",
+        "accent_foreground": "hsl(222 47% 11%)",
+        "destructive": "hsl(0 84.2% 60.2%)",
+        "destructive_foreground": "hsl(210 40% 98%)",
+        "border": "hsl(214 32% 91%)",
+        "input": "hsl(214 32% 91%)",
+        "ring": "hsl(221 83% 53%)"
+      },
+      "dark": {
+        "background": "hsl(222 47% 11%)",
+        "foreground": "hsl(210 40% 98%)",
+        "card": "hsl(222 47% 11%)",
+        "card_foreground": "hsl(210 40% 98%)",
+        "primary": "hsl(217 91% 60%)",
+        "primary_foreground": "hsl(222 47% 11%)",
+        "secondary": "hsl(217 32% 17%)",
+        "secondary_foreground": "hsl(210 40% 98%)",
+        "muted": "hsl(217 32% 17%)",
+        "muted_foreground": "hsl(215 20% 65%)",
+        "accent": "hsl(217 32% 17%)",
+        "accent_foreground": "hsl(210 40% 98%)",
+        "destructive": "hsl(0 62.8% 30.6%)",
+        "destructive_foreground": "hsl(210 40% 98%)",
+        "border": "hsl(217 32% 17%)",
+        "input": "hsl(217 32% 17%)",
+        "ring": "hsl(224 76% 48%)"
+      }
+    },
+    "status_palette": {
+      "corte": { "bg": "bg-orange-100 dark:bg-orange-900/30", "text": "text-orange-700 dark:text-orange-300", "border": "border-orange-200 dark:border-orange-800" },
+      "costura": { "bg": "bg-blue-100 dark:bg-blue-900/30", "text": "text-blue-700 dark:text-blue-300", "border": "border-blue-200 dark:border-blue-800" },
+      "lavanderia": { "bg": "bg-cyan-100 dark:bg-cyan-900/30", "text": "text-cyan-700 dark:text-cyan-300", "border": "border-cyan-200 dark:border-cyan-800" },
+      "acabado": { "bg": "bg-purple-100 dark:bg-purple-900/30", "text": "text-purple-700 dark:text-purple-300", "border": "border-purple-200 dark:border-purple-800" },
+      "almacen": { "bg": "bg-emerald-100 dark:bg-emerald-900/30", "text": "text-emerald-700 dark:text-emerald-300", "border": "border-emerald-200 dark:border-emerald-800" }
+    }
+  },
+  "layout": {
+    "grid_system": "Bento Grid Mode B (High Density)",
+    "spacing": {
+      "container_padding": "p-6 md:p-8",
+      "element_gap": "gap-4",
+      "section_gap": "gap-8"
+    },
+    "containers": {
+      "card": "rounded-lg border bg-card text-card-foreground shadow-sm",
+      "dashboard_widget": "flex flex-col gap-2 p-6 rounded-xl border bg-card shadow-sm hover:shadow-md transition-shadow duration-200"
+    }
+  },
+  "components": {
+    "matrix_input": {
+      "name": "ProductionMatrix",
+      "description": "Excel-style grid for Sizes (Columns) x Colors (Rows).",
+      "structure": "CSS Grid",
+      "styling": "border-collapse w-full",
+      "cell_styling": "border p-0 relative",
+      "input_styling": "w-full h-10 text-center border-none focus:ring-2 focus:ring-inset focus:ring-primary font-mono",
+      "header_styling": "bg-muted/50 font-semibold text-center p-2 text-xs uppercase tracking-wider",
+      "row_header_styling": "bg-muted/30 font-medium text-left p-2 text-sm"
+    },
+    "status_badge": {
+      "name": "StatusBadge",
+      "styling": "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+    },
+    "data_table": {
+      "header": "bg-muted/50 text-muted-foreground font-medium text-xs uppercase tracking-wider",
+      "row": "hover:bg-muted/50 transition-colors data-[state=selected]:bg-muted",
+      "cell": "p-4 align-middle [&:has([role=checkbox])]:pr-0"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": "backdrop-blur-md bg-background/80 border-b sticky top-0 z-50",
+    "shadows": "shadow-[0_1px_3px_0_rgb(0,0,0,0.1),0_1px_2px_-1px_rgb(0,0,0,0.1)]",
+    "borders": "border border-border"
+  },
+  "icons": {
+    "library": "lucide-react",
+    "style": "Stroke width 1.5px for elegance, 2px for active states."
+  },
+  "accessibility": {
+    "contrast": "Ensure 4.5:1 for normal text. Use APCA for subtle grays.",
+    "focus_states": "Visible ring-2 ring-offset-2 ring-primary on all interactive elements.",
+    "aria": "All inputs must have labels. Matrix inputs must have aria-label='Size X Color Y'."
+  },
+  "instructions_to_main_agent": [
+    "Implement the 'ProductionMatrix' component with keyboard navigation (arrow keys to move between cells).",
+    "Use the defined 'status_palette' for the 'Estado' field in the Registration CRUD.",
+    "Ensure the 'Curva' field is treated as a text input as requested.",
+    "The 'Registro' form is the most complex; break it down into sections: General Info, Production Details, and the Matrix.",
+    "Use 'sonner' for all success/error notifications.",
+    "Add a Dark Mode toggle in the main layout header.",
+    "All text must be in Spanish.",
+    "Do not use 'Inter' font. Import 'Manrope', 'IBM Plex Sans', and 'JetBrains Mono' from Google Fonts in index.css."
+  ],
+  "universal_guidelines": [
+    "Do not use gradients for text.",
+    "Do not center align the app container.",
+    "Use 'data-testid' for all interactive elements.",
+    "Create depth through layered design elements.",
+    "Avoid 'AI slop' aesthetic; keep it crisp, dense, and functional."
+  ]
+}
