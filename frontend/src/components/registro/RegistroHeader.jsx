@@ -6,7 +6,7 @@ import {
 } from '../ui/select';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, AlertTriangle, Play } from 'lucide-react';
+import { ArrowLeft, Save, AlertTriangle, Play, CheckCircle2 } from 'lucide-react';
 
 export const RegistroHeader = ({
   formData, setFormData, modeloSeleccionado, isEditing, isParalizado,
@@ -40,57 +40,54 @@ export const RegistroHeader = ({
 
   return (
     <div
-      className={`rounded-xl border bg-card shadow-sm p-4 space-y-3 ${isParalizado ? 'border-destructive bg-destructive/5' : ''}`}
+      className={`registro-header-card ${isParalizado ? 'registro-header-paralizado' : ''}`}
       data-testid="header-operativo"
     >
       {/* Fila 1: Navegación + Identidad + Guardar */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" className="shrink-0" onClick={() => navigate('/registros')} data-testid="btn-volver">
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" className="registro-btn-back" onClick={() => navigate('/registros')} data-testid="btn-volver">
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-2xl font-semibold tracking-tight">Corte {formData.n_corte || '—'}</h2>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="registro-title">Corte {formData.n_corte || '—'}</h2>
             {modeloSeleccionado && (
-              <span className="text-sm text-muted-foreground">· {modeloSeleccionado.nombre}</span>
+              <span className="registro-subtitle">· {modeloSeleccionado.nombre}</span>
             )}
             {formData.urgente && (
-              <Badge variant="destructive" className="text-xs px-2.5 py-0.5 font-bold">URGENTE</Badge>
+              <Badge variant="destructive" className="registro-badge-urgente">URGENTE</Badge>
             )}
             {isParalizado && (
-              <Badge className="bg-red-600 text-xs px-2.5 py-0.5 font-bold">PARALIZADO</Badge>
+              <Badge className="bg-red-600 text-white registro-badge-urgente">PARALIZADO</Badge>
             )}
           </div>
-          {!isEditing && <p className="text-sm text-muted-foreground">Crear un nuevo registro de producción</p>}
+          {!isEditing && <p className="registro-subtitle" style={{ marginTop: 2 }}>Crear un nuevo registro de producción</p>}
         </div>
         <Button
           type="button"
           size="sm"
           disabled={loading || isParalizado}
           onClick={async () => { await handleSubmit(null, true); }}
-          className={isParalizado ? 'opacity-50' : ''}
+          className={`registro-btn-save-quick ${isParalizado ? 'opacity-50' : ''}`}
           data-testid="btn-guardar-rapido"
         >
-          <Save className="h-4 w-4 mr-1" />
+          <Save className="h-4 w-4 mr-1.5" />
           {loading ? 'Guardando...' : 'Guardar'}
         </Button>
       </div>
 
       {/* Fila 2: Estado + Ruta (solo edición) */}
       {isEditing && (
-        <div className="rounded-lg border bg-muted/30 p-3 space-y-3" data-testid="estado-banner">
+        <div className="registro-estado-block" data-testid="estado-banner">
+          {/* Controls row */}
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Play className="h-4 w-4 text-primary shrink-0" />
-              <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Estado</span>
-            </div>
             <Select
               key={estados.length > 0 && formData.estado ? formData.estado : 'est-loading'}
               value={formData.estado}
               onValueChange={handleEstadoChange}
               disabled={isParalizado || !canChangeStates}
             >
-              <SelectTrigger data-testid="select-estado" className={`w-full sm:w-[220px] h-9 text-sm font-semibold ${(isParalizado || !canChangeStates) ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={isParalizado || !canChangeStates}>
+              <SelectTrigger data-testid="select-estado" className={`registro-select-estado ${(isParalizado || !canChangeStates) ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={isParalizado || !canChangeStates}>
                 <SelectValue placeholder="Seleccionar estado" />
               </SelectTrigger>
               <SelectContent>
@@ -109,50 +106,53 @@ export const RegistroHeader = ({
               </SelectContent>
             </Select>
             {usaRuta && rutaNombre && (
-              <span className="text-xs text-muted-foreground">Ruta: {rutaNombre}</span>
+              <span className="registro-ruta-label">Ruta: {rutaNombre}</span>
             )}
             {id && (
-              <label className="flex items-center gap-1.5 cursor-pointer select-none ml-auto" title="Desactiva las validaciones de movimientos para cambiar de estado libremente">
+              <label className="registro-skip-label" title="Desactiva las validaciones de movimientos para cambiar de estado libremente">
                 <input type="checkbox" checked={formData.skip_validacion_estado || false} onChange={async (ev) => {
                   const newVal = ev.target.checked;
                   setFormData(prev => ({ ...prev, skip_validacion_estado: newVal }));
                   try { await axios.put(`${API}/registros/${id}/skip-validacion`, { skip_validacion_estado: newVal }); toast.success(newVal ? 'Validacion desactivada' : 'Validacion activada'); }
                   catch { toast.error('Error'); setFormData(prev => ({ ...prev, skip_validacion_estado: !newVal })); }
-                }} className="rounded border-gray-300" data-testid="toggle-skip-validacion" />
-                <span className="text-[11px] text-muted-foreground whitespace-nowrap">Sin restricciones</span>
+                }} className="registro-checkbox" data-testid="toggle-skip-validacion" />
+                <span className="registro-skip-text">Sin restricciones</span>
               </label>
             )}
           </div>
 
-          {/* Ruta visual */}
+          {/* Ruta visual — pipeline */}
           {estados.length > 1 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+            <div className="registro-pipeline">
+              <div className="registro-pipeline-track">
                 {estados.map((e, idx) => {
                   const isPast = idx < currentIdx;
                   const isCurrent = idx === currentIdx;
                   const allowed = canChangeStates && canChangeToState(e);
                   return (
-                    <div key={e} className="flex items-center gap-1 shrink-0">
-                      {idx > 0 && <div className={`w-3 h-px ${isPast ? 'bg-green-400' : 'bg-gray-200 dark:bg-gray-700'}`} />}
-                      <div className={`${
-                        isCurrent ? 'registro-etapa-actual' :
-                        isPast ? 'registro-etapa-pasada' :
-                        'registro-etapa-futura'
-                      } ${allowed && !isCurrent ? 'cursor-pointer hover:ring-1 hover:ring-primary/50' : ''} ${!allowed && !isCurrent ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    <React.Fragment key={e}>
+                      {idx > 0 && (
+                        <div className={`registro-pipeline-connector ${isPast ? 'registro-pipeline-connector-done' : ''}`} />
+                      )}
+                      <div
+                        className={`registro-etapa ${
+                          isCurrent ? 'registro-etapa-actual' :
+                          isPast ? 'registro-etapa-pasada' :
+                          'registro-etapa-futura'
+                        } ${allowed && !isCurrent ? 'registro-etapa-clickable' : ''} ${!allowed && !isCurrent ? 'registro-etapa-disabled' : ''}`}
                         onClick={() => allowed && handleEstadoChange(e)}
                         title={!allowed ? 'Sin permiso para este estado' : e}
-                      >{e}</div>
-                    </div>
+                      >
+                        {isPast && <CheckCircle2 className="registro-etapa-check" />}
+                        {e}
+                      </div>
+                    </React.Fragment>
                   );
                 })}
               </div>
-              {/* Barra de progreso lineal */}
-              <div className="h-0.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gray-900 dark:bg-white rounded-full transition-all duration-500"
-                  style={{ width: `${progressPct}%` }}
-                />
+              {/* Progress bar */}
+              <div className="registro-progress-bar">
+                <div className="registro-progress-fill" style={{ width: `${progressPct}%` }} />
               </div>
             </div>
           )}
@@ -161,30 +161,30 @@ export const RegistroHeader = ({
 
       {/* Banner PARALIZADO */}
       {isEditing && isParalizado && (
-        <div className="rounded-lg border-2 border-red-500 bg-red-50 dark:bg-red-950/30 p-4 flex items-center gap-4" data-testid="banner-paralizado">
-          <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/50 flex items-center justify-center shrink-0">
-            <AlertTriangle className="h-6 w-6 text-red-600" />
+        <div className="registro-paralizado-banner" data-testid="banner-paralizado">
+          <div className="registro-paralizado-icon">
+            <AlertTriangle className="h-5 w-5 text-red-600" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-red-800 dark:text-red-300 text-base">Registro PARALIZADO</p>
-            <p className="text-sm text-red-600 dark:text-red-400">No se puede cambiar de estado ni crear/editar movimientos hasta resolver la incidencia.</p>
+            <p className="registro-paralizado-title">Registro PARALIZADO</p>
+            <p className="registro-paralizado-desc">No se puede cambiar de estado ni crear/editar movimientos hasta resolver la incidencia.</p>
           </div>
         </div>
       )}
 
       {/* Banner inconsistencias */}
       {analisisEstado && analisisEstado.inconsistencias && analisisEstado.inconsistencias.length > 0 && !formData.skip_validacion_estado && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700 p-2.5 space-y-1" data-testid="inconsistencias-banner">
+        <div className="registro-inconsistencias-banner" data-testid="inconsistencias-banner">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-            <span className="text-xs font-medium text-amber-800 dark:text-amber-300">Estado y movimientos no coinciden</span>
+            <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">Estado y movimientos no coinciden</span>
           </div>
           {analisisEstado.inconsistencias.map((inc, i) => (
-            <p key={i} className={`text-[11px] ml-5 ${inc.severidad === 'error' ? 'text-red-600 font-medium' : 'text-amber-700 dark:text-amber-400'}`}>{inc.mensaje}</p>
+            <p key={i} className={`text-xs ml-6 ${inc.severidad === 'error' ? 'text-red-600 font-medium' : 'text-amber-700 dark:text-amber-400'}`}>{inc.mensaje}</p>
           ))}
           {analisisEstado.estado_sugerido && analisisEstado.estado_sugerido !== formData.estado && (
-            <div className="ml-5 mt-0.5">
-              <Button type="button" variant="outline" size="sm" className="h-5 text-[10px] border-amber-400 text-amber-700 hover:bg-amber-100" onClick={async () => { await autoGuardarEstado(analisisEstado.estado_sugerido); }} data-testid="btn-aplicar-estado-sugerido">
+            <div className="ml-6 mt-1">
+              <Button type="button" variant="outline" size="sm" className="h-6 text-[11px] border-amber-400 text-amber-700 hover:bg-amber-100" onClick={async () => { await autoGuardarEstado(analisisEstado.estado_sugerido); }} data-testid="btn-aplicar-estado-sugerido">
                 Aplicar: {analisisEstado.estado_sugerido}
               </Button>
             </div>

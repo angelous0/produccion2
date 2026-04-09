@@ -788,39 +788,27 @@ export const RegistroForm = () => {
 
             {/* Stats rápidos (solo edición) */}
             {isEditing && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="registro-stats-grid">
                 <div className="registro-stat-card">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Package className="h-3.5 w-3.5 text-blue-500" />
-                    <span className="registro-stat-label">Prendas</span>
-                  </div>
-                  <p className="registro-stat-numero">{prendasEfectivas}</p>
+                  <p className="registro-stat-numero font-mono">{prendasEfectivas}</p>
+                  <p className="registro-stat-label"><Package className="h-3 w-3" /> Prendas</p>
                 </div>
                 <div className="registro-stat-card">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Activity className="h-3.5 w-3.5 text-emerald-500" />
-                    <span className="registro-stat-label">Movimientos</span>
-                  </div>
-                  <p className="registro-stat-numero">{movimientosProduccion.length}</p>
+                  <p className="registro-stat-numero font-mono">{movimientosProduccion.length}</p>
+                  <p className="registro-stat-label"><Activity className="h-3 w-3" /> Movimientos</p>
                 </div>
                 <div className="registro-stat-card">
-                  <div className="flex items-center gap-2 mb-1">
-                    <AlertTriangleIcon className="h-3.5 w-3.5 text-red-500" />
-                    <span className="registro-stat-label">Incidencias</span>
-                  </div>
-                  <p className={`registro-stat-numero ${incidenciasAbiertas > 0 ? 'text-red-600' : ''}`}>{incidencias.length}</p>
-                  {incidenciasAbiertas > 0 && <p className="text-[10px] text-red-500 font-medium">{incidenciasAbiertas} abiertas</p>}
+                  <p className={`registro-stat-numero font-mono ${incidenciasAbiertas > 0 ? 'registro-stat-danger' : ''}`}>{incidencias.length}</p>
+                  <p className="registro-stat-label"><AlertTriangleIcon className="h-3 w-3" /> Incidencias</p>
+                  {incidenciasAbiertas > 0 && <p className="registro-stat-sub-danger">{incidenciasAbiertas} abiertas</p>}
                 </div>
                 <div className="registro-stat-card">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Clock className="h-3.5 w-3.5 text-amber-500" />
-                    <span className="registro-stat-label">Días</span>
-                  </div>
-                  <p className="registro-stat-numero">
+                  <p className="registro-stat-numero font-mono">
                     {movimientosProduccion.length > 0 && movimientosProduccion[0].fecha_inicio
                       ? Math.max(0, Math.ceil((new Date() - new Date(movimientosProduccion[0].fecha_inicio)) / (1000 * 60 * 60 * 24)))
                       : '—'}
                   </p>
+                  <p className="registro-stat-label"><Clock className="h-3 w-3" /> Días</p>
                 </div>
               </div>
             )}
@@ -849,26 +837,26 @@ export const RegistroForm = () => {
               </>
             ) : (
               /* Modo edición: con pestañas */
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
-                <TabsList className="h-9 w-full justify-start overflow-x-auto">
-                  <TabsTrigger value="movimientos" className="text-xs gap-1.5" data-testid="tab-produccion">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+                <TabsList className="registro-tabs-list">
+                  <TabsTrigger value="movimientos" className="registro-tab" data-testid="tab-produccion">
                     <Play className="h-3.5 w-3.5" /> Movimientos
                   </TabsTrigger>
-                  <TabsTrigger value="tallas" className="text-xs gap-1.5" data-testid="tab-general">
+                  <TabsTrigger value="tallas" className="registro-tab" data-testid="tab-general">
                     <Scissors className="h-3.5 w-3.5" /> Tallas
                   </TabsTrigger>
-                  <TabsTrigger value="materiales" className="text-xs gap-1.5" data-testid="tab-materiales">
+                  <TabsTrigger value="materiales" className="registro-tab" data-testid="tab-materiales">
                     <Package className="h-3.5 w-3.5" /> Materiales
                   </TabsTrigger>
-                  <TabsTrigger value="incidencias" className="text-xs gap-1.5" data-testid="tab-control">
+                  <TabsTrigger value="incidencias" className="registro-tab" data-testid="tab-control">
                     <ShieldAlert className="h-3.5 w-3.5" /> Incidencias
                     {incidenciasAbiertas > 0 && (
-                      <span className="ml-1 inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold">
+                      <span className="registro-tab-badge-red">
                         {incidenciasAbiertas}
                       </span>
                     )}
                   </TabsTrigger>
-                  <TabsTrigger value="pt_odoo" className="text-xs gap-1.5" data-testid="tab-pt-odoo">
+                  <TabsTrigger value="pt_odoo" className="registro-tab" data-testid="tab-pt-odoo">
                     <Package className="h-3.5 w-3.5" /> PT Odoo
                   </TabsTrigger>
                 </TabsList>

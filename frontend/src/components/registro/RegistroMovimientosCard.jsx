@@ -25,27 +25,30 @@ export const RegistroMovimientosCard = ({
     : '—';
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          <Play className="h-4 w-4" />
-          Movimientos de Produccion
-        </CardTitle>
+    <div className="registro-movimientos-card">
+      <div className="registro-movimientos-header">
+        <div className="flex items-center gap-2.5">
+          <div className="registro-movimientos-icon-wrap">
+            <Play className="h-4 w-4" />
+          </div>
+          <span className="registro-movimientos-title">Movimientos de Producción</span>
+        </div>
         {canCreate && (
           <Button
             type="button"
             size="sm"
             onClick={() => onOpenDialog()}
             disabled={isParalizado}
-            className={isParalizado ? 'opacity-50 cursor-not-allowed' : ''}
+            className={`registro-btn-nuevo-mov ${isParalizado ? 'opacity-50 cursor-not-allowed' : ''}`}
             data-testid="btn-nuevo-movimiento"
           >
-            <Plus className="h-4 w-4 sm:mr-1" />
-            <span className="hidden sm:inline">Agregar Movimiento</span>
+            <Plus className="h-4 w-4 sm:mr-1.5" />
+            <span className="hidden sm:inline">Agregar</span>
           </Button>
         )}
-      </CardHeader>
-      <CardContent className="space-y-3">
+      </div>
+
+      <div className="registro-movimientos-body">
         {movimientosProduccion.length > 0 ? (
           <>
             {/* Vista mobile: Cards */}
@@ -56,10 +59,9 @@ export const RegistroMovimientosCard = ({
                 const diferencia = enviada - recibida;
                 const isLast = idx === lastIdx;
                 return (
-                  <div key={mov.id} className={`rounded-lg border p-3 ${isLast ? 'registro-mov-activo' : ''} ${diferencia > 0 && !isLast ? 'border-l-4 border-l-amber-400' : ''}`} data-testid={`movimiento-card-${mov.id}`}>
+                  <div key={mov.id} className={`registro-mov-mobile-card ${isLast ? 'registro-mov-activo' : ''} ${diferencia > 0 && !isLast ? 'registro-mov-merma' : ''}`} data-testid={`movimiento-card-${mov.id}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0">
-                        <Cog className="h-4 w-4 text-blue-500 shrink-0" />
                         <span className="font-medium text-sm truncate">{mov.servicio_nombre}</span>
                         {isLast && <span className="registro-mov-badge-activo">activo</span>}
                       </div>
@@ -86,21 +88,21 @@ export const RegistroMovimientosCard = ({
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <div className="flex items-center gap-3 mt-2">
+                    <div className="flex items-center gap-4 mt-2.5">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs text-muted-foreground">Env</span>
+                        <span className="registro-mov-label">Env</span>
                         <span className="font-mono font-medium text-sm">{enviada}</span>
                       </div>
-                      <span className="text-muted-foreground">→</span>
+                      <span className="text-muted-foreground text-xs">→</span>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs text-muted-foreground">Rec</span>
+                        <span className="registro-mov-label">Rec</span>
                         <span className="font-mono font-bold text-sm">{recibida}</span>
                       </div>
                       {diferencia > 0 && (
-                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0">-{diferencia}</Badge>
+                        <span className="registro-mov-merma-badge">-{diferencia}</span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-3 mt-2 registro-mov-meta">
                       {mov.persona_nombre && <span>{mov.persona_nombre}</span>}
                       {mov.fecha_inicio && (
                         <span className="font-mono">{mov.fecha_inicio.split('-').reverse().join('/')}</span>
@@ -109,24 +111,25 @@ export const RegistroMovimientosCard = ({
                   </div>
                 );
               })}
-              <div className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-gray-900 px-3 py-2">
-                <span className="text-xs text-gray-500 font-medium">Cantidad efectiva actual</span>
-                <span className="font-mono font-bold text-lg">{cantidadEfectiva}</span>
+              {/* Footer mobile */}
+              <div className="registro-mov-footer-mobile">
+                <span>Cantidad efectiva</span>
+                <span className="registro-mov-footer-value">{cantidadEfectiva}</span>
               </div>
             </div>
 
             {/* Vista desktop: Tabla */}
-            <div className="border rounded-lg overflow-x-auto hidden sm:block">
+            <div className="registro-mov-table-wrap hidden sm:block">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50 dark:bg-gray-900">
-                    <TableHead className="text-xs uppercase tracking-wide text-gray-500 font-medium">Servicio / Persona</TableHead>
-                    <TableHead className="text-center text-xs uppercase tracking-wide text-gray-500 font-medium">F. Inicio</TableHead>
-                    <TableHead className="text-right text-xs uppercase tracking-wide text-gray-500 font-medium">Enviada</TableHead>
-                    <TableHead className="text-right text-xs uppercase tracking-wide text-gray-500 font-medium">Recibida</TableHead>
-                    <TableHead className="text-right text-xs uppercase tracking-wide text-gray-500 font-medium">Merma</TableHead>
-                    {showAvance && <TableHead className="text-center hidden md:table-cell text-xs uppercase tracking-wide text-gray-500 font-medium">Avance</TableHead>}
-                    <TableHead className="w-[50px] text-right text-xs uppercase tracking-wide text-gray-500 font-medium">Acciones</TableHead>
+                  <TableRow className="registro-mov-thead">
+                    <TableHead className="registro-mov-th">Servicio / Persona</TableHead>
+                    <TableHead className="registro-mov-th text-center">F. Inicio</TableHead>
+                    <TableHead className="registro-mov-th text-right">Enviada</TableHead>
+                    <TableHead className="registro-mov-th text-right">Recibida</TableHead>
+                    <TableHead className="registro-mov-th text-right">Merma</TableHead>
+                    {showAvance && <TableHead className="registro-mov-th text-center hidden md:table-cell">Avance</TableHead>}
+                    <TableHead className="registro-mov-th w-[50px] text-right"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -138,20 +141,18 @@ export const RegistroMovimientosCard = ({
                     return (
                       <TableRow
                         key={mov.id}
-                        className={isLast ? 'registro-mov-activo' : ''}
+                        className={isLast ? 'registro-mov-activo' : 'registro-mov-row'}
                         data-testid={`movimiento-row-${mov.id}`}
                       >
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">{mov.servicio_nombre}</span>
-                                {isLast && <span className="registro-mov-badge-activo">activo</span>}
-                              </div>
-                              {mov.persona_nombre && (
-                                <span className="text-xs text-muted-foreground">{mov.persona_nombre}</span>
-                              )}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-sm">{mov.servicio_nombre}</span>
+                              {isLast && <span className="registro-mov-badge-activo">activo</span>}
                             </div>
+                            {mov.persona_nombre && (
+                              <span className="registro-mov-meta">{mov.persona_nombre}</span>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="text-center">
@@ -159,22 +160,22 @@ export const RegistroMovimientosCard = ({
                             <span className="text-xs font-mono">{mov.fecha_inicio.split('-').reverse().join('/')}</span>
                           ) : <span className="text-muted-foreground text-xs">—</span>}
                         </TableCell>
-                        <TableCell className="text-right font-mono">{enviada}</TableCell>
-                        <TableCell className="text-right font-mono font-semibold">{recibida}</TableCell>
-                        <TableCell className="text-right font-mono">
+                        <TableCell className="text-right font-mono text-sm">{enviada}</TableCell>
+                        <TableCell className="text-right font-mono font-semibold text-sm">{recibida}</TableCell>
+                        <TableCell className="text-right">
                           {diferencia > 0 ? (
-                            <Badge variant="destructive" className="text-xs">-{diferencia}</Badge>
+                            <span className="registro-mov-merma-badge">-{diferencia}</span>
                           ) : (
-                            <span className="text-muted-foreground">—</span>
+                            <span className="text-muted-foreground text-xs">—</span>
                           )}
                         </TableCell>
                         {showAvance && (
                           <TableCell className="text-center hidden md:table-cell">
                             {serviciosProduccion.find(s => s.id === mov.servicio_id)?.usa_avance_porcentaje && mov.avance_porcentaje != null ? (
                               <div className="flex items-center justify-center gap-1.5">
-                                <div className="w-12 h-2 bg-muted rounded-full overflow-hidden">
+                                <div className="registro-mov-avance-track">
                                   <div
-                                    className={`h-full rounded-full ${mov.avance_porcentaje >= 100 ? 'bg-green-500' : mov.avance_porcentaje >= 50 ? 'bg-blue-500' : 'bg-amber-500'}`}
+                                    className={`registro-mov-avance-fill ${mov.avance_porcentaje >= 100 ? 'bg-green-500' : mov.avance_porcentaje >= 50 ? 'bg-blue-500' : 'bg-amber-500'}`}
                                     style={{ width: `${Math.min(100, mov.avance_porcentaje)}%` }}
                                   />
                                 </div>
@@ -215,12 +216,13 @@ export const RegistroMovimientosCard = ({
                       </TableRow>
                     );
                   })}
-                  <TableRow className="bg-gray-50 dark:bg-gray-900">
-                    <TableCell colSpan={2} className="font-medium text-xs text-gray-500">Cantidad efectiva actual</TableCell>
+                  {/* Footer row */}
+                  <TableRow className="registro-mov-footer-row">
+                    <TableCell colSpan={2} className="registro-mov-footer-label">Cantidad efectiva</TableCell>
                     <TableCell className="text-right font-mono text-xs text-gray-400">
                       {movimientosProduccion.length > 0 ? movimientosProduccion[0].cantidad_enviada : '—'}
                     </TableCell>
-                    <TableCell className="text-right font-mono font-bold text-lg" colSpan={showAvance ? 3 : 2}>
+                    <TableCell className="text-right registro-mov-footer-value" colSpan={showAvance ? 3 : 2}>
                       {cantidadEfectiva}
                     </TableCell>
                     <TableCell />
@@ -228,18 +230,18 @@ export const RegistroMovimientosCard = ({
                 </TableBody>
               </Table>
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="registro-mov-count">
               {movimientosProduccion.length} movimiento{movimientosProduccion.length !== 1 ? 's' : ''} registrado{movimientosProduccion.length !== 1 ? 's' : ''}
             </p>
           </>
         ) : (
-          <div className="text-center py-6 text-muted-foreground border rounded-lg bg-muted/20">
-            <Play className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p>No hay movimientos de producción</p>
-            <p className="text-xs mt-1">Registra los servicios realizados</p>
+          <div className="registro-mov-empty">
+            <Play className="h-8 w-8 mx-auto mb-3 opacity-30" />
+            <p className="font-medium text-sm">No hay movimientos de producción</p>
+            <p className="text-xs mt-1 opacity-70">Registra los servicios realizados</p>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
