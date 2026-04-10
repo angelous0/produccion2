@@ -4,7 +4,8 @@ import { Badge } from '../components/ui/badge';
 import {
   Activity, AlertTriangle, Clock, Package, ClipboardList, Box,
   TrendingUp, Layers, Users, PauseCircle, PackageX,
-  ArrowRight, GitBranch, Shield, BarChart3,
+  ArrowRight, ArrowDownCircle, GitBranch, Shield, BarChart3, Plus, CheckCircle,
+  Play,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -49,8 +50,10 @@ export const Dashboard = () => {
   return (
     <div className="space-y-6" data-testid="dashboard">
       <div>
-        <h2 className="dashboard-title">{greeting.emoji} {greeting.text}, {user?.nombre_completo?.split(' ')[0] || user?.username}</h2>
-        <p className="text-sm text-muted-foreground mt-1">Panel de control operativo</p>
+        <h2 className="dashboard-title">{greeting.text}, {user?.nombre_completo?.split(' ')[0] || user?.username} {greeting.emoji}</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          {new Date().toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase())}
+        </p>
       </div>
 
       {/* KPIs */}
@@ -70,7 +73,7 @@ export const Dashboard = () => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="kpi-label">Prendas</span>
-              <div className="h-8 w-8 rounded-lg bg-green-500/10 flex items-center justify-center"><Package className="h-4 w-4 text-green-500" /></div>
+              <div className="h-8 w-8 rounded-lg bg-green-500/10 flex items-center justify-center"><CheckCircle className="h-4 w-4 text-green-500" /></div>
             </div>
             <p className="text-3xl kpi-value tracking-tight">{(dashboard?.total_prendas_proceso || 0).toLocaleString()}</p>
             <p className="text-xs text-muted-foreground mt-1">en produccion</p>
@@ -99,6 +102,24 @@ export const Dashboard = () => {
             <div className="kpi-progress"><div className="kpi-progress-fill bg-amber-500" style={{ width: '40%' }} /></div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Acciones Rápidas */}
+      <div className="grid gap-3 grid-cols-3">
+        {[
+          { label: 'Nuevo Lote', icon: Plus, to: '/registros/nuevo', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' },
+          { label: 'Registrar Movimiento', icon: Play, to: '/registros', color: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' },
+          { label: 'Ingreso Stock', icon: ArrowDownCircle, to: '/inventario/ingresos', color: 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400' },
+        ].map(action => (
+          <button key={action.to} onClick={() => navigate(action.to)}
+            className="flex items-center gap-3 p-4 rounded-xl border hover:bg-accent hover:border-primary/30 transition-all text-left"
+            data-testid={`action-${action.to.split('/').pop()}`}>
+            <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 ${action.color}`}>
+              <action.icon className="h-5 w-5" />
+            </div>
+            <span className="text-sm font-medium">{action.label}</span>
+          </button>
+        ))}
       </div>
 
       {/* Alertas Produccion */}

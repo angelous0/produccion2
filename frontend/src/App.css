@@ -2,12 +2,12 @@
 
 .sidebar-item {
     @apply flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-foreground hover:bg-muted;
-    border-left: 3px solid transparent;
+    border-left: 2px solid transparent;
 }
 
 .sidebar-item.active {
-    @apply bg-muted text-foreground font-medium;
-    border-left: 3px solid hsl(var(--primary));
+    @apply bg-primary/10 text-primary font-medium;
+    border-left: 2px solid hsl(var(--primary));
 }
 
 /* Status badge colors */
@@ -255,10 +255,10 @@ span[class*="rounded-md"][class*="text-xs"][class*="px-"] {
 /* ── Sidebar nav group labels ── */
 .nav-group-label {
     font-size: 0.625rem;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.15em;
-    color: hsl(var(--muted-foreground) / 0.7);
+    color: hsl(var(--muted-foreground) / 0.6);
 }
 
 /* ── Header shadow ── */
@@ -328,7 +328,7 @@ span[class*="rounded-md"][class*="text-xs"][class*="px-"] {
 
 /* ── Header Card ── */
 .registro-header-card {
-  background: hsl(var(--card));
+  background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
   border-radius: 16px;
   padding: 20px 24px;
@@ -336,6 +336,9 @@ span[class*="rounded-md"][class*="text-xs"][class*="px-"] {
   flex-direction: column;
   gap: 16px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+  position: sticky;
+  top: 0;
+  z-index: 30;
 }
 .registro-header-paralizado {
   border-color: #ef4444;
@@ -571,8 +574,7 @@ span[class*="rounded-md"][class*="text-xs"][class*="px-"] {
 .registro-stat-card {
   background: #f8f9fa;
   border-radius: 14px;
-  padding: 20px;
-  border: none !important;
+  padding: 16px 20px;
   box-shadow: none !important;
   transition: background 0.2s;
 }
@@ -872,7 +874,7 @@ span[class*="rounded-md"][class*="text-xs"][class*="px-"] {
   font-weight: 700;
 }
 .registro-panel-lote-num {
-  font-size: 32px;
+  font-size: 22px;
   font-weight: 700;
   font-family: 'SF Mono', 'Fira Code', monospace;
   color: #111827;

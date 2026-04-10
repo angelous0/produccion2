@@ -145,7 +145,7 @@ export const RegistroPanelLateral = ({
         )}
 
         {/* Botones de acción */}
-        <div className="space-y-2.5">
+        <div className="sticky bottom-0 bg-background pt-2 pb-1 border-t mt-3 space-y-2">
           <Button type="submit" className="registro-panel-btn-save" disabled={loading || isParalizado} data-testid="btn-guardar-registro">
             <Save className="h-4 w-4 mr-2" />
             {loading ? 'Guardando...' : (isEditing ? 'Actualizar Registro' : 'Crear Registro')}

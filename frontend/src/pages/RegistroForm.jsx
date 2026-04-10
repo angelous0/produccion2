@@ -753,7 +753,7 @@ export const RegistroForm = () => {
       )}
 
       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_288px] gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
           {/* COLUMNA IZQUIERDA */}
           <div className="space-y-4 min-w-0">
             {/* Resumen mobile */}
@@ -789,26 +789,27 @@ export const RegistroForm = () => {
             {/* Stats rápidos (solo edición) */}
             {isEditing && (
               <div className="registro-stats-grid">
-                <div className="registro-stat-card">
+                <div className="registro-stat-card border-l-4 border-l-blue-400">
                   <p className="registro-stat-numero font-mono">{prendasEfectivas}</p>
                   <p className="registro-stat-label"><Package className="h-3 w-3" /> Prendas</p>
                 </div>
-                <div className="registro-stat-card">
+                <div className="registro-stat-card border-l-4 border-l-green-400">
                   <p className="registro-stat-numero font-mono">{movimientosProduccion.length}</p>
                   <p className="registro-stat-label"><Activity className="h-3 w-3" /> Movimientos</p>
                 </div>
-                <div className="registro-stat-card">
+                <div className="registro-stat-card border-l-4 border-l-red-400">
                   <p className={`registro-stat-numero font-mono ${incidenciasAbiertas > 0 ? 'registro-stat-danger' : ''}`}>{incidencias.length}</p>
                   <p className="registro-stat-label"><AlertTriangleIcon className="h-3 w-3" /> Incidencias</p>
                   {incidenciasAbiertas > 0 && <p className="registro-stat-sub-danger">{incidenciasAbiertas} abiertas</p>}
                 </div>
-                <div className="registro-stat-card">
+                <div className="registro-stat-card border-l-4 border-l-gray-300">
                   <p className="registro-stat-numero font-mono">
                     {movimientosProduccion.length > 0 && movimientosProduccion[0].fecha_inicio
-                      ? Math.max(0, Math.ceil((new Date() - new Date(movimientosProduccion[0].fecha_inicio)) / (1000 * 60 * 60 * 24)))
-                      : '—'}
+                      ? `${Math.max(0, Math.ceil((new Date() - new Date(movimientosProduccion[0].fecha_inicio)) / (1000 * 60 * 60 * 24)))}d`
+                      : '0d'}
                   </p>
                   <p className="registro-stat-label"><Clock className="h-3 w-3" /> Días</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">en proceso</p>
                 </div>
               </div>
             )}

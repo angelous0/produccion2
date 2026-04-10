@@ -544,8 +544,10 @@ export const Registros = () => {
     <div className="space-y-4" data-testid="registros-page">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Registros de Producción</h2>
-          <p className="text-muted-foreground text-sm">Gestión de registros de corte y producción</p>
+          <h2 className="text-2xl font-bold tracking-tight">Registros de Producción</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {total} lotes activos
+          </p>
         </div>
         <div className="flex gap-2">
           <ExportButton tabla="registros" />
@@ -780,26 +782,30 @@ export const Registros = () => {
                   </TableRow>
                 ) : (
                   displayItems.map((item) => (
-                    <TableRow 
-                      key={item.id} 
-                      className={`data-table-row ${item.urgente ? 'bg-rose-50 dark:bg-rose-950/30 border-l-4 border-l-rose-500' : item.estado_operativo === 'PARALIZADA' ? 'bg-red-50 dark:bg-red-950/20' : item.estado_operativo === 'EN_RIESGO' ? 'bg-amber-50 dark:bg-amber-950/20' : ''}`}
+                    <TableRow
+                      key={item.id}
+                      className={`data-table-row cursor-pointer hover:bg-muted/30 transition-colors ${item.urgente ? 'bg-rose-50 dark:bg-rose-950/30 border-l-2 border-l-red-500' : item.estado_operativo === 'PARALIZADA' ? 'bg-red-50 dark:bg-red-950/20 border-l-2 border-l-red-700' : item.estado_operativo === 'EN_RIESGO' ? 'bg-amber-50 dark:bg-amber-950/20 border-l-2 border-l-amber-500' : 'border-l-2 border-l-blue-400'}`}
                       data-testid={`registro-row-${item.id}`}
+                      onClick={() => navigate(`/registros/editar/${item.id}`)}
                     >
-                      <TableCell className="font-mono font-medium whitespace-nowrap">
-                        <div className="flex items-center gap-1">
-                          {item.urgente && (
-                            <AlertTriangle className="h-3.5 w-3.5 text-destructive badge-urgent" />
-                          )}
-                          {item.paralizacion_activa && (
-                            <PauseCircle className="h-3.5 w-3.5 text-red-600" />
-                          )}
-                          {item.incidencias_abiertas > 0 && (
-                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-white text-[9px] font-bold">{item.incidencias_abiertas}</span>
-                          )}
-                          {item.n_corte}
-                          {item.dividido_desde_registro_id && (
-                            <Badge variant="outline" className="text-[9px] px-1 py-0 border-blue-300 text-blue-600">div</Badge>
-                          )}
+                      <TableCell className="font-mono font-bold text-base whitespace-nowrap">
+                        <div>
+                          <div className="flex items-center gap-1">
+                            {item.urgente && (
+                              <AlertTriangle className="h-3.5 w-3.5 text-destructive badge-urgent" />
+                            )}
+                            {item.paralizacion_activa && (
+                              <PauseCircle className="h-3.5 w-3.5 text-red-600" />
+                            )}
+                            {item.incidencias_abiertas > 0 && (
+                              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-white text-[9px] font-bold">{item.incidencias_abiertas}</span>
+                            )}
+                            {item.n_corte}
+                            {item.dividido_desde_registro_id && (
+                              <Badge variant="outline" className="text-[9px] px-1 py-0 border-blue-300 text-blue-600">div</Badge>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground font-normal">{item.modelo_nombre || ''}</span>
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-xs whitespace-nowrap">

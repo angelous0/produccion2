@@ -109,7 +109,7 @@ const inventarioItems = [
   { to: '/inventario/rollos', icon: Layers, label: 'Rollos' },
   { to: '/inventario/movimientos', icon: FileText, label: 'Movimientos' },
   { to: '/inventario/kardex', icon: BookOpen, label: 'Kardex' },
-  { to: '/inventario/kardex-pt', icon: BookOpen, label: 'Kardex PT' },
+  { to: '/inventario/kardex-pt', icon: Database, label: 'Kardex PT' },
   { to: '/inventario/alertas-stock', icon: PackageX, label: 'Alertas Stock' },
   { to: '/inventario/transferencias-linea', icon: ArrowRightLeft, label: 'Transferencias' },
 ];
@@ -154,7 +154,7 @@ const configItems = [
 
 // ── Grupo colapsable ────────────────────────────────────────────────────────
 
-function NavGroup({ label, items, collapsed: sidebarCollapsed, storageKey, defaultOpen = false, onItemClick }) {
+function NavGroup({ label, items, collapsed: sidebarCollapsed, storageKey, defaultOpen = false, onItemClick, dotColor }) {
   const [open, setOpen] = useState(() => {
     const saved = localStorage.getItem(`navgroup_${storageKey}`);
     if (saved !== null) return saved === 'true';
@@ -178,7 +178,8 @@ function NavGroup({ label, items, collapsed: sidebarCollapsed, storageKey, defau
           onClick={toggle}
           className="w-full flex items-center justify-between px-3 py-1.5 mt-3 mb-0.5 rounded-md hover:bg-muted/50 transition-colors group"
         >
-          <span className="nav-group-label group-hover:text-foreground transition-colors">
+          <span className="nav-group-label group-hover:text-foreground transition-colors flex items-center">
+            {dotColor && <span className={`w-1.5 h-1.5 rounded-full ${dotColor} mr-1.5`} />}
             {label}
           </span>
           <ChevronDown
@@ -198,7 +199,7 @@ function NavGroup({ label, items, collapsed: sidebarCollapsed, storageKey, defau
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === '/inventario'}
+            end={item.to === '/' || item.to === '/inventario'}
             onClick={onItemClick}
             className={({ isActive }) =>
               `sidebar-item ${isActive ? 'active' : ''} ${sidebarCollapsed ? 'md:justify-center md:px-2' : ''}`
@@ -319,10 +320,7 @@ export const Layout = () => {
               <Scissors className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight leading-tight">Producción Textil</h1>
-              <span className="greeting-text hidden md:block">
-                {getGreeting().emoji} {getGreeting().text}, {user?.nombre_completo?.split(' ')[0] || user?.username}
-              </span>
+              <h1 className="text-lg font-bold tracking-tight leading-tight">Producción</h1>
             </div>
           </div>
 
@@ -336,8 +334,8 @@ export const Layout = () => {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center gap-2" data-testid="user-menu-btn">
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <User className="h-4 w-4 text-primary" />
+                  <div className="h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
+                    {getUserInitials(user)}
                   </div>
                   <span className="hidden md:inline text-sm font-medium">
                     {user?.nombre_completo || user?.username}
@@ -481,23 +479,16 @@ export const Layout = () => {
             data-testid="sidebar-nav"
           >
 
-            {/* ── Operaciones — siempre visible ── */}
-            {filterItems(operacionesItems).map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/'}
-                onClick={closeMobileSidebar}
-                className={({ isActive }) =>
-                  `sidebar-item ${isActive ? 'active' : ''} ${sidebarCollapsed ? 'md:justify-center md:px-2' : ''}`
-                }
-                data-testid={`nav-${item.label.toLowerCase().replace(/ /g, '-')}`}
-                title={sidebarCollapsed ? item.label : undefined}
-              >
-                <item.icon className="h-4 w-4 flex-shrink-0" />
-                <span className={sidebarCollapsed ? 'md:hidden' : ''}>{item.label}</span>
-              </NavLink>
-            ))}
+            {/* ── Producción — siempre visible, expandido por defecto ── */}
+            <NavGroup
+              label="Producción"
+              storageKey="produccion"
+              defaultOpen={true}
+              items={filterItems(operacionesItems)}
+              collapsed={sidebarCollapsed}
+              onItemClick={closeMobileSidebar}
+              dotColor="bg-blue-500"
+            />
 
             {/* ── Inventario — expandido por defecto ── */}
             <NavGroup
@@ -507,6 +498,7 @@ export const Layout = () => {
               items={filterItems(inventarioItems)}
               collapsed={sidebarCollapsed}
               onItemClick={closeMobileSidebar}
+              dotColor="bg-green-500"
             />
 
             {/* ── Reportes — expandido por defecto ── */}
@@ -517,6 +509,7 @@ export const Layout = () => {
               items={filterItems(reportesItems)}
               collapsed={sidebarCollapsed}
               onItemClick={closeMobileSidebar}
+              dotColor="bg-purple-500"
             />
 
             {/* ── Catálogos — cerrado por defecto ── */}
@@ -527,6 +520,7 @@ export const Layout = () => {
               items={filterItems(catalogosItems)}
               collapsed={sidebarCollapsed}
               onItemClick={closeMobileSidebar}
+              dotColor="bg-gray-400"
             />
 
             {/* ── Maestros — cerrado por defecto ── */}
@@ -537,6 +531,7 @@ export const Layout = () => {
               items={filterItems(maestrosItems)}
               collapsed={sidebarCollapsed}
               onItemClick={closeMobileSidebar}
+              dotColor="bg-gray-400"
             />
 
             {/* ── Configuración — solo admin, cerrado por defecto ── */}
@@ -548,6 +543,7 @@ export const Layout = () => {
                 items={configItems}
                 collapsed={sidebarCollapsed}
                 onItemClick={closeMobileSidebar}
+                dotColor="bg-red-500"
               />
             )}
 
@@ -581,7 +577,7 @@ export const Layout = () => {
 
         {/* Contenido principal */}
         <main
-          className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 p-6 md:p-8"
+          className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 p-4 md:p-6"
           id="main-content"
         >
           <ScrollToTop />
