@@ -14,3 +14,13 @@ export const getStatusClass = (estado) => {
   if (estadoLower.includes('almacén') || estadoLower.includes('tienda')) return 'status-almacen';
   return '';
 };
+
+export const formatCurrency = (value) => {
+  if (value == null || value === '') return '—';
+  return `S/ ${Number(value).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+export const formatNumber = (value, decimals = 2) => {
+  if (value == null || value === '') return '—';
+  return Number(value).toLocaleString('es-PE', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+};

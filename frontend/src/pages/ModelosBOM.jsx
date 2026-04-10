@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { formatCurrency, formatNumber } from '../lib/utils';
 import { Plus, Copy, ChevronDown, ChevronUp, Package, Scissors, Truck, MoreHorizontal, GripVertical, Check } from 'lucide-react';
 
 import { Button } from '../components/ui/button';
@@ -48,9 +49,6 @@ const ESTADOS_BOM = {
   APROBADO: { label: 'Aprobado', variant: 'default' },
   INACTIVO: { label: 'Inactivo', variant: 'secondary' },
 };
-
-const formatNum = (n, dec = 4) => n != null ? Number(n).toFixed(dec) : '—';
-const formatCurrency = (n) => n != null ? `S/ ${Number(n).toFixed(2)}` : '—';
 
 // ==================== TALLAS TAB (sin cambios) ====================
 export const ModelosTallasTab = ({ modeloId }) => {
@@ -867,7 +865,7 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId }) => {
                         <TableRow key={i} className={d.es_opcional ? 'opacity-50' : ''}>
                           <TableCell><Badge variant="outline" className="text-xs">{d.tipo_componente}</Badge></TableCell>
                           <TableCell className="text-sm">{d.inventario_nombre || d.inventario_codigo || '?'}</TableCell>
-                          <TableCell className="text-right font-mono text-sm">{formatNum(d.cantidad_total)}</TableCell>
+                          <TableCell className="text-right font-mono text-sm">{formatNumber(d.cantidad_total)}</TableCell>
                           <TableCell className="text-right font-mono text-sm">{formatCurrency(d.precio_unitario)}</TableCell>
                           <TableCell className="text-right font-mono text-sm font-medium">
                             {d.es_opcional ? <span className="text-muted-foreground">{formatCurrency(d.costo_por_prenda)} (opc)</span> : formatCurrency(d.costo_por_prenda)}

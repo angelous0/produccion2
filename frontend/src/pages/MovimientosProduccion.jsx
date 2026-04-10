@@ -34,6 +34,7 @@ import { Play, Pencil, Trash2, Calendar, Users, Cog, Filter, X, Plus, DollarSign
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
 import { formatDate } from '../lib/dateUtils';
+import { formatCurrency } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -298,13 +299,6 @@ export const MovimientosProduccion = () => {
 
   const getTotalCosto = () => {
     return movimientos.reduce((sum, m) => sum + (m.costo_calculado || m.costo || 0), 0);
-  };
-
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('es-PE', {
-      style: 'currency',
-      currency: 'PEN',
-    }).format(value || 0);
   };
 
   const hayFiltrosActivos = filtroServicio || filtroPersona || filtroFechaDesde || filtroFechaHasta || searchTerm;

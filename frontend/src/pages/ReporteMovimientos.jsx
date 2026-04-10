@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '../lib/dateUtils';
+import { formatCurrency } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -91,13 +92,6 @@ export const ReporteMovimientos = () => {
     setFiltroFechaDesde('');
     setFiltroFechaHasta('');
     setTimeout(fetchData, 0);
-  };
-
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('es-PE', {
-      style: 'currency',
-      currency: 'PEN',
-    }).format(value);
   };
 
   const getTipoIcon = (tipo) => {

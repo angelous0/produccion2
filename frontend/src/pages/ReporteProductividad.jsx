@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import { formatCurrency } from '../lib/utils';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -81,13 +82,6 @@ export const ReporteProductividad = () => {
   useEffect(() => {
     fetchReporte();
   }, [filtroFechaDesde, filtroFechaHasta, filtroServicio, filtroPersona]);
-
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('es-PE', {
-      style: 'currency',
-      currency: 'PEN',
-    }).format(value || 0);
-  };
 
   const limpiarFiltros = () => {
     setFiltroServicio('');

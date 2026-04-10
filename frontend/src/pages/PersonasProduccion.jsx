@@ -47,15 +47,9 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { formatCurrency } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('es-PE', {
-    style: 'currency',
-    currency: 'PEN',
-  }).format(value || 0);
-};
 
 // Componente para mostrar servicios con tarifa
 const ServiciosTarifaCell = ({ servicios }) => {

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import axios from 'axios';
+import { formatCurrency, formatNumber } from '../lib/utils';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -213,9 +214,6 @@ const RequerimientoTab = ({ registroId, totalPrendas }) => {
     }
   };
 
-  const formatNum = (n) => n != null ? parseFloat(n).toFixed(2) : '—';
-  const formatCurrency = (n) => n != null ? `S/ ${parseFloat(n).toFixed(2)}` : '—';
-
   if (loading) {
     return <div className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></div>;
   }
@@ -274,7 +272,7 @@ const RequerimientoTab = ({ registroId, totalPrendas }) => {
             <Card>
               <CardContent className="pt-4">
                 <div className="text-2xl font-bold text-green-600" data-testid="req-reservado">
-                  {formatNum(items.reduce((s, i) => s + parseFloat(i.cantidad_reservada || 0), 0))}
+                  {formatNumber(items.reduce((s, i) => s + parseFloat(i.cantidad_reservada || 0), 0))}
                 </div>
                 <p className="text-xs text-muted-foreground">Total Reservado</p>
               </CardContent>
@@ -310,10 +308,10 @@ const RequerimientoTab = ({ registroId, totalPrendas }) => {
                       )}
                     </TableCell>
                     <TableCell>{l.talla_nombre || 'Todas'}</TableCell>
-                    <TableCell className="text-right font-mono">{formatNum(l.cantidad_requerida)} {l.unidad_medida || ''}</TableCell>
-                    <TableCell className="text-right font-mono">{formatNum(l.stock_actual)}</TableCell>
+                    <TableCell className="text-right font-mono">{formatNumber(l.cantidad_requerida)} {l.unidad_medida || ''}</TableCell>
+                    <TableCell className="text-right font-mono">{formatNumber(l.stock_actual)}</TableCell>
                     <TableCell className={`text-right font-mono font-semibold ${deficit > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      {deficit > 0 ? formatNum(deficit) : '—'}
+                      {deficit > 0 ? formatNumber(deficit) : '—'}
                     </TableCell>
                     <TableCell className="text-right font-mono">{formatCurrency(l.costo_estimado)}</TableCell>
                     <TableCell>{getEstadoBadge(l.estado)}</TableCell>

@@ -10,6 +10,7 @@ import {
   BookOpen, ArrowDownCircle, ArrowUpCircle, ArrowLeftRight,
   PlusCircle, MinusCircle, Search, ChevronLeft, ChevronRight, Loader2, Filter
 } from 'lucide-react';
+import { formatNumber } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -36,11 +37,6 @@ const formatDate = (iso) => {
   if (!iso) return '';
   const d = new Date(iso);
   return d.toLocaleDateString('es', { day: '2-digit', month: '2-digit', year: '2-digit' });
-};
-
-const formatNum = (n) => {
-  if (!n || n === 0) return '-';
-  return Number(n).toLocaleString('es', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 };
 
 export const KardexPT = () => {
@@ -141,7 +137,7 @@ export const KardexPT = () => {
             <CardContent className="pt-4 pb-3 text-center">
               <div className="text-xs text-muted-foreground uppercase tracking-wider">Total Entradas</div>
               <div className="text-2xl font-bold text-emerald-600" data-testid="total-entradas">
-                {formatNum(resumen.totales.entradas)}
+                {formatNumber(resumen.totales.entradas, 0)}
               </div>
             </CardContent>
           </Card>
@@ -149,7 +145,7 @@ export const KardexPT = () => {
             <CardContent className="pt-4 pb-3 text-center">
               <div className="text-xs text-muted-foreground uppercase tracking-wider">Total Salidas</div>
               <div className="text-2xl font-bold text-blue-600" data-testid="total-salidas">
-                {formatNum(resumen.totales.salidas)}
+                {formatNumber(resumen.totales.salidas, 0)}
               </div>
             </CardContent>
           </Card>
@@ -158,7 +154,7 @@ export const KardexPT = () => {
               <div className="text-xs text-muted-foreground uppercase tracking-wider">Saldo Global</div>
               <div className={`text-2xl font-bold ${resumen.totales.saldo >= 0 ? 'text-slate-800' : 'text-red-600'}`}
                 data-testid="saldo-global">
-                {formatNum(resumen.totales.saldo)}
+                {formatNumber(resumen.totales.saldo, 0)}
               </div>
             </CardContent>
           </Card>
@@ -308,14 +304,14 @@ export const KardexPT = () => {
                       </td>
                       <td className="py-2 px-3"><TipoBadge tipo={item.tipo_movimiento} /></td>
                       <td className="py-2 px-3 text-right font-medium text-emerald-600">
-                        {item.entrada > 0 ? formatNum(item.entrada) : '-'}
+                        {item.entrada > 0 ? formatNumber(item.entrada, 0) : '-'}
                       </td>
                       <td className="py-2 px-3 text-right font-medium text-blue-600">
-                        {item.salida > 0 ? formatNum(item.salida) : '-'}
+                        {item.salida > 0 ? formatNumber(item.salida, 0) : '-'}
                       </td>
                       {saldoConfiable && (
                         <td className={`py-2 px-3 text-right font-bold ${item.saldo_acumulado != null && item.saldo_acumulado >= 0 ? '' : 'text-red-600'}`}>
-                          {item.saldo_acumulado != null ? formatNum(item.saldo_acumulado) : '-'}
+                          {item.saldo_acumulado != null ? formatNumber(item.saldo_acumulado, 0) : '-'}
                         </td>
                       )}
                       <td className="py-2 px-3 text-muted-foreground hidden lg:table-cell truncate max-w-[150px]">
@@ -362,10 +358,10 @@ export const KardexPT = () => {
                         <div className="font-medium">{p.producto_nombre}</div>
                         <div className="text-[10px] text-muted-foreground">{p.producto_marca}</div>
                       </td>
-                      <td className="py-1.5 px-3 text-right font-medium text-emerald-600">{formatNum(p.total_entradas)}</td>
-                      <td className="py-1.5 px-3 text-right font-medium text-blue-600">{formatNum(p.total_salidas)}</td>
+                      <td className="py-1.5 px-3 text-right font-medium text-emerald-600">{formatNumber(p.total_entradas, 0)}</td>
+                      <td className="py-1.5 px-3 text-right font-medium text-blue-600">{formatNumber(p.total_salidas, 0)}</td>
                       <td className={`py-1.5 px-3 text-right font-bold ${p.saldo >= 0 ? '' : 'text-red-600'}`}>
-                        {formatNum(p.saldo)}
+                        {formatNumber(p.saldo, 0)}
                       </td>
                     </tr>
                   ))}

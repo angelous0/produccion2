@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { formatCurrency } from '../lib/utils';
 import { useSaving } from '../hooks/useSaving';
 import axios from 'axios';
 import { Button } from '../components/ui/button';
@@ -470,7 +471,6 @@ export const RegistroForm = () => {
     } catch (error) { toast.error(error.response?.data?.detail || 'Error al eliminar salida'); }
   };
 
-  const formatCurrency = (value) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(value);
   const getTotalCostoSalidas = () => salidasRegistro.reduce((sum, s) => sum + (s.costo_total || 0), 0);
 
   // Movimientos

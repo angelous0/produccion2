@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
 import { SalidaRollosDialog } from '../components/SalidaRollosDialog';
 import { formatDate } from '../lib/dateUtils';
+import { formatCurrency } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -176,13 +177,6 @@ export const InventarioSalidas = () => {
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error al eliminar');
     }
-  };
-
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('es-PE', {
-      style: 'currency',
-      currency: 'PEN',
-    }).format(value);
   };
 
   return (

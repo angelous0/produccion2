@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
+import { formatCurrency, formatNumber } from '../lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
@@ -9,14 +10,6 @@ import { Package, DollarSign, TrendingUp, Loader2 } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 const EMPRESA_ID = 8;
-
-function formatCurrency(value) {
-  return new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(value);
-}
-
-function formatNumber(value, decimals = 2) {
-  return new Intl.NumberFormat('es-PE', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(value);
-}
 
 export function ReporteMPValorizado() {
   const [data, setData] = useState(null);

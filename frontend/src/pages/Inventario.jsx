@@ -24,6 +24,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../com
 import { NumericInput } from '../components/ui/numeric-input';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { formatCurrency } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -323,8 +324,6 @@ export const Inventario = () => {
     const date = new Date(d);
     return date.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' });
   };
-
-  const formatCurrency = (n) => n != null && n !== 0 ? `S/ ${Number(n).toFixed(2)}` : '-';
 
   return (
     <div className="space-y-4" data-testid="inventario-page">

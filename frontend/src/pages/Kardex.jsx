@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '../lib/dateUtils';
-import { cn } from '../lib/utils';
+import { cn, formatCurrency } from '../lib/utils';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
@@ -85,13 +85,6 @@ export const Kardex = () => {
       fetchKardex(selectedItemId);
     }
   }, [selectedItemId]);
-
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('es-PE', {
-      style: 'currency',
-      currency: 'PEN',
-    }).format(value);
-  };
 
   const getTipoIcon = (tipo) => {
     if (tipo === 'ingreso' || tipo === 'ajuste_entrada') {

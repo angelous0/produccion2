@@ -26,7 +26,7 @@ import { Plus, Trash2, ArrowDownCircle, Layers, Pencil, ChevronsUpDown, Check, I
 import { toast } from 'sonner';
 import { formatDate } from '../lib/dateUtils';
 import { NumericInput } from '../components/ui/numeric-input';
-import { cn } from '../lib/utils';
+import { cn, formatCurrency } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -234,13 +234,6 @@ export const InventarioIngresos = () => {
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error al eliminar');
     }
-  };
-
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('es-PE', {
-      style: 'currency',
-      currency: 'PEN',
-    }).format(value);
   };
 
   return (

@@ -45,6 +45,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+import { formatCurrency, formatNumber } from "../lib/utils";
+
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const ESTADO_BADGE = {
@@ -57,16 +59,6 @@ const formatDate = (dateStr) => {
   if (!dateStr) return "-";
   const d = new Date(dateStr);
   return d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "2-digit" });
-};
-
-const formatCurrency = (val) => {
-  const n = parseFloat(val || 0);
-  return `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
-};
-
-const formatNumber = (val) => {
-  const n = parseFloat(val || 0);
-  return n.toLocaleString("es-PE", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 };
 
 // ==================== COMPONENTE PRINCIPAL ====================
