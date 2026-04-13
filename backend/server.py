@@ -45,7 +45,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # PostgreSQL connection - Use shared pool from db.py
-from db import get_pool, close_pool
+from db import get_pool, close_pool, safe_acquire
 
 # Auth — auth_utils es la fuente única de verdad para JWT y permisos
 import auth_utils  # noqa: F401 — asegura que SECRET_KEY se valide al iniciar
@@ -146,3 +146,14 @@ app.include_router(auditoria_router)
 app.include_router(conversacion_router)
 app.include_router(distribucion_pt_router)
 app.include_router(kardex_pt_router)
+
+# ==================== HEALTH CHECK ====================
+
+@app.get("/api/health")
+async def health_check():
+    try:
+        async with safe_acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        return {"status": "ok", "db": "connected"}
+    except Exception as e:
+        return {"status": "degraded", "db": str(e)}
