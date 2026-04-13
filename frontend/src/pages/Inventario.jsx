@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import { ExportButton } from '../components/ExportButton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
 import { NumericInput } from '../components/ui/numeric-input';
+import { formatDate } from '../lib/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { formatCurrency } from '../lib/utils';
@@ -317,12 +318,6 @@ export const Inventario = () => {
     } finally {
       setLoadingDetalle(false);
     }
-  };
-
-  const formatDate = (d) => {
-    if (!d) return '-';
-    const date = new Date(d);
-    return date.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' });
   };
 
   return (

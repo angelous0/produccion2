@@ -1,4 +1,5 @@
 """Shared helper functions used across routers."""
+import os
 import json
 import uuid
 import asyncpg as asyncpg_ext
@@ -9,17 +10,35 @@ _muestra_pool = None
 async def get_muestra_pool():
     global _muestra_pool
     if _muestra_pool is None:
-        _muestra_pool = await asyncpg_ext.create_pool(
-            host="72.60.241.216", port=9090, database="datos",
-            user="admin", password="admin", min_size=1, max_size=3
-        )
+        muestra_url = os.environ.get('MUESTRA_DATABASE_URL')
+        if muestra_url:
+            _muestra_pool = await asyncpg_ext.create_pool(
+                dsn=muestra_url, min_size=1, max_size=3
+            )
+        else:
+            _muestra_pool = await asyncpg_ext.create_pool(
+                host=os.environ.get('MUESTRA_DB_HOST', 'localhost'),
+                port=int(os.environ.get('MUESTRA_DB_PORT', '5432')),
+                database=os.environ.get('MUESTRA_DB_NAME', 'datos'),
+                user=os.environ.get('MUESTRA_DB_USER', 'admin'),
+                password=os.environ.get('MUESTRA_DB_PASSWORD', ''),
+                min_size=1, max_size=3
+            )
     return _muestra_pool
 
 
 def row_to_dict(row):
     if row is None:
         return None
-    return dict(row)
+    from datetime import datetime, date
+    from decimal import Decimal
+    d = dict(row)
+    for k, v in d.items():
+        if isinstance(v, (datetime, date)):
+            d[k] = v.isoformat()
+        elif isinstance(v, Decimal):
+            d[k] = float(v)
+    return d
 
 
 def parse_jsonb(val):
@@ -54,6 +73,23 @@ async def registrar_actividad(
             json.dumps(datos_anteriores) if datos_anteriores else None,
             json.dumps(datos_nuevos) if datos_nuevos else None,
             ip_address
+        )
+
+
+ESTADOS_BLOQUEADOS = ('CERRADA', 'ANULADA')
+
+
+def validar_registro_activo(registro: dict, campo_estado: str = 'estado', contexto: str = 'modificar'):
+    """Valida que un registro/orden no esté en estado CERRADA o ANULADA.
+
+    Lanza HTTPException 400 si está bloqueado.
+    """
+    from fastapi import HTTPException
+    estado = registro.get(campo_estado)
+    if estado in ESTADOS_BLOQUEADOS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se puede {contexto}: la OP está {estado}"
         )
 
 

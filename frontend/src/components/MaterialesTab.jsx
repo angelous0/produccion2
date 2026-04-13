@@ -29,6 +29,16 @@ import { NumericInput } from './ui/numeric-input';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+// Helper: extract error message safely (avoid rendering objects as React children)
+const getErrorMsg = (err, fallback = 'Error') => {
+  const detail = err?.response?.data?.detail;
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (detail.errores && Array.isArray(detail.errores)) return detail.errores.join(', ');
+  if (detail.message) return detail.message;
+  return JSON.stringify(detail);
+};
+
 /** Modal para seleccionar rollos y cantidades */
 const RollosModal = ({ open, linea, rollosCantidades, setRollosCantidades, onClose, search, setSearch, filtroAncho, setFiltroAncho, filtroTono, setFiltroTono }) => {
   const rollos = linea?.rollos_disponibles || [];
@@ -283,7 +293,7 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
       toast.success(`Requerimiento generado${bomInfo}: ${res.data.lineas_creadas} líneas creadas, ${res.data.lineas_actualizadas} actualizadas`);
       fetchData();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al generar requerimiento');
+      toast.error(getErrorMsg(err, 'Error al generar requerimiento'));
     } finally {
       setGenerando(false);
     }
@@ -310,7 +320,7 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
       setCantidades({});
       fetchData();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al crear reserva');
+      toast.error(getErrorMsg(err, 'Error al crear reserva'));
     } finally {
       setProcesando(false);
     }
@@ -356,8 +366,7 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
           });
           ok++;
         } catch (err) {
-          const msg = err.response?.data?.detail || 'Error desconocido';
-          errores.push(msg);
+          errores.push(getErrorMsg(err, 'Error desconocido'));
         }
       }
       if (ok > 0) toast.success(`${ok} salida(s) registrada(s)`);
@@ -366,7 +375,7 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
       setRollosCantidades({});
       fetchData();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al registrar salida');
+      toast.error(getErrorMsg(err, 'Error al registrar salida'));
     } finally {
       setProcesando(false);
     }
@@ -389,7 +398,7 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
       setModoExtra(false);
       fetchData();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al registrar salida extra');
+      toast.error(getErrorMsg(err, 'Error al registrar salida extra'));
     } finally {
       setProcesando(false);
     }
@@ -401,7 +410,7 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
       toast.success('Reserva anulada');
       fetchData();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al anular reserva');
+      toast.error(getErrorMsg(err, 'Error al anular reserva'));
     }
   };
 
@@ -412,7 +421,7 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
       toast.success('Salida anulada y stock restaurado');
       fetchData();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al anular salida');
+      toast.error(getErrorMsg(err, 'Error al anular salida'));
     }
   };
 

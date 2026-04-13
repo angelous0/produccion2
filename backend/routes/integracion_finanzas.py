@@ -11,7 +11,7 @@ Bridge table: finanzas2.cont_factura_ingreso_mp
 from fastapi import APIRouter, Query, Depends
 from db import get_pool
 from helpers import row_to_dict
-from auth import get_current_user
+from auth_utils import get_current_user
 from typing import Optional
 
 router = APIRouter(prefix="/api", tags=["integracion-finanzas"])

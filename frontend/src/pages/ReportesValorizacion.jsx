@@ -1,24 +1,29 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
 import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 import { formatCurrency, formatNumber } from '../lib/utils';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
 import { Package, DollarSign, TrendingUp, Loader2 } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
-const EMPRESA_ID = 8;
 
-export function ReporteMPValorizado() {
+export function ReporteMPValorizado({ categoria = 'todos', lineaNegocioId = 'todos' }) {
+  const { empresaId } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('token');
-      const res = await axios.get(`${API}/reportes/mp-valorizado?empresa_id=${EMPRESA_ID}`, {
+      const params = new URLSearchParams({ empresa_id: empresaId || 6 });
+      if (categoria && categoria !== 'todos') params.set('categoria', categoria);
+      if (lineaNegocioId && lineaNegocioId !== 'todos') params.set('linea_negocio_id', lineaNegocioId);
+
+      const res = await axios.get(`${API}/reportes/mp-valorizado?${params}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setData(res.data);
@@ -27,7 +32,7 @@ export function ReporteMPValorizado() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [categoria, lineaNegocioId, empresaId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -59,6 +64,7 @@ export function ReporteMPValorizado() {
               <TableRow>
                 <TableHead>Código</TableHead>
                 <TableHead>Nombre</TableHead>
+                <TableHead>Categoría</TableHead>
                 <TableHead>Unidad</TableHead>
                 <TableHead className="text-right">Stock</TableHead>
                 <TableHead className="text-right">Reservado</TableHead>
@@ -75,6 +81,9 @@ export function ReporteMPValorizado() {
                     {item.nombre}
                     {item.control_por_rollos && <Badge variant="outline" className="ml-2 text-xs">Rollos</Badge>}
                   </TableCell>
+                  <TableCell>
+                    {item.categoria && <Badge variant="secondary" className="text-xs">{item.categoria}</Badge>}
+                  </TableCell>
                   <TableCell>{item.unidad_medida}</TableCell>
                   <TableCell className="text-right font-mono">{formatNumber(item.stock_actual)}</TableCell>
                   <TableCell className="text-right font-mono">{formatNumber(item.total_reservado)}</TableCell>
@@ -85,7 +94,7 @@ export function ReporteMPValorizado() {
               ))}
               {data.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No hay items de MP</TableCell>
+                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No hay items de MP</TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -96,14 +105,19 @@ export function ReporteMPValorizado() {
   );
 }
 
-export function ReporteWIP() {
+export function ReporteWIP({ lineaNegocioId = 'todos' }) {
+  const { empresaId } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('token');
-      const res = await axios.get(`${API}/reportes/wip?empresa_id=${EMPRESA_ID}`, {
+      const params = new URLSearchParams({ empresa_id: empresaId || 6 });
+      if (lineaNegocioId && lineaNegocioId !== 'todos') params.set('linea_negocio_id', lineaNegocioId);
+
+      const res = await axios.get(`${API}/reportes/wip?${params}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setData(res.data);
@@ -112,7 +126,7 @@ export function ReporteWIP() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [lineaNegocioId, empresaId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -184,14 +198,20 @@ export function ReporteWIP() {
   );
 }
 
-export function ReportePTValorizado() {
+export function ReportePTValorizado({ categoria = 'todos', lineaNegocioId = 'todos' }) {
+  const { empresaId } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('token');
-      const res = await axios.get(`${API}/reportes/pt-valorizado?empresa_id=${EMPRESA_ID}`, {
+      const params = new URLSearchParams({ empresa_id: empresaId || 6 });
+      if (categoria && categoria !== 'todos') params.set('categoria', categoria);
+      if (lineaNegocioId && lineaNegocioId !== 'todos') params.set('linea_negocio_id', lineaNegocioId);
+
+      const res = await axios.get(`${API}/reportes/pt-valorizado?${params}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setData(res.data);
@@ -200,7 +220,7 @@ export function ReportePTValorizado() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [categoria, lineaNegocioId, empresaId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

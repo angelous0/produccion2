@@ -8,7 +8,7 @@ from auth_utils import (
     get_current_user, get_current_user_optional, 
     verify_password, get_password_hash, create_access_token,
     verificar_permiso, require_permiso, check_permission, require_permission,
-    pwd_context, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_HOURS
+    SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_HOURS
 )
 from models import UserLogin, UserCreate, UserUpdate, UserChangePassword, AdminSetPassword
 from helpers import registrar_actividad, limpiar_datos_sensibles, row_to_dict, parse_jsonb

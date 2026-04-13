@@ -7,8 +7,8 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import date
 from db import get_pool
-from auth import get_current_user
-from helpers import row_to_dict
+from auth_utils import get_current_user
+from helpers import row_to_dict, validar_registro_activo
 
 router = APIRouter(prefix="/api", tags=["costos-servicio"])
 
@@ -60,8 +60,7 @@ async def create_costo_servicio(registro_id: str, data: CostoServicioCreate, cur
         reg = await conn.fetchrow("SELECT id, estado FROM prod_registros WHERE id = $1", registro_id)
         if not reg:
             raise HTTPException(status_code=404, detail="Registro no encontrado")
-        if reg['estado'] in ('CERRADA', 'ANULADA'):
-            raise HTTPException(status_code=400, detail=f"OP {reg['estado']}: no se pueden agregar costos")
+        validar_registro_activo(reg, contexto='agregar costos')
         
         # Usar empresa_id válida de cont_empresa (FK a finanzas2.cont_empresa)
         empresa_id_valida = await conn.fetchval(

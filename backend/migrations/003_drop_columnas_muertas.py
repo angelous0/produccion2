@@ -5,8 +5,11 @@ Verificado con grep exhaustivo contra todas las rutas del backend.
 """
 import asyncio
 import asyncpg
+import os
 
-DATABASE_URL = "postgres://admin:admin@72.60.241.216:9090/datos?sslmode=disable"
+DATABASE_URL = os.environ.get('MUESTRA_DATABASE_URL')
+if not DATABASE_URL:
+    raise RuntimeError("Variable MUESTRA_DATABASE_URL no configurada")
 
 COLUMNS_TO_DROP = [
     # (tabla, columna, razón)

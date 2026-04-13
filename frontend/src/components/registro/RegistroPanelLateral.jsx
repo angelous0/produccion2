@@ -3,14 +3,14 @@ import axios from 'axios';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
-import { Save, Scissors, ArrowRight, ChevronDown, MoreHorizontal } from 'lucide-react';
+import { Save, MessageCircle, Scissors, ArrowRight, ChevronDown, MoreHorizontal } from 'lucide-react';
 import { ConversacionPanel, ConversacionTrigger } from '../ConversacionPanel';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 
 // Mini-componente para stats de conversación
-const ConversacionStats = ({ registroId, API }) => {
+const ConversacionStats = ({ registroId, API, refreshKey }) => {
   const [stats, setStats] = React.useState(null);
   React.useEffect(() => {
     if (!registroId) return;
@@ -22,7 +22,7 @@ const ConversacionStats = ({ registroId, API }) => {
       const fijados = msgs.filter(m => m.fijado).length;
       setStats({ total, importantes, pendientes, fijados });
     }).catch(() => setStats({ total: 0, importantes: 0, pendientes: 0, fijados: 0 }));
-  }, [registroId]);
+  }, [registroId, refreshKey]);
   if (!stats) return <span className="text-xs text-muted-foreground">Cargando...</span>;
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -39,13 +39,38 @@ export const RegistroPanelLateral = ({
   lineasNegocio, isParalizado, isEditing,
   movimientosProduccion, incidencias,
   loading, navigate, onSubmit, onOpenDivision,
-  id, API, convOpen, setConvOpen, user, permisos,
+  id, API, convOpen, setConvOpen, user, permisos, convRefreshKey,
 }) => {
   const incidenciasAbiertas = incidencias.filter(i => i.estado === 'ABIERTA').length;
 
   return (
     <div className="hidden lg:block">
       <div className="sticky top-4 space-y-3" data-testid="panel-derecho">
+
+        {/* Card Modelo (arriba, más notorio) */}
+        {modeloSeleccionado && (
+          <div className="registro-panel-card registro-panel-card-modelo">
+            <p className="registro-panel-modelo-name">{modeloSeleccionado.nombre}</p>
+            <div className="registro-panel-modelo-grid">
+              <span className="registro-panel-stat-label">Marca</span>
+              <span className="registro-panel-modelo-val">{modeloSeleccionado.marca_nombre || '—'}</span>
+              <span className="registro-panel-stat-label">Tipo</span>
+              <span className="registro-panel-modelo-val">{modeloSeleccionado.tipo_nombre || '—'}</span>
+              <span className="registro-panel-stat-label">Entalle</span>
+              <span className="registro-panel-modelo-val">{modeloSeleccionado.entalle_nombre || '—'}</span>
+              <span className="registro-panel-stat-label">Tela</span>
+              <span className="registro-panel-modelo-val">{modeloSeleccionado.tela_nombre || '—'}</span>
+              <span className="registro-panel-stat-label">Hilo</span>
+              <span className="registro-panel-modelo-val">{modeloSeleccionado.hilo_nombre || '—'}</span>
+              {formData.curva && (
+                <>
+                  <span className="registro-panel-stat-label">Curva</span>
+                  <span className="registro-panel-modelo-val">{formData.curva}</span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Card Resumen del Lote */}
         <div className="registro-panel-card">
@@ -57,12 +82,6 @@ export const RegistroPanelLateral = ({
           <div className="registro-panel-divider" />
 
           <div className="registro-panel-stats">
-            <div className="registro-panel-stat-row">
-              <span className="registro-panel-stat-label">Estado</span>
-              <Badge variant={isParalizado ? 'destructive' : 'outline'} className="registro-panel-stat-badge">
-                {isParalizado ? 'PARALIZADO' : formData.estado}
-              </Badge>
-            </div>
             <div className="registro-panel-stat-row">
               <span className="registro-panel-stat-label">Prendas</span>
               {(() => {
@@ -108,41 +127,6 @@ export const RegistroPanelLateral = ({
           </div>
         </div>
 
-        {/* Card Modelo */}
-        {modeloSeleccionado && (
-          <div className="registro-panel-card">
-            <p className="registro-panel-section-label" style={{ marginBottom: 6 }}>Modelo</p>
-            <p className="registro-panel-modelo-name">{modeloSeleccionado.nombre}</p>
-            <div className="registro-panel-modelo-grid">
-              <span className="registro-panel-stat-label">Marca</span>
-              <span className="registro-panel-stat-value-text">{modeloSeleccionado.marca_nombre || '—'}</span>
-              <span className="registro-panel-stat-label">Tipo</span>
-              <span className="registro-panel-stat-value-text">{modeloSeleccionado.tipo_nombre || '—'}</span>
-              <span className="registro-panel-stat-label">Entalle</span>
-              <span className="registro-panel-stat-value-text">{modeloSeleccionado.entalle_nombre || '—'}</span>
-              <span className="registro-panel-stat-label">Tela</span>
-              <span className="registro-panel-stat-value-text">{modeloSeleccionado.tela_nombre || '—'}</span>
-              <span className="registro-panel-stat-label">Hilo</span>
-              <span className="registro-panel-stat-value-text">{modeloSeleccionado.hilo_nombre || '—'}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Card Mensajes */}
-        {isEditing && (
-          <button
-            type="button"
-            onClick={() => setConvOpen(true)}
-            className="registro-panel-card registro-panel-card-clickable"
-            data-testid="btn-abrir-conversacion-panel"
-          >
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="registro-panel-section-label">Mensajes</span>
-              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
-            </div>
-            <ConversacionStats registroId={id} API={API} />
-          </button>
-        )}
 
         {/* Botones de acción */}
         <div className="sticky bottom-0 bg-background pt-2 pb-1 border-t mt-3 space-y-2">

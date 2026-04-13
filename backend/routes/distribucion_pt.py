@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timezone
 from db import get_pool
-from auth import get_current_user
+from auth_utils import get_current_user
 
 router = APIRouter(prefix="/api", tags=["distribucion-pt"])
 

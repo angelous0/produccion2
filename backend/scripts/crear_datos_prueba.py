@@ -3,11 +3,14 @@ Script de pruebas: Crea datos de ejemplo y testea flujos completos
 """
 import asyncio
 import asyncpg
+import os
 import uuid
 import json
 from datetime import date, timedelta
 
-DATABASE_URL = "postgres://admin:admin@72.60.241.216:9090/datos?sslmode=disable"
+DATABASE_URL = os.environ.get('MUESTRA_DATABASE_URL')
+if not DATABASE_URL:
+    raise RuntimeError("Variable MUESTRA_DATABASE_URL no configurada")
 EMPRESA_ID = 6
 
 async def main():

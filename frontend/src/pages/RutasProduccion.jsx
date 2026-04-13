@@ -74,6 +74,7 @@ const SortableEtapa = ({ etapa, index, servicios, onRemove, onToggle, onUpdate }
       className={`flex items-center gap-2 p-2 bg-muted/50 rounded-md border ${isDragging ? 'border-primary' : ''}`}
     >
       <button
+        type="button"
         {...attributes}
         {...listeners}
         className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
@@ -322,6 +323,7 @@ export const RutasProduccion = () => {
   });
 
   const handleDelete = async (id) => {
+    if (!window.confirm('¿Estás seguro de eliminar esta ruta?')) return;
     try {
       await axios.delete(`${API}/rutas-produccion/${id}`);
       toast.success('Ruta eliminada');

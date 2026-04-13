@@ -509,51 +509,117 @@ export const SugerenciaMovDialog = ({ dialog, onClose, formData, onOpenMovimient
 );
 
 /**
- * Forzar Estado Dialog
+ * Retroceso de Estado Dialog — pide confirmación y motivo cuando se retrocede en la ruta
  */
-export const ForzarEstadoDialog = ({ dialog, onClose, onForzar, movimientosProduccion, onOpenMovimientoDialog }) => (
+export const RetrocesoEstadoDialog = ({ dialog, onClose, onConfirmar }) => {
+  const [motivo, setMotivo] = React.useState('');
+  const handleConfirm = () => { if (!motivo.trim()) return; onConfirmar(dialog.nuevo_estado, motivo.trim()); setMotivo(''); };
+  return (
+    <Dialog open={!!dialog} onOpenChange={() => { onClose(); setMotivo(''); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><ArrowLeft className="h-4 w-4 text-amber-500" /> Retroceso de Estado</DialogTitle>
+          <DialogDescription>
+            Estás retrocediendo de <strong>"{dialog?.estado_actual}"</strong> a <strong>"{dialog?.nuevo_estado}"</strong>. Esto no es lo habitual en el flujo de producción.
+          </DialogDescription>
+        </DialogHeader>
+        {(dialog?.advertencias || []).map((adv, i) => (
+          <p key={i} className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/30 p-2 rounded">{adv}</p>
+        ))}
+        <div className="space-y-2">
+          <Label htmlFor="motivo-retroceso">Motivo del retroceso <span className="text-red-500">*</span></Label>
+          <Textarea id="motivo-retroceso" value={motivo} onChange={e => setMotivo(e.target.value)}
+            placeholder="Ej: Error en corte, se debe repetir la etapa..." className="min-h-[80px]" data-testid="input-motivo-retroceso" />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { onClose(); setMotivo(''); }} data-testid="btn-cancelar-retroceso">Cancelar</Button>
+          <Button onClick={handleConfirm} disabled={!motivo.trim()} data-testid="btn-confirmar-retroceso">Confirmar retroceso</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+/**
+ * Advertencia de Cantidad Dialog — avisa cuando hay discrepancia de prendas al avanzar
+ */
+export const AdvertenciaCantidadDialog = ({ dialog, onClose, onContinuar }) => (
   <Dialog open={!!dialog} onOpenChange={() => onClose()}>
-    <DialogContent className="max-w-lg">
+    <DialogContent className="max-w-md">
       <DialogHeader>
-        <DialogTitle>Cambio de Estado Bloqueado</DialogTitle>
-        <DialogDescription>No se puede cambiar a "{dialog?.nuevo_estado}" por las siguientes razones:</DialogDescription>
+        <DialogTitle className="flex items-center gap-2 text-amber-600">⚠ Discrepancia de cantidad</DialogTitle>
+        <DialogDescription>Se detectó una diferencia en la cantidad de prendas al avanzar de estado.</DialogDescription>
       </DialogHeader>
-      <div className="space-y-3 my-2">
-        {(dialog?.bloqueos || []).map((b, i) => {
-          const msg = typeof b === 'string' ? b : b.mensaje;
-          const movId = typeof b === 'object' ? b.movimiento_id : null;
-          const srvId = typeof b === 'object' ? b.servicio_id : null;
-          return (
-            <div key={i} className="flex items-center justify-between gap-2 p-2 rounded border bg-muted/30">
-              <p className="text-sm text-foreground flex items-start gap-2">
-                <span className="mt-0.5 shrink-0 text-amber-500">&#x26A0;</span>{msg}
-              </p>
-              {movId && (
-                <Button size="sm" variant="default" className="shrink-0 h-7 text-xs" data-testid={`btn-cerrar-mov-${i}`}
-                  onClick={() => { onClose(); const mov = movimientosProduccion.find(m => m.id === movId); if (mov) onOpenMovimientoDialog(mov); }}>
-                  Cerrar movimiento
-                </Button>
-              )}
-              {!movId && srvId && (
-                <Button size="sm" variant="default" className="shrink-0 h-7 text-xs" data-testid={`btn-crear-mov-${i}`}
-                  onClick={() => { onClose(); onOpenMovimientoDialog(); }}>
-                  Crear movimiento
-                </Button>
-              )}
-            </div>
-          );
-        })}
+      <div className="space-y-2">
+        {(dialog?.advertencias || []).map((adv, i) => (
+          <p key={i} className="text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-3 rounded">{adv}</p>
+        ))}
       </div>
-      <DialogFooter className="flex items-center justify-between">
-        <Button variant="outline" size="sm" onClick={onClose} data-testid="btn-cancelar-forzar-estado">Cancelar</Button>
-        <button className="text-xs text-muted-foreground underline hover:text-foreground transition-colors cursor-pointer" data-testid="btn-forzar-cambio-estado"
-          onClick={() => onForzar(dialog.nuevo_estado)}>
-          Forzar cambio de estado
-        </button>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>Cancelar</Button>
+        <Button variant="default" onClick={() => { onClose(); onContinuar(); }} data-testid="btn-continuar-con-advertencia">
+          Continuar de todas formas
+        </Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>
 );
+
+/**
+ * Forzar Estado Dialog — con campo de motivo obligatorio
+ */
+export const ForzarEstadoDialog = ({ dialog, onClose, onForzar, movimientosProduccion, onOpenMovimientoDialog }) => {
+  const [motivo, setMotivo] = React.useState('');
+  return (
+    <Dialog open={!!dialog} onOpenChange={() => { onClose(); setMotivo(''); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Cambio de Estado Bloqueado</DialogTitle>
+          <DialogDescription>No se puede cambiar a "{dialog?.nuevo_estado}" por las siguientes razones:</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 my-2">
+          {(dialog?.bloqueos || []).map((b, i) => {
+            const msg = typeof b === 'string' ? b : b.mensaje;
+            const movId = typeof b === 'object' ? b.movimiento_id : null;
+            const srvId = typeof b === 'object' ? b.servicio_id : null;
+            return (
+              <div key={i} className="flex items-center justify-between gap-2 p-2 rounded border bg-muted/30">
+                <p className="text-sm text-foreground flex items-start gap-2">
+                  <span className="mt-0.5 shrink-0 text-amber-500">&#x26A0;</span>{msg}
+                </p>
+                {movId && (
+                  <Button size="sm" variant="default" className="shrink-0 h-7 text-xs" data-testid={`btn-cerrar-mov-${i}`}
+                    onClick={() => { onClose(); setMotivo(''); const mov = movimientosProduccion.find(m => m.id === movId); if (mov) onOpenMovimientoDialog(mov); }}>
+                    Cerrar movimiento
+                  </Button>
+                )}
+                {!movId && srvId && (
+                  <Button size="sm" variant="default" className="shrink-0 h-7 text-xs" data-testid={`btn-crear-mov-${i}`}
+                    onClick={() => { onClose(); setMotivo(''); onOpenMovimientoDialog(); }}>
+                    Crear movimiento
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="motivo-forzar">Motivo para forzar <span className="text-red-500">*</span></Label>
+          <Textarea id="motivo-forzar" value={motivo} onChange={e => setMotivo(e.target.value)}
+            placeholder="Indica por qué necesitas forzar este cambio..." className="min-h-[60px]" data-testid="input-motivo-forzar" />
+        </div>
+        <DialogFooter className="flex items-center justify-between">
+          <Button variant="outline" size="sm" onClick={() => { onClose(); setMotivo(''); }} data-testid="btn-cancelar-forzar-estado">Cancelar</Button>
+          <button className="text-xs text-muted-foreground underline hover:text-foreground transition-colors cursor-pointer disabled:opacity-40"
+            disabled={!motivo.trim()} data-testid="btn-forzar-cambio-estado"
+            onClick={() => { onForzar(dialog.nuevo_estado, motivo.trim()); setMotivo(''); }}>
+            Forzar cambio de estado
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 /**
  * División de Lote Dialog

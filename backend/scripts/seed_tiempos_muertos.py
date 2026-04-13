@@ -3,6 +3,7 @@ Seed data for Tiempos Muertos report — creates multi-service chains with reali
 """
 import asyncio
 import asyncpg
+import os
 import uuid
 from datetime import date, timedelta, datetime
 
@@ -33,7 +34,11 @@ PERSONAS = {
 HOY = date.today()
 
 async def main():
-    conn = await asyncpg.connect('postgres://admin:admin@72.60.241.216:9090/datos?sslmode=disable')
+    db_url = os.environ.get('MUESTRA_DATABASE_URL')
+    if not db_url:
+        print("ERROR: Variable MUESTRA_DATABASE_URL no configurada")
+        return
+    conn = await asyncpg.connect(db_url)
     print("Conectado")
 
     # Get modelo IDs

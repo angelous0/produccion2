@@ -20,13 +20,9 @@ import {
   AlertTriangle, CheckCircle2, Clock, XCircle, Filter, Package, Wrench, RefreshCw,
 } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { formatDate } from '../lib/dateUtils';
 
-const fmtDate = (d) => {
-  if (!d) return '-';
-  const [y, m, dd] = String(d).slice(0, 10).split('-');
-  return `${dd}/${m}/${y}`;
-};
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const estadoBadge = (estado) => {
   const map = {
@@ -219,7 +215,7 @@ export const ControlFallados = () => {
                             </TableCell>
                             <TableCell className="text-xs truncate max-w-[100px]">{r.servicio || <span className="text-zinc-300">-</span>}</TableCell>
                             <TableCell className="text-xs truncate max-w-[100px]">{r.persona || <span className="text-zinc-300">-</span>}</TableCell>
-                            <TableCell className="text-center text-[11px] text-muted-foreground">{fmtDate(r.fecha_envio)}</TableCell>
+                            <TableCell className="text-center text-[11px] text-muted-foreground">{formatDate(r.fecha_envio)}</TableCell>
                             <TableCell className="text-center">
                               {r.dias > 0 ? (
                                 <span className={`font-mono text-xs font-semibold ${r.estado === 'VENCIDO' ? 'text-red-600' : r.dias > 3 ? 'text-amber-600' : 'text-zinc-500'}`}>
@@ -240,7 +236,7 @@ export const ControlFallados = () => {
                             ) : (
                               <>
                                 <div>Enviado: {r.enviado} | Rec: {r.recuperado} | Liq: {r.liquidacion} | Merma: {r.merma}</div>
-                                {r.fecha_limite && <div>Limite: {fmtDate(r.fecha_limite)}</div>}
+                                {r.fecha_limite && <div>Limite: {formatDate(r.fecha_limite)}</div>}
                               </>
                             )}
                             {r.linea_negocio && <div>Linea: {r.linea_negocio}</div>}

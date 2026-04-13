@@ -13,7 +13,7 @@ from typing import Optional
 import sys
 sys.path.insert(0, '/app/backend')
 from db import get_pool
-from auth import get_current_user
+from auth_utils import get_current_user
 
 logger = logging.getLogger("auditoria")
 

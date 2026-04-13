@@ -17,21 +17,10 @@ import {
   Merge, X, Palette,
 } from 'lucide-react';
 
+import { formatDate } from '../lib/dateUtils';
+
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const STORAGE_KEY = 'matriz-produccion-prefs';
-
-// ── Formato fecha dd-mm-yy ────────────────────────────────────
-function fmtDate(val) {
-  if (!val) return '-';
-  try {
-    const d = new Date(val);
-    if (isNaN(d)) return val;
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const yy = String(d.getFullYear()).slice(-2);
-    return `${dd}-${mm}-${yy}`;
-  } catch { return val; }
-}
 function isOverdue(val) {
   if (!val) return false;
   try { return new Date(val) < new Date(); } catch { return false; }
@@ -212,13 +201,13 @@ const DetalleModal = ({ open, onClose, registros, titulo, navigate }) => {
                     <td className="p-2 whitespace-nowrap">{d.hilo_especifico || '-'}</td>
                     <td className="p-2 text-muted-foreground whitespace-nowrap">{d.ruta || '-'}</td>
                     <td className={`p-2 text-center font-mono whitespace-nowrap ${isOverdue(d.fecha_entrega) ? 'text-destructive font-semibold' : ''}`}>
-                      {fmtDate(d.fecha_entrega)}
+                      {formatDate(d.fecha_entrega)}
                     </td>
-                    <td className="p-2 text-center font-mono whitespace-nowrap">{fmtDate(d.fecha_inicio_prod)}</td>
+                    <td className="p-2 text-center font-mono whitespace-nowrap">{formatDate(d.fecha_inicio_prod)}</td>
                     <td className="p-2 text-center font-mono">{d.dias_proceso > 0 ? `${d.dias_proceso}d` : '-'}</td>
                     <td className="p-2 whitespace-nowrap">
                       {d.ult_mov_servicio ? (
-                        <span>{d.ult_mov_servicio} <span className="text-muted-foreground">({fmtDate(d.ult_mov_fecha)})</span></span>
+                        <span>{d.ult_mov_servicio} <span className="text-muted-foreground">({formatDate(d.ult_mov_fecha)})</span></span>
                       ) : '-'}
                     </td>
                     <td className="p-2 text-right font-mono">

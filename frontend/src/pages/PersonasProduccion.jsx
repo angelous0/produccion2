@@ -332,6 +332,15 @@ export const PersonasProduccion = () => {
       toast.error('Selecciona al menos un servicio');
       return;
     }
+    // Validar duplicado por nombre (solo al crear, no al editar)
+    if (!editingPersona) {
+      const nombreNorm = formData.nombre.trim().toLowerCase();
+      const duplicado = personas.find(p => p.nombre.trim().toLowerCase() === nombreNorm);
+      if (duplicado) {
+        toast.warning(`Ya existe una persona con el nombre "${duplicado.nombre}". Verifica si es la misma antes de crear.`);
+        return;
+      }
+    }
 
     try {
       if (editingPersona) {
@@ -349,6 +358,7 @@ export const PersonasProduccion = () => {
   });
 
   const handleDelete = async (id) => {
+    if (!window.confirm('¿Estás seguro de eliminar esta persona?')) return;
     try {
       await axios.delete(`${API}/personas-produccion/${id}`);
       toast.success('Persona eliminada');

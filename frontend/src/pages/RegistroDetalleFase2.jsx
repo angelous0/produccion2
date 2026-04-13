@@ -52,6 +52,17 @@ import MaterialesTab from '../components/MaterialesTab';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+// Helper: extract error message safely (avoid rendering objects as React children)
+const getErrorMsg = (error, fallback = 'Error') => {
+  const detail = error?.response?.data?.detail;
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (detail.errores && Array.isArray(detail.errores)) return detail.errores.join(', ');
+  if (detail.message) return detail.message;
+  if (detail.error) return detail.error;
+  return JSON.stringify(detail);
+};
+
 // ==================== PESTAÑA TALLAS (CORTE) ====================
 const TallasTab = ({ registroId, onTotalChange }) => {
   const [data, setData] = useState({ tallas: [], total_prendas: 0 });
@@ -197,7 +208,7 @@ const RequerimientoTab = ({ registroId, totalPrendas }) => {
       toast.success(`Requerimiento generado: ${res.data.resumen.total_lineas_mp} líneas MP`);
       fetchRequerimiento();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al generar requerimiento');
+      toast.error(getErrorMsg(error, 'Error al generar requerimiento'));
     } finally {
       setGenerating(false);
     }
@@ -404,12 +415,7 @@ const ReservasTab = ({ registroId }) => {
       toast.success('Reserva creada exitosamente');
       fetchData();
     } catch (error) {
-      const errores = error.response?.data?.detail?.errores;
-      if (errores) {
-        errores.forEach(e => toast.error(e));
-      } else {
-        toast.error(error.response?.data?.detail || 'Error al crear reserva');
-      }
+      toast.error(getErrorMsg(error, 'Error al crear reserva'));
     } finally {
       setReservando(false);
     }
@@ -527,7 +533,7 @@ const ReservasTab = ({ registroId }) => {
                             toast.success('Reserva anulada');
                             fetchData();
                           } catch (err) {
-                            toast.error(err.response?.data?.detail || 'Error al anular reserva');
+                            toast.error(getErrorMsg(err, 'Error al anular reserva'));
                           }
                         }}
                         data-testid={`btn-anular-reserva-${r.id}`}
@@ -783,7 +789,7 @@ const SalidasTab = ({ registroId }) => {
             });
             exitosas++;
           } catch (error) {
-            errores.push(`${linea.item_nombre} (${rollo.numero_rollo || 'rollo'}): ${error.response?.data?.detail || 'Error'}`);
+            errores.push(`${linea.item_nombre} (${rollo.numero_rollo || 'rollo'}): ${getErrorMsg(error)}`);
           }
         }
       } else {
@@ -800,7 +806,7 @@ const SalidasTab = ({ registroId }) => {
           });
           exitosas++;
         } catch (error) {
-          errores.push(`${linea.item_nombre}: ${error.response?.data?.detail || 'Error'}`);
+          errores.push(`${linea.item_nombre}: ${getErrorMsg(error)}`);
         }
       }
     }
@@ -889,7 +895,7 @@ const SalidasTab = ({ registroId }) => {
       setMotivoExtra('Consumo adicional');
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al crear salida');
+      toast.error(getErrorMsg(error, 'Error al crear salida'));
     } finally {
       setProcesando(false);
     }
@@ -1331,7 +1337,7 @@ const SalidasTab = ({ registroId }) => {
 
 
 // ==================== PESTAÑA COSTOS DE SERVICIO ====================
-const CostosTab = ({ registroId, empresaId = 8 }) => {
+export const CostosTab = ({ registroId, empresaId = 8 }) => {
   const [costos, setCostos] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -1379,7 +1385,7 @@ const CostosTab = ({ registroId, empresaId = 8 }) => {
       setEditingId(null);
       fetchCostos();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al guardar');
+      toast.error(getErrorMsg(err, 'Error al guardar'));
     }
   };
 
@@ -1445,11 +1451,11 @@ const CostosTab = ({ registroId, empresaId = 8 }) => {
                 className="font-mono"
                 data-testid="costo-monto"
               />
-              <Button onClick={handleSubmit} data-testid="btn-guardar-costo">
+              <Button type="button" onClick={handleSubmit} data-testid="btn-guardar-costo">
                 {editingId ? 'Actualizar' : 'Agregar'}
               </Button>
               {editingId && (
-                <Button variant="ghost" onClick={() => { setEditingId(null); setForm({ descripcion: '', monto: '', proveedor_texto: '', fecha: '' }); }}>
+                <Button type="button" variant="ghost" onClick={() => { setEditingId(null); setForm({ descripcion: '', monto: '', proveedor_texto: '', fecha: '' }); }}>
                   Cancelar
                 </Button>
               )}
@@ -1504,7 +1510,7 @@ const CostosTab = ({ registroId, empresaId = 8 }) => {
 
 
 // ==================== PESTAÑA CIERRE PRODUCCIÓN ====================
-const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplete }) => {
+export const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplete }) => {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
@@ -1553,7 +1559,7 @@ const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplete }) =>
       if (onCierreComplete) onCierreComplete();
       fetchPreview();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al cerrar');
+      toast.error(getErrorMsg(err, 'Error al cerrar'));
     } finally {
       setProcesando(false);
     }
@@ -1588,6 +1594,14 @@ const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplete }) =>
               <div>
                 <p className="text-sm text-muted-foreground">Costo Servicios</p>
                 <p className="font-semibold font-mono">S/ {parseFloat(cierre.costo_servicios).toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Otros Costos</p>
+                <p className="font-semibold font-mono">S/ {parseFloat(cierre.otros_costos || 0).toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">CIF</p>
+                <p className="font-semibold font-mono">S/ {parseFloat(cierre.costo_cif || 0).toFixed(2)}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Costo Total</p>
@@ -1704,7 +1718,7 @@ const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplete }) =>
       {/* Resumen */}
       <Card className="border-primary/30 bg-primary/5">
         <CardContent className="pt-6">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-center">
             <div>
               <p className="text-xs text-muted-foreground uppercase">Costo MP</p>
               <p className="text-lg font-bold font-mono">S/ {preview.costo_mp.toFixed(2)}</p>
@@ -1718,6 +1732,10 @@ const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplete }) =>
               <p className="text-lg font-bold font-mono">S/ {(preview.otros_costos || 0).toFixed(2)}</p>
             </div>
             <div>
+              <p className="text-xs text-muted-foreground uppercase">CIF</p>
+              <p className="text-lg font-bold font-mono">S/ {(preview.costo_cif || 0).toFixed(2)}</p>
+            </div>
+            <div>
               <p className="text-xs text-muted-foreground uppercase">Costo Total</p>
               <p className="text-xl font-bold font-mono">S/ {preview.costo_total.toFixed(2)}</p>
             </div>
@@ -1726,6 +1744,32 @@ const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplete }) =>
               <p className="text-xl font-bold font-mono text-primary">S/ {preview.costo_unit_pt.toFixed(4)}</p>
             </div>
           </div>
+          {/* Desglose CIF */}
+          {preview.cif_detalle && preview.costo_cif > 0 && (
+            <div className="mt-4 pt-4 border-t text-sm text-muted-foreground">
+              <p className="font-medium text-foreground mb-2">Desglose CIF:</p>
+              <div className="grid grid-cols-3 gap-2">
+                <p>Gastos CIF: S/ {(preview.cif_detalle.gastos_cif || 0).toFixed(2)}</p>
+                <p>Depreciacion: S/ {(preview.cif_detalle.depreciacion || 0).toFixed(2)}</p>
+                <p>Total CIF mes: S/ {(preview.cif_detalle.total_cif_mes || 0).toFixed(2)}</p>
+              </div>
+              <p className="mt-1">
+                Periodo: {preview.cif_detalle.periodo} | Prendas lote: {preview.cif_detalle.prendas_lote || 0}
+                {preview.cif_detalle.total_prendas_mes > 0 && (
+                  <span> de {preview.cif_detalle.total_prendas_mes} totales ({preview.cif_detalle.proporcion_pct}%)</span>
+                )}
+              </p>
+              <p className="mt-1 font-medium text-foreground">
+                CIF asignado a este lote: S/ {(preview.cif_detalle.cif_asignado || 0).toFixed(2)}
+              </p>
+              {preview.cif_detalle.fecha_inicio_real && preview.cif_detalle.fecha_creacion &&
+                preview.cif_detalle.fecha_inicio_real !== preview.cif_detalle.fecha_creacion && (
+                <p className="mt-1 text-amber-600 flex items-center gap-1">
+                  Inicio real: {preview.cif_detalle.fecha_inicio_real} | Registrado: {preview.cif_detalle.fecha_creacion}
+                </p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1792,7 +1836,7 @@ export const RegistroDetalleFase2 = ({ registroId, registro, onEstadoChange }) =
       onEstadoChange?.('CERRADA');
       setShowCerrarDialog(false);
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al cerrar OP');
+      toast.error(getErrorMsg(error, 'Error al cerrar OP'));
     } finally {
       setProcesando(false);
     }
@@ -1807,7 +1851,7 @@ export const RegistroDetalleFase2 = ({ registroId, registro, onEstadoChange }) =
       onEstadoChange?.('ANULADA');
       setShowAnularDialog(false);
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al anular OP');
+      toast.error(getErrorMsg(error, 'Error al anular OP'));
     } finally {
       setProcesando(false);
     }

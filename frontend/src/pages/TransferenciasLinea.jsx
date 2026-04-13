@@ -46,6 +46,7 @@ import {
 } from "lucide-react";
 
 import { formatCurrency, formatNumber } from "../lib/utils";
+import { formatDate } from "../lib/dateUtils";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -53,12 +54,6 @@ const ESTADO_BADGE = {
   BORRADOR: { variant: "outline", className: "border-yellow-500 text-yellow-600 bg-yellow-50" },
   CONFIRMADO: { variant: "outline", className: "border-green-500 text-green-600 bg-green-50" },
   CANCELADO: { variant: "outline", className: "border-red-500 text-red-600 bg-red-50" },
-};
-
-const formatDate = (dateStr) => {
-  if (!dateStr) return "-";
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "2-digit" });
 };
 
 // ==================== COMPONENTE PRINCIPAL ====================

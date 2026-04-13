@@ -4,7 +4,7 @@ Router: Reportes de Valorización (MP, WIP, PT)
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional
 from db import get_pool
-from auth import get_current_user
+from auth_utils import get_current_user
 from helpers import row_to_dict
 
 router = APIRouter(prefix="/api", tags=["reportes-valorizacion"])

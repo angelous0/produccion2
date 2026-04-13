@@ -20,6 +20,7 @@ async def get_movimientos(
     persona_id: str = None,
     fecha_desde: str = None,
     fecha_hasta: str = None,
+    estado: str = None,
     search: str = "",
     limit: int = 50,
     offset: int = 0,
@@ -51,6 +52,10 @@ async def get_movimientos(
             conditions.append(f"mp.fecha_inicio <= ${param_idx}::date")
             params.append(fecha_hasta)
             param_idx += 1
+        if estado:
+            conditions.append(f"r.estado = ${param_idx}")
+            params.append(estado)
+            param_idx += 1
         if search:
             conditions.append(f"(r.n_corte ILIKE ${param_idx} OR s.nombre ILIKE ${param_idx} OR p.nombre ILIKE ${param_idx})")
             params.append(f"%{search}%")
@@ -76,7 +81,8 @@ async def get_movimientos(
                 p.nombre as persona_nombre,
                 p.tipo_persona as persona_tipo,
                 p.unidad_interna_id as persona_unidad_interna_id,
-                r.n_corte as registro_n_corte
+                r.n_corte as registro_n_corte,
+                r.estado as registro_estado
             {base_from}
             WHERE {where_clause}
             ORDER BY mp.created_at DESC

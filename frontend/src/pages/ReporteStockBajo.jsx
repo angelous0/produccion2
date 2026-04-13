@@ -105,36 +105,35 @@ export const ReporteStockBajo = () => {
         </Card>
       </div>
 
-      {/* Controles */}
-      <Card>
-        <CardContent className="pt-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Label className="text-sm whitespace-nowrap">Evaluar por:</Label>
-              <Select value={modo} onValueChange={setModo}>
-                <SelectTrigger className="w-[200px]" data-testid="select-modo-stock">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fisico">Stock Fisico</SelectItem>
-                  <SelectItem value="disponible">Stock Disponible (- reservas)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                id="mostrar-ignorados"
-                checked={mostrarIgnorados}
-                onCheckedChange={setMostrarIgnorados}
-                data-testid="switch-mostrar-ignorados"
-              />
-              <Label htmlFor="mostrar-ignorados" className="text-sm cursor-pointer">
-                Mostrar items ignorados
-              </Label>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Controles con tabs Activos / Ignorados */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex gap-1.5 rounded-lg border p-1 bg-muted/30">
+          <button
+            onClick={() => setMostrarIgnorados(false)}
+            className={"px-4 py-1.5 text-sm font-medium rounded-md transition-all " + (!mostrarIgnorados ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')}
+            data-testid="tab-activos-stock"
+          >
+            Activos
+            {!mostrarIgnorados && <span className="ml-1.5 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-bold">{total}</span>}
+          </button>
+          <button
+            onClick={() => setMostrarIgnorados(true)}
+            className={"px-4 py-1.5 text-sm font-medium rounded-md transition-all " + (mostrarIgnorados ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')}
+            data-testid="tab-ignorados-stock"
+          >
+            Ignorados
+          </button>
+        </div>
+        <Select value={modo} onValueChange={setModo}>
+          <SelectTrigger className="w-[200px] h-9" data-testid="select-modo-stock">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="fisico">Stock Fisico</SelectItem>
+            <SelectItem value="disponible">Stock Disponible (- reservas)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Tabla */}
       <Card>

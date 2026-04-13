@@ -1,15 +1,25 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '../components/ui/dialog';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '../components/ui/select';
+import { Textarea } from '../components/ui/textarea';
 import { toast } from 'sonner';
 import {
   Clock, AlertTriangle, PauseCircle, ExternalLink, RefreshCw,
-  Search, ChevronDown, ChevronRight, Timer, Download,
+  Search, ChevronDown, ChevronRight, Timer, Download, MessageSquareWarning,
+  Plus, Check, Trash2, X,
 } from 'lucide-react';
+
+import { formatDate } from '../lib/dateUtils';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -34,11 +44,6 @@ const KpiCard = ({ label, value, icon: Icon, danger }) => (
   </Card>
 );
 
-const fmtDate = (d) => {
-  if (!d) return '-';
-  const dt = new Date(d + (d.includes('T') ? '' : 'T00:00:00'));
-  return `${String(dt.getDate()).padStart(2, '0')}-${String(dt.getMonth() + 1).padStart(2, '0')}-${dt.getFullYear()}`;
-};
 
 export const ReporteTiemposMuertos = () => {
   const navigate = useNavigate();
@@ -47,6 +52,18 @@ export const ReporteTiemposMuertos = () => {
   const [filtro, setFiltro] = useState('en_curso');
   const [busqueda, setBusqueda] = useState('');
   const [sortDesc, setSortDesc] = useState(true);
+
+  // Incidencia panel
+  const [panelItem, setPanelItem] = useState(null); // item del reporte seleccionado
+  const [incidencias, setIncidencias] = useState([]);
+  const [loadingInc, setLoadingInc] = useState(false);
+  const [motivos, setMotivos] = useState([]);
+  const [showResueltas, setShowResueltas] = useState(false);
+  // Nueva incidencia form
+  const [showNewForm, setShowNewForm] = useState(false);
+  const [newMotivoId, setNewMotivoId] = useState('');
+  const [newComentario, setNewComentario] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -61,6 +78,70 @@ export const ReporteTiemposMuertos = () => {
   };
 
   useEffect(() => { fetchData(); }, [filtro]);
+
+  // Cargar motivos una vez
+  useEffect(() => {
+    axios.get(`${API}/api/motivos-incidencia`).then(r => setMotivos(r.data)).catch(() => {});
+  }, []);
+
+  const openPanel = useCallback(async (item) => {
+    setPanelItem(item);
+    setShowResueltas(false);
+    setShowNewForm(false);
+    setLoadingInc(true);
+    try {
+      const res = await axios.get(`${API}/api/incidencias/${item.registro_id}`);
+      setIncidencias(res.data);
+    } catch {
+      toast.error('Error al cargar incidencias');
+    }
+    setLoadingInc(false);
+  }, []);
+
+  const handleCrearIncidencia = async () => {
+    if (!newMotivoId) { toast.error('Selecciona un motivo'); return; }
+    setSaving(true);
+    try {
+      await axios.post(`${API}/api/incidencias`, {
+        registro_id: panelItem.registro_id,
+        motivo_id: newMotivoId,
+        comentario: newComentario.trim() || null,
+      });
+      toast.success('Incidencia registrada');
+      setShowNewForm(false);
+      setNewMotivoId('');
+      setNewComentario('');
+      // Refresh incidencias + reporte
+      openPanel(panelItem);
+      fetchData();
+    } catch {
+      toast.error('Error al crear incidencia');
+    }
+    setSaving(false);
+  };
+
+  const handleResolver = async (incId) => {
+    try {
+      await axios.put(`${API}/api/incidencias/${incId}`, { estado: 'RESUELTA' });
+      toast.success('Incidencia resuelta');
+      openPanel(panelItem);
+      fetchData();
+    } catch {
+      toast.error('Error al resolver');
+    }
+  };
+
+  const handleEliminar = async (incId) => {
+    if (!window.confirm('¿Eliminar esta incidencia?')) return;
+    try {
+      await axios.delete(`${API}/api/incidencias/${incId}`);
+      toast.success('Incidencia eliminada');
+      openPanel(panelItem);
+      fetchData();
+    } catch {
+      toast.error('Error al eliminar');
+    }
+  };
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -90,7 +171,7 @@ export const ReporteTiemposMuertos = () => {
     if (!filtered.length) return;
     const XLSX = (await import('xlsx')).default || await import('xlsx');
     const wsData = [
-      ['Corte', 'Modelo', 'Marca', 'Tipo', 'Entalle', 'Tela', 'Hilo Esp.', 'Último Servicio', 'Persona', 'Terminó', 'Estado Actual', 'Días Parado', 'Nivel'],
+      ['Corte', 'Modelo', 'Marca', 'Tipo', 'Entalle', 'Tela', 'Hilo Esp.', 'Último Servicio', 'Persona', 'Terminó', 'Estado Actual', 'Motivo', 'Días Parado', 'Inc. Abiertas', 'Nivel'],
       ...filtered.map(r => [
         r.n_corte + (r.urgente ? ' (URG)' : ''),
         r.modelo || '',
@@ -101,14 +182,16 @@ export const ReporteTiemposMuertos = () => {
         r.hilo_especifico || '',
         r.ultimo_servicio,
         r.ultima_persona || '',
-        fmtDate(r.fecha_termino),
+        formatDate(r.fecha_termino),
         r.estado_actual,
+        r.motivo || 'Sin motivo',
         r.dias_parado,
+        r.inc_abiertas || 0,
         (NIVEL_CONFIG[r.nivel] || NIVEL_CONFIG.ok).label,
       ]),
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
-    ws['!cols'] = [{wch:12},{wch:20},{wch:14},{wch:14},{wch:14},{wch:14},{wch:16},{wch:18},{wch:18},{wch:14},{wch:16},{wch:12},{wch:12}];
+    ws['!cols'] = [{wch:12},{wch:20},{wch:14},{wch:14},{wch:14},{wch:14},{wch:16},{wch:18},{wch:18},{wch:14},{wch:16},{wch:18},{wch:12},{wch:12},{wch:12}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Tiempos Muertos');
     XLSX.writeFile(wb, `tiempos_muertos_${new Date().toISOString().slice(0,10)}.xlsx`);
@@ -139,6 +222,7 @@ export const ReporteTiemposMuertos = () => {
       { label: 'Lotes Parados', val: resumen.total || 0 },
       { label: 'En Espera', val: resumen.en_espera || 0, danger: true },
       { label: 'Críticos (7+d)', val: resumen.criticos || 0, danger: true },
+      { label: 'Sin Motivo', val: resumen.sin_motivo || 0, danger: true },
       { label: 'Días Acumulados', val: resumen.dias_perdidos || 0, danger: true },
     ];
     const kpiW = (pageW - 28) / kpiItems.length;
@@ -160,7 +244,7 @@ export const ReporteTiemposMuertos = () => {
     const nivelColors = { critico: [254,226,226], atencion: [254,243,199], espera: [219,234,254] };
     const nivelTextColors = { critico: [153,27,27], atencion: [146,64,14], espera: [30,64,175] };
 
-    const headers = [['Corte', 'Modelo', 'Marca', 'Tipo', 'Entalle', 'Tela', 'Hilo Esp.', 'Últ. Servicio', 'Persona', 'Terminó', 'Estado', 'Días', 'Nivel']];
+    const headers = [['Corte', 'Modelo', 'Marca', 'Tipo', 'Entalle', 'Tela', 'Hilo Esp.', 'Últ. Servicio', 'Persona', 'Terminó', 'Estado', 'Motivo', 'Días', 'Inc.', 'Nivel']];
     const body = filtered.map(r => [
       r.n_corte,
       r.modelo || '',
@@ -171,9 +255,11 @@ export const ReporteTiemposMuertos = () => {
       r.hilo_especifico || '',
       r.ultimo_servicio,
       r.ultima_persona || '',
-      fmtDate(r.fecha_termino),
+      formatDate(r.fecha_termino),
       r.estado_actual,
+      r.motivo || '-',
       String(r.dias_parado),
+      r.inc_abiertas > 0 ? String(r.inc_abiertas) : '-',
       (NIVEL_CONFIG[r.nivel] || NIVEL_CONFIG.ok).label,
     ]);
 
@@ -182,22 +268,24 @@ export const ReporteTiemposMuertos = () => {
       head: headers,
       body: body,
       theme: 'grid',
-      styles: { fontSize: 6.5, cellPadding: 1.5, lineColor: [220,220,220], lineWidth: 0.2 },
-      headStyles: { fillColor: [30,41,59], textColor: 255, fontSize: 6, fontStyle: 'bold', halign: 'center' },
+      styles: { fontSize: 5.5, cellPadding: 1.2, lineColor: [220,220,220], lineWidth: 0.2, overflow: 'ellipsize' },
+      headStyles: { fillColor: [30,41,59], textColor: 255, fontSize: 5, fontStyle: 'bold', halign: 'center' },
       columnStyles: {
-        0: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
-        1: { cellWidth: 24 },
-        2: { cellWidth: 18 },
+        0: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
+        1: { cellWidth: 22 },
+        2: { cellWidth: 16 },
         3: { cellWidth: 18 },
-        4: { cellWidth: 18 },
-        5: { cellWidth: 18 },
-        6: { cellWidth: 18 },
-        7: { cellWidth: 24 },
-        8: { cellWidth: 22 },
-        9: { cellWidth: 18, halign: 'center' },
-        10: { cellWidth: 22, halign: 'center' },
-        11: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
-        12: { cellWidth: 18, halign: 'center', fontStyle: 'bold' },
+        4: { cellWidth: 16 },
+        5: { cellWidth: 16 },
+        6: { cellWidth: 16 },
+        7: { cellWidth: 20 },
+        8: { cellWidth: 20 },
+        9: { cellWidth: 16, halign: 'center' },
+        10: { cellWidth: 18, halign: 'center' },
+        11: { cellWidth: 20 },
+        12: { cellWidth: 11, halign: 'center', fontStyle: 'bold' },
+        13: { cellWidth: 9, halign: 'center' },
+        14: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
       },
       didParseCell: (data) => {
         if (data.section !== 'body') return;
@@ -210,8 +298,14 @@ export const ReporteTiemposMuertos = () => {
           data.cell.styles.textColor = [153, 27, 27];
         }
 
+        // Motivo: amber if present, gray italic if not
+        if (data.column.index === 11 && !row.motivo) {
+          data.cell.styles.textColor = [150, 150, 150];
+          data.cell.styles.fontStyle = 'italic';
+        }
+
         // Días parado: color by severity
-        if (data.column.index === 11) {
+        if (data.column.index === 12) {
           if (row.dias_parado >= 7) {
             data.cell.styles.fillColor = [254, 226, 226];
             data.cell.styles.textColor = [153, 27, 27];
@@ -221,8 +315,15 @@ export const ReporteTiemposMuertos = () => {
           }
         }
 
+        // Inc. abiertas: red if > 0
+        if (data.column.index === 13 && row.inc_abiertas > 0) {
+          data.cell.styles.fillColor = [254, 226, 226];
+          data.cell.styles.textColor = [153, 27, 27];
+          data.cell.styles.fontStyle = 'bold';
+        }
+
         // Nivel: color badge
-        if (data.column.index === 12 && row.nivel !== 'ok') {
+        if (data.column.index === 14 && row.nivel !== 'ok') {
           const bg = nivelColors[row.nivel];
           const tc = nivelTextColors[row.nivel];
           if (bg) {
@@ -274,10 +375,11 @@ export const ReporteTiemposMuertos = () => {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <KpiCard label="Lotes parados" value={resumen.total || 0} icon={Timer} />
         <KpiCard label="En espera" value={resumen.en_espera || 0} icon={PauseCircle} danger />
         <KpiCard label="Críticos (7+ días)" value={resumen.criticos || 0} icon={AlertTriangle} danger />
+        <KpiCard label="Sin motivo" value={resumen.sin_motivo || 0} icon={MessageSquareWarning} danger />
         <KpiCard label="Días acumulados" value={resumen.dias_perdidos || 0} icon={Clock} danger />
       </div>
 
@@ -321,12 +423,14 @@ export const ReporteTiemposMuertos = () => {
                   <th className="text-left p-2.5 font-medium text-muted-foreground">Persona</th>
                   <th className="text-center p-2.5 font-medium text-muted-foreground">Terminó</th>
                   <th className="text-left p-2.5 font-medium text-muted-foreground">Estado Actual</th>
+                  <th className="text-left p-2.5 font-medium text-muted-foreground">Motivo</th>
                   <th
                     className="text-center p-2.5 font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground group"
                     onClick={() => setSortDesc(p => !p)}
                   >
                     Días parado {sortDesc ? <ChevronDown className="inline h-3 w-3" /> : <ChevronRight className="inline h-3 w-3 rotate-[-90deg]" />}
                   </th>
+                  <th className="text-center p-2.5 font-medium text-muted-foreground">Inc.</th>
                   <th className="text-center p-2.5 font-medium text-muted-foreground">Nivel</th>
                   <th className="text-center p-2.5 font-medium text-muted-foreground">Acción</th>
                 </tr>
@@ -348,15 +452,31 @@ export const ReporteTiemposMuertos = () => {
                       <td className="p-2.5 whitespace-nowrap text-muted-foreground">{item.hilo_especifico || '-'}</td>
                       <td className="p-2.5 whitespace-nowrap font-medium">{item.ultimo_servicio}</td>
                       <td className="p-2.5 whitespace-nowrap text-muted-foreground">{item.ultima_persona || '-'}</td>
-                      <td className="p-2.5 text-center whitespace-nowrap">{fmtDate(item.fecha_termino)}</td>
+                      <td className="p-2.5 text-center whitespace-nowrap">{formatDate(item.fecha_termino)}</td>
                       <td className="p-2.5 whitespace-nowrap">
                         <Badge variant="outline" className="text-[10px]">{item.estado_actual}</Badge>
+                      </td>
+                      <td className="p-2.5 whitespace-nowrap">
+                        {item.motivo ? (
+                          <Badge className="text-[10px] bg-amber-100 text-amber-800 border border-amber-200">{item.motivo}</Badge>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground italic">Sin motivo</span>
+                        )}
                       </td>
                       <td className={`p-2.5 text-center font-mono font-bold whitespace-nowrap ${
                         item.dias_parado >= 7 ? 'bg-red-100 text-red-700' :
                         item.dias_parado >= 3 ? 'bg-amber-100 text-amber-700' : ''
                       }`}>
                         {item.dias_parado}
+                      </td>
+                      <td className="p-2.5 text-center whitespace-nowrap">
+                        {item.inc_abiertas > 0 ? (
+                          <Badge className="text-[10px] bg-red-100 text-red-700 border border-red-200">{item.inc_abiertas}</Badge>
+                        ) : item.inc_total > 0 ? (
+                          <span className="text-[10px] text-muted-foreground">{item.inc_total}</span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">—</span>
+                        )}
                       </td>
                       <td className="p-2.5 text-center">
                         {item.nivel === 'ok' ? (
@@ -366,13 +486,22 @@ export const ReporteTiemposMuertos = () => {
                         )}
                       </td>
                       <td className="p-2.5 text-center">
-                        <Button
-                          type="button" variant="ghost" size="icon" className="h-6 w-6"
-                          onClick={() => navigate(`/registros/editar/${item.registro_id}`)}
-                          title="Abrir registro"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                        </Button>
+                        <div className="flex items-center justify-center gap-0.5">
+                          <Button
+                            type="button" variant="ghost" size="icon" className="h-6 w-6"
+                            onClick={() => openPanel(item)}
+                            title="Gestionar incidencias"
+                          >
+                            <AlertTriangle className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            type="button" variant="ghost" size="icon" className="h-6 w-6"
+                            onClick={() => navigate(`/registros/editar/${item.registro_id}`)}
+                            title="Abrir registro"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -382,6 +511,141 @@ export const ReporteTiemposMuertos = () => {
           </div>
         </Card>
       )}
+
+      {/* Panel de incidencias */}
+      <Dialog open={!!panelItem} onOpenChange={(open) => { if (!open) setPanelItem(null); }}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Incidencias — {panelItem?.n_corte}
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              {panelItem?.modelo} · {panelItem?.ultimo_servicio} · {panelItem?.dias_parado}d parado
+            </p>
+          </DialogHeader>
+
+          {loadingInc ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">Cargando...</div>
+          ) : (
+            <div className="space-y-3">
+              {/* Botón nueva incidencia */}
+              {!showNewForm && (
+                <Button type="button" size="sm" variant="outline" className="w-full" onClick={() => setShowNewForm(true)}>
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Nueva incidencia
+                </Button>
+              )}
+
+              {/* Form nueva incidencia */}
+              {showNewForm && (
+                <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold">Nueva incidencia</span>
+                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowNewForm(false)}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <Select value={newMotivoId} onValueChange={setNewMotivoId}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Seleccionar motivo..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {motivos.map(m => (
+                        <SelectItem key={m.id} value={m.id} className="text-xs">{m.nombre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Textarea
+                    placeholder="Comentario (opcional)"
+                    value={newComentario}
+                    onChange={e => setNewComentario(e.target.value)}
+                    className="text-xs min-h-[60px]"
+                  />
+                  <Button type="button" size="sm" className="w-full" onClick={handleCrearIncidencia} disabled={saving}>
+                    {saving ? 'Guardando...' : 'Registrar incidencia'}
+                  </Button>
+                </div>
+              )}
+
+              {/* Incidencias abiertas */}
+              {incidencias.filter(i => i.estado === 'ABIERTA').length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Abiertas</p>
+                  {incidencias.filter(i => i.estado === 'ABIERTA').map(inc => (
+                    <div key={inc.id} className="flex items-start gap-2 p-3 rounded-lg border bg-amber-50/80 border-amber-200">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Badge variant="destructive" className="text-[10px]">ABIERTA</Badge>
+                          <span className="font-semibold text-xs">{inc.motivo_nombre || inc.tipo}</span>
+                          {inc.paraliza && <Badge variant="outline" className="text-[10px] border-red-300 text-red-600">Paraliza</Badge>}
+                        </div>
+                        {inc.comentario && <p className="text-xs text-muted-foreground mt-1">{inc.comentario}</p>}
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+                        </p>
+                      </div>
+                      <div className="flex gap-0.5 shrink-0">
+                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleResolver(inc.id)} title="Resolver">
+                          <Check className="h-3.5 w-3.5 text-green-600" />
+                        </Button>
+                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEliminar(inc.id)} title="Eliminar">
+                          <Trash2 className="h-3 w-3 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Incidencias resueltas */}
+              {incidencias.filter(i => i.estado === 'RESUELTA').length > 0 && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setShowResueltas(p => !p)}
+                    className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full py-2"
+                  >
+                    {showResueltas ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                    <span className="font-medium">Historial resueltas ({incidencias.filter(i => i.estado === 'RESUELTA').length})</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </button>
+                  {showResueltas && (
+                    <div className="space-y-2 mt-1">
+                      {incidencias.filter(i => i.estado === 'RESUELTA').map(inc => (
+                        <div key={inc.id} className="flex items-start gap-2 p-2.5 rounded-lg border bg-muted/20 border-border">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Badge variant="secondary" className="text-[10px]">RESUELTA</Badge>
+                              <span className="font-medium text-xs text-muted-foreground">{inc.motivo_nombre || inc.tipo}</span>
+                            </div>
+                            {inc.comentario && <p className="text-xs text-muted-foreground mt-1">{inc.comentario}</p>}
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+                              {inc.updated_at && (
+                                <span className="text-green-600 ml-1">· Resuelta: {new Date(inc.updated_at).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</span>
+                              )}
+                            </p>
+                          </div>
+                          <Button type="button" variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => handleEliminar(inc.id)} title="Eliminar">
+                            <Trash2 className="h-3 w-3 text-destructive" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {incidencias.length === 0 && !showNewForm && (
+                <div className="text-center py-6 text-muted-foreground">
+                  <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Sin incidencias registradas</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

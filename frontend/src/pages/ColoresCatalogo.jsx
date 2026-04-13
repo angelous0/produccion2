@@ -102,6 +102,7 @@ export const ColoresCatalogo = () => {
   };
 
   const handleDelete = async (id) => {
+    if (!window.confirm('¿Estás seguro de eliminar este color?')) return;
     try {
       await axios.delete(`${API}/colores-catalogo/${id}`);
       toast.success('Color eliminado');

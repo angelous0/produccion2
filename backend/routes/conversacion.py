@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime, date, timezone, timedelta
+from datetime import datetime, timezone, timedelta
 import uuid
+from helpers import row_to_dict
 
 router = APIRouter(prefix="/api", tags=["Conversacion"])
 
@@ -19,16 +20,6 @@ class MensajeCreate(BaseModel):
 class MensajeUpdate(BaseModel):
     estado: Optional[str] = None
     fijado: Optional[bool] = None
-
-
-def row_to_dict(row):
-    if row is None:
-        return None
-    d = dict(row)
-    for k, v in d.items():
-        if isinstance(v, (datetime, date)):
-            d[k] = v.isoformat()
-    return d
 
 
 @router.get("/registros/{registro_id}/conversacion")

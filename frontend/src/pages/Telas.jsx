@@ -105,6 +105,7 @@ export const Telas = () => {
   };
 
   const handleDelete = async (id) => {
+    if (!window.confirm('¿Estás seguro de eliminar esta tela?')) return;
     try {
       await axios.delete(`${API}/telas/${id}`);
       toast.success('Tela eliminada');

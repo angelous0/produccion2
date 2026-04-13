@@ -78,6 +78,7 @@ export const TallasCatalogo = () => {
   };
 
   const handleDelete = async (id) => {
+    if (!window.confirm('¿Estás seguro de eliminar esta talla?')) return;
     try {
       await axios.delete(`${API}/tallas-catalogo/${id}`);
       toast.success('Talla eliminada');

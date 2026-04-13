@@ -1,297 +1,262 @@
-import React, { useState, useEffect, useCallback } from "react";
-import axios from "axios";
-import { toast } from "sonner";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
-import { Badge } from "../components/ui/badge";
-import { Card, CardContent } from "../components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
-import {
-  ShieldCheck,
-  Search,
-  Loader2,
-  ChevronDown,
-  ChevronRight,
-  ChevronLeft,
-  Clock,
-  User,
-  FileText,
-} from "lucide-react";
+import { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+import { Shield, User, Package, Database, RefreshCw, ChevronDown, ChevronRight, Search, Filter } from 'lucide-react';
+import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-const ACCION_COLORS = {
-  CREATE: "bg-green-100 text-green-700 border-green-300",
-  UPDATE: "bg-blue-100 text-blue-700 border-blue-300",
-  DELETE: "bg-red-100 text-red-700 border-red-300",
-  CONFIRM: "bg-emerald-100 text-emerald-700 border-emerald-300",
-  REOPEN: "bg-amber-100 text-amber-700 border-amber-300",
-  CANCEL: "bg-gray-100 text-gray-700 border-gray-300",
+const ACCION_CFG = {
+  INSERT: { label: 'Creado',    cls: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300', dot: 'bg-emerald-500' },
+  UPDATE: { label: 'Editado',   cls: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300',       dot: 'bg-blue-500' },
+  DELETE: { label: 'Eliminado', cls: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300',           dot: 'bg-red-500' },
+  LOGIN:  { label: 'Login',     cls: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300', dot: 'bg-purple-500' },
 };
 
-const MODULO_COLORS = {
-  produccion: "bg-purple-100 text-purple-700 border-purple-300",
-  inventario: "bg-cyan-100 text-cyan-700 border-cyan-300",
-  finanzas: "bg-orange-100 text-orange-700 border-orange-300",
+const MODULO_ICON = {
+  produccion: Package,
+  inventario: Database,
+  auth:       User,
 };
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return "-";
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("es-PE", {
-    day: "2-digit", month: "2-digit", year: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  });
+const TABLE_LABELS = {
+  prod_registros: 'Registro',
+  inv_items: 'Inventario',
+  inv_salidas: 'Salida',
+  inv_ingresos: 'Ingreso',
+  auth_users: 'Usuario',
 };
 
-export const AuditoriaLogs = () => {
-  const [logs, setLogs] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(0);
-  const [expandedId, setExpandedId] = useState(null);
-  const [filtros, setFiltros] = useState({
-    usuario: "", modulo: "", accion: "", fecha_desde: "", fecha_hasta: "", linea_negocio_id: "",
+function getCambios(antes, despues) {
+  if (!antes || !despues) return [];
+  const cambios = [];
+  const keys = [...new Set([...Object.keys(antes), ...Object.keys(despues)])];
+  keys.forEach(k => {
+    const a = JSON.stringify(antes[k]);
+    const d = JSON.stringify(despues[k]);
+    if (a !== d) cambios.push({ campo: k, antes: antes[k], despues: despues[k] });
   });
-  const [filtrosDisponibles, setFiltrosDisponibles] = useState({
-    modulos: [], acciones: [], usuarios: [], lineas: [],
-  });
+  return cambios;
+}
 
-  const limit = 50;
+function fmtVal(v) {
+  if (v === null || v === undefined) return <span className="text-muted-foreground italic text-xs">vacío</span>;
+  if (typeof v === 'boolean') return <span className={v ? 'text-emerald-600' : 'text-red-600'}>{v ? 'Sí' : 'No'}</span>;
+  return <span>{String(v)}</span>;
+}
 
-  const fetchLogs = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ limit: String(limit), offset: String(page * limit) });
-      Object.entries(filtros).forEach(([k, v]) => { if (v) params.set(k, v); });
-      const { data } = await axios.get(`${API}/auditoria?${params}`);
-      setLogs(data.items || []);
-      setTotal(data.total || 0);
-      if (data.filtros_disponibles) setFiltrosDisponibles(data.filtros_disponibles);
-    } catch (e) {
-      if (e.response?.status === 403) {
-        toast.error("Acceso restringido a administradores");
-      } else {
-        toast.error("Error al cargar logs de auditoria");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [page, filtros]);
-
-  useEffect(() => { fetchLogs(); }, [fetchLogs]);
-
-  const totalPages = Math.ceil(total / limit);
-
-  const handleFiltro = (key, value) => {
-    setFiltros((f) => ({ ...f, [key]: value === "TODOS" ? "" : value }));
-    setPage(0);
-  };
-
-  const toggleExpand = (id) => {
-    setExpandedId(expandedId === id ? null : id);
-  };
+function AuditoriaRow({ item }) {
+  const [open, setOpen] = useState(false);
+  const accion = ACCION_CFG[item.accion] || { label: item.accion, cls: 'bg-muted text-muted-foreground border-border', dot: 'bg-gray-400' };
+  const ModIcon = MODULO_ICON[item.modulo] || Shield;
+  const cambios = getCambios(item.datos_antes, item.datos_despues);
+  const tabla = TABLE_LABELS[item.tabla] || item.tabla;
+  const fecha = new Date(item.fecha_hora);
+  const fechaStr = fecha.toLocaleDateString('es-PE', { day:'2-digit', month:'2-digit' });
+  const horaStr = fecha.toLocaleTimeString('es-PE', { hour:'2-digit', minute:'2-digit' });
 
   return (
-    <div className="space-y-4" data-testid="auditoria-page">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2" data-testid="page-title">
-          <ShieldCheck className="h-5 w-5 sm:h-6 sm:w-6" />
-          <span className="hidden sm:inline">Auditoria del Sistema</span>
-          <span className="sm:hidden">Auditoria</span>
-        </h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">
-          Registro de cambios criticos en produccion e inventario
-        </p>
-      </div>
+    <div className="relative pl-8">
+      <div className={"absolute left-2.5 top-4 h-2.5 w-2.5 rounded-full border-2 border-background ring-1 ring-border " + accion.dot} />
+      <div className={"rounded-xl border bg-card transition-all " + (open ? 'shadow-sm' : '')}>
+        <button className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-muted/30 transition-colors rounded-xl"
+          onClick={() => setOpen(p => !p)}>
+          <div className="flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-lg bg-muted">
+            <ModIcon className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold">{item.usuario}</span>
+              <span className={"inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border " + accion.cls}>{accion.label}</span>
+              <span className="text-xs text-muted-foreground">{tabla}</span>
+              {item.referencia && <span className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">{item.referencia}</span>}
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {item.modulo} · {item.resultado === 'OK' ? <span className="text-emerald-600">OK</span> : <span className="text-red-600">{item.resultado}</span>}
+              {item.observacion && <span> · {item.observacion}</span>}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="text-right">
+              <p className="text-xs font-medium">{fechaStr}</p>
+              <p className="text-[11px] text-muted-foreground">{horaStr}</p>
+            </div>
+            {cambios.length > 0 && (
+              open ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            )}
+          </div>
+        </button>
 
-      {/* Filtros */}
-      <div className="flex flex-wrap gap-2 items-end">
-        <div className="w-full sm:w-44">
-          <Label className="text-xs">Usuario</Label>
-          <Select value={filtros.usuario || "TODOS"} onValueChange={(v) => handleFiltro("usuario", v)}>
-            <SelectTrigger data-testid="filtro-usuario">
-              <SelectValue placeholder="Todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="TODOS">Todos</SelectItem>
-              {filtrosDisponibles.usuarios.map((u) => (
-                <SelectItem key={u} value={u}>{u}</SelectItem>
+        {open && cambios.length > 0 && (
+          <div className="px-4 pb-3 border-t">
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mt-3 mb-2">Cambios ({cambios.length})</p>
+            <div className="space-y-1.5">
+              {cambios.map((c, i) => (
+                <div key={i} className="grid grid-cols-[140px_1fr_1fr] gap-2 text-xs items-center">
+                  <span className="font-mono text-muted-foreground truncate">{c.campo}</span>
+                  <div className="bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900 rounded px-2 py-1 truncate line-through text-red-600">{fmtVal(c.antes)}</div>
+                  <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900 rounded px-2 py-1 truncate text-emerald-700">{fmtVal(c.despues)}</div>
+                </div>
               ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="w-[calc(50%-4px)] sm:w-40">
-          <Label className="text-xs">Modulo</Label>
-          <Select value={filtros.modulo || "TODOS"} onValueChange={(v) => handleFiltro("modulo", v)}>
-            <SelectTrigger data-testid="filtro-modulo">
-              <SelectValue placeholder="Todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="TODOS">Todos</SelectItem>
-              {filtrosDisponibles.modulos.map((m) => (
-                <SelectItem key={m} value={m}>{m}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="w-[calc(50%-4px)] sm:w-40">
-          <Label className="text-xs">Accion</Label>
-          <Select value={filtros.accion || "TODOS"} onValueChange={(v) => handleFiltro("accion", v)}>
-            <SelectTrigger data-testid="filtro-accion">
-              <SelectValue placeholder="Todas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="TODOS">Todas</SelectItem>
-              {filtrosDisponibles.acciones.map((a) => (
-                <SelectItem key={a} value={a}>{a}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="w-[calc(50%-4px)] sm:w-36">
-          <Label className="text-xs">Desde</Label>
-          <Input type="date" value={filtros.fecha_desde} onChange={(e) => handleFiltro("fecha_desde", e.target.value)} data-testid="filtro-fecha-desde" />
-        </div>
-        <div className="w-[calc(50%-4px)] sm:w-36">
-          <Label className="text-xs">Hasta</Label>
-          <Input type="date" value={filtros.fecha_hasta} onChange={(e) => handleFiltro("fecha_hasta", e.target.value)} data-testid="filtro-fecha-hasta" />
-        </div>
-        {filtrosDisponibles.lineas.length > 0 && (
-          <div className="w-full sm:w-44">
-            <Label className="text-xs">Linea</Label>
-            <Select value={filtros.linea_negocio_id || "TODOS"} onValueChange={(v) => handleFiltro("linea_negocio_id", v)}>
-              <SelectTrigger data-testid="filtro-linea">
-                <SelectValue placeholder="Todas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="TODOS">Todas las lineas</SelectItem>
-                {filtrosDisponibles.lineas.map((l) => (
-                  <SelectItem key={l.id} value={String(l.id)}>{l.nombre}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            </div>
+          </div>
+        )}
+
+        {open && cambios.length === 0 && item.datos_antes && (
+          <div className="px-4 pb-3 border-t">
+            <p className="text-xs text-muted-foreground mt-2">Sin cambios de campos detectados.</p>
           </div>
         )}
       </div>
+    </div>
+  );
+}
 
-      {/* Tabla */}
-      <Card>
-        <CardContent className="p-0 overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-8" />
-                <TableHead>Fecha</TableHead>
-                <TableHead className="hidden sm:table-cell">Usuario</TableHead>
-                <TableHead>Accion</TableHead>
-                <TableHead className="hidden sm:table-cell">Modulo</TableHead>
-                <TableHead className="hidden md:table-cell">Tabla</TableHead>
-                <TableHead className="hidden lg:table-cell">Observacion</TableHead>
-                <TableHead className="hidden md:table-cell">Resultado</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin mx-auto" />
-                  </TableCell>
-                </TableRow>
-              ) : logs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                    No hay logs de auditoria
-                  </TableCell>
-                </TableRow>
-              ) : (
-                logs.map((log) => {
-                  const isExpanded = expandedId === log.id;
-                  const accionClass = ACCION_COLORS[log.accion] || "bg-gray-100 text-gray-700";
-                  const moduloClass = MODULO_COLORS[log.modulo] || "bg-gray-100 text-gray-700";
-                  return (
-                    <React.Fragment key={log.id}>
-                      <TableRow
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => toggleExpand(log.id)}
-                        data-testid={`log-row-${log.id}`}
-                      >
-                        <TableCell className="w-8 pr-0">
-                          {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                        </TableCell>
-                        <TableCell className="text-xs font-mono whitespace-nowrap">
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3 text-muted-foreground hidden sm:block" />
-                            <span className="hidden sm:inline">{formatDate(log.fecha_hora)}</span>
-                            <span className="sm:hidden">{formatDate(log.fecha_hora).split(',')[0]}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm hidden sm:table-cell">
-                          <div className="flex items-center gap-1">
-                            <User className="h-3 w-3 text-muted-foreground" />
-                            {log.usuario}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={`text-[10px] sm:text-xs ${accionClass}`}>{log.accion}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={`text-[10px] sm:text-xs ${moduloClass}`}>{log.modulo}</Badge>
-                        </TableCell>
-                        <TableCell className="text-xs font-mono hidden md:table-cell">{(log.tabla || "").replace("prod_", "")}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate hidden lg:table-cell">
-                          {log.observacion || log.referencia || "-"}
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <Badge variant="outline" className={`text-[10px] ${log.resultado === "OK" ? "bg-green-50 text-green-600 border-green-200" : "bg-red-50 text-red-600 border-red-200"}`}>
-                            {log.resultado}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                      {isExpanded && (
-                        <TableRow key={`${log.id}-detail`}>
-                          <TableCell colSpan={8} className="bg-muted/20 p-4">
-                            <DetalleAudit log={log} />
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </React.Fragment>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+function groupByDate(items) {
+  const groups = {};
+  items.forEach(item => {
+    const d = item.fecha_hora?.substring(0, 10) || 'Sin fecha';
+    if (!groups[d]) groups[d] = [];
+    groups[d].push(item);
+  });
+  return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+}
 
-      {/* Paginacion */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">{total} registro(s) de auditoria</span>
+export const AuditoriaLogs = () => {
+  const [items, setItems]       = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [total, setTotal]       = useState(0);
+  const [page, setPage]         = useState(0);
+  const [busqueda, setBusqueda] = useState('');
+  const [filtroAccion, setFiltroAccion] = useState('todos');
+  const [filtroModulo, setFiltroModulo] = useState('todos');
+  const LIMIT = 50;
+
+  const cargar = useCallback(async (p = 0) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: LIMIT, offset: p * LIMIT });
+      if (filtroAccion !== 'todos') params.set('accion', filtroAccion);
+      if (filtroModulo !== 'todos') params.set('modulo', filtroModulo);
+      if (busqueda) params.set('usuario', busqueda);
+      const r = await axios.get(`${API}/auditoria?${params.toString()}`);
+      setItems(r.data?.items || r.data || []);
+      setTotal(r.data?.total || 0);
+    } catch { setItems([]); }
+    finally { setLoading(false); }
+  }, [filtroAccion, filtroModulo, busqueda]);
+
+  useEffect(() => { setPage(0); cargar(0); }, [filtroAccion, filtroModulo]);
+  useEffect(() => { cargar(page); }, [page]);
+
+  const grupos = groupByDate(items);
+  const fmtFecha = (d) => {
+    const hoy = new Date().toISOString().substring(0,10);
+    const ayer = new Date(Date.now()-86400000).toISOString().substring(0,10);
+    if (d === hoy) return 'Hoy';
+    if (d === ayer) return 'Ayer';
+    return new Date(d + 'T12:00:00').toLocaleDateString('es-PE', { weekday:'long', day:'numeric', month:'long' });
+  };
+
+  const insertCount = items.filter(i => i.accion === 'INSERT').length;
+  const updateCount = items.filter(i => i.accion === 'UPDATE').length;
+  const deleteCount = items.filter(i => i.accion === 'DELETE').length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Shield className="h-6 w-6 text-primary" /> Auditoria del Sistema
+          </h2>
+          <p className="text-sm text-muted-foreground">Registro visual de cambios criticos en produccion e inventario</p>
+        </div>
+        <button onClick={() => cargar(page)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border hover:bg-muted transition-colors text-muted-foreground">
+          <RefreshCw className="h-3.5 w-3.5" /> Actualizar
+        </button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Creaciones', value: insertCount, cls: 'text-emerald-600', dot: 'bg-emerald-500' },
+          { label: 'Ediciones',  value: updateCount, cls: 'text-blue-600',    dot: 'bg-blue-500' },
+          { label: 'Eliminaciones', value: deleteCount, cls: 'text-red-600',  dot: 'bg-red-500' },
+        ].map(k => (
+          <div key={k.label} className="rounded-xl border bg-card p-4 flex items-center gap-3">
+            <div className={"h-3 w-3 rounded-full flex-shrink-0 " + k.dot} />
+            <div>
+              <p className={"text-xl font-bold font-mono " + k.cls}>{k.value}</p>
+              <p className="text-xs text-muted-foreground">{k.label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-2 flex-wrap items-center">
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input placeholder="Buscar usuario..." value={busqueda} onChange={e => setBusqueda(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && cargar(0)}
+            className="pl-8 h-8 text-sm" />
+        </div>
+        <div className="flex gap-1.5 flex-wrap">
+          {['todos','INSERT','UPDATE','DELETE'].map(a => (
+            <button key={a} onClick={() => setFiltroAccion(a)}
+              className={"px-2.5 py-1 text-xs rounded-md border font-medium transition-colors " + (filtroAccion===a ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted border-border')}>
+              {a === 'todos' ? 'Todos' : a === 'INSERT' ? 'Creados' : a === 'UPDATE' ? 'Editados' : 'Eliminados'}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1.5">
+          {['todos','produccion','inventario'].map(m => (
+            <button key={m} onClick={() => setFiltroModulo(m)}
+              className={"px-2.5 py-1 text-xs rounded-md border font-medium transition-colors " + (filtroModulo===m ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted border-border')}>
+              {m === 'todos' ? 'Todo' : m.charAt(0).toUpperCase() + m.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-48 text-muted-foreground gap-2">
+          <RefreshCw className="h-4 w-4 animate-spin" /> Cargando auditoria...
+        </div>
+      ) : items.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
+          <Shield className="h-10 w-10 opacity-20 mb-2" />
+          <p className="text-sm">Sin registros en este filtro</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {grupos.map(([fecha, rows]) => (
+            <div key={fecha}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2">{fmtFecha(fecha)}</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+              <div className="relative space-y-2">
+                <div className="absolute left-[19px] top-0 bottom-0 w-px bg-border" />
+                {rows.map(item => <AuditoriaRow key={item.id} item={item} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {total > LIMIT && (
+        <div className="flex items-center justify-between pt-2">
+          <span className="text-xs text-muted-foreground">{total} registros totales</span>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm flex items-center">{page + 1} / {totalPages}</span>
-            <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+            <button onClick={() => setPage(p => Math.max(0, p-1))} disabled={page === 0}
+              className="px-3 py-1.5 text-xs rounded-md border hover:bg-muted disabled:opacity-40 transition-colors">
+              Anterior
+            </button>
+            <span className="px-3 py-1.5 text-xs text-muted-foreground">Pag {page+1} / {Math.ceil(total/LIMIT)}</span>
+            <button onClick={() => setPage(p => p+1)} disabled={(page+1)*LIMIT >= total}
+              className="px-3 py-1.5 text-xs rounded-md border hover:bg-muted disabled:opacity-40 transition-colors">
+              Siguiente
+            </button>
           </div>
         </div>
       )}
@@ -299,60 +264,4 @@ export const AuditoriaLogs = () => {
   );
 };
 
-// ==================== DETALLE EXPANDIBLE ====================
-
-const DetalleAudit = ({ log }) => {
-  const hasBefore = log.datos_antes && Object.keys(log.datos_antes).length > 0;
-  const hasAfter = log.datos_despues && Object.keys(log.datos_despues).length > 0;
-
-  return (
-    <div className="space-y-3">
-      {/* Metadata */}
-      <div className="flex flex-wrap gap-4 text-xs">
-        <div><span className="text-muted-foreground">ID Registro: </span><span className="font-mono">{log.registro_id || "-"}</span></div>
-        {log.referencia && <div><span className="text-muted-foreground">Referencia: </span><span className="font-mono">{log.referencia}</span></div>}
-        {log.linea_negocio_id && <div><span className="text-muted-foreground">Linea Negocio: </span><span>{log.linea_negocio_id}</span></div>}
-        {log.ip && <div><span className="text-muted-foreground">IP: </span><span className="font-mono">{log.ip}</span></div>}
-      </div>
-
-      {/* Antes / Despues */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {hasBefore && (
-          <div className="border rounded-lg p-3 bg-red-50/30">
-            <h4 className="text-xs font-semibold text-red-600 mb-2 flex items-center gap-1">
-              <FileText className="h-3 w-3" /> ANTES
-            </h4>
-            <JsonView data={log.datos_antes} />
-          </div>
-        )}
-        {hasAfter && (
-          <div className="border rounded-lg p-3 bg-green-50/30">
-            <h4 className="text-xs font-semibold text-green-600 mb-2 flex items-center gap-1">
-              <FileText className="h-3 w-3" /> DESPUES
-            </h4>
-            <JsonView data={log.datos_despues} />
-          </div>
-        )}
-        {!hasBefore && !hasAfter && (
-          <div className="text-xs text-muted-foreground">Sin datos de cambio registrados</div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const JsonView = ({ data }) => {
-  if (!data || typeof data !== "object") return <span className="text-xs font-mono">{String(data)}</span>;
-  return (
-    <div className="space-y-0.5">
-      {Object.entries(data).map(([key, value]) => (
-        <div key={key} className="flex gap-2 text-xs">
-          <span className="text-muted-foreground min-w-[120px]">{key}:</span>
-          <span className="font-mono font-medium break-all">
-            {typeof value === "object" && value !== null ? JSON.stringify(value) : String(value ?? "-")}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-};
+export default AuditoriaLogs;

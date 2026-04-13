@@ -6,13 +6,9 @@ import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ExternalLink, AlertTriangle } from 'lucide-react';
+import { formatDate } from '../lib/dateUtils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-
-function fmtDate(val) {
-  if (!val) return '-';
-  try { const d = new Date(val); if (isNaN(d)) return val; return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getFullYear()).slice(-2)}`; } catch { return val; }
-}
 
 export const ReporteEnProceso = () => {
   const [data, setData] = useState(null);
@@ -138,7 +134,7 @@ export const ReporteEnProceso = () => {
                       <td className="p-3 text-sm">
                         {r.fecha_entrega_final ? (
                           <span className={new Date(r.fecha_entrega_final) < new Date() ? 'text-destructive font-medium' : ''}>
-                            {fmtDate(r.fecha_entrega_final)}
+                            {formatDate(r.fecha_entrega_final)}
                           </span>
                         ) : '-'}
                       </td>

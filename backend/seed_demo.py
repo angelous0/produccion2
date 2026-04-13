@@ -2,7 +2,7 @@
 import asyncio, asyncpg, uuid, json, random
 from datetime import date, timedelta, datetime
 
-DB_URL = "postgres://admin:admin@72.60.241.216:9090/datos?sslmode=disable"
+DB_URL = "postgres://admin:admin@72.60.241.216:9595/datos?sslmode=disable"
 
 MARCAS = {"element": "6a7332a5-87b5-4827-8f6e-8025117fc71a", "qepo": "c70dac45-edde-444f-acb6-720715c38ddf"}
 TIPOS = {"pantalon": "d4ad8861-435f-4418-8002-3a7e95a57736", "polo": "5796e77c-939e-498b-8e2d-3ea7eb6fbfed", "casaca": "652e82f2-469b-49c6-b06f-01b368611417"}

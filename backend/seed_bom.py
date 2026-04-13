@@ -9,7 +9,7 @@ import json
 from datetime import date, timedelta, datetime
 import random
 
-DB_URL = "postgres://admin:admin@72.60.241.216:9090/datos?sslmode=disable"
+DB_URL = "postgres://admin:admin@72.60.241.216:9595/datos?sslmode=disable"
 
 SERVICIOS = {
     "corte": "a42eb55f-cdd9-499a-9ff8-e6cfcd153cec",

@@ -71,6 +71,15 @@ export const Kardex = () => {
     fetchItems();
   }, []);
 
+  // Auto-seleccionar el primer item si no hay ninguno seleccionado
+  useEffect(() => {
+    if (items.length > 0 && !selectedItemId) {
+      const params = new URLSearchParams(window.location.search);
+      const itemParam = params.get('item');
+      if (!itemParam) setSelectedItemId(items[0].id);
+    }
+  }, [items]);
+
   // Pre-seleccionar item desde query param (?item=id)
   useEffect(() => {
     const itemParam = searchParams.get('item');
@@ -235,7 +244,7 @@ export const Kardex = () => {
           </Card>
 
           {/* Resumen */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-3">
@@ -280,6 +289,17 @@ export const Kardex = () => {
                 </div>
               </CardContent>
             </Card>
+            <Card className="border-primary/30 bg-primary/5">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <Package className="h-6 w-6 text-primary" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Valorizado</p>
+                    <p className="text-lg font-bold text-primary">{formatCurrency(kardexData.valorizado || 0)}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Tabla Kardex */}
@@ -300,12 +320,13 @@ export const Kardex = () => {
                       <TableHead className="text-right">Saldo</TableHead>
                       <TableHead className="text-right">Costo Unit.</TableHead>
                       <TableHead className="text-right">Costo Total</TableHead>
+                      <TableHead className="text-right">Saldo Valor.</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {kardexData.movimientos.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                           No hay movimientos registrados
                         </TableCell>
                       </TableRow>
@@ -350,6 +371,9 @@ export const Kardex = () => {
                           </TableCell>
                           <TableCell className="text-right font-mono">
                             {mov.costo_total > 0 ? formatCurrency(mov.costo_total) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-semibold text-primary bg-primary/5">
+                            {mov.saldo_valorizado != null ? formatCurrency(mov.saldo_valorizado) : '-'}
                           </TableCell>
                         </TableRow>
                       ))

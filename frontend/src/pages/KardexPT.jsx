@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Separator } from '../components/ui/separator';
+import { formatDate } from '../lib/dateUtils';
 import {
   BookOpen, ArrowDownCircle, ArrowUpCircle, ArrowLeftRight,
   PlusCircle, MinusCircle, Search, ChevronLeft, ChevronRight, Loader2, Filter
@@ -33,11 +34,6 @@ const TipoBadge = ({ tipo }) => {
   );
 };
 
-const formatDate = (iso) => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return d.toLocaleDateString('es', { day: '2-digit', month: '2-digit', year: '2-digit' });
-};
 
 export const KardexPT = () => {
   const [items, setItems] = useState([]);

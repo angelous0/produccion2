@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, date, timezone, timedelta
 import uuid
+from helpers import row_to_dict
 
 router = APIRouter(prefix="/api", tags=["Control Producción"])
 
@@ -25,17 +26,6 @@ class IncidenciaUpdate(BaseModel):
 class MotivoCreate(BaseModel):
     nombre: str
 
-# ========== HELPERS ==========
-
-def row_to_dict(row):
-    if row is None:
-        return None
-    d = dict(row)
-    for k, v in d.items():
-        if isinstance(v, (datetime, date)):
-            d[k] = v.isoformat()
-    return d
-
 # ========== MOTIVOS DE INCIDENCIA (Catálogo) ==========
 
 @router.get("/motivos-incidencia")
@@ -43,7 +33,7 @@ async def get_motivos_incidencia():
     from server import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT * FROM prod_motivos_incidencia WHERE activo = TRUE ORDER BY nombre")
+        rows = await conn.fetch("SELECT * FROM prod_motivos_incidencia WHERE activo = TRUE ORDER BY orden, nombre")
         return [row_to_dict(r) for r in rows]
 
 @router.post("/motivos-incidencia")
@@ -55,12 +45,28 @@ async def create_motivo_incidencia(input: MotivoCreate):
         if exists:
             raise HTTPException(status_code=400, detail="Ya existe un motivo con ese nombre")
         motivo_id = str(uuid.uuid4())
+        max_orden = await conn.fetchval("SELECT COALESCE(MAX(orden), 0) FROM prod_motivos_incidencia") or 0
         await conn.execute(
-            "INSERT INTO prod_motivos_incidencia (id, nombre) VALUES ($1, $2)",
-            motivo_id, input.nombre.strip()
+            "INSERT INTO prod_motivos_incidencia (id, nombre, orden) VALUES ($1, $2, $3)",
+            motivo_id, input.nombre.strip(), max_orden + 1
         )
         row = await conn.fetchrow("SELECT * FROM prod_motivos_incidencia WHERE id = $1", motivo_id)
         return row_to_dict(row)
+
+@router.put("/motivos-incidencia/reordenar")
+async def reordenar_motivos(payload: dict):
+    from server import get_pool
+    orden_ids = payload.get("orden", [])
+    if not orden_ids:
+        raise HTTPException(status_code=400, detail="Lista de IDs requerida")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        for i, motivo_id in enumerate(orden_ids):
+            await conn.execute(
+                "UPDATE prod_motivos_incidencia SET orden = $1 WHERE id = $2",
+                i + 1, motivo_id
+            )
+    return {"ok": True}
 
 @router.delete("/motivos-incidencia/{motivo_id}")
 async def delete_motivo_incidencia(motivo_id: str):

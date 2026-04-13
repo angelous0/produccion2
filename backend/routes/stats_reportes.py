@@ -2,9 +2,8 @@
 import json
 import uuid
 import io
-import csv
 from datetime import datetime, timezone, date
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from db import get_pool
 from auth_utils import get_current_user
@@ -405,13 +404,15 @@ async def _get_kardex(item_id: str):
                 """, sal['registro_id'])
                 if registro:
                     modelo_nombre = registro['modelo_nombre']
+            sal_cant = float(sal['cantidad'])
+            sal_costo = float(sal['costo_total'] or 0)
             movimientos.append({
                 "id": sal['id'],
                 "tipo": "salida",
                 "fecha": sal['fecha'],
-                "cantidad": -float(sal['cantidad']),
-                "costo_unitario": 0,
-                "costo_total": float(sal['costo_total']),
+                "cantidad": -sal_cant,
+                "costo_unitario": round(sal_costo / sal_cant, 4) if sal_cant > 0 else 0,
+                "costo_total": sal_costo,
                 "registro_id": sal['registro_id'],
                 "registro_n_corte": registro['n_corte'] if registro else None,
                 "modelo_nombre": modelo_nombre,
@@ -436,23 +437,36 @@ async def _get_kardex(item_id: str):
         # Ordenar por fecha
         movimientos.sort(key=lambda x: x['fecha'] if x['fecha'] else datetime.min)
         
-        # Calcular saldo acumulado
+        # Calcular saldo acumulado y saldo valorizado
         saldo = 0
+        saldo_valor = 0
         for mov in movimientos:
             if mov['tipo'] == 'ingreso':
                 saldo += mov['cantidad']
+                saldo_valor += mov['costo_total']
             elif mov['tipo'] == 'salida':
                 saldo += mov['cantidad']  # ya es negativo
+                saldo_valor -= mov['costo_total']
             elif mov['tipo'] == 'ajuste_entrada':
                 saldo += abs(mov['cantidad'])
             elif mov['tipo'] == 'ajuste_salida':
                 saldo -= abs(mov['cantidad'])
             mov['saldo'] = saldo
-        
+            mov['saldo_valorizado'] = round(saldo_valor, 2)
+
+        # Valorizado actual (capas FIFO vivas)
+        valorizado = await conn.fetchval(
+            """SELECT COALESCE(SUM(cantidad_disponible * costo_unitario), 0)
+               FROM prod_inventario_ingresos
+               WHERE item_id = $1 AND cantidad_disponible > 0""",
+            item_id
+        )
+
         return {
             "item": row_to_dict(item),
             "movimientos": movimientos,
-            "saldo_actual": float(item['stock_actual'])
+            "saldo_actual": float(item['stock_actual']),
+            "valorizado": round(float(valorizado), 2),
         }
 
 # ==================== REPORTE ITEM - ESTADOS (PIVOT) ====================
@@ -916,193 +930,448 @@ async def restore_backup(file: UploadFile = File(...), current_user: dict = Depe
 
 # ==================== ENDPOINTS EXPORTAR EXCEL ====================
 
-@router.get("/export/{tabla}")
-async def export_to_csv(tabla: str, current_user: dict = Depends(get_current_user)):
-    """Exporta una tabla a formato CSV (compatible con Excel)"""
-    
-    # Mapeo de tabla a query
-    EXPORT_CONFIG = {
-        "registros": {
-            "query": """
-                SELECT r.n_corte, r.fecha_creacion, r.estado, r.urgente,
-                       m.nombre as modelo, ma.nombre as marca, t.nombre as tipo,
-                       en.nombre as entalle, te.nombre as tela,
-                       h.nombre as hilo, he.nombre as hilo_especifico,
-                       r.curva
-                FROM prod_registros r
-                LEFT JOIN prod_modelos m ON r.modelo_id = m.id
-                LEFT JOIN prod_marcas ma ON m.marca_id = ma.id
-                LEFT JOIN prod_tipos t ON m.tipo_id = t.id
-                LEFT JOIN prod_entalles en ON m.entalle_id = en.id
-                LEFT JOIN prod_telas te ON m.tela_id = te.id
-                LEFT JOIN prod_hilos h ON m.hilo_id = h.id
-                LEFT JOIN prod_hilos_especificos he ON m.hilo_especifico_id = he.id
-                ORDER BY r.fecha_creacion DESC
-            """,
-            "headers": ["N° Corte", "Fecha", "Estado", "Urgente", "Modelo", "Marca", "Tipo", "Entalle", "Tela", "Hilo", "Hilo Específico", "Curva"]
-        },
-        "inventario": {
-            "query": """
-                SELECT codigo, nombre, descripcion, unidad_medida, stock_actual, stock_minimo,
-                       control_por_rollos
-                FROM prod_inventario ORDER BY codigo
-            """,
-            "headers": ["Código", "Nombre", "Descripción", "Unidad", "Stock Actual", "Stock Mínimo", "Control Rollos"]
-        },
-        "movimientos": {
-            "query": """
-                SELECT i.codigo, i.nombre, 
-                       COALESCE(ing.fecha, sal.fecha, aj.fecha) as fecha,
-                       CASE 
-                           WHEN ing.id IS NOT NULL THEN 'Ingreso'
-                           WHEN sal.id IS NOT NULL THEN 'Salida'
-                           WHEN aj.id IS NOT NULL THEN 'Ajuste'
-                       END as tipo,
-                       COALESCE(ing.cantidad, -sal.cantidad, aj.cantidad) as cantidad,
-                       COALESCE(ing.costo_unitario, 0) as costo
-                FROM prod_inventario i
-                LEFT JOIN prod_inventario_ingresos ing ON i.id = ing.inventario_id
-                LEFT JOIN prod_inventario_salidas sal ON i.id = sal.inventario_id
-                LEFT JOIN prod_inventario_ajustes aj ON i.id = aj.inventario_id
-                WHERE ing.id IS NOT NULL OR sal.id IS NOT NULL OR aj.id IS NOT NULL
-                ORDER BY COALESCE(ing.fecha, sal.fecha, aj.fecha) DESC
-            """,
-            "headers": ["Código", "Item", "Fecha", "Tipo", "Cantidad", "Costo"]
-        },
-        "productividad": {
-            "query": """
-                SELECT p.nombre as persona, s.nombre as servicio, 
-                       mp.cantidad_enviada as cantidad, mp.costo_calculado as monto,
-                       mp.fecha_inicio as fecha, r.n_corte, mp.observaciones
-                FROM prod_movimientos_produccion mp
-                LEFT JOIN prod_personas_produccion p ON mp.persona_id = p.id
-                LEFT JOIN prod_servicios_produccion s ON mp.servicio_id = s.id
-                LEFT JOIN prod_registros r ON mp.registro_id = r.id
-                ORDER BY mp.created_at DESC
-            """,
-            "headers": ["Persona", "Servicio", "Cantidad", "Monto", "Fecha", "N° Corte", "Observaciones"]
-        },
-        "personas": {
-            "query": "SELECT nombre, telefono, activo FROM prod_personas_produccion ORDER BY nombre",
-            "headers": ["Nombre", "Teléfono", "Activo"]
-        },
-        "modelos": {
-            "query": """
-                SELECT m.nombre, ma.nombre as marca, t.nombre as tipo,
-                       e.nombre as entalle, te.nombre as tela
-                FROM prod_modelos m
-                LEFT JOIN prod_marcas ma ON m.marca_id = ma.id
-                LEFT JOIN prod_tipos t ON m.tipo_id = t.id
-                LEFT JOIN prod_entalles e ON m.entalle_id = e.id
-                LEFT JOIN prod_telas te ON m.tela_id = te.id
-                ORDER BY m.nombre
-            """,
-            "headers": ["Nombre", "Marca", "Tipo", "Entalle", "Tela"]
-        },
-        "mermas": {
-            "query": """
-                SELECT r.n_corte, sp.nombre as servicio, pp.nombre as persona,
-                       m.cantidad, m.tipo, m.motivo, m.fecha
-                FROM prod_mermas m
-                LEFT JOIN prod_registros r ON m.registro_id = r.id
-                LEFT JOIN prod_servicios_produccion sp ON m.servicio_id = sp.id
-                LEFT JOIN prod_personas_produccion pp ON m.persona_id = pp.id
-                ORDER BY m.fecha DESC NULLS LAST
-            """,
-            "headers": ["N° Corte", "Servicio", "Persona", "Cantidad", "Tipo", "Motivo", "Fecha"]
-        },
-        "fallados": {
-            "query": """
-                SELECT r.n_corte, sp.nombre as servicio_deteccion,
-                       f.cantidad_detectada, f.cantidad_reparable, f.cantidad_no_reparable,
-                       f.motivo, f.estado, f.destino_no_reparable, f.fecha_deteccion
-                FROM prod_fallados f
-                LEFT JOIN prod_registros r ON f.registro_id = r.id
-                LEFT JOIN prod_servicios_produccion sp ON f.servicio_detectado_id = sp.id
-                ORDER BY f.created_at DESC
-            """,
-            "headers": ["N° Corte", "Servicio Deteccion", "Detectadas", "Reparables", "No Reparables", "Motivo", "Estado", "Destino", "Fecha"]
-        },
-        "arreglos": {
-            "query": """
-                SELECT r.n_corte, sp.nombre as servicio, pp.nombre as persona,
-                       a.cantidad, a.cantidad_recuperada, a.cantidad_liquidacion, a.cantidad_merma,
-                       a.estado, a.fecha_envio, a.fecha_limite
-                FROM prod_registro_arreglos a
-                LEFT JOIN prod_registros r ON a.registro_id = r.id
-                LEFT JOIN prod_servicios_produccion sp ON a.servicio_id = sp.id
-                LEFT JOIN prod_personas_produccion pp ON a.persona_id = pp.id
-                ORDER BY a.created_at DESC
-            """,
-            "headers": ["N Corte", "Servicio", "Persona", "Cantidad", "Recuperado", "Liquidacion", "Merma", "Estado", "F. Envio", "F. Limite"]
-        }
+EXPORT_TITLES = {
+    "registros": "Registros de Producción",
+    "inventario": "Inventario",
+    "movimientos": "Movimientos de Inventario",
+    "productividad": "Productividad",
+    "personas": "Personas de Producción",
+    "modelos": "Modelos",
+    "mermas": "Mermas",
+    "fallados": "Fallados",
+    "arreglos": "Arreglos",
+}
+
+EXPORT_CONFIG = {
+    "registros": {
+        "query": """
+            SELECT r.n_corte, r.fecha_creacion, r.estado, r.urgente,
+                   m.nombre as modelo, ma.nombre as marca, t.nombre as tipo,
+                   en.nombre as entalle, te.nombre as tela,
+                   h.nombre as hilo, he.nombre as hilo_especifico,
+                   r.curva
+            FROM prod_registros r
+            LEFT JOIN prod_modelos m ON r.modelo_id = m.id
+            LEFT JOIN prod_marcas ma ON m.marca_id = ma.id
+            LEFT JOIN prod_tipos t ON m.tipo_id = t.id
+            LEFT JOIN prod_entalles en ON m.entalle_id = en.id
+            LEFT JOIN prod_telas te ON m.tela_id = te.id
+            LEFT JOIN prod_hilos h ON m.hilo_id = h.id
+            LEFT JOIN prod_hilos_especificos he ON m.hilo_especifico_id = he.id
+            ORDER BY r.fecha_creacion DESC
+        """,
+        "headers": ["N° Corte", "Fecha", "Estado", "Urgente", "Modelo", "Marca", "Tipo", "Entalle", "Tela", "Hilo", "Hilo Específico", "Curva"]
+    },
+    "inventario": {
+        "query": """
+            SELECT codigo, nombre, descripcion, unidad_medida, stock_actual, stock_minimo,
+                   control_por_rollos
+            FROM prod_inventario ORDER BY codigo
+        """,
+        "headers": ["Código", "Nombre", "Descripción", "Unidad", "Stock Actual", "Stock Mínimo", "Control Rollos"]
+    },
+    "movimientos": {
+        "query": """
+            SELECT i.codigo, i.nombre,
+                   COALESCE(ing.fecha, sal.fecha, aj.fecha) as fecha,
+                   CASE
+                       WHEN ing.id IS NOT NULL THEN 'Ingreso'
+                       WHEN sal.id IS NOT NULL THEN 'Salida'
+                       WHEN aj.id IS NOT NULL THEN 'Ajuste'
+                   END as tipo,
+                   COALESCE(ing.cantidad, -sal.cantidad, aj.cantidad) as cantidad,
+                   COALESCE(ing.costo_unitario, 0) as costo
+            FROM prod_inventario i
+            LEFT JOIN prod_inventario_ingresos ing ON i.id = ing.inventario_id
+            LEFT JOIN prod_inventario_salidas sal ON i.id = sal.inventario_id
+            LEFT JOIN prod_inventario_ajustes aj ON i.id = aj.inventario_id
+            WHERE ing.id IS NOT NULL OR sal.id IS NOT NULL OR aj.id IS NOT NULL
+            ORDER BY COALESCE(ing.fecha, sal.fecha, aj.fecha) DESC
+        """,
+        "headers": ["Código", "Item", "Fecha", "Tipo", "Cantidad", "Costo"]
+    },
+    "productividad": {
+        "query": """
+            SELECT p.nombre as persona, s.nombre as servicio,
+                   mp.cantidad_enviada as cantidad, mp.costo_calculado as monto,
+                   mp.fecha_inicio as fecha, r.n_corte, mp.observaciones
+            FROM prod_movimientos_produccion mp
+            LEFT JOIN prod_personas_produccion p ON mp.persona_id = p.id
+            LEFT JOIN prod_servicios_produccion s ON mp.servicio_id = s.id
+            LEFT JOIN prod_registros r ON mp.registro_id = r.id
+            ORDER BY mp.created_at DESC
+        """,
+        "headers": ["Persona", "Servicio", "Cantidad", "Monto", "Fecha", "N° Corte", "Observaciones"]
+    },
+    "personas": {
+        "query": "SELECT nombre, telefono, activo FROM prod_personas_produccion ORDER BY nombre",
+        "headers": ["Nombre", "Teléfono", "Activo"]
+    },
+    "modelos": {
+        "query": """
+            SELECT m.nombre, ma.nombre as marca, t.nombre as tipo,
+                   e.nombre as entalle, te.nombre as tela
+            FROM prod_modelos m
+            LEFT JOIN prod_marcas ma ON m.marca_id = ma.id
+            LEFT JOIN prod_tipos t ON m.tipo_id = t.id
+            LEFT JOIN prod_entalles e ON m.entalle_id = e.id
+            LEFT JOIN prod_telas te ON m.tela_id = te.id
+            ORDER BY m.nombre
+        """,
+        "headers": ["Nombre", "Marca", "Tipo", "Entalle", "Tela"]
+    },
+    "mermas": {
+        "query": """
+            SELECT r.n_corte, sp.nombre as servicio, pp.nombre as persona,
+                   m.cantidad, m.tipo, m.motivo, m.fecha
+            FROM prod_mermas m
+            LEFT JOIN prod_registros r ON m.registro_id = r.id
+            LEFT JOIN prod_servicios_produccion sp ON m.servicio_id = sp.id
+            LEFT JOIN prod_personas_produccion pp ON m.persona_id = pp.id
+            ORDER BY m.fecha DESC NULLS LAST
+        """,
+        "headers": ["N° Corte", "Servicio", "Persona", "Cantidad", "Tipo", "Motivo", "Fecha"]
+    },
+    "fallados": {
+        "query": """
+            SELECT r.n_corte, sp.nombre as servicio_deteccion,
+                   f.cantidad_detectada, f.cantidad_reparable, f.cantidad_no_reparable,
+                   f.motivo, f.estado, f.destino_no_reparable, f.fecha_deteccion
+            FROM prod_fallados f
+            LEFT JOIN prod_registros r ON f.registro_id = r.id
+            LEFT JOIN prod_servicios_produccion sp ON f.servicio_detectado_id = sp.id
+            ORDER BY f.created_at DESC
+        """,
+        "headers": ["N° Corte", "Servicio Detección", "Detectadas", "Reparables", "No Reparables", "Motivo", "Estado", "Destino", "Fecha"]
+    },
+    "arreglos": {
+        "query": """
+            SELECT r.n_corte, sp.nombre as servicio, pp.nombre as persona,
+                   a.cantidad, a.cantidad_recuperada, a.cantidad_liquidacion, a.cantidad_merma,
+                   a.estado, a.fecha_envio, a.fecha_limite
+            FROM prod_registro_arreglos a
+            LEFT JOIN prod_registros r ON a.registro_id = r.id
+            LEFT JOIN prod_servicios_produccion sp ON a.servicio_id = sp.id
+            LEFT JOIN prod_personas_produccion pp ON a.persona_id = pp.id
+            ORDER BY a.created_at DESC
+        """,
+        "headers": ["N° Corte", "Servicio", "Persona", "Cantidad", "Recuperado", "Liquidación", "Merma", "Estado", "F. Envío", "F. Límite"]
     }
-    
+}
+
+def _format_cell(val):
+    """Formatea un valor para exportación."""
+    if val is None:
+        return ""
+    if isinstance(val, bool):
+        return "Sí" if val else "No"
+    if isinstance(val, (datetime, date)):
+        return val.strftime("%d/%m/%Y")
+    return str(val)
+
+def _get_export_data(rows, headers):
+    """Convierte filas de DB en lista de dicts formateados."""
+    data = []
+    for row in rows:
+        data.append([_format_cell(v) for v in row.values()])
+    return data
+
+
+def _build_filtered_query(tabla: str, params: dict):
+    """Construye query con filtros dinámicos para exportación."""
+    config = EXPORT_CONFIG[tabla]
+    query = config["query"]
+
+    if tabla == "registros":
+        conditions = []
+        args = []
+        arg_idx = 1
+
+        if params.get("marca_id"):
+            ids = [int(x) for x in params["marca_id"].split(",") if x.strip()]
+            if ids:
+                placeholders = ", ".join(f"${arg_idx + i}" for i in range(len(ids)))
+                conditions.append(f"ma.id IN ({placeholders})")
+                args.extend(ids)
+                arg_idx += len(ids)
+
+        if params.get("tipo_id"):
+            ids = [int(x) for x in params["tipo_id"].split(",") if x.strip()]
+            if ids:
+                placeholders = ", ".join(f"${arg_idx + i}" for i in range(len(ids)))
+                conditions.append(f"t.id IN ({placeholders})")
+                args.extend(ids)
+                arg_idx += len(ids)
+
+        if params.get("entalle_id"):
+            ids = [int(x) for x in params["entalle_id"].split(",") if x.strip()]
+            if ids:
+                placeholders = ", ".join(f"${arg_idx + i}" for i in range(len(ids)))
+                conditions.append(f"en.id IN ({placeholders})")
+                args.extend(ids)
+                arg_idx += len(ids)
+
+        if params.get("tela_id"):
+            ids = [int(x) for x in params["tela_id"].split(",") if x.strip()]
+            if ids:
+                placeholders = ", ".join(f"${arg_idx + i}" for i in range(len(ids)))
+                conditions.append(f"te.id IN ({placeholders})")
+                args.extend(ids)
+                arg_idx += len(ids)
+
+        if params.get("estados"):
+            estados = [x.strip() for x in params["estados"].split(",") if x.strip()]
+            if estados:
+                placeholders = ", ".join(f"${arg_idx + i}" for i in range(len(estados)))
+                conditions.append(f"r.estado IN ({placeholders})")
+                args.extend(estados)
+                arg_idx += len(estados)
+
+        if params.get("excluir_estados"):
+            estados = [x.strip() for x in params["excluir_estados"].split(",") if x.strip()]
+            if estados:
+                placeholders = ", ".join(f"${arg_idx + i}" for i in range(len(estados)))
+                conditions.append(f"r.estado NOT IN ({placeholders})")
+                args.extend(estados)
+                arg_idx += len(estados)
+
+        if params.get("search"):
+            conditions.append(f"(r.n_corte ILIKE ${arg_idx} OR m.nombre ILIKE ${arg_idx})")
+            args.append(f"%{params['search']}%")
+            arg_idx += 1
+
+        if conditions:
+            # Insert WHERE before ORDER BY
+            order_idx = query.upper().rfind("ORDER BY")
+            if order_idx > 0:
+                query = query[:order_idx] + " WHERE " + " AND ".join(conditions) + " " + query[order_idx:]
+            else:
+                query += " WHERE " + " AND ".join(conditions)
+
+        return query, args
+
+    return query, []
+
+
+async def _fetch_export_rows(tabla: str, params: dict):
+    """Fetch rows con filtros aplicados."""
+    query, args = _build_filtered_query(tabla, params)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetch(query, *args)
+
+
+@router.get("/export/{tabla}")
+async def export_tabla(
+    tabla: str,
+    request: Request,
+    format: str = "xlsx",
+    current_user: dict = Depends(get_current_user),
+):
+    """Exporta una tabla a formato Excel (.xlsx) o PDF con filtros."""
     if tabla not in EXPORT_CONFIG:
         raise HTTPException(status_code=400, detail=f"Tabla '{tabla}' no exportable")
-    
+
+    # Extraer filtros del query string (soporta marca_id/marca_ids, etc.)
+    filter_params = {}
+    filter_keys = {
+        "marca_id": ["marca_id", "marca_ids"],
+        "tipo_id": ["tipo_id", "tipo_ids"],
+        "entalle_id": ["entalle_id", "entalle_ids"],
+        "tela_id": ["tela_id", "tela_ids"],
+        "estados": ["estados"],
+        "excluir_estados": ["excluir_estados"],
+        "search": ["search"],
+    }
+    for canonical, aliases in filter_keys.items():
+        for alias in aliases:
+            val = request.query_params.get(alias)
+            if val:
+                filter_params[canonical] = val
+                break
+
+    if format == "pdf":
+        return await _export_to_pdf(tabla, filter_params)
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
     config = EXPORT_CONFIG[tabla]
-    pool = await get_pool()
-    
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(config["query"])
-    
-    # Crear CSV
-    output = io.StringIO()
-    # BOM para Excel
-    output.write('\ufeff')
-    # Headers
-    output.write(','.join(config["headers"]) + '\n')
-    
-    for row in rows:
-        values = []
-        for val in row.values():
-            if val is None:
-                values.append('')
-            elif isinstance(val, (datetime, date)):
-                values.append(val.strftime('%d/%m/%Y'))
-            elif isinstance(val, bool):
-                values.append('Sí' if val else 'No')
-            else:
-                # Escapar comas y comillas
-                str_val = str(val).replace('"', '""')
-                if ',' in str_val or '"' in str_val or '\n' in str_val:
-                    str_val = f'"{str_val}"'
-                values.append(str_val)
-        output.write(','.join(values) + '\n')
-    
+    titulo = EXPORT_TITLES.get(tabla, tabla.title())
+
+    rows = await _fetch_export_rows(tabla, filter_params)
+
+    data = _get_export_data(rows, config["headers"])
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = titulo[:31]
+
+    # Estilos
+    header_font = Font(name="Calibri", bold=True, size=11, color="FFFFFF")
+    header_fill = PatternFill(start_color="2563EB", end_color="2563EB", fill_type="solid")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    title_font = Font(name="Calibri", bold=True, size=14, color="1E3A5F")
+    subtitle_font = Font(name="Calibri", size=10, color="6B7280")
+    cell_font = Font(name="Calibri", size=10)
+    cell_border = Border(
+        bottom=Side(style="thin", color="E5E7EB"),
+    )
+    alt_fill = PatternFill(start_color="F9FAFB", end_color="F9FAFB", fill_type="solid")
+
+    # Título
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(config["headers"]))
+    title_cell = ws.cell(row=1, column=1, value=titulo)
+    title_cell.font = title_font
+    title_cell.alignment = Alignment(horizontal="left", vertical="center")
+    ws.row_dimensions[1].height = 30
+
+    # Subtítulo con fecha
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(config["headers"]))
+    sub_cell = ws.cell(row=2, column=1, value=f"Exportado el {datetime.now().strftime('%d/%m/%Y %H:%M')}  —  {len(data)} registros")
+    sub_cell.font = subtitle_font
+    ws.row_dimensions[2].height = 20
+
+    # Headers (fila 4)
+    header_row = 4
+    for col_idx, header in enumerate(config["headers"], 1):
+        cell = ws.cell(row=header_row, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = Border(
+            bottom=Side(style="medium", color="1E40AF"),
+        )
+    ws.row_dimensions[header_row].height = 28
+
+    # Datos
+    for row_idx, row_data in enumerate(data, header_row + 1):
+        for col_idx, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.font = cell_font
+            cell.border = cell_border
+            cell.alignment = Alignment(vertical="center")
+            # Filas alternas
+            if (row_idx - header_row) % 2 == 0:
+                cell.fill = alt_fill
+
+    # Auto-ajustar anchos
+    for col_idx, header in enumerate(config["headers"], 1):
+        max_len = len(header)
+        for row_data in data[:100]:  # Solo primeras 100 filas para performance
+            if col_idx - 1 < len(row_data):
+                max_len = max(max_len, len(str(row_data[col_idx - 1])))
+        col_letter = get_column_letter(col_idx)
+        ws.column_dimensions[col_letter].width = min(max_len + 4, 40)
+
+    # Congelar headers
+    ws.freeze_panes = f"A{header_row + 1}"
+
+    # Auto-filtro
+    last_col_letter = get_column_letter(len(config["headers"]))
+    ws.auto_filter.ref = f"A{header_row}:{last_col_letter}{header_row + len(data)}"
+
+    output = io.BytesIO()
+    wb.save(output)
     output.seek(0)
-    filename = f"{tabla}_{datetime.now().strftime('%Y%m%d')}.csv"
-    
+
+    filename = f"{tabla}_{datetime.now().strftime('%Y%m%d')}.xlsx"
     return StreamingResponse(
-        io.BytesIO(output.getvalue().encode('utf-8-sig')),
-        media_type="text/csv",
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
-# ==================== NUEVOS ROUTERS (Valorización/Costos/Cierre) ====================
-from routes.costos import router as costos_router
-from routes.cierre import router as cierre_legacy_router
-# reportes_valorizacion deprecado - lógica unificada en routes/reportes.py
 
-# ==================== ROUTERS REFACTORIZADOS (v2) ====================
-from routes.inventario import router as inventario_router
-from routes.rollos import router as rollos_router
-from routes.ordenes import router as ordenes_router
-from routes.consumo import router as consumo_router
-from routes.servicios import router as servicios_router
-from routes.cierre import router as cierre_router
-from routes.reportes import router as reportes_router
-from routes.integracion_finanzas import router as integracion_finanzas_router
-from routes.control_produccion import router as control_produccion_router
-from routes.reportes_produccion import router as reportes_produccion_router
-from routes.conversacion import router as conversacion_router
-from routes.catalogos import router as catalogos_router
-from routes.auth import router as auth_router
-from routes.inventario_main import router as inventario_main_router
+async def _export_to_pdf(tabla: str, filter_params: dict = None):
+    """Exporta una tabla a PDF con formato profesional."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Table as RLTable, TableStyle, Paragraph, Spacer
 
+    if tabla not in EXPORT_CONFIG:
+        raise HTTPException(status_code=400, detail=f"Tabla '{tabla}' no exportable")
 
-# ==================== DIVISIÓN DE LOTE ====================
+    config = EXPORT_CONFIG[tabla]
+    titulo = EXPORT_TITLES.get(tabla, tabla.title())
+
+    rows = await _fetch_export_rows(tabla, filter_params or {})
+
+    data = _get_export_data(rows, config["headers"])
+
+    output = io.BytesIO()
+    page_size = landscape(A4) if len(config["headers"]) > 7 else A4
+    doc = SimpleDocTemplate(output, pagesize=page_size, topMargin=20*mm, bottomMargin=15*mm, leftMargin=12*mm, rightMargin=12*mm)
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("ExportTitle", parent=styles["Heading1"], fontSize=16, textColor=colors.HexColor("#1E3A5F"), spaceAfter=4)
+    subtitle_style = ParagraphStyle("ExportSubtitle", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#6B7280"), spaceAfter=12)
+    cell_style = ParagraphStyle("CellStyle", parent=styles["Normal"], fontSize=7, leading=9)
+
+    elements = []
+    elements.append(Paragraph(titulo, title_style))
+    elements.append(Paragraph(f"Exportado el {datetime.now().strftime('%d/%m/%Y %H:%M')}  —  {len(data)} registros", subtitle_style))
+
+    # Preparar datos de tabla con word-wrap via Paragraph
+    table_data = [config["headers"]]
+    for row_data in data:
+        table_data.append([Paragraph(str(v), cell_style) if len(str(v)) > 15 else str(v) for v in row_data])
+
+    # Calcular anchos proporcionales
+    avail_width = page_size[0] - 24*mm
+    n_cols = len(config["headers"])
+    col_widths = [avail_width / n_cols] * n_cols
+
+    t = RLTable(table_data, colWidths=col_widths, repeatRows=1)
+
+    header_bg = colors.HexColor("#2563EB")
+    alt_bg = colors.HexColor("#F9FAFB")
+    border_color = colors.HexColor("#E5E7EB")
+
+    style_cmds = [
+        # Header
+        ("BACKGROUND", (0, 0), (-1, 0), header_bg),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 8),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, 0), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+        # Body
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 1), (-1, -1), 7),
+        ("TOPPADDING", (0, 1), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 1), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        # Grid
+        ("LINEBELOW", (0, 0), (-1, 0), 1, colors.HexColor("#1E40AF")),
+        ("LINEBELOW", (0, 1), (-1, -1), 0.5, border_color),
+    ]
+
+    # Filas alternas
+    for i in range(1, len(table_data)):
+        if i % 2 == 0:
+            style_cmds.append(("BACKGROUND", (0, i), (-1, i), alt_bg))
+
+    t.setStyle(TableStyle(style_cmds))
+    elements.append(t)
+
+    doc.build(elements)
+    output.seek(0)
+
+    filename = f"{tabla}_{datetime.now().strftime('%Y%m%d')}.pdf"
+    return StreamingResponse(
+        output,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+# ==================== REPORTE PARALIZADOS / DIVISIÓN DE LOTE ====================
 
 
 

@@ -44,7 +44,7 @@ export const RegistroDatosCard = ({
               <div className="ml-6 flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Registro padre:</span>
                 <Button variant="link" size="sm" className="h-5 px-0 text-xs text-blue-600"
-                  onClick={() => navigate(`/registros/editar/${divisionInfo.padre.id}`)} data-testid="link-padre">
+                  onClick={() => navigate(`/registros/editar/${divisionInfo.padre.id}`, { state: { fromRegistro: formData.n_corte } })} data-testid="link-padre">
                   Corte {divisionInfo.padre.n_corte} ({divisionInfo.padre.estado})
                 </Button>
               </div>
@@ -53,7 +53,7 @@ export const RegistroDatosCard = ({
               const totalHijo = (h.tallas || []).reduce((s, t) => s + (t.cantidad || 0), 0);
               return (
                 <div key={h.id} className="ml-6 flex items-center gap-2">
-                  <Button variant="link" size="sm" className="h-5 px-0 text-xs text-blue-600" onClick={() => navigate(`/registros/editar/${h.id}`)}>
+                  <Button variant="link" size="sm" className="h-5 px-0 text-xs text-blue-600" onClick={() => navigate(`/registros/editar/${h.id}`, { state: { fromRegistro: formData.n_corte } })}>
                     Corte {h.n_corte}
                   </Button>
                   <Badge variant="outline" className="text-[10px]">{h.estado}</Badge>
@@ -68,7 +68,7 @@ export const RegistroDatosCard = ({
             {divisionInfo.hermanos.length > 0 && (
               <div className="ml-6 text-xs text-muted-foreground">
                 Hermanos: {divisionInfo.hermanos.map(h => (
-                  <Button key={h.id} variant="link" size="sm" className="h-5 px-1 text-xs text-blue-600" onClick={() => navigate(`/registros/editar/${h.id}`)}>
+                  <Button key={h.id} variant="link" size="sm" className="h-5 px-1 text-xs text-blue-600" onClick={() => navigate(`/registros/editar/${h.id}`, { state: { fromRegistro: formData.n_corte } })}>
                     {h.n_corte}
                   </Button>
                 ))}
@@ -359,21 +359,19 @@ export const RegistroDatosCard = ({
           </Label>
         </div>
 
-        <div className="grid grid-cols-3 gap-4 pt-2">
+        <div className="grid grid-cols-2 gap-4 pt-2">
+          <div className="space-y-2">
+            <Label htmlFor="fecha_inicio_real">Fecha Inicio Real</Label>
+            <Input id="fecha_inicio_real" type="date" value={formData.fecha_inicio_real}
+              onChange={(e) => setFormData({ ...formData, fecha_inicio_real: e.target.value })} data-testid="input-fecha-inicio-real" />
+            <p className="text-xs text-muted-foreground">
+              Fecha fisica de inicio del lote. Afecta el calculo del CIF.
+            </p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="fecha_entrega_final">Fecha Entrega Final</Label>
             <Input id="fecha_entrega_final" type="date" value={formData.fecha_entrega_final}
               onChange={(e) => setFormData({ ...formData, fecha_entrega_final: e.target.value })} data-testid="input-fecha-entrega-final" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="id_odoo">ID Odoo</Label>
-            <Input id="id_odoo" value={formData.id_odoo} onChange={(e) => setFormData({ ...formData, id_odoo: e.target.value })}
-              placeholder="ID del sistema Odoo" data-testid="input-id-odoo" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="lq_odoo_id">ID Odoo Liquidación</Label>
-            <Input id="lq_odoo_id" value={formData.lq_odoo_id || ''} onChange={(e) => setFormData({ ...formData, lq_odoo_id: e.target.value })}
-              placeholder="Ej: EDUARD-LQ" data-testid="input-lq-odoo-id" />
           </div>
         </div>
       </CardContent>

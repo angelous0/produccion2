@@ -13,8 +13,8 @@ router = APIRouter(prefix="/api", tags=["servicios"])
 import sys
 sys.path.insert(0, '/app/backend')
 from db import get_pool
-from auth import get_current_user
-from helpers import row_to_dict
+from auth_utils import get_current_user
+from helpers import row_to_dict, validar_registro_activo
 
 
 # ==================== PYDANTIC MODELS ====================
@@ -168,11 +168,7 @@ async def create_servicio_orden(
             orden = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", data.orden_id)
             if not orden:
                 raise HTTPException(status_code=404, detail="Orden no encontrada")
-            if orden['estado_op'] in ('CERRADA', 'ANULADA'):
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"No se puede agregar servicio a orden {orden['estado_op']}"
-                )
+            validar_registro_activo(orden, campo_estado='estado_op', contexto='agregar servicio')
             
             # Calculate costo_total
             cantidad_merma = max(0, data.cantidad_enviada - data.cantidad_recibida)
@@ -242,11 +238,8 @@ async def update_servicio_orden(
                 raise HTTPException(status_code=404, detail="Servicio no encontrado")
             
             orden = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", servicio['orden_id'])
-            if orden and orden['estado_op'] in ('CERRADA', 'ANULADA'):
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"No se puede modificar servicio de orden {orden['estado_op']}"
-                )
+            if orden:
+                validar_registro_activo(orden, campo_estado='estado_op', contexto='modificar servicio')
             
             # Build update
             updates = []
@@ -328,11 +321,8 @@ async def delete_servicio_orden(
                 raise HTTPException(status_code=404, detail="Servicio no encontrado")
             
             orden = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", servicio['orden_id'])
-            if orden and orden['estado_op'] in ('CERRADA', 'ANULADA'):
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"No se puede eliminar servicio de orden {orden['estado_op']}"
-                )
+            if orden:
+                validar_registro_activo(orden, campo_estado='estado_op', contexto='eliminar servicio')
             
             # Delete WIP
             await conn.execute("""

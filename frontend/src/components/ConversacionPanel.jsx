@@ -93,7 +93,7 @@ export const ConversacionTrigger = ({ registroId, onClick }) => {
 
 
 // ─── Panel lateral derecho ───
-export const ConversacionPanel = ({ registroId, usuario, open, onClose }) => {
+export const ConversacionPanel = ({ registroId, usuario, open, onClose, onMensajeChange }) => {
   const [mensajes, setMensajes] = useState([]);
   const [nuevoMensaje, setNuevoMensaje] = useState('');
   const [nuevoEstado, setNuevoEstado] = useState('normal');
@@ -126,6 +126,7 @@ export const ConversacionPanel = ({ registroId, usuario, open, onClose }) => {
       await fetchMensajes();
       if (padreId) { setRespondiendo(null); setRespuestaTexto(''); }
       else { setNuevoMensaje(''); setNuevoEstado('normal'); }
+      onMensajeChange?.();
       // Scroll al final
       setTimeout(() => { listRef.current?.scrollTo(0, listRef.current.scrollHeight); }, 100);
     } catch (err) {
@@ -134,7 +135,7 @@ export const ConversacionPanel = ({ registroId, usuario, open, onClose }) => {
   };
 
   const actualizarMensaje = async (msgId, data) => {
-    try { await axios.patch(`${API}/conversacion/${msgId}`, data); await fetchMensajes(); }
+    try { await axios.patch(`${API}/conversacion/${msgId}`, data); await fetchMensajes(); onMensajeChange?.(); }
     catch { toast.error('Error al actualizar'); }
   };
 

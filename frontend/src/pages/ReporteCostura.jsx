@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Card, CardContent } from '../components/ui/card';
@@ -12,9 +12,10 @@ import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
+import { formatDate } from '../lib/dateUtils';
 import {
   ChevronDown, ChevronRight, Users, Package, AlertTriangle, Clock, FileWarning,
-  ExternalLink, Plus, Pencil, Filter, X, RefreshCw, History, Eye, Check, Download
+  ExternalLink, Plus, Pencil, Filter, X, RefreshCw, History, Eye, Check, Download, Trash2
 } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -41,6 +42,7 @@ const AvanceEditor = ({ movimientoId, currentValue, onSaved, nCorte }) => {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(currentValue ?? 0);
   const [saving, setSaving] = useState(false);
+  const [displayValue, setDisplayValue] = useState(currentValue);
   const [historial, setHistorial] = useState(null);
   const [showHist, setShowHist] = useState(false);
 
@@ -57,11 +59,11 @@ const AvanceEditor = ({ movimientoId, currentValue, onSaved, nCorte }) => {
       <>
         <div className="flex items-center gap-0.5 justify-center">
           <button
-            onClick={() => { setVal(currentValue ?? 0); setEditing(true); }}
+            onClick={() => { setVal(displayValue ?? 0); setEditing(true); }}
             className="flex items-center gap-1 hover:bg-muted rounded px-1 py-0.5 transition-colors group"
             title="Actualizar avance"
           >
-            <span className="font-mono text-sm font-semibold">{currentValue ?? '—'}%</span>
+            <span className="font-mono text-sm font-semibold">{displayValue ?? '—'}%</span>
             <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
           </button>
           <button
@@ -85,15 +87,34 @@ const AvanceEditor = ({ movimientoId, currentValue, onSaved, nCorte }) => {
                   const prev = i > 0 ? historial[i - 1].avance_porcentaje : 0;
                   const diff = h.avance_porcentaje - prev;
                   return (
-                    <div key={i} className="flex items-center justify-between py-2 px-1 border-b border-border/50 last:border-0">
+                    <div key={i} className="flex items-center justify-between py-2 px-1 border-b border-border/50 last:border-0 group">
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-sm w-10 text-right">{h.avance_porcentaje}%</span>
                         {diff > 0 && <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300">+{diff}%</Badge>}
                         {diff < 0 && <Badge variant="outline" className="text-[10px] text-red-600 border-red-300">{diff}%</Badge>}
                       </div>
-                      <div className="text-right">
-                        <p className="text-xs">{h.fecha ? new Date(h.fecha).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '-'}</p>
-                        <p className="text-[10px] text-muted-foreground">{h.usuario} · {h.fecha ? new Date(h.fecha).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : ''}</p>
+                      <div className="flex items-center gap-2">
+                        <div className="text-right">
+                          <p className="text-xs">{h.fecha ? new Date(h.fecha).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '-'}</p>
+                          <p className="text-[10px] text-muted-foreground">{h.usuario} · {h.fecha ? new Date(h.fecha).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : ''}</p>
+                        </div>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (!window.confirm(`¿Eliminar este registro de avance (${h.avance_porcentaje}%)?`)) return;
+                            try {
+                              const resp = await axios.delete(`${API}/api/reportes-produccion/costura/avance-historial/${h.id}`);
+                              toast.success('Registro eliminado');
+                              setDisplayValue(resp.data.nuevo_avance);
+                              onSaved(movimientoId, resp.data.nuevo_avance);
+                              fetchHistorial();
+                            } catch { toast.error('Error al eliminar'); }
+                          }}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity h-5 w-5 flex items-center justify-center rounded hover:bg-red-100 text-red-500"
+                          title="Eliminar este registro"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
                       </div>
                     </div>
                   );
@@ -109,9 +130,11 @@ const AvanceEditor = ({ movimientoId, currentValue, onSaved, nCorte }) => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await axios.put(`${API}/api/reportes-produccion/costura/avance/${movimientoId}`, { avance_porcentaje: parseInt(val) || 0 });
+      const newVal = parseInt(val) || 0;
+      await axios.put(`${API}/api/reportes-produccion/costura/avance/${movimientoId}`, { avance_porcentaje: newVal });
       toast.success(`Avance actualizado: ${val}%`);
-      onSaved();
+      setDisplayValue(newVal);
+      onSaved(movimientoId, newVal);
       setEditing(false);
     } catch { toast.error('Error al guardar'); }
     setSaving(false);
@@ -214,6 +237,22 @@ export const ReporteCostura = () => {
     }
     setLoading(false);
   };
+
+  // Actualizar avance localmente sin recargar toda la página
+  const updateAvanceLocal = useCallback((movimientoId, newValue) => {
+    setData(prev => {
+      if (!prev?.items) return prev;
+      const now = new Date().toISOString();
+      return {
+        ...prev,
+        items: prev.items.map(item =>
+          item.movimiento_id === movimientoId
+            ? { ...item, avance_porcentaje: newValue, avance_updated_at: now, dias_sin_actualizar: 0 }
+            : item
+        ),
+      };
+    });
+  }, []);
 
   useEffect(() => { fetchData(); }, [filtroServicio, filtroPersona, filtroRiesgo, filtroConIncidencias, filtroVencidos, filtroSinActualizar, filtroTerminados]);
 
@@ -343,8 +382,6 @@ export const ReporteCostura = () => {
 
   const hasActiveFilters = filtroPersona !== '__all__' || filtroRiesgo !== '__all__' || filtroConIncidencias !== '__all__' || filtroVencidos !== '__all__' || filtroSinActualizar !== '__all__' || filtroTerminados !== 'en_curso' || filtroServicio !== 'Costura' || filtroBusqueda.trim();
 
-  const fmtDate = (d) => { if (!d) return '-'; const dt = new Date(d + 'T00:00:00'); return `${String(dt.getDate()).padStart(2,'0')}-${String(dt.getMonth()+1).padStart(2,'0')}-${dt.getFullYear()}`; };
-
   const getExportRows = () => {
     const rows = [];
     for (const grupo of grouped) {
@@ -364,7 +401,6 @@ export const ReporteCostura = () => {
           esperada: item.fecha_esperada,
           dias: item.dias_transcurridos,
           avance: item.avance_porcentaje ?? 0,
-          ult_act: item.avance_updated_at ? new Date(item.avance_updated_at).toLocaleDateString('es-PE', {day:'2-digit',month:'2-digit',year:'numeric'}) : '-',
           dias_sin_act: item.dias_sin_actualizar,
           incidencias: item.incidencias_abiertas || 0,
           riesgo: item.nivel_riesgo || 'normal',
@@ -380,15 +416,18 @@ export const ReporteCostura = () => {
     const XLSX = (await import('xlsx')).default || await import('xlsx');
     const rows = getExportRows();
     const wsData = [
-      ['Persona', 'Tipo', 'Corte', 'Modelo', 'Tipo Prenda', 'Entalle', 'Tela', 'Hilo Esp.', 'Cant.', 'Inicio', 'F. Esperada', 'Días', 'Avance %', 'Últ. Act.', 'D/s Act.', 'Inc.', 'Riesgo'],
-      ...rows.map(r => [
-        r.persona, r.tipo_persona, r.corte + (r.urgente ? ' (URG)' : ''), r.modelo, r.tipo_prenda, r.entalle, r.tela, r.hilo_especifico,
-        r.cantidad, fmtDate(r.inicio), fmtDate(r.esperada), r.dias ?? '', r.avance, r.ult_act, r.dias_sin_act ?? '', r.incidencias, r.riesgo_label,
-      ]),
+      ['Persona', 'Tipo', 'Corte', 'Modelo', 'Tipo Prenda', 'Entalle', 'Tela', 'Hilo Esp.', 'Cant.', 'Inicio', 'Plazo', 'Días', 'Avance %', 'D/s Act.', 'Inc.', 'Riesgo'],
+      ...rows.map(r => {
+        const plazo = r.esperada && r.inicio ? Math.round((new Date(r.esperada + 'T00:00:00') - new Date(r.inicio + 'T00:00:00')) / 86400000) : '';
+        return [
+          r.persona, r.tipo_persona, r.corte + (r.urgente ? ' (URG)' : ''), r.modelo, r.tipo_prenda, r.entalle, r.tela, r.hilo_especifico,
+          r.cantidad, formatDate(r.inicio), plazo > 0 ? `${plazo}d` : '', r.dias ?? '', r.avance, r.dias_sin_act ?? '', r.incidencias, r.riesgo_label,
+        ];
+      }),
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     ws['!cols'] = [
-      {wch:20},{wch:9},{wch:10},{wch:18},{wch:15},{wch:12},{wch:10},{wch:14},{wch:7},{wch:12},{wch:12},{wch:6},{wch:9},{wch:11},{wch:8},{wch:5},{wch:10},
+      {wch:20},{wch:9},{wch:10},{wch:18},{wch:15},{wch:12},{wch:10},{wch:14},{wch:7},{wch:12},{wch:7},{wch:6},{wch:9},{wch:8},{wch:5},{wch:10},
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Costura');
@@ -466,50 +505,54 @@ export const ReporteCostura = () => {
       return motivos.join('; ') || r.riesgo_label;
     };
 
-    const headers = [['Persona','Corte','Modelo','Tipo','Entalle','Tela','Hilo Esp.','Cant.','Inicio','F. Esp.','Días','Avance','D/s Act.','Inc.','Riesgo','Obs.']];
-    const body = rows.map(r => [
-      r.persona,
-      r.corte,
-      r.modelo,
-      r.tipo_prenda,
-      r.entalle,
-      r.tela,
-      r.hilo_especifico,
-      r.cantidad.toLocaleString(),
-      fmtDate(r.inicio),
-      fmtDate(r.esperada),
-      r.dias != null ? String(r.dias) : '-',
-      r.avance + '%',
-      r.dias_sin_act != null ? String(r.dias_sin_act) : '-',
-      String(r.incidencias),
-      r.riesgo_label,
-      buildObs(r),
-    ]);
+    const headers = [['Persona','Corte','Modelo','Tipo','Entalle','Tela','Hilo Esp.','Cant.','Inicio','Plazo','Días','Avance','D/s','Inc.','Riesgo','Obs.']];
+    const body = rows.map(r => {
+      const plazo = r.esperada && r.inicio ? Math.round((new Date(r.esperada + 'T00:00:00') - new Date(r.inicio + 'T00:00:00')) / 86400000) : null;
+      return [
+        r.persona,
+        r.corte,
+        r.modelo,
+        r.tipo_prenda,
+        r.entalle,
+        r.tela,
+        r.hilo_especifico,
+        r.cantidad.toLocaleString(),
+        formatDate(r.inicio),
+        plazo > 0 ? `${plazo}d` : '-',
+        r.dias != null ? String(r.dias) : '-',
+        r.avance + '%',
+        r.dias_sin_act != null ? String(r.dias_sin_act) : '-',
+        String(r.incidencias),
+        r.riesgo_label,
+        buildObs(r),
+      ];
+    });
 
+    // A4 landscape = 297mm wide, margins 14+14 = 269mm usable
     autoTable(doc, {
       startY: 36,
       head: headers,
       body: body,
       theme: 'grid',
-      styles: { fontSize: 6.5, cellPadding: 1.5, lineColor: [220,220,220], lineWidth: 0.2 },
-      headStyles: { fillColor: [30,41,59], textColor: 255, fontSize: 6, fontStyle: 'bold', halign: 'center' },
+      styles: { fontSize: 6, cellPadding: 1.2, lineColor: [220,220,220], lineWidth: 0.2, overflow: 'ellipsize' },
+      headStyles: { fillColor: [30,41,59], textColor: 255, fontSize: 5.5, fontStyle: 'bold', halign: 'center', cellPadding: 1.5 },
       columnStyles: {
-        0: { cellWidth: 22 },
-        1: { cellWidth: 11, halign: 'center', fontStyle: 'bold' },
-        2: { cellWidth: 20 },
-        3: { cellWidth: 14 },
-        4: { cellWidth: 13 },
-        5: { cellWidth: 11 },
-        6: { cellWidth: 14 },
-        7: { cellWidth: 9, halign: 'right' },
-        8: { cellWidth: 15, halign: 'center' },
-        9: { cellWidth: 15, halign: 'center' },
-        10: { cellWidth: 9, halign: 'center', fontStyle: 'bold' },
-        11: { cellWidth: 11, halign: 'center' },
-        12: { cellWidth: 10, halign: 'center' },
-        13: { cellWidth: 8, halign: 'center' },
-        14: { cellWidth: 13, halign: 'center', fontStyle: 'bold' },
-        15: { cellWidth: 34, fontSize: 5.5 },
+        0: { cellWidth: 24 },                                    // Persona
+        1: { cellWidth: 10, halign: 'center', fontStyle: 'bold' }, // Corte
+        2: { cellWidth: 28 },                                    // Modelo
+        3: { cellWidth: 16 },                                    // Tipo
+        4: { cellWidth: 16 },                                    // Entalle
+        5: { cellWidth: 14 },                                    // Tela
+        6: { cellWidth: 16 },                                    // Hilo Esp.
+        7: { cellWidth: 10, halign: 'right' },                    // Cant.
+        8: { cellWidth: 15, halign: 'center' },                   // Inicio
+        9: { cellWidth: 10, halign: 'center' },                   // Plazo
+        10: { cellWidth: 9, halign: 'center', fontStyle: 'bold' }, // Días
+        11: { cellWidth: 11, halign: 'center' },                   // Avance
+        12: { cellWidth: 8, halign: 'center' },                    // D/s
+        13: { cellWidth: 7, halign: 'center' },                    // Inc.
+        14: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },// Riesgo
+        15: { cellWidth: 'auto', fontSize: 5.5 },                 // Obs. (uses remaining space)
       },
       didParseCell: (data) => {
         if (data.section !== 'body') return;
@@ -533,25 +576,31 @@ export const ReporteCostura = () => {
           }
         }
 
-        // Días: highlight high values
+        // Días: progressive color by % of plazo consumed
         if (data.column.index === 10 && row.dias != null) {
-          if (row.dias >= 15) {
-            data.cell.styles.fillColor = [254, 226, 226];
-            data.cell.styles.textColor = [153, 27, 27];
-          } else if (row.dias >= 10) {
-            data.cell.styles.fillColor = [254, 243, 199];
-            data.cell.styles.textColor = [146, 64, 14];
+          const plazo = row.esperada && row.inicio ? Math.round((new Date(row.esperada + 'T00:00:00') - new Date(row.inicio + 'T00:00:00')) / 86400000) : 0;
+          if (plazo > 0) {
+            const pct = row.dias / plazo;
+            if (pct >= 1) { data.cell.styles.fillColor = [254,242,242]; data.cell.styles.textColor = [220,38,38]; }
+            else if (pct >= 0.86) { data.cell.styles.fillColor = [255,247,237]; data.cell.styles.textColor = [234,88,12]; }
+            else if (pct >= 0.61) { data.cell.styles.fillColor = [254,249,195]; data.cell.styles.textColor = [202,138,4]; }
+            else { data.cell.styles.fillColor = [239,246,255]; data.cell.styles.textColor = [59,130,246]; }
+          } else if (row.dias >= 15) {
+            data.cell.styles.fillColor = [254, 226, 226]; data.cell.styles.textColor = [153, 27, 27];
           }
         }
 
-        // Dias sin actualizar: highlight >= 5
+        // Dias sin actualizar: highlight >= 3
         if (data.column.index === 12 && row.dias_sin_act != null) {
-          if (row.dias_sin_act >= 5) {
-            data.cell.styles.textColor = [153, 27, 27];
+          if (row.dias_sin_act >= 3) {
+            data.cell.styles.fillColor = [254, 242, 242];
+            data.cell.styles.textColor = [220, 38, 38];
             data.cell.styles.fontStyle = 'bold';
-          } else if (row.dias_sin_act >= 3) {
-            data.cell.styles.textColor = [146, 64, 14];
+          } else if (row.dias_sin_act >= 1) {
+            data.cell.styles.textColor = [234, 88, 12];
             data.cell.styles.fontStyle = 'bold';
+          } else {
+            data.cell.styles.textColor = [22, 163, 74];
           }
         }
 
@@ -566,11 +615,6 @@ export const ReporteCostura = () => {
         if (data.column.index === 11) {
           if (row.avance >= 80) data.cell.styles.textColor = [22, 101, 52];
           else if (row.avance <= 30) { data.cell.styles.textColor = [153, 27, 27]; data.cell.styles.fontStyle = 'bold'; }
-        }
-
-        // Alternate row for same persona
-        if (data.row.index > 0 && rows[data.row.index - 1]?.persona !== row.persona) {
-          // Light separator line is already handled by grid theme
         }
       },
       margin: { left: 14, right: 14 },
@@ -760,12 +804,11 @@ export const ReporteCostura = () => {
                   <th className="text-left p-2 font-medium text-muted-foreground whitespace-nowrap">Hilo Esp.</th>
                   <th className="text-right p-2 font-medium text-muted-foreground whitespace-nowrap">Cant.</th>
                   <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Inicio</th>
-                  <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">F. Esperada</th>
+                  <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Plazo</th>
                   <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap cursor-pointer select-none hover:text-foreground group" onClick={() => setSortDiasDesc(p => !p)}>
                     Días {sortDiasDesc ? <ChevronDown className="inline h-3 w-3" /> : <ChevronRight className="inline h-3 w-3 rotate-[-90deg]" />}
                   </th>
                   <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Avance</th>
-                  <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Últ. Act.</th>
                   <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">D/s Act.</th>
                   <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Inc.</th>
                   <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Riesgo</th>
@@ -796,21 +839,37 @@ export const ReporteCostura = () => {
                       <td className="p-2 whitespace-nowrap text-muted-foreground">{item.hilo_especifico || '-'}</td>
                       <td className="p-2 text-right font-mono">{item.cantidad_enviada?.toLocaleString() || '-'}</td>
                       <td className="p-2 text-center whitespace-nowrap">{item.fecha_inicio ? new Date(item.fecha_inicio + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' }) : '-'}</td>
-                      <td className="p-2 text-center whitespace-nowrap">{item.fecha_esperada ? new Date(item.fecha_esperada + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' }) : '-'}</td>
-                      <td className={`p-2 text-center font-mono font-bold whitespace-nowrap ${
-                        (item.dias_transcurridos ?? 0) >= 15 ? 'bg-red-100 text-red-700' :
-                        (item.dias_transcurridos ?? 0) >= 10 ? 'bg-amber-100 text-amber-700' :
-                        (item.dias_transcurridos ?? 0) >= 7 ? 'text-amber-600' : ''
-                      }`}>
+                      <td className="p-2 text-center whitespace-nowrap font-mono" style={{ color: '#6B7280' }}>
+                        {(() => {
+                          if (!item.fecha_esperada || !item.fecha_inicio) return '-';
+                          const fe = new Date(item.fecha_esperada + 'T00:00:00');
+                          const fi = new Date(item.fecha_inicio + 'T00:00:00');
+                          const diff = Math.round((fe - fi) / 86400000);
+                          return diff > 0 ? `${diff}d` : '-';
+                        })()}
+                      </td>
+                      <td className="p-2 text-center font-mono font-bold whitespace-nowrap" style={(() => {
+                        const dias = item.dias_transcurridos ?? 0;
+                        if (!item.fecha_esperada || !item.fecha_inicio) return {};
+                        const plazo = Math.round((new Date(item.fecha_esperada + 'T00:00:00') - new Date(item.fecha_inicio + 'T00:00:00')) / 86400000);
+                        if (plazo <= 0) return { background: '#FEF2F2', color: '#DC2626' };
+                        const pct = dias / plazo;
+                        if (pct >= 1) return { background: '#FEF2F2', color: '#DC2626' };
+                        if (pct >= 0.86) return { background: '#FFF7ED', color: '#EA580C' };
+                        if (pct >= 0.61) return { background: '#FEF9C3', color: '#CA8A04' };
+                        return { background: '#EFF6FF', color: '#3B82F6' };
+                      })()}>
                         {item.dias_transcurridos ?? '-'}
                       </td>
                       <td className="p-2 text-center">
-                        <AvanceEditor movimientoId={item.movimiento_id} currentValue={item.avance_porcentaje} onSaved={fetchData} nCorte={item.n_corte} />
+                        <AvanceEditor movimientoId={item.movimiento_id} currentValue={item.avance_porcentaje} onSaved={updateAvanceLocal} nCorte={item.n_corte} />
                       </td>
-                      <td className="p-2 text-center whitespace-nowrap text-muted-foreground">
-                        {item.avance_updated_at ? new Date(item.avance_updated_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' }) : '-'}
-                      </td>
-                      <td className={`p-2 text-center font-mono ${diasSinAct != null && diasSinAct >= 5 ? 'text-red-600 font-bold' : diasSinAct != null && diasSinAct >= 3 ? 'text-amber-600 font-semibold' : ''}`}>
+                      <td className="p-2 text-center font-mono whitespace-nowrap" style={(() => {
+                        if (diasSinAct == null) return {};
+                        if (diasSinAct >= 3) return { background: '#FEF2F2', color: '#DC2626', fontWeight: 700 };
+                        if (diasSinAct >= 1) return { color: '#EA580C', fontWeight: 600 };
+                        return { color: '#16a34a' };
+                      })()}>
                         {diasSinAct ?? '-'}
                       </td>
                       <td className="p-2 text-center">
@@ -936,14 +995,14 @@ export const ReporteCostura = () => {
                           <th className="text-left p-2 font-medium text-muted-foreground whitespace-nowrap">Tipo</th>
                           <th className="text-left p-2 font-medium text-muted-foreground whitespace-nowrap">Entalle</th>
                           <th className="text-left p-2 font-medium text-muted-foreground whitespace-nowrap">Tela</th>
+                          <th className="text-left p-2 font-medium text-muted-foreground whitespace-nowrap">Hilo Esp.</th>
                           <th className="text-right p-2 font-medium text-muted-foreground whitespace-nowrap">Cant.</th>
                           <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Inicio</th>
-                          <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">F. Esperada</th>
+                          <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Plazo</th>
                           <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap cursor-pointer select-none hover:text-foreground group" onClick={() => setSortDiasDesc(p => !p)}>
                             Días {sortDiasDesc ? <ChevronDown className="inline h-3 w-3 text-muted-foreground group-hover:text-foreground" /> : <ChevronRight className="inline h-3 w-3 rotate-[-90deg] text-muted-foreground group-hover:text-foreground" />}
                           </th>
                           <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Avance</th>
-                          <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Últ. Act.</th>
                           <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">D/s Act.</th>
                           <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Inc.</th>
                           <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Riesgo</th>
@@ -970,21 +1029,37 @@ export const ReporteCostura = () => {
                               <td className="p-2 whitespace-nowrap text-muted-foreground">{item.hilo_especifico || '-'}</td>
                               <td className="p-2 text-right font-mono">{item.cantidad_enviada?.toLocaleString() || '-'}</td>
                               <td className="p-2 text-center whitespace-nowrap">{item.fecha_inicio ? new Date(item.fecha_inicio + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' }) : '-'}</td>
-                              <td className="p-2 text-center whitespace-nowrap">{item.fecha_esperada ? new Date(item.fecha_esperada + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' }) : (item.fecha_fin ? new Date(item.fecha_fin + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' }) : '-')}</td>
-                              <td className={`p-2 text-center font-mono font-bold whitespace-nowrap ${
-                                (item.dias_transcurridos ?? 0) >= 15 ? 'bg-red-100 text-red-700' :
-                                (item.dias_transcurridos ?? 0) >= 10 ? 'bg-amber-100 text-amber-700' :
-                                (item.dias_transcurridos ?? 0) >= 7 ? 'text-amber-600' : ''
-                              }`}>
+                              <td className="p-2 text-center whitespace-nowrap font-mono" style={{ color: '#6B7280' }}>
+                                {(() => {
+                                  const fe = item.fecha_esperada || item.fecha_fin;
+                                  if (!fe || !item.fecha_inicio) return '-';
+                                  const diff = Math.round((new Date(fe + 'T00:00:00') - new Date(item.fecha_inicio + 'T00:00:00')) / 86400000);
+                                  return diff > 0 ? `${diff}d` : '-';
+                                })()}
+                              </td>
+                              <td className="p-2 text-center font-mono font-bold whitespace-nowrap" style={(() => {
+                                const dias = item.dias_transcurridos ?? 0;
+                                const fe = item.fecha_esperada || item.fecha_fin;
+                                if (!fe || !item.fecha_inicio) return {};
+                                const plazo = Math.round((new Date(fe + 'T00:00:00') - new Date(item.fecha_inicio + 'T00:00:00')) / 86400000);
+                                if (plazo <= 0) return { background: '#FEF2F2', color: '#DC2626' };
+                                const pct = dias / plazo;
+                                if (pct >= 1) return { background: '#FEF2F2', color: '#DC2626' };
+                                if (pct >= 0.86) return { background: '#FFF7ED', color: '#EA580C' };
+                                if (pct >= 0.61) return { background: '#FEF9C3', color: '#CA8A04' };
+                                return { background: '#EFF6FF', color: '#3B82F6' };
+                              })()}>
                                 {item.dias_transcurridos ?? '-'}
                               </td>
                               <td className="p-2 text-center">
-                                <AvanceEditor movimientoId={item.movimiento_id} currentValue={item.avance_porcentaje} onSaved={fetchData} nCorte={item.n_corte} />
+                                <AvanceEditor movimientoId={item.movimiento_id} currentValue={item.avance_porcentaje} onSaved={updateAvanceLocal} nCorte={item.n_corte} />
                               </td>
-                              <td className="p-2 text-center whitespace-nowrap text-muted-foreground">
-                                {item.avance_updated_at ? new Date(item.avance_updated_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' }) : '-'}
-                              </td>
-                              <td className={`p-2 text-center font-mono ${diasSinAct != null && diasSinAct >= 5 ? 'text-red-600 font-bold' : diasSinAct != null && diasSinAct >= 3 ? 'text-amber-600 font-semibold' : ''}`}>
+                              <td className="p-2 text-center font-mono whitespace-nowrap" style={(() => {
+                                if (diasSinAct == null) return {};
+                                if (diasSinAct >= 3) return { background: '#FEF2F2', color: '#DC2626', fontWeight: 700 };
+                                if (diasSinAct >= 1) return { color: '#EA580C', fontWeight: 600 };
+                                return { color: '#16a34a' };
+                              })()}>
                                 {diasSinAct ?? '-'}
                               </td>
                               <td className="p-2 text-center">
@@ -1030,7 +1105,7 @@ export const ReporteCostura = () => {
                             {/* Sub-fila: incidencias expandidas */}
                             {expandedInc[item.registro_id] && (
                               <tr className="bg-amber-50/30">
-                                <td colSpan={filtroServicio === '__todos__' ? 17 : 16} className="p-0">
+                                <td colSpan={filtroServicio === '__todos__' ? 18 : 17} className="p-0">
                                   <div className="px-4 py-2 space-y-1.5">
                                     <div className="flex items-center justify-between">
                                       <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Incidencias — Corte {item.n_corte}</span>

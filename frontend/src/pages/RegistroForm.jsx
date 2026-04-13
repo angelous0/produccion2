@@ -1,14 +1,19 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import React from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from '../components/ui/alert-dialog';
 import { formatCurrency } from '../lib/utils';
 import { useSaving } from '../hooks/useSaving';
 import axios from 'axios';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
-import { Save, Scissors } from 'lucide-react';
+import { Save, Scissors, FileText } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { ClipboardList, Play, ShieldAlert, Package, Activity, Clock, AlertTriangle as AlertTriangleIcon, ArrowRight } from 'lucide-react';
+import { ClipboardList, Play, ShieldAlert, Package, Activity, Clock, AlertTriangle as AlertTriangleIcon, ArrowRight, MessageCircle, Cog } from 'lucide-react';
 import { toast } from 'sonner';
 import { SalidaRollosDialog } from '../components/SalidaRollosDialog';
 import { TrazabilidadPanel } from '../components/TrazabilidadPanel';
@@ -16,6 +21,8 @@ import { ArreglosPanel } from '../components/ArreglosPanel';
 import MaterialesTab from '../components/MaterialesTab';
 import { DistribucionPTPanel } from '../components/registro/DistribucionPTPanel';
 import { ConversacionPanel, ConversacionTrigger } from '../components/ConversacionPanel';
+import { ConversacionInline } from '../components/ConversacionInline';
+import { CostosTab, CierreTab } from './RegistroDetalleFase2';
 import { useAuth } from '../context/AuthContext';
 import usePermissions from '../hooks/usePermissions';
 
@@ -25,15 +32,25 @@ import {
   RegistroMovimientosCard, RegistroIncidenciasCard, RegistroPanelLateral,
   ColoresDialog, MovimientoDialog, IncidenciaDialog,
   SugerenciaEstadoDialog, SugerenciaMovDialog, ForzarEstadoDialog,
+  RetrocesoEstadoDialog, AdvertenciaCantidadDialog,
   DivisionDialog, SalidaInventarioDialog,
 } from '../components/registro';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+const getErrorMsg = (error, fallback) => {
+  const d = error?.response?.data?.detail;
+  if (typeof d === 'string') return d;
+  if (Array.isArray(d)) return d.map(e => e.msg || JSON.stringify(e)).join('; ');
+  return fallback;
+};
+
 export const RegistroForm = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
   const isEditing = Boolean(id);
+  const cameFromRegistro = location.state?.fromRegistro;
   const { user } = useAuth();
   const perms = usePermissions('registros');
   const permsMovimientos = usePermissions('movimientos_produccion');
@@ -42,12 +59,13 @@ export const RegistroForm = () => {
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [convOpen, setConvOpen] = useState(false);
+  const [convRefreshKey, setConvRefreshKey] = useState(0);
   const { saving, guard } = useSaving();
 
   const [formData, setFormData] = useState({
     n_corte: '', modelo_id: '', curva: '', estado: 'Para Corte', urgente: false,
     hilo_especifico_id: '', pt_item_id: '',
-    observaciones: '', fecha_entrega_final: '', linea_negocio_id: null,
+    observaciones: '', fecha_entrega_final: '', fecha_inicio_real: '', linea_negocio_id: null,
   });
 
   const [modeloSeleccionado, setModeloSeleccionado] = useState(null);
@@ -94,6 +112,8 @@ export const RegistroForm = () => {
   const [sugerenciaEstadoDialog, setSugerenciaEstadoDialog] = useState(null);
   const [sugerenciaMovDialog, setSugerenciaMovDialog] = useState(null);
   const [forzarEstadoDialog, setForzarEstadoDialog] = useState(null);
+  const [retrocesoDialog, setRetrocesoDialog] = useState(null);
+  const [advertenciaCantidadDialog, setAdvertenciaCantidadDialog] = useState(null);
   const [etapasCompletas, setEtapasCompletas] = useState([]);
 
   const [divisionDialogOpen, setDivisionDialogOpen] = useState(false);
@@ -133,6 +153,20 @@ export const RegistroForm = () => {
   const [editMotivoNombre, setEditMotivoNombre] = useState('');
   const [salidasExpandidas, setSalidasExpandidas] = useState({});
 
+  // Unsaved changes tracking
+  const initialFormSnap = useRef(null);
+  const initialTallasSnap = useRef(null);
+  const [showExitDialog, setShowExitDialog] = useState(false);
+  const pendingNavRef = useRef(null);
+  const savedRef = useRef(false);
+
+  const isDirty = useMemo(() => {
+    if (!initialFormSnap.current) return false;
+    const formChanged = JSON.stringify(formData) !== JSON.stringify(initialFormSnap.current);
+    const tallasChanged = JSON.stringify(tallasSeleccionadas) !== JSON.stringify(initialTallasSnap.current);
+    return formChanged || tallasChanged;
+  }, [formData, tallasSeleccionadas]);
+
   // ========== DATA FETCHING ==========
   const fetchWithRetry = async (url, retries = 2) => {
     for (let i = 0; i <= retries; i++) {
@@ -144,7 +178,7 @@ export const RegistroForm = () => {
 
   const fetchRelatedData = () => {
     // Datos esenciales para el formulario (siempre necesarios)
-    fetchWithRetry(`${API}/modelos?all=true`).then(d => { if (d) setModelos(d); });
+    fetchWithRetry(`${API}/modelos?all=true`).then(d => { if (d) setModelos(d.filter(m => m.base_id)); });
     fetchWithRetry(`${API}/hilos-especificos`).then(d => { if (d) setHilosEspecificos(d); });
     axios.get(`${API}/estados`).then(r => { setEstados(r.data.estados); setEstadosGlobales(r.data.estados); }).catch(() => {});
     axios.get(`${API}/tallas-catalogo`).then(r => setTallasCatalogo(r.data)).catch(() => {});
@@ -208,6 +242,7 @@ export const RegistroForm = () => {
         estado: registro.estado, urgente: registro.urgente, hilo_especifico_id: registro.hilo_especifico_id || '',
         pt_item_id: registro.pt_item_id || '',
         observaciones: registro.observaciones || '', fecha_entrega_final: registro.fecha_entrega_final || '',
+        fecha_inicio_real: registro.fecha_inicio_real || '',
         skip_validacion_estado: registro.skip_validacion_estado || false, linea_negocio_id: registro.linea_negocio_id || null,
       });
       setTallasSeleccionadas(registro.tallas || []);
@@ -224,8 +259,8 @@ export const RegistroForm = () => {
   };
 
   // ========== EFFECTS ==========
-  const [activeTab, setActiveTab] = useState('movimientos');
-  const [tabsLoaded, setTabsLoaded] = useState({ general: false, produccion: false, control: false });
+  const [activeTab, setActiveTab] = useState('datos');
+  const [tabsLoaded, setTabsLoaded] = useState({ general: false, produccion: false, incidencias: false });
 
   // Stats calculados
   const prendasEfectivas = (() => {
@@ -249,6 +284,34 @@ export const RegistroForm = () => {
     }
   }, [id]);
 
+  // Snapshot for dirty detection — once loading is done
+  useEffect(() => {
+    if (!loadingData && !initialFormSnap.current) {
+      initialFormSnap.current = JSON.parse(JSON.stringify(formData));
+      initialTallasSnap.current = JSON.parse(JSON.stringify(tallasSeleccionadas));
+    }
+  }, [loadingData, formData, tallasSeleccionadas]);
+
+  // Reset saved flag & snapshot after successful save
+  const safeNavigate = useCallback((path) => {
+    if (isDirty && !savedRef.current && path === '/registros') {
+      pendingNavRef.current = path;
+      setShowExitDialog(true);
+    } else {
+      savedRef.current = false;
+      navigate(path);
+    }
+  }, [isDirty, navigate]);
+
+  // Browser tab close / refresh guard
+  useEffect(() => {
+    const handler = (e) => {
+      if (isDirty && !savedRef.current) { e.preventDefault(); e.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
   // Cuando los modelos se cargan, resolver el modelo seleccionado
   useEffect(() => {
     if (modelos.length > 0 && formData.modelo_id && !modeloSeleccionado) {
@@ -267,10 +330,10 @@ export const RegistroForm = () => {
       fetchSalidasRegistro();
       setTabsLoaded(prev => ({ ...prev, produccion: true }));
     }
-    if (activeTab === 'control' && !tabsLoaded.control) {
+    if (activeTab === 'incidencias' && !tabsLoaded.incidencias) {
       fetchMotivosIncidencia();
       fetchDivisionInfo();
-      setTabsLoaded(prev => ({ ...prev, control: true }));
+      setTabsLoaded(prev => ({ ...prev, incidencias: true }));
     }
     if (activeTab === 'general' && !tabsLoaded.general) {
       setTabsLoaded(prev => ({ ...prev, general: true }));
@@ -314,7 +377,8 @@ export const RegistroForm = () => {
         const res = await axios.post(`${API}/modelos/${modelo.id}/crear-pt`, {}, { headers: { Authorization: `Bearer ${token}` } });
         setFormData(prev => ({ ...prev, pt_item_id: res.data.pt_item_id }));
         const modelosRes = await axios.get(`${API}/modelos?all=true`);
-        setModelos(modelosRes.data); setModeloSeleccionado(modelosRes.data.find(m => m.id === modeloId) || null);
+        const variantes = modelosRes.data.filter(m => m.base_id);
+        setModelos(variantes); setModeloSeleccionado(variantes.find(m => m.id === modeloId) || null);
         const itemsRes = await axios.get(`${API}/inventario?all=true`); setItemsInventario(itemsRes.data);
         toast.success(`PT creado automáticamente: ${res.data.pt_item_nombre}`);
       } catch {}
@@ -463,12 +527,13 @@ export const RegistroForm = () => {
       await axios.post(`${API}/inventario-salidas`, payload);
       toast.success('Salida registrada'); setSalidaDialogOpen(false); fetchSalidasRegistro();
       const inventarioRes = await axios.get(`${API}/inventario?all=true`); setItemsInventario(inventarioRes.data);
-    } catch (error) { toast.error(error.response?.data?.detail || 'Error al crear salida'); }
+    } catch (error) { toast.error(getErrorMsg(error, 'Error al crear salida')); }
   });
   const handleDeleteSalida = async (salidaId) => {
+    if (!window.confirm('¿Estás seguro de eliminar esta salida?')) return;
     try { await axios.delete(`${API}/inventario-salidas/${salidaId}`); toast.success('Salida eliminada'); fetchSalidasRegistro();
       const inventarioRes = await axios.get(`${API}/inventario?all=true`); setItemsInventario(inventarioRes.data);
-    } catch (error) { toast.error(error.response?.data?.detail || 'Error al eliminar salida'); }
+    } catch (error) { toast.error(getErrorMsg(error, 'Error al eliminar salida')); }
   };
 
   const getTotalCostoSalidas = () => salidasRegistro.reduce((sum, s) => sum + (s.costo_total || 0), 0);
@@ -564,6 +629,8 @@ export const RegistroForm = () => {
 
   const handleSaveMovimiento = guard(async () => {
     if (!movimientoFormData.servicio_id || !movimientoFormData.persona_id) { toast.error('Selecciona servicio y persona'); return; }
+    if (movimientoFormData.fecha_inicio && movimientoFormData.fecha_fin && movimientoFormData.fecha_fin <= movimientoFormData.fecha_inicio) { toast.error('La fecha fin debe ser mayor que la fecha inicio'); return; }
+    if (movimientoFormData.fecha_inicio && movimientoFormData.fecha_esperada_movimiento && movimientoFormData.fecha_esperada_movimiento <= movimientoFormData.fecha_inicio) { toast.error('La fecha esperada debe ser mayor que la fecha inicio'); return; }
     try {
       if (editingMovimiento) { await axios.put(`${API}/movimientos-produccion/${editingMovimiento.id}`, { ...movimientoFormData, registro_id: id }); toast.success('Movimiento actualizado'); }
       else { await axios.post(`${API}/movimientos-produccion`, { ...movimientoFormData, registro_id: id }); toast.success('Movimiento registrado'); }
@@ -588,12 +655,13 @@ export const RegistroForm = () => {
           }
         }
       }
-    } catch (error) { toast.error(error.response?.data?.detail || 'Error al guardar movimiento'); }
+    } catch (error) { toast.error(getErrorMsg(error, 'Error al guardar movimiento')); }
   });
 
   const handleDeleteMovimiento = async (movimientoId) => {
+    if (!window.confirm('¿Estás seguro de eliminar este movimiento?')) return;
     try { await axios.delete(`${API}/movimientos-produccion/${movimientoId}`); toast.success('Movimiento eliminado'); fetchMovimientosProduccion(); }
-    catch (error) { toast.error(error.response?.data?.detail || 'Error al eliminar'); }
+    catch (error) { toast.error(getErrorMsg(error, 'Error al eliminar')); }
   };
 
   const handleGenerarGuia = async (movimientoId) => {
@@ -606,7 +674,7 @@ export const RegistroForm = () => {
       printWindow.document.close(); printWindow.print();
     } catch (error) {
       if (error.response?.status === 400) toast.error('Ya existe una guía para este movimiento');
-      else toast.error(error.response?.data?.detail || 'Error al generar guía');
+      else toast.error(getErrorMsg(error, 'Error al generar guía'));
     }
   };
 
@@ -627,6 +695,9 @@ export const RegistroForm = () => {
       const payload = { ...formData, tallas: tallasSeleccionadas, distribucion_colores: distribucionColores };
       if (isEditing) { await axios.put(`${API}/registros/${id}`, payload); if (!silentMode) toast.success('Registro actualizado'); }
       else { const res = await axios.post(`${API}/registros`, payload); if (silentMode && res.data?.id) navigate(`/registros/editar/${res.data.id}`, { replace: true }); if (!silentMode) toast.success('Registro creado'); }
+      savedRef.current = true;
+      initialFormSnap.current = JSON.parse(JSON.stringify(formData));
+      initialTallasSnap.current = JSON.parse(JSON.stringify(tallasSeleccionadas));
       if (!silentMode) navigate('/registros');
     } catch { toast.error('Error al guardar registro'); }
     finally { setLoading(false); }
@@ -639,13 +710,14 @@ export const RegistroForm = () => {
       await axios.post(`${API}/incidencias`, { registro_id: id, motivo_id: incidenciaForm.motivo_id, comentario: incidenciaForm.comentario, paraliza: incidenciaForm.paraliza, usuario: 'eduard' });
       toast.success('Incidencia registrada'); setIncidenciaDialogOpen(false);
       setIncidenciaForm({ motivo_id: '', comentario: '', paraliza: false }); fetchIncidencias();
-    } catch (error) { toast.error(error.response?.data?.detail || 'Error al crear incidencia'); }
+    } catch (error) { toast.error(getErrorMsg(error, 'Error al crear incidencia')); }
   };
   const handleResolverIncidencia = async (incId) => {
     try { await axios.put(`${API}/incidencias/${incId}`, { estado: 'RESUELTA' }); toast.success('Incidencia resuelta'); fetchIncidencias(); }
     catch { toast.error('Error al resolver incidencia'); }
   };
   const handleEliminarIncidencia = async (incId) => {
+    if (!window.confirm('¿Estás seguro de eliminar esta incidencia?')) return;
     try { await axios.delete(`${API}/incidencias/${incId}`); toast.success('Incidencia eliminada'); fetchIncidencias(); }
     catch { toast.error('Error al eliminar incidencia'); }
   };
@@ -655,7 +727,7 @@ export const RegistroForm = () => {
       const res = await axios.post(`${API}/motivos-incidencia`, { nombre: nuevoMotivoNombre.trim() });
       setMotivosIncidencia(prev => [...prev, res.data].sort((a, b) => a.nombre.localeCompare(b.nombre)));
       setIncidenciaForm(prev => ({ ...prev, motivo_id: res.data.id })); setNuevoMotivoNombre(''); toast.success(`Motivo "${res.data.nombre}" creado`);
-    } catch (error) { toast.error(error.response?.data?.detail || 'Error al crear motivo'); }
+    } catch (error) { toast.error(getErrorMsg(error, 'Error al crear motivo')); }
   };
   const handleEditarMotivo = async (motivoId) => {
     if (!editMotivoNombre.trim()) return;
@@ -663,9 +735,10 @@ export const RegistroForm = () => {
       const res = await axios.put(`${API}/motivos-incidencia/${motivoId}`, { nombre: editMotivoNombre.trim() });
       setMotivosIncidencia(prev => prev.map(m => m.id === motivoId ? res.data : m).sort((a, b) => a.nombre.localeCompare(b.nombre)));
       setEditandoMotivo(null); setEditMotivoNombre(''); toast.success('Motivo actualizado');
-    } catch (error) { toast.error(error.response?.data?.detail || 'Error al editar motivo'); }
+    } catch (error) { toast.error(getErrorMsg(error, 'Error al editar motivo')); }
   };
   const handleEliminarMotivo = async (motivoId) => {
+    if (!window.confirm('¿Estás seguro de eliminar este motivo?')) return;
     try {
       await axios.delete(`${API}/motivos-incidencia/${motivoId}`);
       setMotivosIncidencia(prev => prev.filter(m => m.id !== motivoId));
@@ -687,19 +760,39 @@ export const RegistroForm = () => {
       const resp = await axios.post(`${API}/registros/${id}/dividir`, { tallas_hijo: tallasConCantidad.map(t => ({ talla_id: t.talla_id, cantidad: t.cantidad_dividir })) });
       toast.success(resp.data.mensaje); setDivisionDialogOpen(false);
       const regResp = await axios.get(`${API}/registros/${id}`); setTallasSeleccionadas(regResp.data.tallas || []); fetchDivisionInfo();
-    } catch (error) { toast.error(error.response?.data?.detail || 'Error al dividir lote'); }
+    } catch (error) { toast.error(getErrorMsg(error, 'Error al dividir lote')); }
   };
   const handleReunificar = async (hijoId) => {
     try { await axios.post(`${API}/registros/${hijoId}/reunificar`); toast.success('Lote reunificado exitosamente');
       const regResp = await axios.get(`${API}/registros/${id}`); setTallasSeleccionadas(regResp.data.tallas || []); fetchDivisionInfo();
-    } catch (error) { toast.error(error.response?.data?.detail || 'Error al reunificar'); }
+    } catch (error) { toast.error(getErrorMsg(error, 'Error al reunificar')); }
   };
 
-  // Forzar estado
-  const handleForzarEstado = async (nuevoEstado) => {
+  // Forzar estado (con motivo)
+  const handleForzarEstado = async (nuevoEstado, motivo) => {
     setForzarEstadoDialog(null);
-    try { await axios.post(`${API}/registros/${id}/validar-cambio-estado`, { nuevo_estado: nuevoEstado, forzar: true }); await autoGuardarEstado(nuevoEstado); toast.success(`Estado forzado a "${nuevoEstado}"`); }
+    try { await axios.post(`${API}/registros/${id}/validar-cambio-estado`, { nuevo_estado: nuevoEstado, forzar: true, motivo_forzar: motivo || '' }); await autoGuardarEstado(nuevoEstado); toast.success(`Estado forzado a "${nuevoEstado}"`); }
     catch { await autoGuardarEstado(nuevoEstado); }
+  };
+
+  // Confirmar retroceso de estado (con motivo)
+  const handleConfirmarRetroceso = async (nuevoEstado, motivo) => {
+    setRetrocesoDialog(null);
+    try {
+      const resp = await axios.post(`${API}/registros/${id}/validar-cambio-estado`, { nuevo_estado: nuevoEstado, confirmar_retroceso: true, motivo_retroceso: motivo });
+      if (resp.data.permitido) { await autoGuardarEstado(nuevoEstado); toast.success(`Estado retrocedido a "${nuevoEstado}"`); }
+      else { toast.error(resp.data.bloqueos?.[0]?.mensaje || 'No se pudo retroceder'); }
+    } catch { toast.error('Error al retroceder estado'); }
+  };
+
+  // Continuar con advertencia de cantidad
+  const handleContinuarConAdvertencia = async () => {
+    const dialog = advertenciaCantidadDialog;
+    setAdvertenciaCantidadDialog(null);
+    if (dialog?.nuevo_estado) {
+      await autoGuardarEstado(dialog.nuevo_estado);
+      if (dialog.sugerencia) setSugerenciaMovDialog(dialog.sugerencia);
+    }
   };
 
   // Abrir movimiento pre-llenado desde sugerencia
@@ -731,9 +824,11 @@ export const RegistroForm = () => {
         formData={formData} setFormData={setFormData} modeloSeleccionado={modeloSeleccionado}
         isEditing={isEditing} isParalizado={isParalizado} estados={estados} usaRuta={usaRuta}
         rutaNombre={rutaNombre} analisisEstado={analisisEstado} loading={loading} id={id}
-        navigate={navigate} API={API} autoGuardarEstado={autoGuardarEstado}
+        navigate={safeNavigate} API={API} autoGuardarEstado={autoGuardarEstado}
         setForzarEstadoDialog={setForzarEstadoDialog} setSugerenciaMovDialog={setSugerenciaMovDialog}
-        handleSubmit={handleSubmit} permisos={perms}
+        setRetrocesoDialog={setRetrocesoDialog} setAdvertenciaCantidadDialog={setAdvertenciaCantidadDialog}
+        handleSubmit={handleSubmit} permisos={perms} setConvOpen={setConvOpen} convRefreshKey={convRefreshKey}
+        cameFromRegistro={cameFromRegistro}
       />
 
       {/* Banner incidencias abiertas (no paralizado) */}
@@ -753,7 +848,7 @@ export const RegistroForm = () => {
       )}
 
       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
           {/* COLUMNA IZQUIERDA */}
           <div className="space-y-4 min-w-0">
             {/* Resumen mobile */}
@@ -789,20 +884,20 @@ export const RegistroForm = () => {
             {/* Stats rápidos (solo edición) */}
             {isEditing && (
               <div className="registro-stats-grid">
-                <div className="registro-stat-card border-l-4 border-l-blue-400">
+                <div className="registro-stat-card">
                   <p className="registro-stat-numero font-mono">{prendasEfectivas}</p>
                   <p className="registro-stat-label"><Package className="h-3 w-3" /> Prendas</p>
                 </div>
-                <div className="registro-stat-card border-l-4 border-l-green-400">
+                <div className="registro-stat-card">
                   <p className="registro-stat-numero font-mono">{movimientosProduccion.length}</p>
                   <p className="registro-stat-label"><Activity className="h-3 w-3" /> Movimientos</p>
                 </div>
-                <div className="registro-stat-card border-l-4 border-l-red-400">
+                <div className="registro-stat-card">
                   <p className={`registro-stat-numero font-mono ${incidenciasAbiertas > 0 ? 'registro-stat-danger' : ''}`}>{incidencias.length}</p>
                   <p className="registro-stat-label"><AlertTriangleIcon className="h-3 w-3" /> Incidencias</p>
                   {incidenciasAbiertas > 0 && <p className="registro-stat-sub-danger">{incidenciasAbiertas} abiertas</p>}
                 </div>
-                <div className="registro-stat-card border-l-4 border-l-gray-300">
+                <div className="registro-stat-card">
                   <p className="registro-stat-numero font-mono">
                     {movimientosProduccion.length > 0 && movimientosProduccion[0].fecha_inicio
                       ? `${Math.max(0, Math.ceil((new Date() - new Date(movimientosProduccion[0].fecha_inicio)) / (1000 * 60 * 60 * 24)))}d`
@@ -829,22 +924,19 @@ export const RegistroForm = () => {
                   lineasNegocio={lineasNegocio} itemsInventario={itemsInventario} modeloSeleccionado={modeloSeleccionado}
                   onReunificar={handleReunificar} isEditing={isEditing} hilosEspecificos={hilosEspecificos}
                 />
-                <RegistroTallasCard
-                  tallasSeleccionadas={tallasSeleccionadas} tallasDisponibles={tallasDisponibles}
-                  onAddTalla={handleAddTalla} onCantidadChange={handleTallaCantidadChange}
-                  onRemoveTalla={handleRemoveTalla} tieneColores={tieneColores}
-                  onOpenColoresDialog={handleOpenColoresDialog} distribucionColores={distribucionColores}
-                />
               </>
             ) : (
               /* Modo edición: con pestañas */
               <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                 <TabsList className="registro-tabs-list">
-                  <TabsTrigger value="movimientos" className="registro-tab" data-testid="tab-produccion">
-                    <Play className="h-3.5 w-3.5" /> Movimientos
+                  <TabsTrigger value="datos" className="registro-tab" data-testid="tab-datos">
+                    <FileText className="h-3.5 w-3.5" /> Datos
                   </TabsTrigger>
                   <TabsTrigger value="tallas" className="registro-tab" data-testid="tab-general">
                     <Scissors className="h-3.5 w-3.5" /> Tallas
+                  </TabsTrigger>
+                  <TabsTrigger value="movimientos" className="registro-tab" data-testid="tab-produccion">
+                    <Play className="h-3.5 w-3.5" /> Movimientos
                   </TabsTrigger>
                   <TabsTrigger value="materiales" className="registro-tab" data-testid="tab-materiales">
                     <Package className="h-3.5 w-3.5" /> Materiales
@@ -857,24 +949,19 @@ export const RegistroForm = () => {
                       </span>
                     )}
                   </TabsTrigger>
+                  <TabsTrigger value="costos" className="registro-tab" data-testid="tab-costos">
+                    <Cog className="h-3.5 w-3.5" /> Otros Costos
+                  </TabsTrigger>
+                  <TabsTrigger value="cierre" className="registro-tab" data-testid="tab-cierre">
+                    <ShieldAlert className="h-3.5 w-3.5" /> Cierre
+                  </TabsTrigger>
                   <TabsTrigger value="pt_odoo" className="registro-tab" data-testid="tab-pt-odoo">
                     <Package className="h-3.5 w-3.5" /> PT Odoo
                   </TabsTrigger>
                 </TabsList>
 
-                {/* TAB MOVIMIENTOS */}
-                <TabsContent value="movimientos" className="space-y-4 mt-0">
-                  <RegistroMovimientosCard
-                    movimientosProduccion={movimientosProduccion} serviciosProduccion={serviciosProduccion}
-                    isParalizado={isParalizado} onOpenDialog={handleOpenMovimientoDialog}
-                    onDelete={handleDeleteMovimiento} onGenerarGuia={handleGenerarGuia}
-                    totalCantidad={totalCantidadMovimientos}
-                    permisos={permsMovimientos}
-                  />
-                </TabsContent>
-
-                {/* TAB TALLAS: Datos + Tallas + Colores */}
-                <TabsContent value="tallas" className="space-y-4 mt-0">
+                {/* TAB DATOS */}
+                <TabsContent value="datos" className="space-y-4 mt-0">
                   <RegistroDatosCard
                     formData={formData} setFormData={setFormData} divisionInfo={divisionInfo}
                     navigate={navigate} esCierreable={esCierreable} cierreExistente={cierreExistente}
@@ -887,6 +974,21 @@ export const RegistroForm = () => {
                     lineasNegocio={lineasNegocio} itemsInventario={itemsInventario} modeloSeleccionado={modeloSeleccionado}
                     onReunificar={handleReunificar} isEditing={isEditing} hilosEspecificos={hilosEspecificos}
                   />
+                </TabsContent>
+
+                                {/* TAB MOVIMIENTOS */}
+                <TabsContent value="movimientos" className="space-y-4 mt-0">
+                  <RegistroMovimientosCard
+                    movimientosProduccion={movimientosProduccion} serviciosProduccion={serviciosProduccion}
+                    isParalizado={isParalizado} onOpenDialog={handleOpenMovimientoDialog}
+                    onDelete={handleDeleteMovimiento} onGenerarGuia={handleGenerarGuia}
+                    totalCantidad={totalCantidadMovimientos}
+                    permisos={permsMovimientos}
+                  />
+                </TabsContent>
+
+                {/* TAB TALLAS */}
+                <TabsContent value="tallas" className="space-y-4 mt-0">
                   <RegistroTallasCard
                     tallasSeleccionadas={tallasSeleccionadas} tallasDisponibles={tallasDisponibles}
                     onAddTalla={handleAddTalla} onCantidadChange={handleTallaCantidadChange}
@@ -920,6 +1022,23 @@ export const RegistroForm = () => {
                 <TabsContent value="pt_odoo" className="space-y-4 mt-0">
                   <DistribucionPTPanel registroId={id} />
                 </TabsContent>
+
+                {/* TAB COSTOS */}
+                <TabsContent value="costos" className="space-y-4 mt-0">
+                  <CostosTab registroId={id} />
+                </TabsContent>
+
+                {/* TAB CIERRE */}
+                <TabsContent value="cierre" className="space-y-4 mt-0">
+                  <CierreTab
+                    registroId={id}
+                    registro={formData}
+                    onCierreComplete={() => {
+                      setFormData(prev => ({ ...prev, estado: 'CERRADA' }));
+                    }}
+                  />
+                </TabsContent>
+
               </Tabs>
             )}
 
@@ -934,7 +1053,7 @@ export const RegistroForm = () => {
                   <Scissors className="h-4 w-4 mr-2" /> Dividir Lote
                 </Button>
               )}
-              <Button type="button" variant="ghost" size="sm" className="w-full" onClick={() => navigate('/registros')}>Cancelar</Button>
+              <Button type="button" variant="ghost" size="sm" className="w-full" onClick={() => safeNavigate('/registros')}>Cancelar</Button>
             </div>
           </div>
 
@@ -944,10 +1063,10 @@ export const RegistroForm = () => {
             tallasSeleccionadas={tallasSeleccionadas} lineasNegocio={lineasNegocio}
             isParalizado={isParalizado} isEditing={isEditing}
             movimientosProduccion={movimientosProduccion} incidencias={incidencias}
-            loading={loading} navigate={navigate} onSubmit={handleSubmit}
+            loading={loading} navigate={safeNavigate} onSubmit={handleSubmit}
             onOpenDivision={handleOpenDivision} id={id} API={API}
             convOpen={convOpen} setConvOpen={setConvOpen} user={user}
-            permisos={perms}
+            permisos={perms} convRefreshKey={convRefreshKey}
           />
         </div>
       </form>
@@ -1012,6 +1131,12 @@ export const RegistroForm = () => {
         onForzar={handleForzarEstado} movimientosProduccion={movimientosProduccion}
         onOpenMovimientoDialog={handleOpenMovimientoDialog} />
 
+      <RetrocesoEstadoDialog dialog={retrocesoDialog} onClose={() => setRetrocesoDialog(null)}
+        onConfirmar={handleConfirmarRetroceso} />
+
+      <AdvertenciaCantidadDialog dialog={advertenciaCantidadDialog} onClose={() => setAdvertenciaCantidadDialog(null)}
+        onContinuar={handleContinuarConAdvertencia} />
+
       <DivisionDialog open={divisionDialogOpen} onOpenChange={setDivisionDialogOpen}
         formData={formData} divisionTallas={divisionTallas} setDivisionTallas={setDivisionTallas}
         onDividir={handleDividirLote} />
@@ -1023,9 +1148,31 @@ export const RegistroForm = () => {
             {!convOpen && <ConversacionTrigger registroId={id} onClick={() => setConvOpen(true)} />}
           </div>
           <ConversacionPanel registroId={id} usuario={user?.nombre_completo || user?.username || 'Usuario'}
-            open={convOpen} onClose={() => setConvOpen(false)} />
+            open={convOpen} onClose={() => setConvOpen(false)} onMensajeChange={() => setConvRefreshKey(k => k + 1)} />
         </>
       )}
+
+      {/* Dialog confirmación salir sin guardar */}
+      <AlertDialog open={showExitDialog} onOpenChange={setShowExitDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cambios sin guardar</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tienes cambios sin guardar. ¿Deseas salir sin guardar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowExitDialog(false)}>Seguir editando</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => {
+              setShowExitDialog(false);
+              savedRef.current = true;
+              if (pendingNavRef.current) navigate(pendingNavRef.current);
+            }}>
+              Salir sin guardar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

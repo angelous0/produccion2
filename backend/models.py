@@ -221,7 +221,7 @@ class ModeloBase(BaseModel):
     entalle_id: str
     tela_id: str
     hilo_id: str
-    ruta_produccion_id: Optional[str] = None
+    ruta_produccion_id: str
     servicios_ids: List[str] = []
     pt_item_id: Optional[str] = None
     linea_negocio_id: Optional[int] = None
@@ -312,7 +312,7 @@ class TallaConColores(BaseModel):
 
 class RegistroBase(BaseModel):
     n_corte: str
-    modelo_id: str
+    modelo_id: Optional[str] = None
     curva: str = ""
     estado: str = "Para Corte"
     urgente: bool = False
@@ -321,6 +321,7 @@ class RegistroBase(BaseModel):
     empresa_id: Optional[int] = 8
     observaciones: Optional[str] = None
     fecha_entrega_final: Optional[str] = None
+    fecha_inicio_real: Optional[str] = None
     linea_negocio_id: Optional[int] = None
 
 class RegistroCreate(RegistroBase):

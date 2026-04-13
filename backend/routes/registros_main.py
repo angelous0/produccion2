@@ -1,15 +1,15 @@
-"""Router for production registros CRUD, estados, tallas, requerimiento, materiales, reservas, cerrar, anular, dividir, reunificar."""
+"""Router for production registros: CRUD, estados, tallas."""
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from db import get_pool
 from auth_utils import get_current_user, require_permiso as require_permission
 from models import (
-    RegistroCreate, Registro, RegistroTallaCreate, RegistroTallaUpdate, RegistroTallaBulkUpdate,
-    ReservaCreateInput, LiberarReservaInput, ESTADOS_PRODUCCION, DivisionLoteRequest,
+    RegistroCreate, Registro, RegistroTallaUpdate, RegistroTallaBulkUpdate,
+    ESTADOS_PRODUCCION,
 )
-from helpers import row_to_dict, parse_jsonb, registrar_actividad
+from helpers import row_to_dict, parse_jsonb, registrar_actividad, validar_registro_activo
 from routes.auditoria import audit_log_safe, get_usuario
 from typing import Optional, List
 from pydantic import BaseModel
@@ -19,6 +19,135 @@ router = APIRouter(prefix="/api")
 @router.get("/estados")
 async def get_estados():
     return {"estados": ESTADOS_PRODUCCION}
+
+@router.get("/registros/filtros-modelo")
+async def get_filtros_modelo(
+    marca_id: str = "",
+    tipo_id: str = "",
+    entalle_id: str = "",
+    tela_id: str = "",
+):
+    """Devuelve opciones disponibles para cada filtro, en cascada.
+    Si seleccionas marca, solo muestra tipos/entalles/telas que existen en modelos con esa marca, etc."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Construir WHERE según selecciones actuales
+        conditions = []
+        params = []
+        idx = 1
+
+        marcas_list = [x.strip() for x in marca_id.split(",") if x.strip()] if marca_id else []
+        tipos_list = [x.strip() for x in tipo_id.split(",") if x.strip()] if tipo_id else []
+        entalles_list = [x.strip() for x in entalle_id.split(",") if x.strip()] if entalle_id else []
+        telas_list = [x.strip() for x in tela_id.split(",") if x.strip()] if tela_id else []
+
+        def add_filter(field, values):
+            nonlocal idx
+            if values:
+                ph = ", ".join(f"${idx + i}" for i in range(len(values)))
+                conditions.append(f"{field} IN ({ph})")
+                params.extend(values)
+                idx += len(values)
+
+        # Para cada categoría, calcular opciones disponibles filtrando por las OTRAS selecciones
+        # Marcas: filtrar por tipo + entalle + tela
+        conds_marca = []
+        p_marca = []
+        ix = 1
+        if tipos_list:
+            ph = ", ".join(f"${ix + i}" for i in range(len(tipos_list)))
+            conds_marca.append(f"m.tipo_id IN ({ph})")
+            p_marca.extend(tipos_list); ix += len(tipos_list)
+        if entalles_list:
+            ph = ", ".join(f"${ix + i}" for i in range(len(entalles_list)))
+            conds_marca.append(f"m.entalle_id IN ({ph})")
+            p_marca.extend(entalles_list); ix += len(entalles_list)
+        if telas_list:
+            ph = ", ".join(f"${ix + i}" for i in range(len(telas_list)))
+            conds_marca.append(f"m.tela_id IN ({ph})")
+            p_marca.extend(telas_list); ix += len(telas_list)
+        w_marca = " AND ".join(conds_marca) if conds_marca else "TRUE"
+        marcas_rows = await conn.fetch(f"""
+            SELECT DISTINCT ma.id, ma.nombre FROM prod_modelos m
+            JOIN prod_marcas ma ON m.marca_id = ma.id
+            WHERE {w_marca} ORDER BY ma.nombre
+        """, *p_marca)
+
+        # Tipos: filtrar por marca + entalle + tela
+        conds_tipo = []
+        p_tipo = []
+        ix = 1
+        if marcas_list:
+            ph = ", ".join(f"${ix + i}" for i in range(len(marcas_list)))
+            conds_tipo.append(f"m.marca_id IN ({ph})")
+            p_tipo.extend(marcas_list); ix += len(marcas_list)
+        if entalles_list:
+            ph = ", ".join(f"${ix + i}" for i in range(len(entalles_list)))
+            conds_tipo.append(f"m.entalle_id IN ({ph})")
+            p_tipo.extend(entalles_list); ix += len(entalles_list)
+        if telas_list:
+            ph = ", ".join(f"${ix + i}" for i in range(len(telas_list)))
+            conds_tipo.append(f"m.tela_id IN ({ph})")
+            p_tipo.extend(telas_list); ix += len(telas_list)
+        w_tipo = " AND ".join(conds_tipo) if conds_tipo else "TRUE"
+        tipos_rows = await conn.fetch(f"""
+            SELECT DISTINCT t.id, t.nombre FROM prod_modelos m
+            JOIN prod_tipos t ON m.tipo_id = t.id
+            WHERE {w_tipo} ORDER BY t.nombre
+        """, *p_tipo)
+
+        # Entalles: filtrar por marca + tipo + tela
+        conds_ent = []
+        p_ent = []
+        ix = 1
+        if marcas_list:
+            ph = ", ".join(f"${ix + i}" for i in range(len(marcas_list)))
+            conds_ent.append(f"m.marca_id IN ({ph})")
+            p_ent.extend(marcas_list); ix += len(marcas_list)
+        if tipos_list:
+            ph = ", ".join(f"${ix + i}" for i in range(len(tipos_list)))
+            conds_ent.append(f"m.tipo_id IN ({ph})")
+            p_ent.extend(tipos_list); ix += len(tipos_list)
+        if telas_list:
+            ph = ", ".join(f"${ix + i}" for i in range(len(telas_list)))
+            conds_ent.append(f"m.tela_id IN ({ph})")
+            p_ent.extend(telas_list); ix += len(telas_list)
+        w_ent = " AND ".join(conds_ent) if conds_ent else "TRUE"
+        entalles_rows = await conn.fetch(f"""
+            SELECT DISTINCT e.id, e.nombre FROM prod_modelos m
+            JOIN prod_entalles e ON m.entalle_id = e.id
+            WHERE {w_ent} ORDER BY e.nombre
+        """, *p_ent)
+
+        # Telas: filtrar por marca + tipo + entalle
+        conds_tela = []
+        p_tela = []
+        ix = 1
+        if marcas_list:
+            ph = ", ".join(f"${ix + i}" for i in range(len(marcas_list)))
+            conds_tela.append(f"m.marca_id IN ({ph})")
+            p_tela.extend(marcas_list); ix += len(marcas_list)
+        if tipos_list:
+            ph = ", ".join(f"${ix + i}" for i in range(len(tipos_list)))
+            conds_tela.append(f"m.tipo_id IN ({ph})")
+            p_tela.extend(tipos_list); ix += len(tipos_list)
+        if entalles_list:
+            ph = ", ".join(f"${ix + i}" for i in range(len(entalles_list)))
+            conds_tela.append(f"m.entalle_id IN ({ph})")
+            p_tela.extend(entalles_list); ix += len(entalles_list)
+        w_tela = " AND ".join(conds_tela) if conds_tela else "TRUE"
+        telas_rows = await conn.fetch(f"""
+            SELECT DISTINCT te.id, te.nombre FROM prod_modelos m
+            JOIN prod_telas te ON m.tela_id = te.id
+            WHERE {w_tela} ORDER BY te.nombre
+        """, *p_tela)
+
+        return {
+            "marcas": [{"id": str(r['id']), "nombre": r['nombre']} for r in marcas_rows],
+            "tipos": [{"id": str(r['id']), "nombre": r['nombre']} for r in tipos_rows],
+            "entalles": [{"id": str(r['id']), "nombre": r['nombre']} for r in entalles_rows],
+            "telas": [{"id": str(r['id']), "nombre": r['nombre']} for r in telas_rows],
+        }
 
 @router.get("/registros")
 async def get_registros(
@@ -30,6 +159,10 @@ async def get_registros(
     modelo_id: str = "",
     operativo: str = "",
     linea_negocio_id: str = "",
+    marca_id: str = "",
+    tipo_id: str = "",
+    entalle_id: str = "",
+    tela_id: str = "",
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -69,6 +202,38 @@ async def get_registros(
             params.append(int(linea_negocio_id))
             param_idx += 1
 
+        if marca_id:
+            ids = [x.strip() for x in marca_id.split(",") if x.strip()]
+            if ids:
+                placeholders = ", ".join(f"${param_idx + i}" for i in range(len(ids)))
+                conditions.append(f"m.marca_id IN ({placeholders})")
+                params.extend(ids)
+                param_idx += len(ids)
+
+        if tipo_id:
+            ids = [x.strip() for x in tipo_id.split(",") if x.strip()]
+            if ids:
+                placeholders = ", ".join(f"${param_idx + i}" for i in range(len(ids)))
+                conditions.append(f"m.tipo_id IN ({placeholders})")
+                params.extend(ids)
+                param_idx += len(ids)
+
+        if entalle_id:
+            ids = [x.strip() for x in entalle_id.split(",") if x.strip()]
+            if ids:
+                placeholders = ", ".join(f"${param_idx + i}" for i in range(len(ids)))
+                conditions.append(f"m.entalle_id IN ({placeholders})")
+                params.extend(ids)
+                param_idx += len(ids)
+
+        if tela_id:
+            ids = [x.strip() for x in tela_id.split(",") if x.strip()]
+            if ids:
+                placeholders = ", ".join(f"${param_idx + i}" for i in range(len(ids)))
+                conditions.append(f"m.tela_id IN ({placeholders})")
+                params.extend(ids)
+                param_idx += len(ids)
+
         where_clause = " AND ".join(conditions) if conditions else "TRUE"
 
         # Un solo query: count con window function + data paginada
@@ -84,6 +249,11 @@ async def get_registros(
                 he.nombre as hilo_especifico_nombre,
                 rp.n_corte as padre_n_corte,
                 ln.nombre as linea_negocio_nombre,
+                GREATEST(
+                    r.fecha_creacion,
+                    COALESCE((SELECT MAX(mp.created_at) FROM prod_movimientos_produccion mp WHERE mp.registro_id = r.id), r.fecha_creacion),
+                    COALESCE((SELECT MAX(i.created_at) FROM prod_incidencia i WHERE i.registro_id = r.id), r.fecha_creacion)
+                ) as ultima_actividad,
                 (SELECT COUNT(*) FROM prod_incidencia i WHERE i.registro_id = r.id AND i.estado = 'ABIERTA') as incidencias_abiertas,
                 (SELECT row_to_json(p.*) FROM prod_paralizacion p WHERE p.registro_id = r.id AND p.activa = TRUE LIMIT 1) as paralizacion_json,
                 (SELECT COUNT(*) FROM prod_movimientos_produccion mp WHERE mp.registro_id = r.id AND mp.fecha_esperada_movimiento < CURRENT_DATE) as movs_vencidos,
@@ -117,6 +287,8 @@ async def get_registros(
             d['distribucion_colores'] = parse_jsonb(d.get('distribucion_colores'))
             if d.get('fecha_entrega_final'):
                 d['fecha_entrega_final'] = str(d['fecha_entrega_final'])
+            if d.get('fecha_inicio_real'):
+                d['fecha_inicio_real'] = str(d['fecha_inicio_real'])
             # Paralización activa
             par_json = d.pop('paralizacion_json', None)
             if par_json and isinstance(par_json, str):
@@ -216,6 +388,8 @@ async def get_registro(registro_id: str):
 
         if d.get('fecha_entrega_final'):
             d['fecha_entrega_final'] = str(d['fecha_entrega_final'])
+        if d.get('fecha_inicio_real'):
+            d['fecha_inicio_real'] = str(d['fecha_inicio_real'])
         return d
 
 @router.post("/registros")
@@ -233,12 +407,26 @@ async def create_registro(input: RegistroCreate, current_user: dict = Depends(ge
                 registro.linea_negocio_id = modelo['linea_negocio_id']
         tallas_json = json.dumps([t.model_dump() for t in registro.tallas])
         dist_json = json.dumps([d.model_dump() for d in registro.distribucion_colores])
+        fecha_ef = None
+        if registro.fecha_entrega_final:
+            try:
+                fecha_ef = date.fromisoformat(registro.fecha_entrega_final)
+            except Exception:
+                fecha_ef = None
+        fecha_ir = None
+        if registro.fecha_inicio_real:
+            try:
+                fecha_ir = date.fromisoformat(registro.fecha_inicio_real)
+            except Exception:
+                fecha_ir = None
+        if not fecha_ir:
+            fecha_ir = registro.fecha_creacion.date() if hasattr(registro.fecha_creacion, 'date') else registro.fecha_creacion
         await conn.execute(
-            """INSERT INTO prod_registros (id, n_corte, modelo_id, curva, estado, urgente, hilo_especifico_id, tallas, distribucion_colores, fecha_creacion, pt_item_id, empresa_id, observaciones, linea_negocio_id) 
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)""",
+            """INSERT INTO prod_registros (id, n_corte, modelo_id, curva, estado, urgente, hilo_especifico_id, tallas, distribucion_colores, fecha_creacion, pt_item_id, empresa_id, observaciones, linea_negocio_id, fecha_entrega_final, fecha_inicio_real)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)""",
             registro.id, registro.n_corte, registro.modelo_id, registro.curva, registro.estado, registro.urgente,
             registro.hilo_especifico_id, tallas_json, dist_json, registro.fecha_creacion.replace(tzinfo=None),
-            registro.pt_item_id, registro.empresa_id, registro.observaciones, registro.linea_negocio_id
+            registro.pt_item_id, registro.empresa_id, registro.observaciones, registro.linea_negocio_id, fecha_ef, fecha_ir
         )
         cant_total = sum(t.cantidad for t in registro.tallas) if registro.tallas else 0
         await audit_log_safe(conn, get_usuario(current_user), "CREATE", "produccion", "prod_registros", registro.id,
@@ -251,15 +439,20 @@ async def create_registro(input: RegistroCreate, current_user: dict = Depends(ge
     return registro
 
 @router.put("/registros/{registro_id}/skip-validacion")
-async def toggle_skip_validacion(registro_id: str, body: dict):
-    """Activa o desactiva la validación de estados para un registro."""
+async def toggle_skip_validacion(registro_id: str, body: dict, current_user: dict = Depends(get_current_user)):
+    """Activa o desactiva la validación de estados para un registro. Registra en auditoría."""
     skip = body.get("skip_validacion_estado", False)
+    motivo = body.get("motivo", "")
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
             "UPDATE prod_registros SET skip_validacion_estado = $1 WHERE id = $2",
             skip, registro_id
         )
+        usuario = get_usuario(current_user)
+        accion = "ACTIVAR_SKIP_VALIDACION" if skip else "DESACTIVAR_SKIP_VALIDACION"
+        await audit_log_safe(conn, usuario, accion, "produccion", "prod_registros", registro_id,
+            datos_despues={"skip_validacion_estado": skip, "motivo": motivo or "Sin motivo especificado"})
         return {"ok": True, "skip_validacion_estado": skip}
 
 
@@ -302,9 +495,15 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
                 fecha_ef = date.fromisoformat(input.fecha_entrega_final)
             except Exception:
                 fecha_ef = None
+        fecha_ir = None
+        if input.fecha_inicio_real:
+            try:
+                fecha_ir = date.fromisoformat(input.fecha_inicio_real)
+            except Exception:
+                fecha_ir = None
         await conn.execute(
-            """UPDATE prod_registros SET n_corte=$1, modelo_id=$2, curva=$3, estado=$4, urgente=$5, hilo_especifico_id=$6, tallas=$7, distribucion_colores=$8, pt_item_id=$9, observaciones=$10, linea_negocio_id=$11, fecha_entrega_final=$13 WHERE id=$12""",
-            input.n_corte, input.modelo_id, input.curva, input.estado, input.urgente, input.hilo_especifico_id, tallas_json, dist_json, input.pt_item_id, input.observaciones, input.linea_negocio_id, registro_id, fecha_ef
+            """UPDATE prod_registros SET n_corte=$1, modelo_id=$2, curva=$3, estado=$4, urgente=$5, hilo_especifico_id=$6, tallas=$7, distribucion_colores=$8, pt_item_id=$9, observaciones=$10, linea_negocio_id=$11, fecha_entrega_final=$13, fecha_inicio_real=$14 WHERE id=$12""",
+            input.n_corte, input.modelo_id, input.curva, input.estado, input.urgente, input.hilo_especifico_id, tallas_json, dist_json, input.pt_item_id, input.observaciones, input.linea_negocio_id, registro_id, fecha_ef, fecha_ir
         )
         
         # Sincronizar prod_registro_tallas con las cantidades del JSON
@@ -334,8 +533,22 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
 async def delete_registro(registro_id: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # Eliminar datos relacionados en cascada
+        await conn.execute("DELETE FROM prod_conversacion WHERE registro_id = $1", registro_id)
+        await conn.execute("DELETE FROM prod_incidencia WHERE registro_id = $1", registro_id)
+        await conn.execute("DELETE FROM prod_registro_cierre WHERE registro_id = $1", registro_id)
+        await conn.execute("DELETE FROM prod_movimientos_produccion WHERE registro_id = $1", registro_id)
+        await conn.execute("DELETE FROM prod_inventario_salidas WHERE registro_id = $1", registro_id)
+        # Reservas: primero líneas, luego cabeceras
+        reserva_ids = await conn.fetch(
+            "SELECT id FROM prod_inventario_reservas WHERE registro_id = $1", registro_id)
+        for r in reserva_ids:
+            await conn.execute("DELETE FROM prod_inventario_reservas_linea WHERE reserva_id = $1", r["id"])
+        await conn.execute("DELETE FROM prod_inventario_reservas WHERE registro_id = $1", registro_id)
+        await conn.execute("DELETE FROM prod_registro_requerimiento_mp WHERE registro_id = $1", registro_id)
+        await conn.execute("DELETE FROM prod_registro_tallas WHERE registro_id = $1", registro_id)
         await conn.execute("DELETE FROM prod_registros WHERE id = $1", registro_id)
-        return {"message": "Registro eliminado"}
+        return {"message": "Registro y datos relacionados eliminados"}
 
 @router.get("/registros/{registro_id}/estados-disponibles")
 async def get_estados_disponibles_registro(registro_id: str):
@@ -541,20 +754,25 @@ async def analisis_estado_registro(registro_id: str):
         }
 
 @router.post("/registros/{registro_id}/validar-cambio-estado")
-async def validar_cambio_estado(registro_id: str, body: dict):
+async def validar_cambio_estado(registro_id: str, body: dict, current_user: dict = Depends(get_current_user)):
     """Valida si un cambio de estado es permitido. Retorna bloqueos si los hay.
-    Si body incluye forzar=true, se saltan las validaciones de movimientos."""
+    Si body incluye forzar=true, se saltan las validaciones de movimientos.
+    Si es retroceso, requiere motivo_retroceso.
+    Si hay discrepancia de cantidad, retorna advertencia."""
     nuevo_estado = body.get("nuevo_estado")
     forzar = body.get("forzar", False)
+    motivo_forzar = body.get("motivo_forzar", "")
+    motivo_retroceso = body.get("motivo_retroceso", "")
+    confirmar_retroceso = body.get("confirmar_retroceso", False)
     if not nuevo_estado:
         raise HTTPException(status_code=400, detail="nuevo_estado requerido")
-    
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         registro = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
         if not registro:
             raise HTTPException(status_code=404, detail="Registro no encontrado")
-        
+
         # Bloqueo por paralización activa
         par_activa = await conn.fetchval(
             "SELECT COUNT(*) FROM prod_paralizacion WHERE registro_id = $1 AND activa = TRUE", registro_id
@@ -566,40 +784,82 @@ async def validar_cambio_estado(registro_id: str, body: dict):
                 "sugerencia_movimiento": None,
                 "paralizado": True
             }
-        
+
         modelo = await conn.fetchrow("SELECT ruta_produccion_id FROM prod_modelos WHERE id = $1", registro['modelo_id']) if registro['modelo_id'] else None
         ruta_id = modelo['ruta_produccion_id'] if modelo and modelo['ruta_produccion_id'] else None
-        
+
         if not ruta_id:
             return {"permitido": True, "bloqueos": [], "sugerencia_movimiento": None}
-        
+
         ruta = await conn.fetchrow("SELECT etapas FROM prod_rutas_produccion WHERE id = $1", ruta_id)
         if not ruta or not ruta['etapas']:
             return {"permitido": True, "bloqueos": [], "sugerencia_movimiento": None}
-        
+
         etapas = ruta['etapas'] if isinstance(ruta['etapas'], list) else json.loads(ruta['etapas'])
         etapas_sorted = sorted(etapas, key=lambda e: e.get('orden', 0))
         nombres_ruta = [e['nombre'] for e in etapas_sorted]
-        
+
+        # Determinar índices actual y nuevo
+        estado_actual = registro.get('estado', '')
+        actual_idx = None
+        nuevo_idx = None
+        for i, e in enumerate(etapas_sorted):
+            if e['nombre'] == estado_actual:
+                actual_idx = i
+            if e['nombre'] == nuevo_estado:
+                nuevo_idx = i
+
+        es_retroceso = (actual_idx is not None and nuevo_idx is not None and nuevo_idx < actual_idx)
+
         # Si se fuerza el cambio O el registro tiene skip_validacion_estado, permitir sin validaciones
         if forzar or registro.get('skip_validacion_estado'):
+            # Registrar en auditoría cuando se fuerza
+            usuario = get_usuario(current_user)
+            detalle = motivo_forzar or motivo_retroceso or "Sin motivo especificado"
+            tipo_accion = "FORZAR_RETROCESO_ESTADO" if es_retroceso else "FORZAR_CAMBIO_ESTADO"
+            await audit_log_safe(conn, usuario, tipo_accion, "produccion", "prod_registros", registro_id,
+                datos_antes={"estado": estado_actual},
+                datos_despues={"estado": nuevo_estado, "motivo": detalle, "forzado": True})
             return {"permitido": True, "bloqueos": [], "forzado": True, "sugerencia_movimiento": None}
-        
+
         bloqueos = []
-        
+        advertencias = []
+
+        # Detección de retroceso: requiere confirmación y motivo
+        if es_retroceso and not confirmar_retroceso:
+            return {
+                "permitido": False,
+                "es_retroceso": True,
+                "estado_actual": estado_actual,
+                "nuevo_estado": nuevo_estado,
+                "bloqueos": [],
+                "advertencias": [f"Estás retrocediendo de '{estado_actual}' a '{nuevo_estado}'. Esto no es lo habitual en el flujo de producción."],
+                "requiere_motivo": True,
+                "sugerencia_movimiento": None
+            }
+
+        # Si es retroceso confirmado, registrar en auditoría
+        if es_retroceso and confirmar_retroceso:
+            if not motivo_retroceso.strip():
+                return {
+                    "permitido": False,
+                    "es_retroceso": True,
+                    "bloqueos": [{"mensaje": "Debes indicar un motivo para retroceder de estado.", "servicio_id": None, "movimiento_id": None, "etapa": None}],
+                    "sugerencia_movimiento": None
+                }
+            usuario = get_usuario(current_user)
+            await audit_log_safe(conn, usuario, "RETROCESO_ESTADO", "produccion", "prod_registros", registro_id,
+                datos_antes={"estado": estado_actual},
+                datos_despues={"estado": nuevo_estado, "motivo_retroceso": motivo_retroceso})
+            return {"permitido": True, "bloqueos": [], "sugerencia_movimiento": None, "retroceso_confirmado": True}
+
         # Bloqueo 1: estado fuera de ruta
         if nuevo_estado not in nombres_ruta:
             bloqueos.append({"mensaje": f"El estado '{nuevo_estado}' no pertenece a la ruta de producción asignada.", "servicio_id": None, "movimiento_id": None, "etapa": None})
-        
+
         # Bloqueo 2: saltar etapa obligatoria previa sin movimiento completado
-        nuevo_idx = None
-        for i, e in enumerate(etapas_sorted):
-            if e['nombre'] == nuevo_estado:
-                nuevo_idx = i
-                break
-        
         movimientos = await conn.fetch(
-            "SELECT id, servicio_id, fecha_inicio, fecha_fin FROM prod_movimientos_produccion WHERE registro_id = $1",
+            "SELECT id, servicio_id, fecha_inicio, fecha_fin, cantidad_enviada, cantidad_recibida FROM prod_movimientos_produccion WHERE registro_id = $1",
             registro_id
         )
         movs_por_servicio = {}
@@ -608,7 +868,7 @@ async def validar_cambio_estado(registro_id: str, body: dict):
             if sid not in movs_por_servicio:
                 movs_por_servicio[sid] = []
             movs_por_servicio[sid].append(dict(m))
-        
+
         if nuevo_idx is not None:
             # Si es un registro dividido, verificar movimientos del padre para etapas previas
             es_division = bool(registro.get('dividido_desde_registro_id'))
@@ -623,16 +883,16 @@ async def validar_cambio_estado(registro_id: str, body: dict):
                     if sid not in movs_padre:
                         movs_padre[sid] = []
                     movs_padre[sid].append(dict(m))
-            
+
             for et in etapas_sorted[:nuevo_idx]:
                 sid = et.get('servicio_id')
                 if not sid:
                     continue
                 es_obligatoria = et.get('obligatorio', True)
-                
+
                 tiene_mov_propio = sid in movs_por_servicio
                 tiene_mov_padre = sid in movs_padre
-                
+
                 if es_obligatoria and not tiene_mov_propio and not tiene_mov_padre:
                     bloqueos.append({"mensaje": f"La etapa obligatoria '{et['nombre']}' no tiene movimiento registrado.", "servicio_id": sid, "movimiento_id": None, "etapa": et['nombre']})
                 elif tiene_mov_propio:
@@ -644,7 +904,30 @@ async def validar_cambio_estado(registro_id: str, body: dict):
                             bloqueos.append({"mensaje": f"La etapa obligatoria '{et['nombre']}' tiene movimiento iniciado sin cerrar.", "servicio_id": sid, "movimiento_id": mov_id, "etapa": et['nombre']})
                         else:
                             bloqueos.append({"mensaje": f"La etapa '{et['nombre']}' tiene movimiento activo sin cerrar.", "servicio_id": sid, "movimiento_id": mov_id, "etapa": et['nombre']})
-        
+
+        # Validación de cantidad: comparar prendas originales vs último movimiento recibido
+        if not bloqueos and nuevo_idx is not None and actual_idx is not None and nuevo_idx > actual_idx:
+            # Obtener cantidad total de prendas del registro
+            total_prendas = await conn.fetchval(
+                "SELECT COALESCE(SUM(cantidad_real), 0) FROM prod_registro_tallas WHERE registro_id = $1", registro_id
+            )
+            # Buscar el último movimiento completado (con fecha_fin) y su cantidad recibida
+            ultimo_mov = await conn.fetchrow(
+                """SELECT cantidad_enviada, cantidad_recibida, servicio_id
+                   FROM prod_movimientos_produccion
+                   WHERE registro_id = $1 AND fecha_fin IS NOT NULL
+                   ORDER BY fecha_fin DESC LIMIT 1""",
+                registro_id
+            )
+            if ultimo_mov and total_prendas > 0:
+                cant_recibida = ultimo_mov['cantidad_recibida'] or ultimo_mov['cantidad_enviada'] or 0
+                if cant_recibida > 0 and cant_recibida < total_prendas:
+                    diferencia = total_prendas - cant_recibida
+                    advertencias.append(
+                        f"El último movimiento completado registró {cant_recibida} prendas recibidas de {total_prendas} totales. "
+                        f"Hay una diferencia de {diferencia} prendas sin justificar (posible merma)."
+                    )
+
         # Sugerencia: si el nuevo estado tiene servicio vinculado y no hay movimiento
         sugerencia_movimiento = None
         if nuevo_idx is not None and not bloqueos:
@@ -657,10 +940,11 @@ async def validar_cambio_estado(registro_id: str, body: dict):
                     "servicio_nombre": srv['nombre'] if srv else etapa_nueva['nombre'],
                     "etapa_nombre": etapa_nueva['nombre']
                 }
-        
+
         return {
             "permitido": len(bloqueos) == 0,
             "bloqueos": bloqueos,
+            "advertencias": advertencias,
             "sugerencia_movimiento": sugerencia_movimiento
         }
 
@@ -804,1233 +1088,3 @@ async def update_single_registro_talla(registro_id: str, talla_id: str, input: R
             return {"id": new_id, "talla_id": talla_id, "cantidad_real": input.cantidad_real}
 
 
-# ==================== FASE 2: ENDPOINTS REQUERIMIENTO MP (EXPLOSIÓN BOM) ====================
-
-def calcular_estado_requerimiento(cantidad_requerida: float, cantidad_reservada: float, cantidad_consumida: float) -> str:
-    """Calcula el estado de una línea de requerimiento"""
-    if cantidad_requerida <= 0:
-        return 'PENDIENTE'
-    if cantidad_consumida >= cantidad_requerida:
-        return 'COMPLETO'
-    if cantidad_reservada > 0 or cantidad_consumida > 0:
-        return 'PARCIAL'
-    return 'PENDIENTE'
-
-
-@router.post("/registros/{registro_id}/generar-requerimiento")
-async def generar_requerimiento_mp(registro_id: str, bom_id: str = Query(None)):
-    """Genera el requerimiento de MP a partir de la explosión del BOM.
-    Si bom_id se proporciona, usa ese BOM específico.
-    Si no, auto-selecciona el mejor BOM (APROBADO > BORRADOR, versión más reciente)."""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        # Obtener registro
-        registro = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
-        if not registro:
-            raise HTTPException(status_code=404, detail="Registro no encontrado")
-        
-        modelo_id = registro['modelo_id']
-        
-        # Obtener cantidades reales por talla
-        tallas_registro = await conn.fetch(
-            "SELECT talla_id, cantidad_real FROM prod_registro_tallas WHERE registro_id = $1",
-            registro_id
-        )
-        tallas_map = {t['talla_id']: int(t['cantidad_real']) for t in tallas_registro}
-        total_prendas = sum(tallas_map.values())
-        
-        if total_prendas <= 0:
-            raise HTTPException(status_code=400, detail="Ingresa cantidades reales por talla antes de generar el requerimiento")
-        
-        # Determinar qué BOM usar
-        if bom_id:
-            bom_cab = await conn.fetchrow("SELECT * FROM prod_bom_cabecera WHERE id = $1", bom_id)
-            if not bom_cab:
-                raise HTTPException(status_code=404, detail="BOM no encontrado")
-        else:
-            # Auto-seleccionar mejor BOM: APROBADO primero, luego BORRADOR, versión más reciente
-            bom_cab = await conn.fetchrow("""
-                SELECT * FROM prod_bom_cabecera
-                WHERE modelo_id = $1 AND estado != 'INACTIVO'
-                ORDER BY CASE estado WHEN 'APROBADO' THEN 1 WHEN 'BORRADOR' THEN 2 ELSE 3 END, version DESC
-                LIMIT 1
-            """, modelo_id)
-        
-        # Obtener BOM activo del modelo, filtrando por bom_id si existe
-        if bom_cab:
-            bom_lineas = await conn.fetch("""
-                SELECT bl.*, i.nombre as item_nombre, i.codigo as item_codigo, i.unidad_medida
-                FROM prod_modelo_bom_linea bl
-                JOIN prod_inventario i ON bl.inventario_id = i.id
-                WHERE bl.bom_id = $1 AND bl.activo = true
-                  AND COALESCE(bl.tipo_componente, 'TELA') IN ('TELA', 'AVIO', 'EMPAQUE', 'OTRO')
-            """, bom_cab['id'])
-        else:
-            # Fallback: líneas sin bom_id asignado (datos legacy)
-            bom_lineas = await conn.fetch("""
-                SELECT bl.*, i.nombre as item_nombre, i.codigo as item_codigo, i.unidad_medida
-                FROM prod_modelo_bom_linea bl
-                JOIN prod_inventario i ON bl.inventario_id = i.id
-                WHERE bl.modelo_id = $1 AND bl.activo = true AND bl.bom_id IS NULL
-            """, modelo_id)
-        
-        if not bom_lineas:
-            raise HTTPException(status_code=400, detail="El modelo no tiene BOM definido")
-        
-        created = 0
-        updated = 0
-        empresa_id = registro.get('empresa_id') or 7
-        
-        for bom in bom_lineas:
-            item_id = bom['inventario_id']
-            cantidad_base = float(bom['cantidad_base'])
-            talla_id = bom['talla_id']  # Puede ser NULL
-            
-            # Calcular cantidad requerida
-            if talla_id is None:
-                # Línea general: aplica a todas las prendas
-                cantidad_requerida = total_prendas * cantidad_base
-            else:
-                # Línea específica por talla
-                qty_talla = tallas_map.get(talla_id, 0)
-                cantidad_requerida = qty_talla * cantidad_base
-            
-            # Buscar si ya existe requerimiento para este (registro, item, talla)
-            if talla_id:
-                existing = await conn.fetchrow("""
-                    SELECT * FROM prod_registro_requerimiento_mp
-                    WHERE registro_id = $1 AND item_id = $2 AND talla_id = $3
-                """, registro_id, item_id, talla_id)
-            else:
-                existing = await conn.fetchrow("""
-                    SELECT * FROM prod_registro_requerimiento_mp
-                    WHERE registro_id = $1 AND item_id = $2 AND talla_id IS NULL
-                """, registro_id, item_id)
-            
-            if existing:
-                # Actualizar solo cantidad_requerida, NO resetear reservada/consumida
-                cantidad_reservada = float(existing['cantidad_reservada'])
-                cantidad_consumida = float(existing['cantidad_consumida'])
-                nuevo_estado = calcular_estado_requerimiento(cantidad_requerida, cantidad_reservada, cantidad_consumida)
-                
-                await conn.execute("""
-                    UPDATE prod_registro_requerimiento_mp
-                    SET cantidad_requerida = $1, estado = $2, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = $3
-                """, cantidad_requerida, nuevo_estado, existing['id'])
-                updated += 1
-            else:
-                # Crear nuevo requerimiento
-                new_id = str(uuid.uuid4())
-                estado = 'PENDIENTE' if cantidad_requerida > 0 else 'COMPLETO'
-                await conn.execute("""
-                    INSERT INTO prod_registro_requerimiento_mp
-                    (id, registro_id, item_id, talla_id, cantidad_requerida, cantidad_reservada, cantidad_consumida, estado, empresa_id)
-                    VALUES ($1, $2, $3, $4, $5, 0, 0, $6, $7)
-                """, new_id, registro_id, item_id, talla_id, cantidad_requerida, estado, empresa_id)
-                created += 1
-        
-        return {
-            "message": "Requerimiento generado",
-            "total_prendas": total_prendas,
-            "lineas_creadas": created,
-            "lineas_actualizadas": updated,
-            "bom_usado": {
-                "id": bom_cab['id'],
-                "codigo": bom_cab['codigo'],
-                "version": bom_cab['version'],
-                "estado": bom_cab['estado'],
-            } if bom_cab else None
-        }
-
-
-@router.get("/registros/{registro_id}/requerimiento")
-async def get_requerimiento_mp(registro_id: str):
-    """Obtiene el requerimiento de MP de un registro"""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        registro = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
-        if not registro:
-            raise HTTPException(status_code=404, detail="Registro no encontrado")
-        
-        rows = await conn.fetch("""
-            SELECT r.*, i.codigo as item_codigo, i.nombre as item_nombre, 
-                   i.unidad_medida as item_unidad, i.control_por_rollos,
-                   tc.nombre as talla_nombre
-            FROM prod_registro_requerimiento_mp r
-            JOIN prod_inventario i ON r.item_id = i.id
-            LEFT JOIN prod_tallas_catalogo tc ON r.talla_id = tc.id
-            WHERE r.registro_id = $1
-            ORDER BY i.nombre, tc.orden NULLS FIRST
-        """, registro_id)
-        
-        result = []
-        for r in rows:
-            d = row_to_dict(r)
-            cantidad_requerida = float(d['cantidad_requerida'])
-            cantidad_reservada = float(d['cantidad_reservada'])
-            cantidad_consumida = float(d['cantidad_consumida'])
-            d['pendiente_reservar'] = max(0, cantidad_requerida - cantidad_reservada)
-            d['pendiente_consumir'] = max(0, cantidad_reservada - cantidad_consumida)
-            result.append(d)
-        
-        # Calcular totales
-        total_requerido = sum(float(r['cantidad_requerida']) for r in result)
-        total_reservado = sum(float(r['cantidad_reservada']) for r in result)
-        total_consumido = sum(float(r['cantidad_consumida']) for r in result)
-        
-        return {
-            "registro_id": registro_id,
-            "lineas": result,
-            "resumen": {
-                "total_lineas": len(result),
-                "total_requerido": total_requerido,
-                "total_reservado": total_reservado,
-                "total_consumido": total_consumido,
-                "pendiente_reservar": max(0, total_requerido - total_reservado),
-                "pendiente_consumir": max(0, total_reservado - total_consumido)
-            }
-        }
-
-
-@router.get("/registros/{registro_id}/materiales")
-async def get_materiales_consolidado(registro_id: str):
-    """Vista consolidada: requerimiento + reservas + salidas de un registro en una sola respuesta."""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        existe = await conn.fetchval("SELECT 1 FROM prod_registros WHERE id = $1", registro_id)
-        if not existe:
-            raise HTTPException(status_code=404, detail="Registro no encontrado")
-        
-        # 1) Requerimiento
-        req_rows = await conn.fetch("""
-            SELECT r.*, i.codigo as item_codigo, i.nombre as item_nombre,
-                   i.unidad_medida as item_unidad, i.stock_actual, i.control_por_rollos,
-                   tc.nombre as talla_nombre
-            FROM prod_registro_requerimiento_mp r
-            JOIN prod_inventario i ON r.item_id = i.id
-            LEFT JOIN prod_tallas_catalogo tc ON r.talla_id = tc.id
-            WHERE r.registro_id = $1
-            ORDER BY i.nombre, tc.orden NULLS FIRST
-        """, registro_id)
-        
-        # 2) Reservas activas con detalle de lineas (un solo query)
-        reservas_raw = await conn.fetch("""
-            SELECT r.id as reserva_id, r.estado, r.created_at as fecha,
-                   rl.id as linea_id, rl.item_id, rl.talla_id, rl.cantidad_reservada, rl.cantidad_liberada,
-                   i.codigo as item_codigo, i.nombre as item_nombre, i.unidad_medida as item_unidad,
-                   tc.nombre as talla_nombre
-            FROM prod_inventario_reservas r
-            LEFT JOIN prod_inventario_reservas_linea rl ON rl.reserva_id = r.id
-            LEFT JOIN prod_inventario i ON rl.item_id = i.id
-            LEFT JOIN prod_tallas_catalogo tc ON rl.talla_id = tc.id
-            WHERE r.registro_id = $1
-            ORDER BY r.created_at DESC
-        """, registro_id)
-        
-        reservas_map = {}
-        for rr in reservas_raw:
-            rid = rr['reserva_id']
-            if rid not in reservas_map:
-                reservas_map[rid] = {"id": rid, "estado": rr['estado'],
-                    "fecha": str(rr['fecha']) if rr['fecha'] else None, "lineas": []}
-            if rr['linea_id']:
-                reservas_map[rid]["lineas"].append({
-                    "id": rr['linea_id'], "item_id": rr['item_id'], "talla_id": rr['talla_id'],
-                    "cantidad_reservada": float(rr['cantidad_reservada'] or 0),
-                    "cantidad_liberada": float(rr['cantidad_liberada'] or 0),
-                    "item_codigo": rr['item_codigo'], "item_nombre": rr['item_nombre'],
-                    "item_unidad": rr['item_unidad'], "talla_nombre": rr['talla_nombre'],
-                    "cantidad_activa": max(0, float(rr['cantidad_reservada'] or 0) - float(rr['cantidad_liberada'] or 0))
-                })
-        reservas_list = list(reservas_map.values())
-        
-        # 3) Salidas relacionadas
-        salidas = await conn.fetch("""
-            SELECT s.*, i.codigo as item_codigo, i.nombre as item_nombre, i.unidad_medida as item_unidad
-            FROM prod_inventario_salidas s
-            JOIN prod_inventario i ON s.item_id = i.id
-            WHERE s.registro_id = $1
-            ORDER BY s.fecha DESC
-        """, registro_id)
-        
-        # 4) Disponibilidad por item - batch en vez de N queries individuales
-        item_ids = list(set(r['item_id'] for r in req_rows))
-        disponibilidad = {}
-        if item_ids:
-            disp_rows = await conn.fetch("""
-                SELECT i.id as item_id, i.stock_actual,
-                    COALESCE(i.stock_actual, 0) - COALESCE((
-                        SELECT SUM(rl.cantidad_reservada - rl.cantidad_liberada)
-                        FROM prod_inventario_reservas_linea rl
-                        JOIN prod_inventario_reservas rv ON rl.reserva_id = rv.id
-                        WHERE rl.item_id = i.id AND rv.estado = 'ACTIVA'
-                    ), 0) as disponible
-                FROM prod_inventario i
-                WHERE i.id = ANY($1)
-            """, item_ids)
-            for dr in disp_rows:
-                disponibilidad[dr['item_id']] = {
-                    'stock_actual': float(dr['stock_actual'] or 0),
-                    'disponible': float(dr['disponible'] or 0)
-                }
-        
-        # Armar resultado
-        lineas = []
-        for r in req_rows:
-            d = row_to_dict(r)
-            req = float(d['cantidad_requerida'])
-            res_qty = float(d['cantidad_reservada'])
-            con = float(d['cantidad_consumida'])
-            item_disp = disponibilidad.get(d['item_id'], {})
-            d['pendiente'] = max(0, req - con)
-            d['disponible'] = item_disp.get('disponible', 0)
-            d['stock_actual'] = item_disp.get('stock_actual', float(d.get('stock_actual') or 0))
-            # Para items con control_por_rollos, incluir rollos disponibles
-            if d.get('control_por_rollos'):
-                rollos = await conn.fetch("""
-                    SELECT r.id, r.numero_rollo, r.metraje_disponible, r.tono, r.ancho,
-                           ing.fecha as fecha_ingreso
-                    FROM prod_inventario_rollos r
-                    JOIN prod_inventario_ingresos ing ON r.ingreso_id = ing.id
-                    WHERE r.item_id = $1 AND r.metraje_disponible > 0
-                    ORDER BY ing.fecha ASC
-                """, d['item_id'])
-                d['rollos_disponibles'] = [dict(ro) for ro in rollos]
-                for ro in d['rollos_disponibles']:
-                    ro['metraje_disponible'] = float(ro['metraje_disponible'])
-                    ro['fecha_ingreso'] = str(ro['fecha_ingreso']) if ro.get('fecha_ingreso') else None
-                    ro['ancho'] = float(ro['ancho']) if ro.get('ancho') else None
-            lineas.append(d)
-        
-        total_req = sum(float(l['cantidad_requerida']) for l in lineas)
-        total_res = sum(float(l['cantidad_reservada']) for l in lineas)
-        total_con = sum(float(l['cantidad_consumida']) for l in lineas)
-        
-        return {
-            "registro_id": registro_id,
-            "tiene_requerimiento": len(lineas) > 0,
-            "lineas": lineas,
-            "resumen": {
-                "total_lineas": len(lineas),
-                "total_requerido": total_req,
-                "total_reservado": total_res,
-                "total_consumido": total_con,
-                "total_pendiente": max(0, total_req - total_con),
-            },
-            "reservas": reservas_list,
-            "salidas": [row_to_dict(s) for s in salidas],
-        }
-
-
-
-# ==================== FASE 2: ENDPOINTS RESERVAS ====================
-
-async def get_disponibilidad_item(conn, item_id: str) -> dict:
-    """Calcula la disponibilidad real de un item (stock - reservas activas)"""
-    item = await conn.fetchrow("SELECT * FROM prod_inventario WHERE id = $1", item_id)
-    if not item:
-        return None
-    
-    stock_actual = float(item['stock_actual'])
-    
-    # Sumar reservas activas (cantidad_reservada - cantidad_liberada)
-    total_reservado = await conn.fetchval("""
-        SELECT COALESCE(SUM(rl.cantidad_reservada - rl.cantidad_liberada), 0)
-        FROM prod_inventario_reservas_linea rl
-        JOIN prod_inventario_reservas r ON rl.reserva_id = r.id
-        WHERE rl.item_id = $1 AND r.estado = 'ACTIVA'
-    """, item_id)
-    
-    total_reservado = float(total_reservado or 0)
-    disponible = max(0, stock_actual - total_reservado)
-    
-    return {
-        "item_id": item_id,
-        "item_codigo": item['codigo'],
-        "item_nombre": item['nombre'],
-        "stock_actual": stock_actual,
-        "total_reservado": total_reservado,
-        "disponible": disponible,
-        "control_por_rollos": item['control_por_rollos']
-    }
-
-
-@router.get("/inventario/{item_id}/disponibilidad")
-async def get_disponibilidad_inventario(item_id: str):
-    """Obtiene la disponibilidad real de un item (stock - reservas activas)"""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        result = await get_disponibilidad_item(conn, item_id)
-        if not result:
-            raise HTTPException(status_code=404, detail="Item no encontrado")
-        return result
-
-
-@router.post("/registros/{registro_id}/reservas")
-async def crear_reserva(registro_id: str, input: ReservaCreateInput):
-    """Crea una reserva para un registro"""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        # Validar registro
-        registro = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
-        if not registro:
-            raise HTTPException(status_code=404, detail="Registro no encontrado")
-        
-        # FASE 2C: Validar que OP no esté cerrada/anulada
-        if registro['estado'] in ('CERRADA', 'ANULADA'):
-            raise HTTPException(
-                status_code=400, 
-                detail=f"OP {registro['estado'].lower()}: no se puede crear reservas en una orden {registro['estado'].lower()}"
-            )
-        
-        if not input.lineas:
-            raise HTTPException(status_code=400, detail="Debe incluir al menos una línea de reserva")
-        
-        # Validar cada línea
-        errores = []
-        for idx, linea in enumerate(input.lineas):
-            # Buscar requerimiento
-            if linea.talla_id:
-                req = await conn.fetchrow("""
-                    SELECT * FROM prod_registro_requerimiento_mp
-                    WHERE registro_id = $1 AND item_id = $2 AND talla_id = $3
-                """, registro_id, linea.item_id, linea.talla_id)
-            else:
-                req = await conn.fetchrow("""
-                    SELECT * FROM prod_registro_requerimiento_mp
-                    WHERE registro_id = $1 AND item_id = $2 AND talla_id IS NULL
-                """, registro_id, linea.item_id)
-            
-            if not req:
-                errores.append(f"Línea {idx+1}: No existe requerimiento para item_id={linea.item_id}, talla_id={linea.talla_id}")
-                continue
-            
-            # OPCIÓN 1: Ya NO limitamos al pendiente_reservar - se puede reservar más si hay stock disponible
-            # Solo validamos disponibilidad global
-            disp = await get_disponibilidad_item(conn, linea.item_id)
-            if not disp:
-                errores.append(f"Línea {idx+1}: Item no encontrado")
-                continue
-            
-            if linea.cantidad > disp['disponible']:
-                errores.append(f"Línea {idx+1}: Cantidad ({linea.cantidad}) excede disponible ({disp['disponible']})")
-        
-        if errores:
-            raise HTTPException(status_code=400, detail={"errores": errores})
-        
-        # Crear cabecera de reserva
-        reserva_id = str(uuid.uuid4())
-        await conn.execute("""
-            INSERT INTO prod_inventario_reservas (id, registro_id, estado, empresa_id)
-            VALUES ($1, $2, 'ACTIVA', $3)
-        """, reserva_id, registro_id, registro['empresa_id'])
-        
-        # Crear líneas y actualizar requerimiento
-        lineas_creadas = []
-        for linea in input.lineas:
-            linea_id = str(uuid.uuid4())
-            await conn.execute("""
-                INSERT INTO prod_inventario_reservas_linea
-                (id, reserva_id, item_id, talla_id, cantidad_reservada, cantidad_liberada, empresa_id)
-                VALUES ($1, $2, $3, $4, $5, 0, $6)
-            """, linea_id, reserva_id, linea.item_id, linea.talla_id, linea.cantidad, registro['empresa_id'])
-            
-            # Actualizar cantidad_reservada en requerimiento
-            if linea.talla_id:
-                await conn.execute("""
-                    UPDATE prod_registro_requerimiento_mp
-                    SET cantidad_reservada = cantidad_reservada + $1, updated_at = CURRENT_TIMESTAMP
-                    WHERE registro_id = $2 AND item_id = $3 AND talla_id = $4
-                """, linea.cantidad, registro_id, linea.item_id, linea.talla_id)
-            else:
-                await conn.execute("""
-                    UPDATE prod_registro_requerimiento_mp
-                    SET cantidad_reservada = cantidad_reservada + $1, updated_at = CURRENT_TIMESTAMP
-                    WHERE registro_id = $2 AND item_id = $3 AND talla_id IS NULL
-                """, linea.cantidad, registro_id, linea.item_id)
-            
-            lineas_creadas.append({
-                "id": linea_id,
-                "item_id": linea.item_id,
-                "talla_id": linea.talla_id,
-                "cantidad_reservada": linea.cantidad
-            })
-        
-        # Recalcular estados de requerimiento
-        await conn.execute("""
-            UPDATE prod_registro_requerimiento_mp
-            SET estado = CASE
-                WHEN cantidad_consumida >= cantidad_requerida THEN 'COMPLETO'
-                WHEN cantidad_reservada > 0 OR cantidad_consumida > 0 THEN 'PARCIAL'
-                ELSE 'PENDIENTE'
-            END
-            WHERE registro_id = $1
-        """, registro_id)
-        
-        return {
-            "message": "Reserva creada",
-            "reserva_id": reserva_id,
-            "lineas": lineas_creadas
-        }
-
-
-@router.get("/registros/{registro_id}/reservas")
-async def get_reservas_registro(registro_id: str):
-    """Lista las reservas de un registro"""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        registro = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
-        if not registro:
-            raise HTTPException(status_code=404, detail="Registro no encontrado")
-        
-        # Obtener cabeceras de reserva
-        reservas = await conn.fetch("""
-            SELECT * FROM prod_inventario_reservas
-            WHERE registro_id = $1
-            ORDER BY fecha DESC
-        """, registro_id)
-        
-        result = []
-        for res in reservas:
-            d = row_to_dict(res)
-            
-            # Obtener líneas de la reserva
-            lineas = await conn.fetch("""
-                SELECT rl.*, i.codigo as item_codigo, i.nombre as item_nombre,
-                       i.unidad_medida as item_unidad, tc.nombre as talla_nombre
-                FROM prod_inventario_reservas_linea rl
-                JOIN prod_inventario i ON rl.item_id = i.id
-                LEFT JOIN prod_tallas_catalogo tc ON rl.talla_id = tc.id
-                WHERE rl.reserva_id = $1
-            """, res['id'])
-            
-            d['lineas'] = []
-            for lin in lineas:
-                ld = row_to_dict(lin)
-                ld['cantidad_activa'] = float(ld['cantidad_reservada']) - float(ld['cantidad_liberada'])
-                d['lineas'].append(ld)
-            
-            result.append(d)
-        
-        return {"registro_id": registro_id, "reservas": result}
-
-
-@router.delete("/reservas/{reserva_id}")
-async def anular_reserva(reserva_id: str):
-    """Anula una reserva completa, liberando todo el stock reservado."""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        reserva = await conn.fetchrow("SELECT * FROM prod_inventario_reservas WHERE id = $1", reserva_id)
-        if not reserva:
-            raise HTTPException(status_code=404, detail="Reserva no encontrada")
-        if reserva['estado'] != 'ACTIVA':
-            raise HTTPException(status_code=400, detail=f"La reserva ya está {reserva['estado']}")
-        
-        registro_id = reserva['registro_id']
-        
-        # Obtener líneas activas de la reserva
-        lineas = await conn.fetch("""
-            SELECT * FROM prod_inventario_reservas_linea WHERE reserva_id = $1
-        """, reserva_id)
-        
-        # Liberar cada línea y actualizar requerimiento
-        for lin in lineas:
-            cantidad_activa = float(lin['cantidad_reservada']) - float(lin['cantidad_liberada'])
-            if cantidad_activa > 0:
-                # Marcar como liberada
-                await conn.execute("""
-                    UPDATE prod_inventario_reservas_linea
-                    SET cantidad_liberada = cantidad_reservada, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = $1
-                """, lin['id'])
-                
-                # Devolver al requerimiento
-                if lin['talla_id']:
-                    await conn.execute("""
-                        UPDATE prod_registro_requerimiento_mp
-                        SET cantidad_reservada = GREATEST(0, cantidad_reservada - $1), updated_at = CURRENT_TIMESTAMP
-                        WHERE registro_id = $2 AND item_id = $3 AND talla_id = $4
-                    """, cantidad_activa, registro_id, lin['item_id'], lin['talla_id'])
-                else:
-                    await conn.execute("""
-                        UPDATE prod_registro_requerimiento_mp
-                        SET cantidad_reservada = GREATEST(0, cantidad_reservada - $1), updated_at = CURRENT_TIMESTAMP
-                        WHERE registro_id = $2 AND item_id = $3 AND talla_id IS NULL
-                    """, cantidad_activa, registro_id, lin['item_id'])
-        
-        # Marcar reserva como anulada
-        await conn.execute("""
-            UPDATE prod_inventario_reservas SET estado = 'ANULADA', updated_at = CURRENT_TIMESTAMP WHERE id = $1
-        """, reserva_id)
-        
-        return {"message": "Reserva anulada", "reserva_id": reserva_id, "lineas_liberadas": len(lineas)}
-
-
-
-@router.post("/registros/{registro_id}/liberar-reservas")
-async def liberar_reservas(registro_id: str, input: LiberarReservaInput):
-    """Libera parcial o totalmente reservas de un registro"""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        registro = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
-        if not registro:
-            raise HTTPException(status_code=404, detail="Registro no encontrado")
-        
-        # FASE 2C: Validar que OP no esté cerrada/anulada (la liberación manual es bloqueada, la automática usa otra función)
-        if registro['estado'] in ('CERRADA', 'ANULADA'):
-            raise HTTPException(
-                status_code=400, 
-                detail=f"OP {registro['estado'].lower()}: las reservas ya fueron liberadas automáticamente al cerrar/anular"
-            )
-        
-        if not input.lineas:
-            raise HTTPException(status_code=400, detail="Debe incluir al menos una línea a liberar")
-        
-        liberadas = []
-        for linea in input.lineas:
-            # Buscar líneas de reserva activas para este item/talla
-            if linea.talla_id:
-                reserva_lineas = await conn.fetch("""
-                    SELECT rl.* FROM prod_inventario_reservas_linea rl
-                    JOIN prod_inventario_reservas r ON rl.reserva_id = r.id
-                    WHERE r.registro_id = $1 AND r.estado = 'ACTIVA'
-                      AND rl.item_id = $2 AND rl.talla_id = $3
-                      AND (rl.cantidad_reservada - rl.cantidad_liberada) > 0
-                """, registro_id, linea.item_id, linea.talla_id)
-            else:
-                reserva_lineas = await conn.fetch("""
-                    SELECT rl.* FROM prod_inventario_reservas_linea rl
-                    JOIN prod_inventario_reservas r ON rl.reserva_id = r.id
-                    WHERE r.registro_id = $1 AND r.estado = 'ACTIVA'
-                      AND rl.item_id = $2 AND rl.talla_id IS NULL
-                      AND (rl.cantidad_reservada - rl.cantidad_liberada) > 0
-                """, registro_id, linea.item_id)
-            
-            cantidad_a_liberar = linea.cantidad
-            for rl in reserva_lineas:
-                if cantidad_a_liberar <= 0:
-                    break
-                
-                activa = float(rl['cantidad_reservada']) - float(rl['cantidad_liberada'])
-                liberar = min(activa, cantidad_a_liberar)
-                
-                await conn.execute("""
-                    UPDATE prod_inventario_reservas_linea
-                    SET cantidad_liberada = cantidad_liberada + $1, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = $2
-                """, liberar, rl['id'])
-                
-                cantidad_a_liberar -= liberar
-            
-            # Actualizar requerimiento: bajar cantidad_reservada
-            if linea.talla_id:
-                await conn.execute("""
-                    UPDATE prod_registro_requerimiento_mp
-                    SET cantidad_reservada = GREATEST(0, cantidad_reservada - $1), updated_at = CURRENT_TIMESTAMP
-                    WHERE registro_id = $2 AND item_id = $3 AND talla_id = $4
-                """, linea.cantidad, registro_id, linea.item_id, linea.talla_id)
-            else:
-                await conn.execute("""
-                    UPDATE prod_registro_requerimiento_mp
-                    SET cantidad_reservada = GREATEST(0, cantidad_reservada - $1), updated_at = CURRENT_TIMESTAMP
-                    WHERE registro_id = $2 AND item_id = $3 AND talla_id IS NULL
-                """, linea.cantidad, registro_id, linea.item_id)
-            
-            liberadas.append({
-                "item_id": linea.item_id,
-                "talla_id": linea.talla_id,
-                "cantidad_liberada": linea.cantidad
-            })
-        
-        # Recalcular estados
-        await conn.execute("""
-            UPDATE prod_registro_requerimiento_mp
-            SET estado = CASE
-                WHEN cantidad_consumida >= cantidad_requerida THEN 'COMPLETO'
-                WHEN cantidad_reservada > 0 OR cantidad_consumida > 0 THEN 'PARCIAL'
-                ELSE 'PENDIENTE'
-            END
-            WHERE registro_id = $1
-        """, registro_id)
-        
-        return {"message": "Reservas liberadas", "liberadas": liberadas}
-
-
-# ==================== FASE 2C: CIERRE/ANULACIÓN OP ====================
-
-async def liberar_reservas_pendientes_auto(conn, registro_id: str):
-    """
-    Libera automáticamente todas las reservas pendientes de un registro.
-    Usado al cerrar o anular una OP.
-    Retorna resumen de liberaciones.
-    """
-    items_liberados = []
-    total_liberado = 0.0
-    
-    # Obtener todas las reservas activas del registro
-    reservas = await conn.fetch("""
-        SELECT id FROM prod_inventario_reservas
-        WHERE registro_id = $1 AND estado = 'ACTIVA'
-    """, registro_id)
-    
-    for reserva in reservas:
-        # Obtener líneas con cantidad pendiente
-        lineas = await conn.fetch("""
-            SELECT rl.*, i.nombre as item_nombre
-            FROM prod_inventario_reservas_linea rl
-            JOIN prod_inventario i ON rl.item_id = i.id
-            WHERE rl.reserva_id = $1 
-              AND (rl.cantidad_reservada - rl.cantidad_liberada) > 0
-        """, reserva['id'])
-        
-        for linea in lineas:
-            liberable = float(linea['cantidad_reservada']) - float(linea['cantidad_liberada'])
-            if liberable <= 0:
-                continue
-            
-            # Actualizar línea de reserva: marcar como liberada
-            await conn.execute("""
-                UPDATE prod_inventario_reservas_linea
-                SET cantidad_liberada = cantidad_reservada, updated_at = CURRENT_TIMESTAMP
-                WHERE id = $1
-            """, linea['id'])
-            
-            # Actualizar requerimiento: bajar cantidad_reservada
-            if linea['talla_id']:
-                await conn.execute("""
-                    UPDATE prod_registro_requerimiento_mp
-                    SET cantidad_reservada = GREATEST(0, cantidad_reservada - $1), updated_at = CURRENT_TIMESTAMP
-                    WHERE registro_id = $2 AND item_id = $3 AND talla_id = $4
-                """, liberable, registro_id, linea['item_id'], linea['talla_id'])
-            else:
-                await conn.execute("""
-                    UPDATE prod_registro_requerimiento_mp
-                    SET cantidad_reservada = GREATEST(0, cantidad_reservada - $1), updated_at = CURRENT_TIMESTAMP
-                    WHERE registro_id = $2 AND item_id = $3 AND talla_id IS NULL
-                """, liberable, registro_id, linea['item_id'])
-            
-            items_liberados.append({
-                "item_id": linea['item_id'],
-                "item_nombre": linea['item_nombre'],
-                "talla_id": linea['talla_id'],
-                "cantidad": liberable
-            })
-            total_liberado += liberable
-        
-        # Marcar cabecera de reserva como CERRADA
-        await conn.execute("""
-            UPDATE prod_inventario_reservas
-            SET estado = 'CERRADA', updated_at = CURRENT_TIMESTAMP
-            WHERE id = $1
-        """, reserva['id'])
-    
-    # Recalcular estados de requerimiento
-    await conn.execute("""
-        UPDATE prod_registro_requerimiento_mp
-        SET estado = CASE
-            WHEN cantidad_consumida >= cantidad_requerida AND cantidad_requerida > 0 THEN 'COMPLETO'
-            WHEN cantidad_reservada > 0 OR cantidad_consumida > 0 THEN 'PARCIAL'
-            ELSE 'PENDIENTE'
-        END
-        WHERE registro_id = $1
-    """, registro_id)
-    
-    return {
-        "total_liberado": total_liberado,
-        "items_liberados": items_liberados
-    }
-
-
-@router.post("/registros/{registro_id}/cerrar")
-async def cerrar_registro(registro_id: str):
-    """
-    Cierra una OP (Orden de Producción).
-    - Cambia estado a CERRADA
-    - Libera automáticamente todas las reservas pendientes
-    - No revierte salidas ya realizadas
-    """
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            # Validar registro
-            registro = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
-            if not registro:
-                raise HTTPException(status_code=404, detail="Registro no encontrado")
-            
-            estado_actual = registro['estado']
-            if estado_actual == 'ANULADA':
-                raise HTTPException(status_code=400, detail="No se puede cerrar una OP que ya está ANULADA")
-            
-            if estado_actual == 'CERRADA':
-                raise HTTPException(status_code=400, detail="La OP ya está CERRADA")
-            
-            # Cambiar estado a CERRADA
-            await conn.execute("""
-                UPDATE prod_registros 
-                SET estado = 'CERRADA'
-                WHERE id = $1
-            """, registro_id)
-            
-            # Liberar reservas pendientes automáticamente
-            liberacion = await liberar_reservas_pendientes_auto(conn, registro_id)
-            
-            return {
-                "message": "OP cerrada correctamente",
-                "estado_nuevo": "CERRADA",
-                "estado_anterior": estado_actual,
-                "reservas_liberadas_total": liberacion["total_liberado"],
-                "items_liberados": liberacion["items_liberados"]
-            }
-
-
-@router.post("/registros/{registro_id}/anular")
-async def anular_registro(registro_id: str):
-    """
-    Anula una OP (Orden de Producción).
-    - Cambia estado a ANULADA
-    - Libera automáticamente TODAS las reservas pendientes
-    - NO revierte salidas ya realizadas (mantiene trazabilidad FIFO)
-    """
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            # Validar registro
-            registro = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
-            if not registro:
-                raise HTTPException(status_code=404, detail="Registro no encontrado")
-            
-            estado_actual = registro['estado']
-            if estado_actual == 'ANULADA':
-                raise HTTPException(status_code=400, detail="La OP ya está ANULADA")
-            
-            # Cambiar estado a ANULADA
-            await conn.execute("""
-                UPDATE prod_registros 
-                SET estado = 'ANULADA'
-                WHERE id = $1
-            """, registro_id)
-            
-            # Liberar reservas pendientes automáticamente
-            liberacion = await liberar_reservas_pendientes_auto(conn, registro_id)
-            
-            # Obtener info de salidas ya realizadas (para trazabilidad)
-            salidas_realizadas = await conn.fetchval("""
-                SELECT COUNT(*) FROM prod_inventario_salidas WHERE registro_id = $1
-            """, registro_id)
-            
-            return {
-                "message": "OP anulada correctamente",
-                "estado_nuevo": "ANULADA",
-                "estado_anterior": estado_actual,
-                "reservas_liberadas_total": liberacion["total_liberado"],
-                "items_liberados": liberacion["items_liberados"],
-                "salidas_no_revertidas": salidas_realizadas,
-                "nota": "Las salidas de inventario ya realizadas NO se revierten para mantener trazabilidad FIFO"
-            }
-
-
-@router.get("/registros/{registro_id}/resumen")
-async def get_resumen_registro(registro_id: str):
-    """
-    Devuelve un resumen completo de la OP:
-    - Total de prendas (sum tallas)
-    - Requerimiento: requerida/reservada/consumida/pendiente por item/talla
-    - Reservas: estado y detalle
-    - Salidas: total consumido por item/talla, detalle por rollo si aplica
-    """
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        # Validar registro
-        registro = await conn.fetchrow("""
-            SELECT r.*, m.nombre as modelo_nombre
-            FROM prod_registros r
-            LEFT JOIN prod_modelos m ON r.modelo_id = m.id
-            WHERE r.id = $1
-        """, registro_id)
-        if not registro:
-            raise HTTPException(status_code=404, detail="Registro no encontrado")
-        
-        # Total de prendas (sum de tallas)
-        total_prendas = await conn.fetchval("""
-            SELECT COALESCE(SUM(cantidad_real), 0) FROM prod_registro_tallas WHERE registro_id = $1
-        """, registro_id)
-        
-        # Detalle de tallas
-        tallas = await conn.fetch("""
-            SELECT rt.*, tc.nombre as talla_nombre
-            FROM prod_registro_tallas rt
-            LEFT JOIN prod_tallas_catalogo tc ON rt.talla_id = tc.id
-            WHERE rt.registro_id = $1
-            ORDER BY tc.orden
-        """, registro_id)
-        
-        # Requerimiento de MP
-        requerimiento = await conn.fetch("""
-            SELECT req.*, 
-                   i.codigo as item_codigo, i.nombre as item_nombre, i.unidad_medida,
-                   tc.nombre as talla_nombre,
-                   GREATEST(0, req.cantidad_requerida - req.cantidad_consumida) as pendiente_consumir,
-                   GREATEST(0, req.cantidad_reservada - req.cantidad_consumida) as reserva_disponible
-            FROM prod_registro_requerimiento_mp req
-            JOIN prod_inventario i ON req.item_id = i.id
-            LEFT JOIN prod_tallas_catalogo tc ON req.talla_id = tc.id
-            WHERE req.registro_id = $1
-            ORDER BY i.nombre, tc.orden
-        """, registro_id)
-        
-        # Reservas
-        reservas_raw = await conn.fetch("""
-            SELECT res.id, res.estado as reserva_estado, res.fecha as reserva_fecha,
-                   rl.item_id, rl.talla_id, rl.cantidad_reservada, rl.cantidad_liberada,
-                   i.nombre as item_nombre, tc.nombre as talla_nombre
-            FROM prod_inventario_reservas res
-            JOIN prod_inventario_reservas_linea rl ON rl.reserva_id = res.id
-            JOIN prod_inventario i ON rl.item_id = i.id
-            LEFT JOIN prod_tallas_catalogo tc ON rl.talla_id = tc.id
-            WHERE res.registro_id = $1
-            ORDER BY res.fecha DESC
-        """, registro_id)
-        
-        # Agrupar reservas
-        reservas_totales = {
-            "total_reservado": 0,
-            "total_liberado": 0,
-            "activas": 0,
-            "cerradas": 0,
-            "detalle": []
-        }
-        for r in reservas_raw:
-            reservas_totales["total_reservado"] += float(r['cantidad_reservada'])
-            reservas_totales["total_liberado"] += float(r['cantidad_liberada'])
-            if r['reserva_estado'] == 'ACTIVA':
-                reservas_totales["activas"] += 1
-            else:
-                reservas_totales["cerradas"] += 1
-            reservas_totales["detalle"].append({
-                "item_id": r['item_id'],
-                "item_nombre": r['item_nombre'],
-                "talla_id": r['talla_id'],
-                "talla_nombre": r['talla_nombre'],
-                "cantidad_reservada": float(r['cantidad_reservada']),
-                "cantidad_liberada": float(r['cantidad_liberada']),
-                "pendiente": float(r['cantidad_reservada']) - float(r['cantidad_liberada']),
-                "reserva_estado": r['reserva_estado']
-            })
-        
-        # Salidas
-        salidas = await conn.fetch("""
-            SELECT s.*, 
-                   i.codigo as item_codigo, i.nombre as item_nombre, i.control_por_rollos,
-                   tc.nombre as talla_nombre,
-                   ro.numero_rollo, ro.tono
-            FROM prod_inventario_salidas s
-            JOIN prod_inventario i ON s.item_id = i.id
-            LEFT JOIN prod_tallas_catalogo tc ON s.talla_id = tc.id
-            LEFT JOIN prod_inventario_rollos ro ON s.rollo_id = ro.id
-            WHERE s.registro_id = $1
-            ORDER BY s.fecha DESC
-        """, registro_id)
-        
-        # Agrupar salidas por item/talla
-        salidas_por_item = {}
-        for s in salidas:
-            key = f"{s['item_id']}_{s['talla_id'] or 'null'}"
-            if key not in salidas_por_item:
-                salidas_por_item[key] = {
-                    "item_id": s['item_id'],
-                    "item_nombre": s['item_nombre'],
-                    "talla_id": s['talla_id'],
-                    "talla_nombre": s['talla_nombre'],
-                    "total_consumido": 0,
-                    "costo_total": 0,
-                    "detalle_salidas": []
-                }
-            salidas_por_item[key]["total_consumido"] += float(s['cantidad'])
-            salidas_por_item[key]["costo_total"] += float(s['costo_total']) if s['costo_total'] else 0
-            salidas_por_item[key]["detalle_salidas"].append({
-                "id": s['id'],
-                "cantidad": float(s['cantidad']),
-                "costo_total": float(s['costo_total']) if s['costo_total'] else 0,
-                "fecha": s['fecha'].isoformat() if s['fecha'] else None,
-                "rollo_id": s['rollo_id'],
-                "numero_rollo": s['numero_rollo'],
-                "tono": s['tono']
-            })
-        
-        return {
-            "registro": {
-                "id": registro['id'],
-                "n_corte": registro['n_corte'],
-                "estado": registro['estado'],
-                "modelo_nombre": registro['modelo_nombre'],
-                "fecha_creacion": registro['fecha_creacion'].isoformat() if registro['fecha_creacion'] else None,
-                "urgente": registro['urgente']
-            },
-            "total_prendas": int(total_prendas or 0),
-            "tallas": [
-                {
-                    "talla_id": t['talla_id'],
-                    "talla_nombre": t['talla_nombre'],
-                    "cantidad": int(t['cantidad_real']) if t['cantidad_real'] else 0
-                }
-                for t in tallas
-            ],
-            "requerimiento": [
-                {
-                    "id": r['id'],
-                    "item_id": r['item_id'],
-                    "item_codigo": r['item_codigo'],
-                    "item_nombre": r['item_nombre'],
-                    "unidad_medida": r['unidad_medida'],
-                    "talla_id": r['talla_id'],
-                    "talla_nombre": r['talla_nombre'],
-                    "cantidad_requerida": float(r['cantidad_requerida']),
-                    "cantidad_reservada": float(r['cantidad_reservada']),
-                    "cantidad_consumida": float(r['cantidad_consumida']),
-                    "pendiente_consumir": float(r['pendiente_consumir']),
-                    "reserva_disponible": float(r['reserva_disponible']),
-                    "estado": r['estado']
-                }
-                for r in requerimiento
-            ],
-            "reservas": reservas_totales,
-            "salidas": {
-                "total_salidas": len(salidas),
-                "costo_total": sum(float(s['costo_total'] or 0) for s in salidas),
-                "por_item": list(salidas_por_item.values())
-            }
-        }
-
-
-# ==================== ENDPOINTS INVENTARIO ====================
-
-CATEGORIAS_INVENTARIO = ["Telas", "Avios", "Otros"]
-@router.post("/registros/{registro_id}/dividir")
-async def dividir_lote(registro_id: str, body: DivisionLoteRequest):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        padre = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
-        if not padre:
-            raise HTTPException(status_code=404, detail="Registro no encontrado")
-        
-        tallas_padre = padre['tallas'] if isinstance(padre['tallas'], list) else json.loads(padre['tallas']) if padre['tallas'] else []
-        tallas_hijo_req = body.tallas_hijo
-        
-        # Validar que las cantidades del hijo no excedan las del padre
-        padre_map = {t['talla_id']: t for t in tallas_padre}
-        nuevas_tallas_padre = []
-        tallas_hijo_final = []
-        
-        for tp in tallas_padre:
-            hijo_t = next((h for h in tallas_hijo_req if h.get('talla_id') == tp['talla_id']), None)
-            cant_hijo = hijo_t.get('cantidad', 0) if hijo_t else 0
-            if cant_hijo < 0:
-                raise HTTPException(status_code=400, detail=f"Cantidad negativa para talla {tp.get('talla_nombre')}")
-            if cant_hijo > tp['cantidad']:
-                raise HTTPException(status_code=400, detail=f"Cantidad para talla {tp.get('talla_nombre')} ({cant_hijo}) excede disponible ({tp['cantidad']})")
-            nuevas_tallas_padre.append({**tp, 'cantidad': tp['cantidad'] - cant_hijo})
-            if cant_hijo > 0:
-                tallas_hijo_final.append({**tp, 'cantidad': cant_hijo})
-        
-        if not tallas_hijo_final:
-            raise HTTPException(status_code=400, detail="Debe asignar al menos una talla al nuevo lote")
-        
-        # Determinar número de división
-        max_div = await conn.fetchval(
-            "SELECT COALESCE(MAX(division_numero), 0) FROM prod_registros WHERE dividido_desde_registro_id = $1",
-            registro_id
-        )
-        # También considerar divisiones del padre original
-        padre_original_id = padre.get('dividido_desde_registro_id') or registro_id
-        if padre_original_id != registro_id:
-            max_div2 = await conn.fetchval(
-                "SELECT COALESCE(MAX(division_numero), 0) FROM prod_registros WHERE dividido_desde_registro_id = $1",
-                padre_original_id
-            )
-            max_div = max(max_div, max_div2)
-        
-        division_num = max_div + 1
-        n_corte_base = padre['n_corte'].split('-')[0]
-        n_corte_hijo = f"{n_corte_base}-{division_num}"
-        
-        import uuid
-        hijo_id = str(uuid.uuid4())
-        estado_hijo = body.estado_hijo or padre['estado']
-        
-        await conn.execute("""
-            INSERT INTO prod_registros (id, n_corte, modelo_id, curva, estado, urgente, tallas, distribucion_colores,
-                fecha_creacion, hilo_especifico_id, empresa_id, pt_item_id, fecha_entrega_final,
-                dividido_desde_registro_id, division_numero)
-            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, CURRENT_TIMESTAMP, $9, $10, $11, $12, $13, $14)
-        """,
-            hijo_id, n_corte_hijo, padre['modelo_id'], padre.get('curva'), estado_hijo,
-            padre.get('urgente', False),
-            json.dumps(tallas_hijo_final), json.dumps(padre['distribucion_colores'] if isinstance(padre['distribucion_colores'], list) else []),
-            padre.get('hilo_especifico_id'), padre.get('empresa_id'), padre.get('pt_item_id'),
-            padre.get('fecha_entrega_final'),
-            registro_id, division_num
-        )
-        
-        await conn.execute(
-            "UPDATE prod_registros SET tallas = $1::jsonb WHERE id = $2",
-            json.dumps(nuevas_tallas_padre), registro_id
-        )
-        
-        # Sincronizar prod_registro_tallas del padre (actualizar cantidades)
-        for tp in nuevas_tallas_padre:
-            await conn.execute(
-                "UPDATE prod_registro_tallas SET cantidad_real = $1, updated_at = CURRENT_TIMESTAMP WHERE registro_id = $2 AND talla_id = $3",
-                tp['cantidad'], registro_id, tp['talla_id']
-            )
-        
-        # Crear prod_registro_tallas del hijo
-        # Obtener empresa_id real desde los registros existentes
-        empresa_id_real = await conn.fetchval(
-            "SELECT empresa_id FROM prod_registro_tallas WHERE registro_id = $1 LIMIT 1", registro_id
-        ) or 7
-        for th in tallas_hijo_final:
-            await conn.execute(
-                """INSERT INTO prod_registro_tallas (id, registro_id, talla_id, cantidad_real, empresa_id, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
-                str(uuid.uuid4()), hijo_id, th['talla_id'], th['cantidad'], empresa_id_real
-            )
-        
-        return {
-            "mensaje": f"Lote dividido exitosamente. Nuevo registro: {n_corte_hijo}",
-            "registro_hijo_id": hijo_id,
-            "n_corte_hijo": n_corte_hijo,
-            "tallas_padre": nuevas_tallas_padre,
-            "tallas_hijo": tallas_hijo_final,
-        }
-
-@router.get("/registros/{registro_id}/divisiones")
-async def get_divisiones_registro(registro_id: str):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        padre = await conn.fetchrow("SELECT id, n_corte, dividido_desde_registro_id FROM prod_registros WHERE id = $1", registro_id)
-        if not padre:
-            raise HTTPException(status_code=404, detail="Registro no encontrado")
-        
-        # Hijos directos
-        hijos = await conn.fetch(
-            "SELECT id, n_corte, estado, tallas, division_numero FROM prod_registros WHERE dividido_desde_registro_id = $1 ORDER BY division_numero",
-            registro_id
-        )
-        
-        # Si este registro es un hijo, obtener info del padre
-        padre_info = None
-        if padre['dividido_desde_registro_id']:
-            p = await conn.fetchrow(
-                "SELECT id, n_corte, estado FROM prod_registros WHERE id = $1",
-                padre['dividido_desde_registro_id']
-            )
-            if p:
-                padre_info = {"id": p['id'], "n_corte": p['n_corte'], "estado": p['estado']}
-        
-        # Hermanos (otros hijos del mismo padre)
-        hermanos = []
-        if padre['dividido_desde_registro_id']:
-            hermanos_rows = await conn.fetch(
-                "SELECT id, n_corte, estado FROM prod_registros WHERE dividido_desde_registro_id = $1 AND id != $2 ORDER BY division_numero",
-                padre['dividido_desde_registro_id'], registro_id
-            )
-            hermanos = [{"id": h['id'], "n_corte": h['n_corte'], "estado": h['estado']} for h in hermanos_rows]
-        
-        return {
-            "registro_id": registro_id,
-            "n_corte": padre['n_corte'],
-            "es_hijo": padre['dividido_desde_registro_id'] is not None,
-            "padre": padre_info,
-            "hijos": [
-                {
-                    "id": h['id'],
-                    "n_corte": h['n_corte'],
-                    "estado": h['estado'],
-                    "tallas": h['tallas'] if isinstance(h['tallas'], list) else json.loads(h['tallas']) if h['tallas'] else [],
-                    "division_numero": h['division_numero'],
-                }
-                for h in hijos
-            ],
-            "hermanos": hermanos,
-        }
-
-@router.post("/registros/{registro_id}/reunificar")
-async def reunificar_lote(registro_id: str):
-    """Reunifica un registro hijo con su padre. Solo si el hijo no tiene movimientos propios."""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        hijo = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
-        if not hijo:
-            raise HTTPException(status_code=404, detail="Registro no encontrado")
-        if not hijo.get('dividido_desde_registro_id'):
-            raise HTTPException(status_code=400, detail="Este registro no es una división. No se puede reunificar.")
-        
-        padre_id = hijo['dividido_desde_registro_id']
-        
-        # Verificar que el hijo no tenga movimientos
-        mov_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM prod_movimientos_produccion WHERE registro_id = $1", registro_id
-        )
-        if mov_count and mov_count > 0:
-            raise HTTPException(status_code=400, detail="Este lote ya tiene movimientos registrados. No se puede reunificar.")
-        
-        # Verificar que el hijo no tenga salidas de inventario
-        sal_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM prod_inventario_salidas WHERE registro_id = $1", registro_id
-        )
-        if sal_count and sal_count > 0:
-            raise HTTPException(status_code=400, detail="Este lote ya tiene salidas de inventario. No se puede reunificar.")
-        
-        # Sumar tallas del hijo al padre
-        padre = await conn.fetchrow("SELECT tallas FROM prod_registros WHERE id = $1", padre_id)
-        tallas_padre = padre['tallas'] if isinstance(padre['tallas'], list) else json.loads(padre['tallas']) if padre['tallas'] else []
-        tallas_hijo = hijo['tallas'] if isinstance(hijo['tallas'], list) else json.loads(hijo['tallas']) if hijo['tallas'] else []
-        
-        padre_map = {t['talla_id']: t for t in tallas_padre}
-        for th in tallas_hijo:
-            tid = th['talla_id']
-            if tid in padre_map:
-                padre_map[tid]['cantidad'] = padre_map[tid]['cantidad'] + th['cantidad']
-            else:
-                padre_map[tid] = th
-        
-        nuevas_tallas = list(padre_map.values())
-        
-        await conn.execute(
-            "UPDATE prod_registros SET tallas = $1::jsonb WHERE id = $2",
-            json.dumps(nuevas_tallas), padre_id
-        )
-        
-        # Sincronizar prod_registro_tallas del padre
-        for tp in nuevas_tallas:
-            existing = await conn.fetchval(
-                "SELECT id FROM prod_registro_tallas WHERE registro_id = $1 AND talla_id = $2", padre_id, tp['talla_id']
-            )
-            if existing:
-                await conn.execute(
-                    "UPDATE prod_registro_tallas SET cantidad_real = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
-                    tp['cantidad'], existing
-                )
-            else:
-                await conn.execute(
-                    """INSERT INTO prod_registro_tallas (id, registro_id, talla_id, cantidad_real, empresa_id, created_at, updated_at)
-                       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
-                    str(uuid.uuid4()), padre_id, tp['talla_id'], tp['cantidad'], 7
-                )
-        
-        # Eliminar prod_registro_tallas del hijo
-        await conn.execute("DELETE FROM prod_registro_tallas WHERE registro_id = $1", registro_id)
-        
-        # Eliminar incidencias y paralizaciones del hijo
-        await conn.execute("DELETE FROM prod_incidencia WHERE registro_id = $1", registro_id)
-        await conn.execute("DELETE FROM prod_paralizacion WHERE registro_id = $1", registro_id)
-        
-        # Eliminar el registro hijo
-        await conn.execute("DELETE FROM prod_registros WHERE id = $1", registro_id)
-        
-        return {
-            "mensaje": f"Lote reunificado exitosamente con {padre['tallas']}",
-            "padre_id": padre_id,
-            "tallas_reunificadas": nuevas_tallas,
-        }

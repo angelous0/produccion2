@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
@@ -64,6 +64,15 @@ import {
   PackageX,
   ArrowRightLeft,
   ShieldCheck,
+  TrendingUp,
+  Bell,
+  Truck,
+  CalendarDays,
+  BarChart2,
+  Wrench,
+  Search,
+  Building2,
+  AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -98,7 +107,6 @@ function getUserInitials(user) {
 const operacionesItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/registros', icon: ClipboardList, label: 'Registros' },
-  { to: '/reportes/seguimiento', icon: Activity, label: 'Seguimiento' },
 ];
 
 const inventarioItems = [
@@ -115,11 +123,18 @@ const inventarioItems = [
 ];
 
 const reportesItems = [
-  { to: '/reportes/matriz', icon: Grid3X3, label: 'Matriz Dinámica' },
+  { to: '/reportes/alertas', icon: Bell, label: 'Alertas del Día' },
+  { to: '/reportes/seguimiento', icon: Activity, label: 'Seguimiento' },
+  { to: '/reportes/agenda-entregas', icon: CalendarDays, label: 'Agenda Entregas' },
+  { to: '/reportes/entregas', icon: Truck, label: 'Entregas' },
+  { to: '/reportes/costo-lote', icon: BarChart2, label: 'Costo por Lote' },
+  { to: '/reportes/tendencia-fallados', icon: Wrench, label: 'Fallados y Arreglos' },
   { to: '/reportes/operativo', icon: Users, label: 'Operativo & Terceros' },
-  { to: '/reportes/lotes', icon: GitBranch, label: 'Lotes & Trazabilidad' },
-  { to: '/reportes/valorizacion', icon: Package, label: 'Valorización' },
   { to: '/reportes/calidad', icon: Shield, label: 'Calidad' },
+  { to: '/reportes/valorizacion', icon: Package, label: 'Valorizacion' },
+  { to: '/reportes/lotes', icon: GitBranch, label: 'Lotes & Trazabilidad' },
+  { to: '/reportes/matriz', icon: Grid3X3, label: 'Matriz Dinamica' },
+  { to: '/reportes/rendimiento-servicios', icon: TrendingUp, label: 'Rendimiento Servicios' },
 ];
 
 const catalogosItems = [
@@ -141,11 +156,13 @@ const maestrosItems = [
   { to: '/maestros/personas', icon: Users, label: 'Personas' },
   { to: '/maestros/rutas', icon: Route, label: 'Rutas' },
   { to: '/maestros/movimientos', icon: Play, label: 'Movimientos' },
+  { to: '/maestros/motivos-incidencia', icon: AlertTriangle, label: 'Motivos Incidencia' },
   { to: '/maestros/productividad', icon: BarChart3, label: 'Productividad' },
   { to: '/guias', icon: FileText, label: 'Guías de Remisión' },
 ];
 
 const configItems = [
+  { to: '/config-empresa', icon: Building2, label: 'Empresa' },
   { to: '/usuarios', icon: Shield, label: 'Usuarios' },
   { to: '/historial-actividad', icon: History, label: 'Historial' },
   { to: '/auditoria', icon: ShieldCheck, label: 'Auditoría' },
@@ -225,6 +242,115 @@ function ScrollToTop() {
     if (el) el.scrollTo(0, 0);
   }, [pathname]);
   return null;
+}
+
+
+// ── Búsqueda Global ──────────────────────────────────────────────────────────
+function GlobalSearch() {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const ref = useRef(null);
+  const timer = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const search = async (q) => {
+    if (!q.trim() || q.length < 2) { setResults(null); return; }
+    setLoading(true);
+    try {
+      const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+      const [regs, pers] = await Promise.all([
+        axios.get(`${API}/registros/?limit=200`).then(r => r.data?.items || r.data || []),
+        axios.get(`${API}/personas-produccion?all=true`).then(r => r.data?.items || r.data || []).catch(() => []),
+      ]);
+      const ql = q.toLowerCase();
+      const regResults = regs.filter(r =>
+        r.n_corte?.toLowerCase().includes(ql) ||
+        r.modelo_nombre?.toLowerCase().includes(ql)
+      ).slice(0, 5);
+      const persResults = pers.filter(p => p.nombre?.toLowerCase().includes(ql)).slice(0, 3);
+      setResults({ registros: regResults, personas: persResults });
+    } catch { setResults(null); }
+    finally { setLoading(false); }
+  };
+
+  const handleChange = (e) => {
+    const v = e.target.value;
+    setQuery(v);
+    setOpen(true);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => search(v), 300);
+  };
+
+  const go = (url) => { navigate(url); setOpen(false); setQuery(''); setResults(null); };
+
+  return (
+    <div className="relative hidden md:block" ref={ref} style={{ width: 240 }}>
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        <Input
+          value={query}
+          onChange={handleChange}
+          onFocus={() => query.length >= 2 && setOpen(true)}
+          placeholder="Buscar corte, modelo, persona..."
+          className="pl-8 h-8 text-xs bg-muted/40 border-muted focus:bg-background w-full"
+          data-testid="global-search-input"
+        />
+        {loading && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+      </div>
+      {open && results && (
+        <div className="absolute top-full mt-1 w-[320px] rounded-xl border bg-card shadow-xl z-50 overflow-hidden">
+          {results.registros.length === 0 && results.personas.length === 0 ? (
+            <div className="px-4 py-3 text-xs text-muted-foreground">Sin resultados para "{query}"</div>
+          ) : (
+            <>
+              {results.registros.length > 0 && (
+                <>
+                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/30 border-b">Registros</div>
+                  {results.registros.map(r => (
+                    <button key={r.id} onClick={() => go('/registros/editar/' + r.id)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted/40 transition-colors text-left border-b last:border-0">
+                      <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <ClipboardList className="h-3.5 w-3.5 text-primary" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold">Corte {r.n_corte}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{r.modelo_nombre} · {r.estado}</p>
+                      </div>
+                    </button>
+                  ))}
+                </>
+              )}
+              {results.personas.length > 0 && (
+                <>
+                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/30 border-b border-t">Personas</div>
+                  {results.personas.map(p => (
+                    <button key={p.id} onClick={() => go('/maestros/personas')}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted/40 transition-colors text-left border-b last:border-0">
+                      <div className="h-7 w-7 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                        <User className="h-3.5 w-3.5 text-green-700" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold">{p.nombre}</p>
+                        <p className="text-[11px] text-muted-foreground">{p.tipo} · {p.servicios?.map(s => s.servicio_nombre).join(', ').substring(0,30)}</p>
+                      </div>
+                    </button>
+                  ))}
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Layout principal ────────────────────────────────────────────────────────
@@ -325,6 +451,7 @@ export const Layout = () => {
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+            <GlobalSearch />
             <NotificacionesBell />
 
             <Button variant="ghost" size="icon" onClick={toggleTheme} data-testid="theme-toggle">

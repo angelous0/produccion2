@@ -14,8 +14,8 @@ router = APIRouter(prefix="/api", tags=["ordenes"])
 import sys
 sys.path.insert(0, '/app/backend')
 from db import get_pool
-from auth import get_current_user
-from helpers import row_to_dict
+from auth_utils import get_current_user
+from helpers import row_to_dict, validar_registro_activo
 
 
 # ==================== PYDANTIC MODELS ====================
@@ -239,8 +239,7 @@ async def update_orden(
         if not orden:
             raise HTTPException(status_code=404, detail="Orden no encontrada")
         
-        if orden['estado_op'] in ('CERRADA', 'ANULADA'):
-            raise HTTPException(status_code=400, detail=f"No se puede modificar una orden {orden['estado_op']}")
+        validar_registro_activo(orden, campo_estado='estado_op', contexto='modificar')
         
         if data.estado_op and data.estado_op not in ESTADOS_OP:
             raise HTTPException(status_code=400, detail=f"estado_op debe ser uno de: {ESTADOS_OP}")
@@ -293,8 +292,7 @@ async def update_tallas(
         if not orden:
             raise HTTPException(status_code=404, detail="Orden no encontrada")
         
-        if orden['estado_op'] in ('CERRADA', 'ANULADA'):
-            raise HTTPException(status_code=400, detail=f"No se pueden modificar tallas de una orden {orden['estado_op']}")
+        validar_registro_activo(orden, campo_estado='estado_op', contexto='modificar tallas')
         
         updated = []
         for t in data.tallas:
@@ -333,8 +331,7 @@ async def cambiar_etapa(
         if not orden:
             raise HTTPException(status_code=404, detail="Orden no encontrada")
         
-        if orden['estado_op'] in ('CERRADA', 'ANULADA'):
-            raise HTTPException(status_code=400, detail=f"No se puede cambiar etapa de una orden {orden['estado_op']}")
+        validar_registro_activo(orden, campo_estado='estado_op', contexto='cambiar etapa')
         
         etapa = await conn.fetchrow(
             "SELECT * FROM prod_orden_etapa WHERE empresa_id = $1 AND codigo = $2",

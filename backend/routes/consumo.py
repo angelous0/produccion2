@@ -13,8 +13,8 @@ router = APIRouter(prefix="/api", tags=["consumo"])
 import sys
 sys.path.insert(0, '/app/backend')
 from db import get_pool
-from auth import get_current_user
-from helpers import row_to_dict
+from auth_utils import get_current_user
+from helpers import row_to_dict, validar_registro_activo
 
 
 # ==================== PYDANTIC MODELS ====================
@@ -274,17 +274,13 @@ async def create_consumo(
             orden = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", data.orden_id)
             if not orden:
                 raise HTTPException(status_code=404, detail="Orden no encontrada")
-            if orden['estado_op'] in ('CERRADA', 'ANULADA'):
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"No se puede registrar consumo en orden {orden['estado_op']}"
-                )
-            
+            validar_registro_activo(orden, campo_estado='estado_op', contexto='registrar consumo')
+
             # Validate item
             item = await conn.fetchrow("SELECT * FROM prod_inventario WHERE id = $1", data.item_id)
             if not item:
                 raise HTTPException(status_code=404, detail="Item no encontrado")
-            
+
             if item['tipo_item'] == 'SERVICIO':
                 raise HTTPException(
                     status_code=400, 
@@ -373,12 +369,8 @@ async def create_consumo_multi_rollo(
             orden = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", data.orden_id)
             if not orden:
                 raise HTTPException(status_code=404, detail="Orden no encontrada")
-            if orden['estado_op'] in ('CERRADA', 'ANULADA'):
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"No se puede registrar consumo en orden {orden['estado_op']}"
-                )
-            
+            validar_registro_activo(orden, campo_estado='estado_op', contexto='registrar consumo')
+
             # Validate item
             item = await conn.fetchrow("SELECT * FROM prod_inventario WHERE id = $1", data.item_id)
             if not item:
@@ -486,11 +478,8 @@ async def delete_consumo(
                 raise HTTPException(status_code=404, detail="Consumo no encontrado")
             
             orden = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", consumo['orden_id'])
-            if orden and orden['estado_op'] in ('CERRADA', 'ANULADA'):
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"No se puede eliminar consumo de orden {orden['estado_op']}"
-                )
+            if orden:
+                validar_registro_activo(orden, campo_estado='estado_op', contexto='eliminar consumo')
             
             cantidad = float(consumo['cantidad'])
             item_id = consumo['item_id']

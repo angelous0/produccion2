@@ -12,9 +12,16 @@ import { RegistroForm } from "./pages/RegistroForm";
 import { Loader2 } from "lucide-react";
 
 // Lazy imports - se cargan solo cuando se navega a la ruta
+const AgendaEntregas = lazy(() => import('./pages/AgendaEntregas'));
+const CostoPorLote = lazy(() => import('./pages/CostoPorLote'));
+const TendenciaFallados = lazy(() => import('./pages/TendenciaFallados'));
+const DashboardEjecutivo = lazy(() => import('./pages/DashboardEjecutivo'));
+const ReporteAlertas = lazy(() => import('./pages/ReporteAlertas'));
+const ReporteEntregas = lazy(() => import('./pages/ReporteEntregas'));
 const Usuarios = lazy(() => import("./pages/Usuarios").then(m => ({ default: m.Usuarios })));
 const HistorialActividad = lazy(() => import("./pages/HistorialActividad").then(m => ({ default: m.HistorialActividad })));
 const Backups = lazy(() => import("./pages/Backups").then(m => ({ default: m.Backups })));
+const ConfigEmpresa = lazy(() => import("./pages/ConfigEmpresa"));
 const Marcas = lazy(() => import("./pages/Marcas").then(m => ({ default: m.Marcas })));
 const Tipos = lazy(() => import("./pages/Tipos").then(m => ({ default: m.Tipos })));
 const Entalles = lazy(() => import("./pages/Entalles").then(m => ({ default: m.Entalles })));
@@ -39,10 +46,12 @@ const PersonasProduccion = lazy(() => import("./pages/PersonasProduccion").then(
 const MovimientosProduccion = lazy(() => import("./pages/MovimientosProduccion").then(m => ({ default: m.MovimientosProduccion })));
 const ReporteProductividad = lazy(() => import("./pages/ReporteProductividad").then(m => ({ default: m.ReporteProductividad })));
 const RutasProduccion = lazy(() => import("./pages/RutasProduccion").then(m => ({ default: m.RutasProduccion })));
+const MotivosIncidenciaPage = lazy(() => import("./pages/MotivosIncidencia").then(m => ({ default: m.MotivosIncidencia })));
 const GuiasRemision = lazy(() => import("./pages/GuiasRemision").then(m => ({ default: m.GuiasRemision })));
 const HilosEspecificos = lazy(() => import("./pages/HilosEspecificos").then(m => ({ default: m.HilosEspecificos })));
 const ReporteTrazabilidad = lazy(() => import("./pages/ReporteTrazabilidad").then(m => ({ default: m.ReporteTrazabilidad })));
 const MatrizProduccion = lazy(() => import("./pages/MatrizProduccion").then(m => ({ default: m.MatrizProduccion })));
+const RendimientoServicios = lazy(() => import("./pages/RendimientoServicios"));
 const ReporteStockBajo = lazy(() => import("./pages/ReporteStockBajo").then(m => ({ default: m.ReporteStockBajo })));
 const SeguimientoProduccion = lazy(() => import("./pages/SeguimientoProduccion").then(m => ({ default: m.SeguimientoProduccion })));
 const OperativoTerceros = lazy(() => import("./pages/OperativoTerceros").then(m => ({ default: m.OperativoTerceros })));
@@ -119,6 +128,7 @@ function AppRoutes() {
         <Route path="auditoria" element={<LazyWrap><AuditoriaLogs /></LazyWrap>} />
         <Route path="historial-actividad" element={<LazyWrap><HistorialActividad /></LazyWrap>} />
         <Route path="backups" element={<LazyWrap><Backups /></LazyWrap>} />
+        <Route path="config-empresa" element={<LazyWrap><ConfigEmpresa /></LazyWrap>} />
         <Route path="marcas" element={<LazyWrap><Marcas /></LazyWrap>} />
         <Route path="tipos" element={<LazyWrap><Tipos /></LazyWrap>} />
         <Route path="entalles" element={<LazyWrap><Entalles /></LazyWrap>} />
@@ -148,6 +158,7 @@ function AppRoutes() {
         <Route path="maestros/rutas" element={<LazyWrap><RutasProduccion /></LazyWrap>} />
         <Route path="maestros/movimientos" element={<LazyWrap><MovimientosProduccion /></LazyWrap>} />
         <Route path="maestros/productividad" element={<LazyWrap><ReporteProductividad /></LazyWrap>} />
+        <Route path="maestros/motivos-incidencia" element={<LazyWrap><MotivosIncidenciaPage /></LazyWrap>} />
         <Route path="guias" element={<LazyWrap><GuiasRemision /></LazyWrap>} />
         {/* Rutas consolidadas */}
         <Route path="reportes/seguimiento" element={<LazyWrap><SeguimientoProduccion /></LazyWrap>} />
@@ -155,8 +166,16 @@ function AppRoutes() {
         <Route path="reportes/lotes" element={<LazyWrap><LotesTrazabilidad /></LazyWrap>} />
         <Route path="reportes/valorizacion" element={<LazyWrap><ValorizacionConsolidado /></LazyWrap>} />
         <Route path="reportes/calidad" element={<LazyWrap><CalidadConsolidado /></LazyWrap>} />
+        <Route path="reportes/dashboard-ejecutivo" element={<LazyWrap><DashboardEjecutivo /></LazyWrap>} />
+        <Route path="reportes/alertas" element={<LazyWrap><ReporteAlertas /></LazyWrap>} />
+        
+        <Route path="reportes/agenda-entregas" element={<LazyWrap><AgendaEntregas /></LazyWrap>} />
+        <Route path="reportes/costo-lote" element={<LazyWrap><CostoPorLote /></LazyWrap>} />
+        <Route path="reportes/tendencia-fallados" element={<LazyWrap><TendenciaFallados /></LazyWrap>} />
+        <Route path="reportes/entregas" element={<LazyWrap><ReporteEntregas /></LazyWrap>} />
         <Route path="control-fallados" element={<Navigate to="/reportes/calidad?tab=fallados" replace />} />
         <Route path="reportes/matriz" element={<LazyWrap><MatrizProduccion /></LazyWrap>} />
+        <Route path="reportes/rendimiento-servicios" element={<LazyWrap><RendimientoServicios /></LazyWrap>} />
         <Route path="reportes/trazabilidad/:registroId" element={<LazyWrap><ReporteTrazabilidad /></LazyWrap>} />
         {/* Legacy redirects */}
         <Route path="reportes/dashboard" element={<Navigate to="/" replace />} />

@@ -30,11 +30,13 @@ import {
 } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { Play, Pencil, Trash2, Calendar, Users, Cog, Filter, X, Plus, DollarSign, Search } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
+import { Play, Pencil, Trash2, Calendar, Users, Cog, Filter, X, Plus, DollarSign, Search, ChevronsUpDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
 import { formatDate } from '../lib/dateUtils';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, cn } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -42,10 +44,12 @@ export const MovimientosProduccion = () => {
   const [movimientos, setMovimientos] = useState([]);
   const [servicios, setServicios] = useState([]);
   const [personas, setPersonas] = useState([]);
+  const [registros, setRegistros] = useState([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [pageSize] = useState(50);
   const { saving, guard } = useSaving();
+  const [registroPopoverOpen, setRegistroPopoverOpen] = useState(false);
   
   // Filtros (server-side)
   const [filtroServicio, setFiltroServicio] = useState('');
@@ -53,6 +57,7 @@ export const MovimientosProduccion = () => {
   const [filtroRegistro, setFiltroRegistro] = useState('');
   const [filtroFechaDesde, setFiltroFechaDesde] = useState('');
   const [filtroFechaHasta, setFiltroFechaHasta] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('activos');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchDebounced, setSearchDebounced] = useState('');
 
@@ -65,6 +70,7 @@ export const MovimientosProduccion = () => {
     persona_id: '',
     fecha_inicio: '',
     fecha_fin: '',
+    fecha_esperada_movimiento: '',
     cantidad_enviada: 0,
     cantidad_recibida: 0,
     observaciones: '',
@@ -80,6 +86,7 @@ export const MovimientosProduccion = () => {
     persona_id: '',
     fecha_inicio: '',
     fecha_fin: '',
+    fecha_esperada_movimiento: '',
     cantidad_enviada: 0,
     cantidad_recibida: 0,
     observaciones: '',
@@ -118,12 +125,14 @@ export const MovimientosProduccion = () => {
 
   const fetchCatalogos = async () => {
     try {
-      const [servRes, persRes] = await Promise.all([
+      const [servRes, persRes, regRes] = await Promise.all([
         axios.get(`${API}/servicios-produccion`),
         axios.get(`${API}/personas-produccion`),
+        axios.get(`${API}/registros?limit=500&excluir_estados=`),
       ]);
       setServicios(servRes.data);
       setPersonas(persRes.data);
+      setRegistros(Array.isArray(regRes.data) ? regRes.data : regRes.data.items || []);
     } catch (error) {
       console.error('Error al cargar catálogos:', error);
     }
@@ -150,6 +159,7 @@ export const MovimientosProduccion = () => {
       persona_id: movimiento.persona_id,
       fecha_inicio: movimiento.fecha_inicio || '',
       fecha_fin: movimiento.fecha_fin || '',
+      fecha_esperada_movimiento: movimiento.fecha_esperada_movimiento || '',
       cantidad_enviada: movimiento.cantidad_enviada || movimiento.cantidad || 0,
       cantidad_recibida: movimiento.cantidad_recibida || movimiento.cantidad || 0,
       observaciones: movimiento.observaciones || '',
@@ -210,6 +220,14 @@ export const MovimientosProduccion = () => {
       toast.error('Selecciona servicio y persona');
       return;
     }
+    if (formData.fecha_inicio && formData.fecha_fin && formData.fecha_fin <= formData.fecha_inicio) {
+      toast.error('La fecha fin debe ser mayor que la fecha inicio');
+      return;
+    }
+    if (formData.fecha_inicio && formData.fecha_esperada_movimiento && formData.fecha_esperada_movimiento <= formData.fecha_inicio) {
+      toast.error('La fecha esperada debe ser mayor que la fecha inicio');
+      return;
+    }
 
     try {
       await axios.put(`${API}/movimientos-produccion/${editingMovimiento.id}`, formData);
@@ -222,6 +240,7 @@ export const MovimientosProduccion = () => {
   });
 
   const handleDelete = async (id) => {
+    if (!window.confirm('¿Estás seguro de eliminar este movimiento?')) return;
     try {
       await axios.delete(`${API}/movimientos-produccion/${id}`);
       toast.success('Movimiento eliminado');
@@ -239,6 +258,7 @@ export const MovimientosProduccion = () => {
       persona_id: '',
       fecha_inicio: new Date().toISOString().split('T')[0],
       fecha_fin: '',
+      fecha_esperada_movimiento: '',
       cantidad_enviada: 0,
       cantidad_recibida: 0,
       observaciones: '',
@@ -274,6 +294,14 @@ export const MovimientosProduccion = () => {
       toast.error('Selecciona registro, servicio y persona');
       return;
     }
+    if (createFormData.fecha_inicio && createFormData.fecha_fin && createFormData.fecha_fin <= createFormData.fecha_inicio) {
+      toast.error('La fecha fin debe ser mayor que la fecha inicio');
+      return;
+    }
+    if (createFormData.fecha_inicio && createFormData.fecha_esperada_movimiento && createFormData.fecha_esperada_movimiento <= createFormData.fecha_inicio) {
+      toast.error('La fecha esperada debe ser mayor que la fecha inicio');
+      return;
+    }
 
     try {
       await axios.post(`${API}/movimientos-produccion`, createFormData);
@@ -288,6 +316,7 @@ export const MovimientosProduccion = () => {
   const limpiarFiltros = () => {
     setFiltroServicio('');
     setFiltroPersona('');
+    setFiltroEstado('');
     setFiltroFechaDesde('');
     setFiltroFechaHasta('');
     setSearchTerm('');
@@ -301,7 +330,35 @@ export const MovimientosProduccion = () => {
     return movimientos.reduce((sum, m) => sum + (m.costo_calculado || m.costo || 0), 0);
   };
 
-  const hayFiltrosActivos = filtroServicio || filtroPersona || filtroFechaDesde || filtroFechaHasta || searchTerm;
+  const hayFiltrosActivos = filtroServicio || filtroPersona || filtroEstado || filtroFechaDesde || filtroFechaHasta || searchTerm;
+
+  // Estado calculado del movimiento basado en fechas
+  const getEstadoMovimiento = (mov) => {
+    const hoy = new Date().toISOString().split('T')[0];
+    if (mov.fecha_fin) return { label: 'Completado', variant: 'default', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' };
+    if (mov.fecha_inicio && !mov.fecha_fin) {
+      if (mov.fecha_esperada_movimiento && mov.fecha_esperada_movimiento < hoy) {
+        return { label: 'Retraso', variant: 'destructive', className: '' };
+      }
+      return { label: 'En Proceso', variant: 'outline', className: 'border-blue-500 text-blue-600' };
+    }
+    return { label: 'Pendiente', variant: 'secondary', className: '' };
+  };
+
+  const ESTADOS_MOVIMIENTO = [
+    { value: 'activos', label: 'En Proceso + Retraso' },
+    { value: 'En Proceso', label: 'En Proceso' },
+    { value: 'Retraso', label: 'Retraso' },
+    { value: 'Completado', label: 'Completado' },
+    { value: 'Pendiente', label: 'Pendiente' },
+  ];
+
+  const filtrarPorEstado = (mov) => {
+    if (!filtroEstado) return true;
+    const est = getEstadoMovimiento(mov).label;
+    if (filtroEstado === 'activos') return est === 'En Proceso' || est === 'Retraso';
+    return est === filtroEstado;
+  };
 
   return (
     <div className="space-y-6" data-testid="movimientos-produccion-page">
@@ -336,7 +393,7 @@ export const MovimientosProduccion = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
             <div className="space-y-1">
               <Label className="text-xs">Buscar</Label>
               <div className="relative">
@@ -374,6 +431,20 @@ export const MovimientosProduccion = () => {
                   <SelectItem value="all">Todos</SelectItem>
                   {personas.map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Estado</Label>
+              <Select value={filtroEstado} onValueChange={(val) => setFiltroEstado(val === 'all' ? '' : val)}>
+                <SelectTrigger data-testid="filtro-estado">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {ESTADOS_MOVIMIENTO.map((e) => (
+                    <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -428,18 +499,20 @@ export const MovimientosProduccion = () => {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
-                    <TableHead>Registro (Modelo - N° Corte)</TableHead>
+                    <TableHead>Registro</TableHead>
                     <TableHead>Servicio</TableHead>
                     <TableHead>Persona</TableHead>
-                    <TableHead className="text-center">Fecha Inicio</TableHead>
-                    <TableHead className="text-center">Fecha Fin</TableHead>
+                    <TableHead className="text-center">F. Inicio</TableHead>
+                    <TableHead className="text-center">F. Fin</TableHead>
+                    <TableHead className="text-center">F. Esperada</TableHead>
                     <TableHead className="text-right">Cantidad</TableHead>
                     <TableHead className="text-right">Costo</TableHead>
+                    <TableHead className="text-center">Estado</TableHead>
                     <TableHead className="w-[100px] text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {movimientos.map((mov) => (
+                  {movimientos.filter(filtrarPorEstado).map((mov) => (
                     <TableRow key={mov.id} data-testid={`movimiento-row-${mov.id}`}>
                       <TableCell>
                         <span className="font-medium">{getRegistroLabel(mov)}</span>
@@ -463,22 +536,26 @@ export const MovimientosProduccion = () => {
                           <span>{mov.persona_nombre}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-center">
-                        {mov.fecha_inicio ? (
-                          <div className="flex items-center justify-center gap-1 text-sm">
-                            <Calendar className="h-3 w-3" />
-                            {mov.fecha_inicio}
-                          </div>
-                        ) : '-'}
+                      <TableCell className="text-center text-sm">
+                        {mov.fecha_inicio || '-'}
                       </TableCell>
                       <TableCell className="text-center text-sm">
                         {mov.fecha_fin || '-'}
+                      </TableCell>
+                      <TableCell className="text-center text-sm">
+                        {mov.fecha_esperada_movimiento || '-'}
                       </TableCell>
                       <TableCell className="text-right font-mono font-semibold">
                         {(mov.cantidad_recibida ?? mov.cantidad ?? 0).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right font-mono text-green-600">
                         {(mov.costo_calculado || mov.costo || 0) > 0 ? formatCurrency(mov.costo_calculado || mov.costo) : '-'}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const est = getEstadoMovimiento(mov);
+                          return <Badge variant={est.variant} className={`text-xs whitespace-nowrap ${est.className}`}>{est.label}</Badge>;
+                        })()}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -583,7 +660,7 @@ export const MovimientosProduccion = () => {
               </Select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-fecha-inicio">Fecha Inicio</Label>
                 <Input
@@ -602,6 +679,16 @@ export const MovimientosProduccion = () => {
                   value={formData.fecha_fin}
                   onChange={(e) => setFormData({ ...formData, fecha_fin: e.target.value })}
                   data-testid="edit-input-fecha-fin"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-fecha-esperada">Fecha Esperada</Label>
+                <Input
+                  id="edit-fecha-esperada"
+                  type="date"
+                  value={formData.fecha_esperada_movimiento}
+                  onChange={(e) => setFormData({ ...formData, fecha_esperada_movimiento: e.target.value })}
+                  data-testid="edit-input-fecha-esperada"
                 />
               </div>
             </div>
@@ -681,14 +768,53 @@ export const MovimientosProduccion = () => {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Registro ID *</Label>
-              <Input
-                value={createFormData.registro_id}
-                onChange={(e) => setCreateFormData({ ...createFormData, registro_id: e.target.value })}
-                placeholder="ID del registro (ej: corte 100-2026)"
-                data-testid="create-input-registro"
-              />
-              <p className="text-xs text-muted-foreground">Ingresa el ID del registro de produccion. Puedes copiarlo desde la vista de Registros.</p>
+              <Label>Registro *</Label>
+              <Popover open={registroPopoverOpen} onOpenChange={setRegistroPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={registroPopoverOpen}
+                    className="w-full justify-between font-normal"
+                    data-testid="create-select-registro"
+                  >
+                    {createFormData.registro_id
+                      ? (() => {
+                          const reg = registros.find(r => r.id === createFormData.registro_id);
+                          return reg ? `${reg.n_corte}${reg.modelo_nombre ? ' - ' + reg.modelo_nombre : ''}` : createFormData.registro_id;
+                        })()
+                      : "Buscar por corte o modelo..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[400px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar corte, modelo..." />
+                    <CommandList>
+                      <CommandEmpty>No se encontraron registros</CommandEmpty>
+                      <CommandGroup className="max-h-[250px] overflow-auto">
+                        {registros.map((reg) => (
+                          <CommandItem
+                            key={reg.id}
+                            value={`${reg.n_corte} ${reg.modelo_nombre || ''}`}
+                            onSelect={() => {
+                              setCreateFormData({ ...createFormData, registro_id: reg.id });
+                              setRegistroPopoverOpen(false);
+                            }}
+                          >
+                            <Check className={cn("mr-2 h-4 w-4", createFormData.registro_id === reg.id ? "opacity-100" : "opacity-0")} />
+                            <div className="flex flex-col">
+                              <span className="font-medium">{reg.n_corte}</span>
+                              {reg.modelo_nombre && <span className="text-xs text-muted-foreground">{reg.modelo_nombre}</span>}
+                            </div>
+                            {reg.estado && <Badge variant="outline" className="ml-auto text-xs">{reg.estado}</Badge>}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="space-y-2">
@@ -742,7 +868,7 @@ export const MovimientosProduccion = () => {
               </Select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="create-fecha-inicio">Fecha Inicio</Label>
                 <Input
@@ -761,6 +887,16 @@ export const MovimientosProduccion = () => {
                   value={createFormData.fecha_fin}
                   onChange={(e) => setCreateFormData({ ...createFormData, fecha_fin: e.target.value })}
                   data-testid="create-input-fecha-fin"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-fecha-esperada">Fecha Esperada</Label>
+                <Input
+                  id="create-fecha-esperada"
+                  type="date"
+                  value={createFormData.fecha_esperada_movimiento}
+                  onChange={(e) => setCreateFormData({ ...createFormData, fecha_esperada_movimiento: e.target.value })}
+                  data-testid="create-input-fecha-esperada"
                 />
               </div>
             </div>

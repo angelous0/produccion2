@@ -80,6 +80,7 @@ export const Marcas = () => {
   };
 
   const handleDelete = async (id) => {
+    if (!window.confirm('¿Estás seguro de eliminar esta marca?')) return;
     try {
       await axios.delete(`${API}/marcas/${id}`);
       toast.success('Marca eliminada');

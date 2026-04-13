@@ -4,9 +4,12 @@ Trabaja con la estructura ACTUAL de la BD (schema public)
 """
 import asyncio
 import asyncpg
+import os
 from datetime import datetime
 
-DATABASE_URL = "postgres://admin:admin@72.60.241.216:9090/datos?sslmode=disable"
+DATABASE_URL = os.environ.get('MUESTRA_DATABASE_URL')
+if not DATABASE_URL:
+    raise RuntimeError("Variable MUESTRA_DATABASE_URL no configurada")
 
 async def backup_tables(conn):
     """Crea backup de tablas que serán modificadas"""

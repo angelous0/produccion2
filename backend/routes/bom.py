@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from uuid import uuid4
 from db import get_pool
+from helpers import row_to_dict
 
 router = APIRouter(prefix="/api/bom", tags=["BOM"])
 
@@ -54,21 +55,6 @@ class BomLineaUpdate(BaseModel):
     orden: Optional[int] = None
     costo_manual: Optional[float] = None
 
-
-# ==================== HELPERS ====================
-
-def row_to_dict(row):
-    if row is None:
-        return None
-    d = dict(row)
-    from datetime import datetime
-    from decimal import Decimal
-    for k, v in d.items():
-        if isinstance(v, datetime):
-            d[k] = v.isoformat()
-        elif isinstance(v, Decimal):
-            d[k] = float(v)
-    return d
 
 TIPOS_COMPONENTE = ["TELA", "AVIO", "SERVICIO", "EMPAQUE", "OTRO"]
 ESTADOS_BOM = ["BORRADOR", "APROBADO", "INACTIVO"]

@@ -10,7 +10,7 @@ from models import (
     SalidaInventarioCreate, AjusteInventarioCreate,
     IngresoInventario, SalidaInventario, AjusteInventario, ItemInventario,
 )
-from helpers import registrar_actividad, row_to_dict, parse_jsonb
+from helpers import registrar_actividad, row_to_dict, parse_jsonb, validar_registro_activo
 from routes.auditoria import audit_log_safe, get_usuario
 from typing import Optional, List
 from pydantic import BaseModel
@@ -362,9 +362,20 @@ async def update_item_inventario(item_id: str, input: ItemInventarioCreate):
 async def delete_item_inventario(item_id: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # Validar que no tenga movimientos
+        tiene_salidas = await conn.fetchval("SELECT COUNT(*) FROM prod_inventario_salidas WHERE item_id = $1", item_id)
+        if tiene_salidas > 0:
+            raise HTTPException(status_code=400, detail="No se puede eliminar: el item tiene salidas registradas")
+        tiene_ajustes = await conn.fetchval("SELECT COUNT(*) FROM prod_inventario_ajustes WHERE item_id = $1", item_id)
+        if tiene_ajustes > 0:
+            raise HTTPException(status_code=400, detail="No se puede eliminar: el item tiene ajustes registrados")
+        tiene_reservas = await conn.fetchval(
+            "SELECT COUNT(*) FROM prod_inventario_reservas_linea rl JOIN prod_inventario_reservas r ON r.id = rl.reserva_id WHERE rl.item_id = $1 AND r.estado = 'ACTIVA' AND rl.cantidad_reservada > rl.cantidad_liberada",
+            item_id
+        )
+        if tiene_reservas > 0:
+            raise HTTPException(status_code=400, detail="No se puede eliminar: el item tiene reservas activas")
         await conn.execute("DELETE FROM prod_inventario_ingresos WHERE item_id = $1", item_id)
-        await conn.execute("DELETE FROM prod_inventario_salidas WHERE item_id = $1", item_id)
-        await conn.execute("DELETE FROM prod_inventario_ajustes WHERE item_id = $1", item_id)
         await conn.execute("DELETE FROM prod_inventario_rollos WHERE item_id = $1", item_id)
         await conn.execute("DELETE FROM prod_inventario WHERE id = $1", item_id)
         return {"message": "Item eliminado"}
@@ -536,12 +547,19 @@ async def update_ingreso(ingreso_id: str, input: IngresoUpdateData):
             # IDs de rollos que vienen del frontend (los que ya existían)
             incoming_ids = {r.get('id') for r in input.rollos if r.get('id')}
 
-            # Eliminar rollos que ya no están
+            # Eliminar rollos que ya no están (solo si no tienen movimientos)
             existing_rollos = await conn.fetch(
-                "SELECT id, metraje FROM prod_inventario_rollos WHERE ingreso_id = $1", ingreso_id
+                "SELECT id, metraje, metraje_disponible FROM prod_inventario_rollos WHERE ingreso_id = $1", ingreso_id
             )
             for er in existing_rollos:
                 if er['id'] not in incoming_ids:
+                    tiene_salidas = await conn.fetchval(
+                        "SELECT COUNT(*) FROM prod_inventario_salidas WHERE rollo_id = $1", er['id']
+                    )
+                    if tiene_salidas > 0:
+                        raise HTTPException(status_code=400, detail=f"No se puede eliminar el rollo porque ya tiene salidas registradas")
+                    if float(er['metraje']) != float(er['metraje_disponible']):
+                        raise HTTPException(status_code=400, detail=f"No se puede eliminar el rollo porque ya tiene movimientos")
                     await conn.execute("DELETE FROM prod_inventario_rollos WHERE id = $1", er['id'])
 
             # Upsert rollos
@@ -679,13 +697,8 @@ async def create_salida(input: SalidaInventarioCreate, current_user: dict = Depe
             if not reg:
                 raise HTTPException(status_code=404, detail="Registro no encontrado")
             
-            # FASE 2C: Validar que OP no esté cerrada/anulada
-            if reg['estado'] in ('CERRADA', 'ANULADA'):
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"OP {reg['estado'].lower()}: no se puede crear salidas en una orden {reg['estado'].lower()}"
-                )
-            
+            validar_registro_activo(reg, contexto='crear salidas')
+
             # Buscar requerimiento (informativo, no bloquea la salida)
             if input.talla_id:
                 req = await conn.fetchrow("""
@@ -898,12 +911,7 @@ async def create_salida_extra(input: SalidaExtraCreate):
             if not reg:
                 raise HTTPException(status_code=404, detail="Registro no encontrado")
             
-            # FASE 2C: Validar que OP no esté cerrada/anulada (incluso para salidas extra)
-            if reg['estado'] in ('CERRADA', 'ANULADA'):
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"OP {reg['estado'].lower()}: no se puede crear salidas en una orden {reg['estado'].lower()}"
-                )
+            validar_registro_activo(reg, contexto='crear salidas')
         
         # NO validamos reserva - es salida extra
         
@@ -1022,6 +1030,21 @@ async def delete_salida(salida_id: str):
                 await conn.execute("UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible + $1 WHERE id = $2", detalle['cantidad'], detalle['ingreso_id'])
         await conn.execute("DELETE FROM prod_inventario_salidas WHERE id = $1", salida_id)
         await conn.execute("UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2", float(salida['cantidad']), salida['item_id'])
+        # Actualizar cantidad_consumida en requerimiento del registro
+        if salida['registro_id']:
+            talla_id = salida.get('talla_id')
+            if talla_id:
+                await conn.execute("""
+                    UPDATE prod_registro_requerimiento_mp
+                    SET cantidad_consumida = GREATEST(cantidad_consumida - $1, 0), updated_at = CURRENT_TIMESTAMP
+                    WHERE registro_id = $2 AND item_id = $3 AND talla_id = $4
+                """, float(salida['cantidad']), salida['registro_id'], salida['item_id'], talla_id)
+            else:
+                await conn.execute("""
+                    UPDATE prod_registro_requerimiento_mp
+                    SET cantidad_consumida = GREATEST(cantidad_consumida - $1, 0), updated_at = CURRENT_TIMESTAMP
+                    WHERE registro_id = $2 AND item_id = $3 AND talla_id IS NULL
+                """, float(salida['cantidad']), salida['registro_id'], salida['item_id'])
         return {"message": "Salida eliminada y stock restaurado"}
 
 # ==================== ENDPOINTS ROLLOS ====================
@@ -1199,3 +1222,46 @@ async def delete_ajuste(ajuste_id: str):
                 if ajuste['tipo'] == "entrada":
                     # Revertir entrada = restar metraje
                     await conn.execute("UPDATE prod_inventario_rollos SET metraje_disponible = metraje_disponible - $1, metraje = metraje - $1 WHERE id = $2", float(ajuste['cantidad']), ajuste['rollo_id'])
+
+
+# ==================== DISPONIBILIDAD Y TIPOS ====================
+
+@router.get("/inventario/{item_id}/disponibilidad")
+async def get_disponibilidad(item_id: str, current_user: dict = Depends(get_current_user)):
+    """Obtiene disponibilidad real (stock - reservas)"""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        item = await conn.fetchrow("SELECT * FROM prod_inventario WHERE id = $1", item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Item no encontrado")
+        stock_actual = float(item['stock_actual'] or 0)
+        total_reservado = await conn.fetchval("""
+            SELECT COALESCE(SUM(rl.cantidad_reservada - rl.cantidad_liberada), 0)
+            FROM prod_inventario_reservas_linea rl
+            JOIN prod_inventario_reservas r ON rl.reserva_id = r.id
+            WHERE rl.item_id = $1 AND r.estado = 'ACTIVA'
+        """, item_id)
+        total_reservado = float(total_reservado or 0)
+        return {
+            "item_id": item_id,
+            "codigo": item['codigo'],
+            "nombre": item['nombre'],
+            "tipo_item": item.get('tipo_item', 'MP'),
+            "stock_actual": stock_actual,
+            "total_reservado": total_reservado,
+            "disponible": max(0, stock_actual - total_reservado),
+            "control_por_rollos": item['control_por_rollos']
+        }
+
+
+@router.get("/inventario-tipos")
+async def get_tipos_item():
+    """Lista tipos de item válidos"""
+    return {
+        "tipos": [
+            {"codigo": "MP", "nombre": "Materia Prima", "descripcion": "Telas y materiales principales"},
+            {"codigo": "AVIO", "nombre": "Avío", "descripcion": "Botones, cierres, etiquetas, etc."},
+            {"codigo": "SERVICIO", "nombre": "Servicio", "descripcion": "Servicios externos (no genera stock)"},
+            {"codigo": "PT", "nombre": "Producto Terminado", "descripcion": "Prendas terminadas"}
+        ]
+    }

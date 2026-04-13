@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api", tags=["reportes"])
 import sys
 sys.path.insert(0, '/app/backend')
 from db import get_pool
-from auth import get_current_user
+from auth_utils import get_current_user
 from helpers import row_to_dict
 
 
@@ -21,6 +21,8 @@ from helpers import row_to_dict
 @router.get("/reportes/mp-valorizado")
 async def get_mp_valorizado(
     empresa_id: int = Query(7),
+    categoria: Optional[str] = None,
+    linea_negocio_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -29,9 +31,28 @@ async def get_mp_valorizado(
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch("""
+        conditions = ["i.empresa_id = $1", "i.tipo_item IN ('MP', 'AVIO')"]
+        params = [empresa_id]
+        idx = 2
+
+        if categoria:
+            conditions.append(f"i.categoria = ${idx}")
+            params.append(categoria)
+            idx += 1
+
+        if linea_negocio_id:
+            if linea_negocio_id == "global":
+                conditions.append("i.linea_negocio_id IS NULL")
+            else:
+                conditions.append(f"(i.linea_negocio_id = ${idx} OR i.linea_negocio_id IS NULL)")
+                params.append(int(linea_negocio_id))
+                idx += 1
+
+        where = " AND ".join(conditions)
+
+        rows = await conn.fetch(f"""
             WITH stock_valorizado AS (
-                SELECT 
+                SELECT
                     i.id,
                     i.codigo,
                     i.nombre,
@@ -39,6 +60,7 @@ async def get_mp_valorizado(
                     i.categoria,
                     i.unidad_medida,
                     i.control_por_rollos,
+                    i.linea_negocio_id,
                     COALESCE(i.stock_actual, 0) as stock_actual,
                     -- Costo promedio ponderado desde ingresos disponibles
                     COALESCE((
@@ -60,15 +82,14 @@ async def get_mp_valorizado(
                         WHERE rl.item_id = i.id AND r.estado = 'ACTIVA'
                     ), 0) as total_reservado
                 FROM prod_inventario i
-                WHERE i.empresa_id = $1 
-                  AND i.tipo_item IN ('MP', 'AVIO')
+                WHERE {where}
             )
             SELECT *,
                    stock_actual - total_reservado as disponible
             FROM stock_valorizado
             WHERE stock_actual > 0 OR total_reservado > 0
             ORDER BY tipo_item, categoria, nombre
-        """, empresa_id)
+        """, *params)
         
         items = []
         total_valor = 0
@@ -100,6 +121,7 @@ async def get_mp_valorizado(
 @router.get("/reportes/wip")
 async def get_wip_valorizado(
     empresa_id: int = Query(7),
+    linea_negocio_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -109,8 +131,22 @@ async def get_wip_valorizado(
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch("""
-            SELECT 
+        conditions = ["r.empresa_id = $1", "r.estado_op IN ('ABIERTA', 'EN_PROCESO')"]
+        params = [empresa_id]
+        idx = 2
+
+        if linea_negocio_id:
+            if linea_negocio_id == "global":
+                conditions.append("r.linea_negocio_id IS NULL")
+            else:
+                conditions.append(f"(r.linea_negocio_id = ${idx} OR r.linea_negocio_id IS NULL)")
+                params.append(int(linea_negocio_id))
+                idx += 1
+
+        where = " AND ".join(conditions)
+
+        rows = await conn.fetch(f"""
+            SELECT
                 r.id,
                 r.n_corte,
                 r.estado,
@@ -119,6 +155,7 @@ async def get_wip_valorizado(
                 pt.codigo as pt_codigo,
                 pt.nombre as pt_nombre,
                 r.fecha_creacion,
+                r.linea_negocio_id,
                 COALESCE((
                     SELECT SUM(cantidad_real) FROM prod_registro_tallas WHERE registro_id = r.id
                 ), 0) as total_prendas,
@@ -131,10 +168,9 @@ async def get_wip_valorizado(
             FROM prod_registros r
             LEFT JOIN prod_modelos m ON r.modelo_id = m.id
             LEFT JOIN prod_inventario pt ON r.pt_item_id = pt.id
-            WHERE r.empresa_id = $1 
-              AND r.estado_op IN ('ABIERTA', 'EN_PROCESO')
+            WHERE {where}
             ORDER BY r.fecha_creacion DESC
-        """, empresa_id)
+        """, *params)
         
         ordenes = []
         total_mp = 0
@@ -171,6 +207,8 @@ async def get_wip_valorizado(
 @router.get("/reportes/pt-valorizado")
 async def get_pt_valorizado(
     empresa_id: int = Query(7),
+    categoria: Optional[str] = None,
+    linea_negocio_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -179,13 +217,33 @@ async def get_pt_valorizado(
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch("""
+        conditions = ["i.empresa_id = $1", "i.tipo_item = 'PT'"]
+        params = [empresa_id]
+        idx = 2
+
+        if categoria:
+            conditions.append(f"i.categoria = ${idx}")
+            params.append(categoria)
+            idx += 1
+
+        if linea_negocio_id:
+            if linea_negocio_id == "global":
+                conditions.append("i.linea_negocio_id IS NULL")
+            else:
+                conditions.append(f"(i.linea_negocio_id = ${idx} OR i.linea_negocio_id IS NULL)")
+                params.append(int(linea_negocio_id))
+                idx += 1
+
+        where = " AND ".join(conditions)
+
+        rows = await conn.fetch(f"""
             WITH pt_stock AS (
-                SELECT 
+                SELECT
                     i.id,
                     i.codigo,
                     i.nombre,
                     i.unidad_medida,
+                    i.linea_negocio_id,
                     COALESCE(i.stock_actual, 0) as stock_actual,
                     COALESCE((
                         SELECT SUM(ing.cantidad_disponible * ing.costo_unitario) / NULLIF(SUM(ing.cantidad_disponible), 0)
@@ -203,13 +261,12 @@ async def get_pt_valorizado(
                         WHERE r.pt_item_id = i.id
                     ) as total_cierres
                 FROM prod_inventario i
-                WHERE i.empresa_id = $1 
-                  AND i.tipo_item = 'PT'
+                WHERE {where}
             )
             SELECT * FROM pt_stock
             WHERE stock_actual > 0 OR total_cierres > 0
             ORDER BY codigo
-        """, empresa_id)
+        """, *params)
         
         items = []
         total_valor = 0

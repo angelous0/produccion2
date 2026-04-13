@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from typing import Optional
 from datetime import datetime
 from db import get_pool
-from auth import get_current_user
+from auth_utils import get_current_user
 
 router = APIRouter(prefix="/api", tags=["kardex-pt"])
 

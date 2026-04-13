@@ -17,6 +17,10 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('token'));
+  const [empresaId, setEmpresaId] = useState(() => {
+    const saved = localStorage.getItem('empresa_id');
+    return saved ? parseInt(saved, 10) : null;
+  });
 
   // Configurar axios con el token
   useEffect(() => {
@@ -46,7 +50,7 @@ export const AuthProvider = ({ children }) => {
     return () => axios.interceptors.response.eject(interceptor);
   }, [token]);
 
-  // Verificar token al cargar
+  // Verificar token al cargar + cargar empresa activa
   useEffect(() => {
     const verifyToken = async () => {
       const savedToken = localStorage.getItem('token');
@@ -60,6 +64,18 @@ export const AuthProvider = ({ children }) => {
         const response = await axios.get(`${API}/auth/me`);
         setUser(response.data);
         setToken(savedToken);
+
+        // Cargar empresa activa si no hay guardada
+        if (!localStorage.getItem('empresa_id')) {
+          try {
+            const empRes = await axios.get(`${API}/configuracion/empresa`);
+            if (empRes.data.empresa_actual_id) {
+              const eid = empRes.data.empresa_actual_id;
+              localStorage.setItem('empresa_id', eid);
+              setEmpresaId(eid);
+            }
+          } catch (_) { /* ignore */ }
+        }
       } catch (error) {
         localStorage.removeItem('token');
         setToken(null);
@@ -112,6 +128,11 @@ export const AuthProvider = ({ children }) => {
 
   const isAdmin = () => user?.rol === 'admin';
 
+  const updateEmpresaId = (id) => {
+    localStorage.setItem('empresa_id', id);
+    setEmpresaId(parseInt(id, 10));
+  };
+
   const value = {
     user,
     token,
@@ -125,6 +146,8 @@ export const AuthProvider = ({ children }) => {
     canDelete,
     isAdmin,
     isAuthenticated: !!user,
+    empresaId,
+    updateEmpresaId,
   };
 
   return (

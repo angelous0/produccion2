@@ -29,7 +29,7 @@ import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
 import { getStatusClass } from '../lib/utils';
 import { MultiSelectColors } from '../components/MultiSelectColors';
-import { formatDate } from '../lib/dateUtils';
+import { formatDate, formatRelativeDate } from '../lib/dateUtils';
 import { ExportButton } from '../components/ExportButton';
 import { RegistroDetalleFase2 } from './RegistroDetalleFase2';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -121,7 +121,14 @@ export const Registros = () => {
   const [filtroUrgente, setFiltroUrgente] = useState(false);
   const [filtroModeloId, setFiltroModeloId] = useState(searchParams.get('modelo') || '');
   const [filtroLinea, setFiltroLinea] = useState('');
+  const [filtroMarcas, setFiltroMarcas] = useState([]);
+  const [filtroTipos, setFiltroTipos] = useState([]);
+  const [filtroEntalles, setFiltroEntalles] = useState([]);
+  const [filtroTelas, setFiltroTelas] = useState([]);
+  const [filtrosPanelOpen, setFiltrosPanelOpen] = useState(false);
+  const [filtroDropdownOpen, setFiltroDropdownOpen] = useState(null); // 'marca' | 'tipo' | 'entalle' | 'tela' | null
   const [lineasNegocio, setLineasNegocio] = useState([]);
+  const [opcionesFiltro, setOpcionesFiltro] = useState({ marcas: [], tipos: [], entalles: [], telas: [] });
   const [estadosDisponibles, setEstadosDisponibles] = useState([]);
   const [total, setTotal] = useState(0);
   const [pageSize] = useState(50);
@@ -149,6 +156,10 @@ export const Registros = () => {
       }
       if (filtroModeloId) params.set('modelo_id', filtroModeloId);
       if (filtroLinea) params.set('linea_negocio_id', filtroLinea);
+      if (filtroMarcas.length > 0) params.set('marca_id', filtroMarcas.join(','));
+      if (filtroTipos.length > 0) params.set('tipo_id', filtroTipos.join(','));
+      if (filtroEntalles.length > 0) params.set('entalle_id', filtroEntalles.join(','));
+      if (filtroTelas.length > 0) params.set('tela_id', filtroTelas.join(','));
       const response = await axios.get(`${API}/registros?${params.toString()}`);
       const data = response.data;
       if (append) {
@@ -180,16 +191,34 @@ export const Registros = () => {
     }
   };
 
+  const fetchFiltrosModelo = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filtroMarcas.length > 0) params.set('marca_id', filtroMarcas.join(','));
+      if (filtroTipos.length > 0) params.set('tipo_id', filtroTipos.join(','));
+      if (filtroEntalles.length > 0) params.set('entalle_id', filtroEntalles.join(','));
+      if (filtroTelas.length > 0) params.set('tela_id', filtroTelas.join(','));
+      const r = await axios.get(`${API}/registros/filtros-modelo?${params.toString()}`);
+      setOpcionesFiltro(r.data);
+    } catch { }
+  };
+
   useEffect(() => {
     fetchEstados();
     fetchColores();
     axios.get(`${API}/lineas-negocio`).then(r => setLineasNegocio(r.data)).catch(() => {});
+    fetchFiltrosModelo();
   }, []);
+
+  // Re-fetch opciones en cascada cuando cambian las selecciones
+  useEffect(() => {
+    fetchFiltrosModelo();
+  }, [filtroMarcas, filtroTipos, filtroEntalles, filtroTelas]);
 
   // Reload when filters change
   useEffect(() => {
     fetchItems(false);
-  }, [searchDebounced, estadosExcluidos, estadosIncluidos, modoFiltro, filtroOperativo, filtroModeloId, filtroLinea]);
+  }, [searchDebounced, estadosExcluidos, estadosIncluidos, modoFiltro, filtroOperativo, filtroModeloId, filtroLinea, filtroMarcas, filtroTipos, filtroEntalles, filtroTelas]);
 
   // ========== LÓGICA DE COLORES ==========
 
@@ -382,10 +411,19 @@ export const Registros = () => {
     setViewDialogOpen(true);
   };
 
-  const handleDelete = async (id) => {
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  const handleDelete = (id) => {
+    const reg = items.find(i => i.id === id);
+    setDeleteConfirm(reg || { id });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
     try {
-      await axios.delete(`${API}/registros/${id}`);
+      await axios.delete(`${API}/registros/${deleteConfirm.id}`);
       toast.success('Registro eliminado');
+      setDeleteConfirm(null);
       fetchItems();
     } catch (error) {
       toast.error('Error al eliminar registro');
@@ -511,7 +549,8 @@ export const Registros = () => {
   // Detectar nombre del modelo filtrado
   const modeloFiltrado = filtroModeloId ? items.find(i => i.modelo_id === filtroModeloId)?.modelo_nombre : null;
 
-  const hayFiltrosActivos = searchTerm || (modoFiltro === 'excluir' ? estadosExcluidos.length > 0 : estadosIncluidos.length > 0) || filtroOperativo !== 'todos' || filtroModeloId || filtroUrgente || (filtroLinea && filtroLinea !== 'todas');
+  const hayFiltrosActivos = searchTerm || (modoFiltro === 'excluir' ? estadosExcluidos.length > 0 : estadosIncluidos.length > 0) || filtroOperativo !== 'todos' || filtroModeloId || filtroUrgente || (filtroLinea && filtroLinea !== 'todas') || filtroMarcas.length > 0 || filtroTipos.length > 0 || filtroEntalles.length > 0 || filtroTelas.length > 0;
+  const hayFiltrosModelo = filtroMarcas.length + filtroTipos.length + filtroEntalles.length + filtroTelas.length;
 
   const toggleEstado = (estado) => {
     if (modoFiltro === 'excluir') {
@@ -530,6 +569,10 @@ export const Registros = () => {
     setFiltroUrgente(false);
     setFiltroModeloId('');
     setFiltroLinea('');
+    setFiltroMarcas([]);
+    setFiltroTipos([]);
+    setFiltroEntalles([]);
+    setFiltroTelas([]);
     setSearchParams({});
   };
 
@@ -550,7 +593,17 @@ export const Registros = () => {
           </p>
         </div>
         <div className="flex gap-2">
-          <ExportButton tabla="registros" />
+          <ExportButton tabla="registros" filters={(() => {
+            const f = {};
+            if (filtroMarcas.length > 0) f.marca_id = filtroMarcas.join(',');
+            if (filtroTipos.length > 0) f.tipo_id = filtroTipos.join(',');
+            if (filtroEntalles.length > 0) f.entalle_id = filtroEntalles.join(',');
+            if (filtroTelas.length > 0) f.tela_id = filtroTelas.join(',');
+            if (modoFiltro === 'incluir' && estadosIncluidos.length > 0) f.estados = estadosIncluidos.join(',');
+            if (modoFiltro === 'excluir' && estadosExcluidos.length > 0) f.excluir_estados = estadosExcluidos.join(',');
+            if (searchDebounced) f.search = searchDebounced;
+            return f;
+          })()} items={items} />
           <Button onClick={() => navigate('/registros/nuevo')} data-testid="btn-nuevo-registro" size="sm" className="sm:size-default">
             <Plus className="h-4 w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">Nuevo Registro</span>
@@ -559,132 +612,204 @@ export const Registros = () => {
         </div>
       </div>
 
-      {/* Barra de busqueda y filtros */}
-      <div className="flex flex-wrap items-center gap-2" data-testid="filtros-registros">
-        <div className="relative flex-1 min-w-[180px] sm:min-w-[220px] max-w-[320px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar N° Corte o Modelo..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 pr-8"
-            data-testid="input-search-registros"
-          />
-          {searchTerm && (
-            <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-              <X className="h-4 w-4" />
-            </button>
+      {/* Barra de búsqueda y filtros */}
+      <div className="registros-filtros-container" data-testid="filtros-registros">
+        {/* Fila principal */}
+        <div className="registros-filtros-row">
+          <div className="relative flex-1 min-w-[180px] max-w-[320px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar N° Corte o Modelo..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 pr-8 h-9"
+              data-testid="input-search-registros"
+            />
+            {searchTerm && (
+              <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Estados dropdown */}
+          <div className="relative">
+            <Button variant="outline" size="sm" className="h-9 gap-1" onClick={() => { setEstadoDropdownOpen(!estadoDropdownOpen); setFiltroDropdownOpen(null); }} data-testid="btn-filtro-estados">
+              <Filter className="h-3.5 w-3.5" />
+              Estados
+              {(modoFiltro === 'excluir' ? estadosExcluidos.length : estadosIncluidos.length) > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 px-1 text-xs">
+                  {modoFiltro === 'excluir' ? `-${estadosExcluidos.length}` : `${estadosIncluidos.length}`}
+                </Badge>
+              )}
+            </Button>
+            {estadoDropdownOpen && (
+              <div className="registros-filtro-dropdown w-[260px]">
+                <div className="flex gap-1 mb-2 border-b pb-2">
+                  <Button variant={modoFiltro === 'excluir' ? 'default' : 'ghost'} size="sm" className="h-7 text-xs flex-1" onClick={() => { setModoFiltro('excluir'); setEstadosIncluidos([]); }}>Excluir</Button>
+                  <Button variant={modoFiltro === 'incluir' ? 'default' : 'ghost'} size="sm" className="h-7 text-xs flex-1" onClick={() => { setModoFiltro('incluir'); setEstadosExcluidos([]); }}>Solo mostrar</Button>
+                </div>
+                {estadosDisponibles.map(e => {
+                  const selected = modoFiltro === 'excluir' ? estadosExcluidos.includes(e) : estadosIncluidos.includes(e);
+                  return (
+                    <label key={e} className="registros-filtro-option">
+                      <input type="checkbox" checked={selected} onChange={() => toggleEstado(e)} className="rounded" />
+                      <span className={modoFiltro === 'excluir' && selected ? 'line-through text-muted-foreground' : ''}>{e}</span>
+                    </label>
+                  );
+                })}
+                <div className="border-t mt-2 pt-2 flex justify-end">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEstadoDropdownOpen(false)}>Cerrar</Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <Select value={filtroOperativo} onValueChange={setFiltroOperativo}>
+            <SelectTrigger className="w-[130px] h-9" data-testid="select-filtro-operativo">
+              <SelectValue placeholder="Operativo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos</SelectItem>
+              <SelectItem value="NORMAL">Normal</SelectItem>
+              <SelectItem value="EN_RIESGO">En Riesgo</SelectItem>
+              <SelectItem value="PARALIZADA">Paralizada</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button variant={filtroUrgente ? "default" : "outline"} size="sm"
+            className={`h-9 ${filtroUrgente ? 'bg-rose-600 hover:bg-rose-700' : ''}`}
+            onClick={() => setFiltroUrgente(!filtroUrgente)} data-testid="filtro-urgente">
+            <AlertTriangle className="h-3.5 w-3.5 mr-1" />
+            Urgentes
+          </Button>
+
+          <Select value={filtroLinea || "todas"} onValueChange={v => setFiltroLinea(v === "todas" ? "" : v)}>
+            <SelectTrigger className="h-9 w-[160px]" data-testid="filtro-linea">
+              <SelectValue placeholder="Línea" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas las líneas</SelectItem>
+              {lineasNegocio.map(l => (
+                <SelectItem key={l.id} value={String(l.id)}>{l.nombre}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Filtros de modelo: dropdowns multi-select en cascada */}
+          {[
+            { key: 'marca', label: 'Marca', selected: filtroMarcas, setSelected: setFiltroMarcas, options: opcionesFiltro.marcas },
+            { key: 'tipo', label: 'Tipo', selected: filtroTipos, setSelected: setFiltroTipos, options: opcionesFiltro.tipos },
+            { key: 'entalle', label: 'Entalle', selected: filtroEntalles, setSelected: setFiltroEntalles, options: opcionesFiltro.entalles },
+            { key: 'tela', label: 'Tela', selected: filtroTelas, setSelected: setFiltroTelas, options: opcionesFiltro.telas },
+          ].map(f => (
+            <div className="relative" key={f.key}>
+              <Button variant="outline" size="sm" className={`h-9 gap-1 ${f.selected.length > 0 ? 'border-primary text-primary' : ''}`}
+                onClick={() => { setFiltroDropdownOpen(filtroDropdownOpen === f.key ? null : f.key); setEstadoDropdownOpen(false); }}
+                data-testid={`btn-filtro-${f.key}`}>
+                {f.label}
+                {f.selected.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{f.selected.length}</Badge>
+                )}
+              </Button>
+              {filtroDropdownOpen === f.key && (
+                <div className="registros-filtro-dropdown w-[220px]">
+                  {f.options.length === 0 ? (
+                    <p className="text-xs text-muted-foreground px-2 py-3 text-center">Sin opciones disponibles</p>
+                  ) : (
+                    f.options.map(opt => {
+                      const sel = f.selected.includes(opt.id);
+                      return (
+                        <label key={opt.id} className="registros-filtro-option">
+                          <input type="checkbox" checked={sel} onChange={() => {
+                            f.setSelected(prev => sel ? prev.filter(x => x !== opt.id) : [...prev, opt.id]);
+                          }} className="rounded" />
+                          <span>{opt.nombre}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                  {f.selected.length > 0 && (
+                    <div className="border-t mt-1 pt-1">
+                      <button className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 w-full text-left" onClick={() => f.setSelected([])}>Limpiar selección</button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {hayFiltrosActivos && (
+            <Button variant="ghost" size="sm" className="h-9" onClick={limpiarFiltros} data-testid="btn-limpiar-filtros">
+              <X className="h-4 w-4 mr-1" /> Limpiar
+            </Button>
           )}
+
+          <span className="text-sm text-muted-foreground ml-auto whitespace-nowrap" data-testid="count-registros">
+            {displayItems.length} de {total}
+          </span>
         </div>
 
-        {/* Multi-select estados con modo incluir/excluir */}
-        <div className="relative">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 gap-1"
-            onClick={() => setEstadoDropdownOpen(!estadoDropdownOpen)}
-            data-testid="btn-filtro-estados"
-          >
-            <Filter className="h-3.5 w-3.5" />
-            Estados
-            {(modoFiltro === 'excluir' ? estadosExcluidos.length : estadosIncluidos.length) > 0 && (
-              <Badge variant="secondary" className="ml-1 h-5 px-1 text-xs">
-                {modoFiltro === 'excluir' ? `-${estadosExcluidos.length}` : `${estadosIncluidos.length}`}
+        {/* Filtros activos: badges removibles */}
+        {(modeloFiltrado || hayFiltrosModelo > 0) && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            {modeloFiltrado && (
+              <Badge variant="secondary" className="gap-1 text-xs">
+                Modelo: {modeloFiltrado}
+                <button onClick={() => { setFiltroModeloId(''); setSearchParams({}); }}><X className="h-3 w-3" /></button>
               </Badge>
             )}
-          </Button>
-          {estadoDropdownOpen && (
-            <div className="absolute top-full left-0 mt-1 z-50 bg-popover border rounded-md shadow-md p-2 w-[260px] max-h-[300px] overflow-y-auto">
-              <div className="flex gap-1 mb-2 border-b pb-2">
-                <Button
-                  variant={modoFiltro === 'excluir' ? 'default' : 'ghost'}
-                  size="sm"
-                  className="h-7 text-xs flex-1"
-                  onClick={() => { setModoFiltro('excluir'); setEstadosIncluidos([]); }}
-                >
-                  Excluir
-                </Button>
-                <Button
-                  variant={modoFiltro === 'incluir' ? 'default' : 'ghost'}
-                  size="sm"
-                  className="h-7 text-xs flex-1"
-                  onClick={() => { setModoFiltro('incluir'); setEstadosExcluidos([]); }}
-                >
-                  Solo mostrar
-                </Button>
-              </div>
-              {estadosDisponibles.map(e => {
-                const selected = modoFiltro === 'excluir' ? estadosExcluidos.includes(e) : estadosIncluidos.includes(e);
-                return (
-                  <label key={e} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-muted cursor-pointer text-sm">
-                    <input type="checkbox" checked={selected} onChange={() => toggleEstado(e)} className="rounded" />
-                    <span className={modoFiltro === 'excluir' && selected ? 'line-through text-muted-foreground' : ''}>{e}</span>
-                  </label>
-                );
-              })}
-              <div className="border-t mt-2 pt-2 flex justify-end">
-                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEstadoDropdownOpen(false)}>
-                  Cerrar
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <Select value={filtroOperativo} onValueChange={setFiltroOperativo}>
-          <SelectTrigger className="w-[140px] h-9" data-testid="select-filtro-operativo">
-            <SelectValue placeholder="Operativo" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos</SelectItem>
-            <SelectItem value="NORMAL">Normal</SelectItem>
-            <SelectItem value="EN_RIESGO">En Riesgo</SelectItem>
-            <SelectItem value="PARALIZADA">Paralizada</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Button
-          variant={filtroUrgente ? "default" : "outline"}
-          size="sm"
-          className={`h-9 ${filtroUrgente ? 'bg-rose-600 hover:bg-rose-700' : ''}`}
-          onClick={() => setFiltroUrgente(!filtroUrgente)}
-          data-testid="filtro-urgente"
-        >
-          <AlertTriangle className="h-3.5 w-3.5 mr-1" />
-          Urgentes
-        </Button>
-
-        <Select value={filtroLinea || "todas"} onValueChange={v => setFiltroLinea(v === "todas" ? "" : v)}>
-          <SelectTrigger className="h-9 w-[160px] sm:w-[200px]" data-testid="filtro-linea">
-            <SelectValue placeholder="Todas las lineas" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todas">Todas las lineas</SelectItem>
-            {lineasNegocio.map(l => (
-              <SelectItem key={l.id} value={String(l.id)}>{l.nombre}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {modeloFiltrado && (
-          <Badge variant="secondary" className="gap-1">
-            Modelo: {modeloFiltrado}
-            <button onClick={() => { setFiltroModeloId(''); setSearchParams({}); }} className="ml-1 hover:text-foreground">
-              <X className="h-3 w-3" />
-            </button>
-          </Badge>
+            {filtroMarcas.map(id => {
+              const m = opcionesFiltro.marcas.find(x => x.id === id);
+              return m ? <Badge key={id} variant="outline" className="registros-filtro-badge">Marca: {m.nombre} <button onClick={() => setFiltroMarcas(prev => prev.filter(x => x !== id))}><X className="h-3 w-3" /></button></Badge> : null;
+            })}
+            {filtroTipos.map(id => {
+              const t = opcionesFiltro.tipos.find(x => x.id === id);
+              return t ? <Badge key={id} variant="outline" className="registros-filtro-badge">Tipo: {t.nombre} <button onClick={() => setFiltroTipos(prev => prev.filter(x => x !== id))}><X className="h-3 w-3" /></button></Badge> : null;
+            })}
+            {filtroEntalles.map(id => {
+              const e = opcionesFiltro.entalles.find(x => x.id === id);
+              return e ? <Badge key={id} variant="outline" className="registros-filtro-badge">Entalle: {e.nombre} <button onClick={() => setFiltroEntalles(prev => prev.filter(x => x !== id))}><X className="h-3 w-3" /></button></Badge> : null;
+            })}
+            {filtroTelas.map(id => {
+              const t = opcionesFiltro.telas.find(x => x.id === id);
+              return t ? <Badge key={id} variant="outline" className="registros-filtro-badge">Tela: {t.nombre} <button onClick={() => setFiltroTelas(prev => prev.filter(x => x !== id))}><X className="h-3 w-3" /></button></Badge> : null;
+            })}
+          </div>
         )}
-
-        {hayFiltrosActivos && (
-          <Button variant="ghost" size="sm" className="h-9" onClick={limpiarFiltros} data-testid="btn-limpiar-filtros">
-            <X className="h-4 w-4 mr-1" /> Limpiar
-          </Button>
-        )}
-        <span className="text-sm text-muted-foreground ml-auto" data-testid="count-registros">
-          {displayItems.length} de {total} registros
-        </span>
       </div>
+
+      {/* Chips rápidos de estado */}
+      {estadosDisponibles.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {estadosDisponibles.map(estado => {
+            const isActive = modoFiltro === 'incluir' && estadosIncluidos.includes(estado);
+            const isExcluded = modoFiltro === 'excluir' && estadosExcluidos.includes(estado);
+            return (
+              <button
+                key={estado}
+                type="button"
+                onClick={() => {
+                  if (modoFiltro === 'excluir') {
+                    setModoFiltro('incluir');
+                    setEstadosIncluidos([estado]);
+                    setEstadosExcluidos([]);
+                  } else if (isActive) {
+                    const next = estadosIncluidos.filter(e => e !== estado);
+                    if (next.length === 0) { setModoFiltro('excluir'); setEstadosExcluidos(['Tienda']); }
+                    else setEstadosIncluidos(next);
+                  } else {
+                    setEstadosIncluidos(prev => [...prev, estado]);
+                  }
+                }}
+                className={`registro-chip-estado ${isActive ? 'registro-chip-estado-active' : ''} ${isExcluded ? 'registro-chip-estado-excluded' : ''}`}
+              >
+                {estado}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Vista mobile: Cards */}
       <div className="md:hidden space-y-2" data-testid="registros-cards-mobile">
@@ -722,7 +847,7 @@ export const Registros = () => {
                 </div>
               </div>
               <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                <span className="font-mono">{formatDate(item.fecha_creacion)}</span>
+                <span>{formatRelativeDate(item.ultima_actividad || item.fecha_creacion)}</span>
                 {item.linea_negocio_nombre && (
                   <Badge variant="secondary" className="text-[9px] px-1.5 py-0 font-normal">{item.linea_negocio_nombre.split(' - ')[0]}</Badge>
                 )}
@@ -749,8 +874,8 @@ export const Registros = () => {
               <TableHeader>
                 <TableRow className="data-table-header">
                   <TableHead>N° Corte</TableHead>
-                  <TableHead>Fecha Creacion</TableHead>
                   <TableHead>Modelo</TableHead>
+                  <TableHead>Actividad</TableHead>
                   <TableHead className="hidden md:table-cell">Linea</TableHead>
                   <TableHead className="hidden lg:table-cell">Marca</TableHead>
                   <TableHead className="hidden xl:table-cell">Tipo</TableHead>
@@ -805,13 +930,12 @@ export const Registros = () => {
                               <Badge variant="outline" className="text-[9px] px-1 py-0 border-blue-300 text-blue-600">div</Badge>
                             )}
                           </div>
-                          <span className="text-xs text-muted-foreground font-normal">{item.modelo_nombre || ''}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="font-mono text-xs whitespace-nowrap">
-                        {formatDate(item.fecha_creacion)}
-                      </TableCell>
                       <TableCell className="text-sm">{item.modelo_nombre || '-'}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap text-muted-foreground" title={formatDate(item.ultima_actividad || item.fecha_creacion)}>
+                        {formatRelativeDate(item.ultima_actividad || item.fecha_creacion)}
+                      </TableCell>
                       <TableCell className="text-xs hidden md:table-cell">
                         {item.linea_negocio_nombre
                           ? <Badge variant="secondary" className="text-[10px] whitespace-nowrap">{item.linea_negocio_nombre.split(' - ')[0]}</Badge>
@@ -823,7 +947,7 @@ export const Registros = () => {
                       <TableCell className="text-xs hidden lg:table-cell">{item.tela_nombre || '-'}</TableCell>
                       <TableCell className="text-xs hidden xl:table-cell">{item.hilo_nombre || '-'}</TableCell>
                       <TableCell className="text-xs hidden xl:table-cell">{item.hilo_especifico_nombre || '-'}</TableCell>
-                      <TableCell className="text-xs hidden xl:table-cell">{item.curva || '-'}</TableCell>
+                      <TableCell className="text-xs hidden xl:table-cell whitespace-nowrap">{item.curva || '-'}</TableCell>
                       <TableCell className="text-right font-mono font-semibold">
                         {getTotalPiezas(item)}
                       </TableCell>
@@ -865,16 +989,10 @@ export const Registros = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleView(item)} title="Ver detalle" data-testid={`view-registro-${item.id}`}>
-                            <Eye className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenColoresDialog(item)} title="Colores" data-testid={`colores-registro-${item.id}`}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleOpenColoresDialog(item); }} title="Colores" data-testid={`colores-registro-${item.id}`}>
                             <Palette className={`h-3.5 w-3.5 ${tieneColores(item) ? 'text-primary' : ''}`} />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigate(`/registros/editar/${item.id}`)} title="Editar" data-testid={`edit-registro-${item.id}`}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(item.id)} title="Eliminar" data-testid={`delete-registro-${item.id}`}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} title="Eliminar" data-testid={`delete-registro-${item.id}`}>
                             <Trash2 className="h-3.5 w-3.5 text-destructive" />
                           </Button>
                         </div>
@@ -1030,8 +1148,8 @@ export const Registros = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog para ver detalle */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+      {/* Dialog para ver detalle — REMOVIDO, ahora está en RegistroForm pestaña Gestión OP */}
+      {false && <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>Detalle del Registro</DialogTitle>
@@ -1233,7 +1351,7 @@ export const Registros = () => {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
 
       {/* Dialog Control de Producción */}
       <Dialog open={controlDialogOpen} onOpenChange={setControlDialogOpen}>
@@ -1429,6 +1547,31 @@ export const Registros = () => {
               ))
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmación de eliminación */}
+      <Dialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Eliminar Registro
+            </DialogTitle>
+            <DialogDescription>
+              {deleteConfirm && (
+                <>
+                  ¿Estás seguro de eliminar <strong>{deleteConfirm.n_corte}</strong>?
+                  Se eliminarán todos los movimientos, materiales y datos asociados.
+                  Esta acción no se puede deshacer.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={confirmDelete}>Sí, eliminar</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

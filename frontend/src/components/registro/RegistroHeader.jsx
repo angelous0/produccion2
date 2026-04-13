@@ -6,14 +6,49 @@ import {
 } from '../ui/select';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, AlertTriangle, Play, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Save, AlertTriangle, Play, CheckCircle2, MessageCircle } from 'lucide-react';
+
+// Mini-componente de stats de mensajes para el header
+const HeaderMensajes = ({ registroId, API, onOpen, refreshKey }) => {
+  const [stats, setStats] = React.useState(null);
+  React.useEffect(() => {
+    if (!registroId) return;
+    axios.get(`${API}/registros/${registroId}/conversacion`).then(r => {
+      const msgs = r.data || [];
+      const total = msgs.length;
+      const importantes = msgs.filter(m => m.estado === 'importante').length;
+      const pendientes = msgs.filter(m => m.estado === 'pendiente').length;
+      setStats({ total, importantes, pendientes });
+    }).catch(() => setStats({ total: 0, importantes: 0, pendientes: 0 }));
+  }, [registroId, refreshKey]);
+
+  if (!stats) return null;
+
+  const hasAlerts = stats.importantes > 0 || stats.pendientes > 0;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`registro-header-mensajes ${hasAlerts ? 'registro-header-mensajes-alert' : ''}`}
+      title="Abrir mensajes"
+    >
+      <MessageCircle className="h-4 w-4" />
+      {stats.total > 0 && <span className="registro-header-mensajes-count">{stats.total}</span>}
+      {stats.importantes > 0 && <span className="registro-header-mensajes-imp">{stats.importantes} imp.</span>}
+      {stats.pendientes > 0 && <span className="registro-header-mensajes-pend">{stats.pendientes} pend.</span>}
+    </button>
+  );
+};
 
 export const RegistroHeader = ({
   formData, setFormData, modeloSeleccionado, isEditing, isParalizado,
   estados, usaRuta, rutaNombre, analisisEstado,
   loading, id, navigate, API,
   autoGuardarEstado, setForzarEstadoDialog, setSugerenciaMovDialog,
-  handleSubmit, permisos,
+  setRetrocesoDialog, setAdvertenciaCantidadDialog,
+  handleSubmit, permisos, setConvOpen, convRefreshKey,
+  cameFromRegistro,
 }) => {
 
   const canChangeStates = permisos?.canAction?.('cambiar_estados') !== false;
@@ -28,7 +63,17 @@ export const RegistroHeader = ({
       try {
         const resp = await axios.post(`${API}/registros/${id}/validar-cambio-estado`, { nuevo_estado: value });
         const data = resp.data;
+        // Retroceso detectado — pedir confirmación y motivo
+        if (data.es_retroceso) {
+          setRetrocesoDialog({ nuevo_estado: value, estado_actual: data.estado_actual, advertencias: data.advertencias || [] });
+          return;
+        }
         if (!data.permitido) { setForzarEstadoDialog({ nuevo_estado: value, bloqueos: data.bloqueos }); return; }
+        // Advertencias de cantidad (no bloquean pero informan)
+        if (data.advertencias && data.advertencias.length > 0) {
+          setAdvertenciaCantidadDialog({ advertencias: data.advertencias, nuevo_estado: value, sugerencia: data.sugerencia_movimiento });
+          return;
+        }
         await autoGuardarEstado(value);
         if (data.sugerencia_movimiento) setSugerenciaMovDialog(data.sugerencia_movimiento);
       } catch { await autoGuardarEstado(value); }
@@ -45,9 +90,16 @@ export const RegistroHeader = ({
     >
       {/* Fila 1: Navegación + Identidad + Guardar */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" className="registro-btn-back" onClick={() => navigate('/registros')} data-testid="btn-volver">
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
+        {cameFromRegistro ? (
+          <Button variant="ghost" size="sm" className="registro-btn-back gap-1.5" onClick={() => navigate(-1)} data-testid="btn-volver">
+            <ArrowLeft className="h-4 w-4" />
+            <span className="text-xs">Corte {cameFromRegistro}</span>
+          </Button>
+        ) : (
+          <Button variant="ghost" size="icon" className="registro-btn-back" onClick={() => navigate('/registros')} data-testid="btn-volver">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
             <h2 className="registro-title">Corte {formData.n_corte || '—'}</h2>
@@ -63,6 +115,9 @@ export const RegistroHeader = ({
           </div>
           {!isEditing && <p className="registro-subtitle" style={{ marginTop: 2 }}>Crear un nuevo registro de producción</p>}
         </div>
+        {isEditing && id && (
+          <HeaderMensajes registroId={id} API={API} onOpen={() => setConvOpen?.(true)} refreshKey={convRefreshKey} />
+        )}
         <Button
           type="button"
           size="sm"
@@ -112,9 +167,17 @@ export const RegistroHeader = ({
               <label className="registro-skip-label" title="Desactiva las validaciones de movimientos para cambiar de estado libremente">
                 <input type="checkbox" checked={formData.skip_validacion_estado || false} onChange={async (ev) => {
                   const newVal = ev.target.checked;
-                  setFormData(prev => ({ ...prev, skip_validacion_estado: newVal }));
-                  try { await axios.put(`${API}/registros/${id}/skip-validacion`, { skip_validacion_estado: newVal }); toast.success(newVal ? 'Validacion desactivada' : 'Validacion activada'); }
-                  catch { toast.error('Error'); setFormData(prev => ({ ...prev, skip_validacion_estado: !newVal })); }
+                  if (newVal) {
+                    const motivo = window.prompt('Motivo para desactivar restricciones:');
+                    if (!motivo || !motivo.trim()) return;
+                    setFormData(prev => ({ ...prev, skip_validacion_estado: newVal }));
+                    try { await axios.put(`${API}/registros/${id}/skip-validacion`, { skip_validacion_estado: newVal, motivo: motivo.trim() }); toast.success('Validación desactivada'); }
+                    catch { toast.error('Error'); setFormData(prev => ({ ...prev, skip_validacion_estado: !newVal })); }
+                  } else {
+                    setFormData(prev => ({ ...prev, skip_validacion_estado: newVal }));
+                    try { await axios.put(`${API}/registros/${id}/skip-validacion`, { skip_validacion_estado: newVal }); toast.success('Validación activada'); }
+                    catch { toast.error('Error'); setFormData(prev => ({ ...prev, skip_validacion_estado: !newVal })); }
+                  }
                 }} className="registro-checkbox" data-testid="toggle-skip-validacion" />
                 <span className="registro-skip-text">Sin restricciones</span>
               </label>

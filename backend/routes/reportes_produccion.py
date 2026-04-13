@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/reportes-produccion", tags=["reportes-produccion
 import sys
 sys.path.insert(0, '/app/backend')
 from db import get_pool
-from auth import get_current_user
+from auth_utils import get_current_user
 from helpers import row_to_dict
 
 
@@ -1288,12 +1288,55 @@ async def get_avance_historial(
         )
         return [
             {
+                "id": r["id"],
                 "avance_porcentaje": r["avance_porcentaje"],
                 "usuario": r["usuario"],
                 "fecha": r["created_at"].isoformat() if r["created_at"] else None,
             }
             for r in rows
         ]
+
+
+@router.delete("/costura/avance-historial/{historial_id}")
+async def eliminar_avance_historial(
+    historial_id: str,
+    user=Depends(get_current_user)
+):
+    """Eliminar una entrada del historial de avance y recalcular el avance actual."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Obtener el registro a eliminar
+        entry = await conn.fetchrow(
+            "SELECT id, movimiento_id FROM produccion.prod_avance_historial WHERE id = $1",
+            historial_id
+        )
+        if not entry:
+            raise HTTPException(status_code=404, detail="Registro no encontrado")
+
+        movimiento_id = entry["movimiento_id"]
+
+        # Eliminar la entrada
+        await conn.execute(
+            "DELETE FROM produccion.prod_avance_historial WHERE id = $1",
+            historial_id
+        )
+
+        # Recalcular: el avance actual es el último registro del historial
+        last = await conn.fetchrow(
+            """SELECT avance_porcentaje FROM produccion.prod_avance_historial
+               WHERE movimiento_id = $1 ORDER BY created_at DESC LIMIT 1""",
+            movimiento_id
+        )
+        nuevo_avance = last["avance_porcentaje"] if last else 0
+
+        await conn.execute(
+            """UPDATE produccion.prod_movimientos_produccion
+               SET avance_porcentaje = $1, avance_updated_at = NOW()
+               WHERE id = $2""",
+            nuevo_avance, movimiento_id
+        )
+
+        return {"ok": True, "nuevo_avance": nuevo_avance}
 
 
 
@@ -1497,8 +1540,30 @@ async def reporte_tiempos_muertos(
             ORDER BY ut.fecha_fin ASC
         """)
 
+        # Incidencias por registro: count abiertas + último motivo
+        inc_rows = await conn.fetch("""
+            SELECT i.registro_id,
+                   COUNT(*) FILTER (WHERE i.estado = 'ABIERTA') as inc_abiertas,
+                   COUNT(*) as inc_total
+            FROM prod_incidencia i
+            GROUP BY i.registro_id
+        """)
+        inc_map = {r["registro_id"]: {"abiertas": r["inc_abiertas"], "total": r["inc_total"]} for r in inc_rows}
+
+        # Último motivo abierto por registro
+        motivo_rows = await conn.fetch("""
+            SELECT DISTINCT ON (i.registro_id)
+                   i.registro_id,
+                   COALESCE(m.nombre, i.tipo) as motivo_nombre
+            FROM prod_incidencia i
+            LEFT JOIN prod_motivos_incidencia m ON i.tipo = m.id
+            WHERE i.estado = 'ABIERTA'
+            ORDER BY i.registro_id, i.fecha_hora DESC
+        """)
+        motivo_map = {r["registro_id"]: r["motivo_nombre"] for r in motivo_rows}
+
         items = []
-        resumen = {"total": 0, "en_espera": 0, "criticos": 0, "dias_perdidos": 0}
+        resumen = {"total": 0, "en_espera": 0, "criticos": 0, "dias_perdidos": 0, "sin_motivo": 0}
 
         for row in rows:
             fecha_fin = row["fecha_termino"]
@@ -1520,8 +1585,12 @@ async def reporte_tiempos_muertos(
                 else:
                     nivel = 'espera'
 
+            reg_id = row["registro_id"]
+            inc_info = inc_map.get(reg_id, {"abiertas": 0, "total": 0})
+            motivo = motivo_map.get(reg_id, None)
+
             items.append({
-                "registro_id": str(row["registro_id"]),
+                "registro_id": str(reg_id),
                 "n_corte": row["n_corte"],
                 "urgente": row["urgente"],
                 "modelo": row["modelo_nombre"],
@@ -1537,11 +1606,16 @@ async def reporte_tiempos_muertos(
                 "dias_parado": dias_parado,
                 "en_espera": en_espera,
                 "nivel": nivel,
+                "inc_abiertas": inc_info["abiertas"],
+                "inc_total": inc_info["total"],
+                "motivo": motivo,
             })
 
             if en_espera:
                 resumen["en_espera"] += 1
                 resumen["dias_perdidos"] += dias_parado
+                if inc_info["abiertas"] == 0:
+                    resumen["sin_motivo"] += 1
             if nivel == 'critico':
                 resumen["criticos"] += 1
 
@@ -1552,4 +1626,701 @@ async def reporte_tiempos_muertos(
 
         return {"items": items, "resumen": resumen}
 
-        return {"alertas": alertas, "resumen": resumen}
+
+@router.get("/costo-lote")
+async def costo_por_lote(
+    modelo_id: str = None,
+    marca_id: str = None,
+    estado: str = None,
+    linea_negocio_id: str = None,
+    empresa_id: int = Query(None),
+):
+    """Reporte completo de costos por lote: MP + Servicios + Otros + CIF."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # --- filtros dinámicos ---
+        where_clauses = ["1=1"]
+        params = []
+        idx = 1
+
+        if empresa_id is not None:
+            where_clauses.append(f"r.empresa_id = ${idx}")
+            params.append(empresa_id)
+            idx += 1
+
+        if modelo_id:
+            where_clauses.append(f"r.modelo_id = ${idx}")
+            params.append(modelo_id)
+            idx += 1
+        if marca_id:
+            where_clauses.append(f"m.marca_id = ${idx}")
+            params.append(marca_id)
+            idx += 1
+        if estado:
+            where_clauses.append(f"r.estado = ${idx}")
+            params.append(estado)
+            idx += 1
+        if linea_negocio_id:
+            where_clauses.append(f"r.linea_negocio_id = ${idx}")
+            params.append(linea_negocio_id)
+            idx += 1
+
+        where_sql = " AND ".join(where_clauses)
+
+        query = f"""
+        SELECT
+            r.id,
+            r.n_corte,
+            r.estado,
+            r.urgente,
+            m.nombre AS modelo_nombre,
+            ma.nombre AS marca_nombre,
+            r.curva,
+            c.id AS cierre_id,
+            c.costo_mp,
+            c.costo_servicios,
+            c.otros_costos AS costo_otros,
+            c.costo_cif,
+            c.costo_total AS cierre_costo_total,
+            c.qty_terminada AS cantidad_producida,
+            -- Live: costo MP (salidas de inventario)
+            COALESCE((
+                SELECT SUM(s.costo_total)
+                FROM produccion.prod_inventario_salidas s
+                WHERE s.registro_id = r.id
+            ), 0) AS live_costo_mp,
+            -- Live: costo servicios (movimientos produccion)
+            COALESCE((
+                SELECT SUM(mp.costo_calculado)
+                FROM produccion.prod_movimientos_produccion mp
+                WHERE mp.registro_id = r.id
+            ), 0) AS live_costo_servicios,
+            -- Live: otros costos
+            COALESCE((
+                SELECT SUM(cs.monto)
+                FROM produccion.prod_registro_costos_servicio cs
+                WHERE cs.registro_id = r.id
+            ), 0) AS live_costo_otros,
+            -- Tallas con cantidades reales
+            r.tallas AS tallas_json
+        FROM produccion.prod_registros r
+        LEFT JOIN produccion.prod_modelos m ON m.id = r.modelo_id
+        LEFT JOIN produccion.prod_marcas ma ON ma.id = m.marca_id
+        LEFT JOIN produccion.prod_registro_cierre c ON c.registro_id = r.id
+        WHERE {where_sql}
+        ORDER BY r.fecha_creacion DESC
+        """
+
+        rows = await conn.fetch(query, *params)
+
+        items = []
+        totales = {
+            "costo_mp": 0,
+            "costo_servicios": 0,
+            "costo_otros": 0,
+            "costo_cif": 0,
+            "costo_total": 0,
+            "cantidad_prendas": 0,
+        }
+
+        for row in rows:
+            cerrado = row["cierre_id"] is not None
+
+            if cerrado:
+                cmp = float(row["costo_mp"] or 0)
+                cserv = float(row["costo_servicios"] or 0)
+                cotros = float(row["costo_otros"] or 0)
+                ccif = float(row["costo_cif"] or 0)
+                ctotal = float(row["cierre_costo_total"] or 0)
+                cant = int(row["cantidad_producida"] or 0)
+            else:
+                cmp = float(row["live_costo_mp"] or 0)
+                cserv = float(row["live_costo_servicios"] or 0)
+                cotros = float(row["live_costo_otros"] or 0)
+                ccif = 0
+                ctotal = cmp + cserv + cotros
+                # Calcular cantidad real de tallas
+                cant = 0
+                try:
+                    tallas = row["tallas_json"]
+                    if tallas:
+                        import json as _json
+                        if isinstance(tallas, str):
+                            tallas = _json.loads(tallas)
+                        if isinstance(tallas, list):
+                            cant = sum(int(t.get("cantidad", 0)) for t in tallas if isinstance(t, dict))
+                except Exception:
+                    cant = 0
+
+            costo_unitario = round(ctotal / cant, 2) if cant > 0 else 0
+
+            items.append({
+                "id": row["id"],
+                "n_corte": row["n_corte"],
+                "modelo": row["modelo_nombre"],
+                "marca": row["marca_nombre"],
+                "estado": row["estado"],
+                "urgente": row["urgente"],
+                "cerrado": cerrado,
+                "cantidad_prendas": cant,
+                "costo_mp": round(cmp, 2),
+                "costo_servicios": round(cserv, 2),
+                "costo_otros": round(cotros, 2),
+                "costo_cif": round(ccif, 2),
+                "costo_total": round(ctotal, 2),
+                "costo_unitario": costo_unitario,
+            })
+
+            totales["costo_mp"] += cmp
+            totales["costo_servicios"] += cserv
+            totales["costo_otros"] += cotros
+            totales["costo_cif"] += ccif
+            totales["costo_total"] += ctotal
+            totales["cantidad_prendas"] += cant
+
+        # Redondear totales
+        for k in totales:
+            if isinstance(totales[k], float):
+                totales[k] = round(totales[k], 2)
+
+        return {"items": items, "totales": totales}
+
+
+@router.get("/costo-lote/{registro_id}/detalle")
+async def costo_lote_detalle(registro_id: str):
+    """Detalle desglosado de costos para un lote específico."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Info del registro
+        reg = await conn.fetchrow("""
+            SELECT r.id, r.n_corte, r.estado, r.urgente, r.curva,
+                   m.nombre AS modelo, ma.nombre AS marca,
+                   c.id AS cierre_id, c.costo_mp AS cierre_mp,
+                   c.costo_servicios AS cierre_serv, c.otros_costos AS cierre_otros,
+                   c.costo_cif AS cierre_cif, c.costo_total AS cierre_total,
+                   c.qty_terminada AS cierre_qty
+            FROM produccion.prod_registros r
+            LEFT JOIN produccion.prod_modelos m ON m.id = r.modelo_id
+            LEFT JOIN produccion.prod_marcas ma ON ma.id = m.marca_id
+            LEFT JOIN produccion.prod_registro_cierre c ON c.registro_id = r.id
+            WHERE r.id = $1
+        """, registro_id)
+
+        if not reg:
+            from fastapi import HTTPException
+            raise HTTPException(404, "Registro no encontrado")
+
+        # Detalle MP (salidas de inventario)
+        mp_rows = await conn.fetch("""
+            SELECT s.id, i.nombre AS item, i.codigo, s.cantidad, s.costo_total, s.fecha
+            FROM produccion.prod_inventario_salidas s
+            LEFT JOIN produccion.prod_inventario i ON i.id = s.item_id
+            WHERE s.registro_id = $1
+            ORDER BY s.fecha DESC
+        """, registro_id)
+
+        # Detalle servicios (movimientos producción)
+        serv_rows = await conn.fetch("""
+            SELECT mp.id, sv.nombre AS servicio, p.nombre AS persona,
+                   mp.cantidad_enviada, mp.cantidad_recibida, mp.tarifa_aplicada,
+                   mp.costo_calculado, mp.fecha_inicio, mp.fecha_fin
+            FROM produccion.prod_movimientos_produccion mp
+            LEFT JOIN produccion.prod_servicios_produccion sv ON sv.id = mp.servicio_id
+            LEFT JOIN produccion.prod_personas_produccion p ON p.id = mp.persona_id
+            WHERE mp.registro_id = $1
+            ORDER BY mp.fecha_inicio DESC
+        """, registro_id)
+
+        # Detalle otros costos
+        otros_rows = await conn.fetch("""
+            SELECT cs.id, cs.descripcion, cs.proveedor_texto AS proveedor,
+                   cs.monto, cs.fecha
+            FROM produccion.prod_registro_costos_servicio cs
+            WHERE cs.registro_id = $1
+            ORDER BY cs.fecha DESC
+        """, registro_id)
+
+        cerrado = reg["cierre_id"] is not None
+
+        mp_items = [{"item": r["item"], "codigo": r["codigo"], "cantidad": float(r["cantidad"] or 0),
+                      "costo": float(r["costo_total"] or 0), "fecha": str(r["fecha"]) if r["fecha"] else None}
+                     for r in mp_rows]
+
+        serv_items = [{"servicio": r["servicio"], "persona": r["persona"],
+                        "enviadas": int(r["cantidad_enviada"] or 0), "recibidas": int(r["cantidad_recibida"] or 0),
+                        "tarifa": float(r["tarifa_aplicada"] or 0), "costo": float(r["costo_calculado"] or 0),
+                        "fecha_inicio": str(r["fecha_inicio"]) if r["fecha_inicio"] else None,
+                        "fecha_fin": str(r["fecha_fin"]) if r["fecha_fin"] else None} for r in serv_rows]
+
+        otros_items = [{"descripcion": r["descripcion"], "proveedor": r["proveedor"],
+                         "monto": float(r["monto"] or 0), "fecha": str(r["fecha"]) if r["fecha"] else None}
+                       for r in otros_rows]
+
+        total_mp = sum(x["costo"] for x in mp_items)
+        total_serv = sum(x["costo"] for x in serv_items)
+        total_otros = sum(x["monto"] for x in otros_items)
+
+        return {
+            "registro_id": reg["id"],
+            "n_corte": reg["n_corte"],
+            "modelo": reg["modelo"],
+            "marca": reg["marca"],
+            "estado": reg["estado"],
+            "urgente": reg["urgente"],
+            "cerrado": cerrado,
+            "resumen": {
+                "costo_mp": round(float(reg["cierre_mp"]) if cerrado else total_mp, 2),
+                "costo_servicios": round(float(reg["cierre_serv"]) if cerrado else total_serv, 2),
+                "costo_otros": round(float(reg["cierre_otros"] or 0) if cerrado else total_otros, 2),
+                "costo_cif": round(float(reg["cierre_cif"] or 0) if cerrado else 0, 2),
+                "costo_total": round(float(reg["cierre_total"]) if cerrado else (total_mp + total_serv + total_otros), 2),
+            },
+            "detalle_mp": mp_items,
+            "detalle_servicios": serv_items,
+            "detalle_otros": otros_items,
+        }
+
+
+@router.get("/costo-lote/{registro_id}/detalle-pdf")
+async def costo_lote_detalle_pdf(registro_id: str):
+    """Genera PDF del detalle de costos de un lote."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from fastapi.responses import StreamingResponse
+    import io
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        reg = await conn.fetchrow("""
+            SELECT r.id, r.n_corte, r.estado, r.urgente, r.tallas,
+                   m.nombre AS modelo, ma.nombre AS marca,
+                   c.id AS cierre_id, c.costo_mp AS cierre_mp,
+                   c.costo_servicios AS cierre_serv, c.otros_costos AS cierre_otros,
+                   c.costo_cif AS cierre_cif, c.costo_total AS cierre_total,
+                   c.qty_terminada AS cierre_qty
+            FROM produccion.prod_registros r
+            LEFT JOIN produccion.prod_modelos m ON m.id = r.modelo_id
+            LEFT JOIN produccion.prod_marcas ma ON ma.id = m.marca_id
+            LEFT JOIN produccion.prod_registro_cierre c ON c.registro_id = r.id
+            WHERE r.id = $1
+        """, registro_id)
+
+        if not reg:
+            from fastapi import HTTPException
+            raise HTTPException(404, "Registro no encontrado")
+
+        mp_rows = await conn.fetch("""
+            SELECT i.nombre AS item, i.codigo, s.cantidad, s.costo_total
+            FROM produccion.prod_inventario_salidas s
+            LEFT JOIN produccion.prod_inventario i ON i.id = s.item_id
+            WHERE s.registro_id = $1
+        """, registro_id)
+
+        serv_rows = await conn.fetch("""
+            SELECT sv.nombre AS servicio, p.nombre AS persona,
+                   mp.cantidad_enviada, mp.tarifa_aplicada, mp.costo_calculado
+            FROM produccion.prod_movimientos_produccion mp
+            LEFT JOIN produccion.prod_servicios_produccion sv ON sv.id = mp.servicio_id
+            LEFT JOIN produccion.prod_personas_produccion p ON p.id = mp.persona_id
+            WHERE mp.registro_id = $1
+        """, registro_id)
+
+        otros_rows = await conn.fetch("""
+            SELECT cs.descripcion, cs.proveedor_texto AS proveedor, cs.monto, cs.fecha
+            FROM produccion.prod_registro_costos_servicio cs
+            WHERE cs.registro_id = $1
+        """, registro_id)
+
+        cerrado = reg["cierre_id"] is not None
+
+        # Calcular totales
+        total_mp = sum(float(r["costo_total"] or 0) for r in mp_rows)
+        total_serv = sum(float(r["costo_calculado"] or 0) for r in serv_rows)
+        total_otros = sum(float(r["monto"] or 0) for r in otros_rows)
+
+        if cerrado:
+            r_mp = float(reg["cierre_mp"] or 0)
+            r_serv = float(reg["cierre_serv"] or 0)
+            r_otros = float(reg["cierre_otros"] or 0)
+            r_cif = float(reg["cierre_cif"] or 0)
+            r_total = float(reg["cierre_total"] or 0)
+        else:
+            r_mp, r_serv, r_otros = total_mp, total_serv, total_otros
+            r_cif = 0
+            r_total = r_mp + r_serv + r_otros
+
+        # Cantidad prendas
+        cant = 0
+        try:
+            tallas = reg["tallas"]
+            if tallas:
+                import json as _json
+                if isinstance(tallas, str):
+                    tallas = _json.loads(tallas)
+                if isinstance(tallas, list):
+                    cant = sum(int(t.get("cantidad", 0)) for t in tallas if isinstance(t, dict))
+        except Exception:
+            cant = 0
+
+        costo_unit = round(r_total / cant, 2) if cant > 0 else 0
+
+        # --- Generar PDF ---
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1.5*cm, bottomMargin=1.5*cm, leftMargin=2*cm, rightMargin=2*cm)
+        styles = getSampleStyleSheet()
+        elements = []
+
+        titulo_style = ParagraphStyle('titulo', parent=styles['Heading1'], fontSize=16, spaceAfter=6)
+        sub_style = ParagraphStyle('sub', parent=styles['Normal'], fontSize=10, textColor=colors.grey)
+        seccion_style = ParagraphStyle('seccion', parent=styles['Heading2'], fontSize=12, spaceBefore=14, spaceAfter=6,
+                                        textColor=colors.HexColor('#1e40af'))
+
+        elements.append(Paragraph(f"Detalle de Costos — Corte {reg['n_corte']}", titulo_style))
+        elements.append(Paragraph(f"{reg['modelo'] or ''} | {reg['marca'] or ''} | Estado: {reg['estado']}"
+                                   + (" | CERRADO" if cerrado else ""), sub_style))
+        elements.append(Spacer(1, 0.4*cm))
+
+        # Resumen general
+        elements.append(Paragraph("Resumen de Costos", seccion_style))
+        resumen_data = [
+            ["Concepto", "Monto", "% del Total"],
+            ["Materia Prima", f"S/ {r_mp:,.2f}", f"{round(r_mp/r_total*100) if r_total else 0}%"],
+            ["Servicios", f"S/ {r_serv:,.2f}", f"{round(r_serv/r_total*100) if r_total else 0}%"],
+            ["Otros Costos", f"S/ {r_otros:,.2f}", f"{round(r_otros/r_total*100) if r_total else 0}%"],
+            ["CIF", f"S/ {r_cif:,.2f}", f"{round(r_cif/r_total*100) if r_total else 0}%"],
+            ["TOTAL", f"S/ {r_total:,.2f}", "100%"],
+        ]
+        resumen_data.append(["", "", ""])
+        resumen_data.append(["Cantidad Prendas", str(cant), ""])
+        resumen_data.append(["Costo Unitario", f"S/ {costo_unit:,.2f}", ""])
+
+        t = Table(resumen_data, colWidths=[8*cm, 5*cm, 3*cm])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+            ('BACKGROUND', (0, 5), (-1, 5), colors.HexColor('#eff6ff')),
+            ('FONTNAME', (0, 5), (-1, 5), 'Helvetica-Bold'),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(t)
+        elements.append(Spacer(1, 0.3*cm))
+
+        # Detalle MP
+        if mp_rows:
+            elements.append(Paragraph("Materia Prima", seccion_style))
+            mp_data = [["Material", "Codigo", "Cantidad", "Costo"]]
+            for r in mp_rows:
+                mp_data.append([
+                    str(r["item"] or ""),
+                    str(r["codigo"] or ""),
+                    f"{float(r['cantidad'] or 0):,.2f}",
+                    f"S/ {float(r['costo_total'] or 0):,.2f}",
+                ])
+            mp_data.append(["", "", "Subtotal", f"S/ {total_mp:,.2f}"])
+            t2 = Table(mp_data, colWidths=[6*cm, 3*cm, 3*cm, 4*cm])
+            t2.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3b82f6')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#eff6ff')),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ]))
+            elements.append(t2)
+            elements.append(Spacer(1, 0.3*cm))
+
+        # Detalle Servicios
+        if serv_rows:
+            elements.append(Paragraph("Servicios", seccion_style))
+            sv_data = [["Servicio", "Persona", "Enviadas", "Tarifa", "Costo"]]
+            for r in serv_rows:
+                sv_data.append([
+                    str(r["servicio"] or ""),
+                    str(r["persona"] or ""),
+                    str(int(r["cantidad_enviada"] or 0)),
+                    f"S/ {float(r['tarifa_aplicada'] or 0):,.2f}",
+                    f"S/ {float(r['costo_calculado'] or 0):,.2f}",
+                ])
+            sv_data.append(["", "", "", "Subtotal", f"S/ {total_serv:,.2f}"])
+            t3 = Table(sv_data, colWidths=[4*cm, 4*cm, 2.5*cm, 2.5*cm, 3*cm])
+            t3.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#7c3aed')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f5f3ff')),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ]))
+            elements.append(t3)
+            elements.append(Spacer(1, 0.3*cm))
+
+        # Detalle Otros
+        if otros_rows:
+            elements.append(Paragraph("Otros Costos", seccion_style))
+            ot_data = [["Descripcion", "Proveedor", "Fecha", "Monto"]]
+            for r in otros_rows:
+                ot_data.append([
+                    str(r["descripcion"] or ""),
+                    str(r["proveedor"] or "—"),
+                    str(r["fecha"] or "—"),
+                    f"S/ {float(r['monto'] or 0):,.2f}",
+                ])
+            ot_data.append(["", "", "Subtotal", f"S/ {total_otros:,.2f}"])
+            t4 = Table(ot_data, colWidths=[5*cm, 4*cm, 3*cm, 4*cm])
+            t4.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#d97706')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('ALIGN', (3, 0), (-1, -1), 'RIGHT'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#fffbeb')),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ]))
+            elements.append(t4)
+
+        # CIF
+        if cerrado and r_cif > 0:
+            elements.append(Spacer(1, 0.3*cm))
+            elements.append(Paragraph("CIF (Costos Indirectos de Fabricacion)", seccion_style))
+            cif_data = [["Concepto", "Monto"], ["CIF asignado al cierre", f"S/ {r_cif:,.2f}"]]
+            t5 = Table(cif_data, colWidths=[10*cm, 6*cm])
+            t5.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#ea580c')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ]))
+            elements.append(t5)
+
+        doc.build(elements)
+        buffer.seek(0)
+
+        filename = f"costo_lote_corte_{reg['n_corte']}.pdf"
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"inline; filename={filename}"},
+        )
+
+
+# =====================================================================
+# AGENDA DE ENTREGAS — basada en movimientos de producción
+# =====================================================================
+
+@router.get("/agenda-movimientos")
+async def agenda_movimientos():
+    """
+    Devuelve movimientos de producción con sus fechas para la agenda.
+    Para cada movimiento calcula la 'fecha_agenda':
+      1) fecha_esperada_movimiento (si existe)
+      2) fecha_fin (si ya terminó)
+      3) fecha_inicio (si está en proceso, sin fecha esperada ni fin)
+    Solo incluye registros no anulados.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        query = """
+            SELECT
+                m.id as movimiento_id,
+                m.registro_id,
+                r.n_corte,
+                r.estado_op,
+                r.fecha_entrega_final,
+                mo.nombre as modelo_nombre,
+                ma.nombre as marca_nombre,
+                s.nombre as servicio_nombre,
+                m.servicio_id,
+                m.cantidad_enviada,
+                m.cantidad_recibida,
+                m.fecha_inicio,
+                m.fecha_fin,
+                m.fecha_esperada_movimiento,
+                m.avance_porcentaje,
+                p.nombre as persona_nombre,
+                CASE
+                    WHEN m.fecha_fin IS NOT NULL AND m.cantidad_recibida >= m.cantidad_enviada THEN 'completado'
+                    WHEN m.fecha_fin IS NOT NULL THEN 'completado'
+                    WHEN m.fecha_inicio IS NOT NULL THEN 'en_proceso'
+                    ELSE 'pendiente'
+                END as estado_mov,
+                COALESCE(
+                    m.fecha_esperada_movimiento,
+                    m.fecha_fin,
+                    m.fecha_inicio
+                ) as fecha_agenda
+            FROM prod_movimientos_produccion m
+            JOIN prod_registros r ON m.registro_id = r.id
+            LEFT JOIN prod_modelos mo ON r.modelo_id = mo.id
+            LEFT JOIN prod_marcas ma ON mo.marca_id = ma.id
+            LEFT JOIN prod_servicios_produccion s ON m.servicio_id = s.id
+            LEFT JOIN prod_personas_produccion p ON m.persona_id = p.id
+            WHERE r.estado_op NOT IN ('ANULADA')
+              AND COALESCE(m.fecha_esperada_movimiento, m.fecha_fin, m.fecha_inicio) IS NOT NULL
+            ORDER BY COALESCE(m.fecha_esperada_movimiento, m.fecha_fin, m.fecha_inicio), r.n_corte
+        """
+        rows = await conn.fetch(query)
+
+        result = []
+        for r in rows:
+            d = dict(r)
+            # Convertir dates a string
+            for k in ('fecha_inicio', 'fecha_fin', 'fecha_esperada_movimiento', 'fecha_agenda', 'fecha_entrega_final'):
+                if d.get(k):
+                    d[k] = str(d[k])
+            # Determinar el tipo de fecha que se usó
+            if d.get('fecha_esperada_movimiento'):
+                d['fecha_tipo'] = 'esperada'
+            elif d.get('fecha_fin'):
+                d['fecha_tipo'] = 'fin'
+            else:
+                d['fecha_tipo'] = 'inicio'
+            result.append(d)
+
+        return result
+
+
+# ==================== RENDIMIENTO SERVICIOS EXTERNOS ====================
+
+@router.get("/rendimiento-servicios")
+async def rendimiento_servicios(
+    fecha_desde: Optional[str] = None,
+    fecha_hasta: Optional[str] = None,
+    empresa_id: int = Query(7),
+):
+    """
+    Rendimiento de servicios externos por persona/proveedor:
+    OPs asignadas, a tiempo, con atraso, promedio días atraso, % confiabilidad.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        where = ["r.empresa_id = $1", "m.fecha_inicio IS NOT NULL"]
+        params = [empresa_id]
+        idx = 2
+
+        if fecha_desde:
+            where.append(f"m.fecha_inicio >= ${idx}")
+            params.append(date.fromisoformat(fecha_desde))
+            idx += 1
+        if fecha_hasta:
+            where.append(f"m.fecha_inicio <= ${idx}")
+            params.append(date.fromisoformat(fecha_hasta))
+            idx += 1
+
+        where_sql = " AND ".join(where)
+
+        rows = await conn.fetch(f"""
+            SELECT
+                pp.id as persona_id,
+                pp.nombre as persona,
+                pp.tipo_persona,
+                sp.id as servicio_id,
+                sp.nombre as servicio,
+                COUNT(DISTINCT m.id) as total_movimientos,
+                COUNT(DISTINCT m.id) FILTER (WHERE m.fecha_fin IS NOT NULL) as completados,
+                COUNT(DISTINCT m.id) FILTER (
+                    WHERE m.fecha_fin IS NOT NULL
+                    AND m.fecha_esperada_movimiento IS NOT NULL
+                    AND m.fecha_fin <= m.fecha_esperada_movimiento
+                ) as a_tiempo,
+                COUNT(DISTINCT m.id) FILTER (
+                    WHERE m.fecha_fin IS NOT NULL
+                    AND m.fecha_esperada_movimiento IS NOT NULL
+                    AND m.fecha_fin > m.fecha_esperada_movimiento
+                ) as con_atraso,
+                COALESCE(AVG(
+                    CASE WHEN m.fecha_fin IS NOT NULL
+                         AND m.fecha_esperada_movimiento IS NOT NULL
+                         AND m.fecha_fin > m.fecha_esperada_movimiento
+                    THEN (m.fecha_fin - m.fecha_esperada_movimiento)
+                    END
+                ), 0) as prom_dias_atraso,
+                COUNT(DISTINCT m.id) FILTER (
+                    WHERE m.fecha_fin IS NULL
+                    AND m.fecha_esperada_movimiento IS NOT NULL
+                    AND m.fecha_esperada_movimiento < CURRENT_DATE
+                ) as vencidos_abiertos,
+                COALESCE(SUM(m.cantidad_enviada), 0) as total_prendas,
+                COALESCE(SUM(m.costo_calculado), 0) as costo_total
+            FROM prod_movimientos_produccion m
+            JOIN prod_registros r ON r.id = m.registro_id
+            JOIN prod_servicios_produccion sp ON sp.id = m.servicio_id
+            LEFT JOIN prod_personas_produccion pp ON pp.id = m.persona_id
+            WHERE {where_sql}
+              AND m.persona_id IS NOT NULL
+            GROUP BY pp.id, pp.nombre, pp.tipo_persona, sp.id, sp.nombre
+            ORDER BY total_movimientos DESC
+        """, *params)
+
+        items = []
+        mejor = None
+        peor = None
+        total_conf = 0
+        total_con_conf = 0
+
+        for row in rows:
+            completados = row["completados"] or 0
+            a_tiempo = row["a_tiempo"] or 0
+            con_atraso = row["con_atraso"] or 0
+            evaluables = a_tiempo + con_atraso
+            confiabilidad = round((a_tiempo / evaluables * 100), 1) if evaluables > 0 else None
+
+            item = {
+                "persona_id": str(row["persona_id"]) if row["persona_id"] else None,
+                "persona": row["persona"] or "Sin asignar",
+                "tipo_persona": row["tipo_persona"],
+                "servicio_id": str(row["servicio_id"]),
+                "servicio": row["servicio"],
+                "total_movimientos": row["total_movimientos"],
+                "completados": completados,
+                "a_tiempo": a_tiempo,
+                "con_atraso": con_atraso,
+                "vencidos_abiertos": row["vencidos_abiertos"] or 0,
+                "prom_dias_atraso": round(float(row["prom_dias_atraso"]), 1),
+                "confiabilidad": confiabilidad,
+                "total_prendas": int(row["total_prendas"]),
+                "costo_total": float(row["costo_total"]),
+            }
+            items.append(item)
+
+            if confiabilidad is not None:
+                total_conf += confiabilidad
+                total_con_conf += 1
+                if mejor is None or confiabilidad > mejor["confiabilidad"]:
+                    mejor = item
+                if peor is None or confiabilidad < peor["confiabilidad"]:
+                    peor = item
+
+        promedio_general = round(total_conf / total_con_conf, 1) if total_con_conf > 0 else None
+
+        return {
+            "items": items,
+            "resumen": {
+                "total_proveedores": len(items),
+                "promedio_confiabilidad": promedio_general,
+                "mejor": {"persona": mejor["persona"], "servicio": mejor["servicio"], "confiabilidad": mejor["confiabilidad"]} if mejor else None,
+                "peor": {"persona": peor["persona"], "servicio": peor["servicio"], "confiabilidad": peor["confiabilidad"]} if peor else None,
+            },
+        }

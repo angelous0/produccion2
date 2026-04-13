@@ -1,7 +1,7 @@
 """
 Router: Cierre de Registro de Produccion
 Archivo UNICO y oficial de cierre. Consolida cierre.py + cierre_v2.py.
-Calcula costo MP (FIFO) + costos servicio + otros costos → congela resultado → genera ingreso PT.
+Calcula costo MP (FIFO) + costos servicio + otros costos + CIF → congela resultado → genera ingreso PT.
 """
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
@@ -11,8 +11,8 @@ from decimal import Decimal
 import uuid
 import json
 from db import get_pool
-from auth import get_current_user
-from helpers import row_to_dict
+from auth_utils import get_current_user
+from helpers import row_to_dict, validar_registro_activo
 from routes.auditoria import audit_log, get_usuario
 
 router = APIRouter(prefix="/api", tags=["cierre"])
@@ -120,6 +120,162 @@ async def _get_merma_qty(conn, registro_id):
     ))
 
 
+async def _calcular_cif(conn, registro_id, fecha_cierre=None):
+    """Calcula Costos Indirectos de Fabricación (CIF) para un lote.
+
+    Arquitectura correcta:
+      - CIF = gastos con categoría "CIF Producción" en cont_categoria (Finanzas)
+             + depreciación de activos fijos
+      - NO incluye fin_gasto_unidad_interna (esos son costos internos de cada unidad,
+        ya capturados en la tarifa por prenda)
+      - Prorrateo por PRENDAS (no por días) — más justo para lotes de distinto tamaño
+    """
+    from datetime import timedelta
+
+    if fecha_cierre is None:
+        fecha_cierre = date.today()
+    elif isinstance(fecha_cierre, datetime):
+        fecha_cierre = fecha_cierre.date()
+
+    # Obtener datos del registro
+    reg = await conn.fetchrow(
+        "SELECT fecha_creacion, fecha_inicio_real, empresa_id FROM prod_registros WHERE id = $1", registro_id
+    )
+    if not reg or not reg['fecha_creacion']:
+        return {"cif_total": 0, "gastos_cif": 0, "facturas_cif": 0, "depreciacion": 0,
+                "total_cif_mes": 0, "prendas_lote": 0, "total_prendas_mes": 0,
+                "proporcion_pct": 0, "cif_asignado": 0, "periodo": "", "detalle": []}
+
+    fecha_creacion_date = reg['fecha_creacion'].date() if isinstance(reg['fecha_creacion'], datetime) else reg['fecha_creacion']
+    fecha_inicio_lote = reg['fecha_inicio_real'] or fecha_creacion_date
+    if isinstance(fecha_inicio_lote, datetime):
+        fecha_inicio_lote = fecha_inicio_lote.date()
+    empresa_id = reg['empresa_id'] or 7
+
+    # Período: mes de la fecha de cierre
+    primer_dia_mes = fecha_cierre.replace(day=1)
+    ultimo_dia_mes = (primer_dia_mes + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    periodo_str = fecha_cierre.strftime('%Y-%m')
+
+    # --- GASTOS CIF del mes ---
+    # Fuente 1: cont_gasto_linea → cont_categoria donde padre = "CIF Producción"
+    gastos_cif = safe_float(await conn.fetchval("""
+        SELECT COALESCE(SUM(g.total), 0)
+        FROM finanzas2.cont_gasto g
+        JOIN finanzas2.cont_gasto_linea gl ON g.id = gl.gasto_id
+        JOIN finanzas2.cont_categoria c ON gl.categoria_id = c.id
+        LEFT JOIN finanzas2.cont_categoria cp ON c.padre_id = cp.id
+        WHERE g.empresa_id = $1
+          AND g.fecha >= $2 AND g.fecha <= $3
+          AND (c.nombre = 'CIF Producción' OR cp.nombre = 'CIF Producción')
+    """, empresa_id, primer_dia_mes, ultimo_dia_mes))
+
+    # Fuente 2: líneas de facturas proveedor con categoría CIF Producción
+    facturas_cif = safe_float(await conn.fetchval("""
+        SELECT COALESCE(SUM(fl.importe), 0)
+        FROM finanzas2.cont_factura_proveedor_linea fl
+        JOIN finanzas2.cont_factura_proveedor f ON fl.factura_id = f.id
+        JOIN finanzas2.cont_categoria c ON fl.categoria_id = c.id
+        LEFT JOIN finanzas2.cont_categoria cp ON c.padre_id = cp.id
+        WHERE f.empresa_id = $1
+          AND COALESCE(f.fecha_contable, f.fecha_factura) >= $2
+          AND COALESCE(f.fecha_contable, f.fecha_factura) <= $3
+          AND f.estado != 'anulada'
+          AND (c.nombre = 'CIF Producción' OR cp.nombre = 'CIF Producción')
+    """, empresa_id, primer_dia_mes, ultimo_dia_mes))
+
+    # Detalle por categoría CIF — gastos
+    detalle_cif = [row_to_dict(r) for r in await conn.fetch("""
+        SELECT g.id, g.numero, g.fecha, g.total as monto,
+               c.nombre as categoria, g.notas as descripcion,
+               'gasto' as origen
+        FROM finanzas2.cont_gasto g
+        JOIN finanzas2.cont_gasto_linea gl ON g.id = gl.gasto_id
+        JOIN finanzas2.cont_categoria c ON gl.categoria_id = c.id
+        LEFT JOIN finanzas2.cont_categoria cp ON c.padre_id = cp.id
+        WHERE g.empresa_id = $1
+          AND g.fecha >= $2 AND g.fecha <= $3
+          AND (c.nombre = 'CIF Producción' OR cp.nombre = 'CIF Producción')
+        ORDER BY g.fecha
+    """, empresa_id, primer_dia_mes, ultimo_dia_mes)]
+
+    # Detalle por categoría CIF — líneas de facturas proveedor
+    detalle_facturas_cif = [row_to_dict(r) for r in await conn.fetch("""
+        SELECT f.id, f.numero, COALESCE(f.fecha_contable, f.fecha_factura) as fecha,
+               fl.importe as monto, c.nombre as categoria,
+               fl.descripcion, 'factura' as origen
+        FROM finanzas2.cont_factura_proveedor_linea fl
+        JOIN finanzas2.cont_factura_proveedor f ON fl.factura_id = f.id
+        JOIN finanzas2.cont_categoria c ON fl.categoria_id = c.id
+        LEFT JOIN finanzas2.cont_categoria cp ON c.padre_id = cp.id
+        WHERE f.empresa_id = $1
+          AND COALESCE(f.fecha_contable, f.fecha_factura) >= $2
+          AND COALESCE(f.fecha_contable, f.fecha_factura) <= $3
+          AND f.estado != 'anulada'
+          AND (c.nombre = 'CIF Producción' OR cp.nombre = 'CIF Producción')
+        ORDER BY COALESCE(f.fecha_contable, f.fecha_factura)
+    """, empresa_id, primer_dia_mes, ultimo_dia_mes)]
+
+    detalle_cif.extend(detalle_facturas_cif)
+
+    # --- DEPRECIACIÓN del mes ---
+    depreciacion = safe_float(await conn.fetchval("""
+        SELECT COALESCE(SUM(d.valor_depreciacion), 0)
+        FROM finanzas2.fin_depreciacion_activo d
+        JOIN finanzas2.fin_activo_fijo a ON d.activo_id = a.id
+        WHERE d.periodo = $1 AND a.empresa_id = $2 AND a.estado = 'activo'
+    """, periodo_str, empresa_id))
+
+    total_cif_mes = gastos_cif + facturas_cif + depreciacion
+
+    # --- PRORRATEO POR PRENDAS ---
+    # Prendas de este lote
+    prendas_lote = safe_float(await conn.fetchval("""
+        SELECT COALESCE(SUM(cantidad_real), 0)
+        FROM prod_registro_tallas WHERE registro_id = $1
+    """, registro_id))
+
+    # Total prendas de todos los lotes activos en el mes
+    total_prendas_mes = safe_float(await conn.fetchval("""
+        SELECT COALESCE(SUM(t.cantidad_real), 0)
+        FROM prod_registros r
+        JOIN prod_registro_tallas t ON r.id = t.registro_id
+        WHERE r.empresa_id = $1
+          AND COALESCE(r.fecha_inicio_real, r.fecha_creacion::date) <= $3
+          AND r.estado NOT IN ('ANULADA', 'Anulada')
+          AND NOT EXISTS (
+            SELECT 1 FROM prod_registro_cierre c
+            WHERE c.registro_id = r.id AND c.estado_cierre = 'CERRADO'
+              AND c.fecha < $2
+          )
+    """, empresa_id, primer_dia_mes, ultimo_dia_mes))
+
+    # Calcular proporción y CIF asignado
+    proporcion = 0.0
+    cif_asignado = 0.0
+    if total_cif_mes > 0 and total_prendas_mes > 0 and prendas_lote > 0:
+        proporcion = prendas_lote / total_prendas_mes
+        cif_asignado = round(total_cif_mes * proporcion, 2)
+
+    proporcion_pct = round(proporcion * 100, 1)
+
+    return {
+        "cif_total": cif_asignado,
+        "gastos_cif": round(gastos_cif, 2),
+        "facturas_cif": round(facturas_cif, 2),
+        "depreciacion": round(depreciacion, 2),
+        "total_cif_mes": round(total_cif_mes, 2),
+        "prendas_lote": int(prendas_lote),
+        "total_prendas_mes": int(total_prendas_mes),
+        "proporcion_pct": proporcion_pct,
+        "cif_asignado": cif_asignado,
+        "fecha_inicio_real": str(fecha_inicio_lote),
+        "fecha_creacion": str(fecha_creacion_date),
+        "periodo": periodo_str,
+        "detalle": detalle_cif,
+    }
+
+
 async def _validar_pre_cierre(conn, reg, qty_terminada):
     """Validaciones obligatorias antes del cierre. Retorna lista de errores."""
     errores = []
@@ -164,8 +320,7 @@ async def update_pt_item(registro_id: str, data: PtItemUpdate, current_user: dic
         reg = await conn.fetchrow("SELECT id, estado FROM prod_registros WHERE id = $1", registro_id)
         if not reg:
             raise HTTPException(status_code=404, detail="Registro no encontrado")
-        if reg['estado'] in ('CERRADA', 'ANULADA'):
-            raise HTTPException(status_code=400, detail="No se puede modificar una OP cerrada/anulada")
+        validar_registro_activo(reg, contexto='modificar')
 
         if data.pt_item_id:
             item = await conn.fetchrow("SELECT id, codigo, nombre FROM prod_inventario WHERE id = $1", data.pt_item_id)
@@ -198,8 +353,10 @@ async def preview_cierre(registro_id: str, current_user: dict = Depends(get_curr
         qty = await _get_qty_terminada(conn, registro_id)
         merma_qty = await _get_merma_qty(conn, registro_id)
         costos = await _calcular_costos(conn, registro_id)
+        cif = await _calcular_cif(conn, registro_id)
 
-        costo_unitario_final = costos["costo_total_final"] / qty if qty > 0 else 0
+        costo_total_con_cif = costos["costo_total_final"] + cif["cif_total"]
+        costo_unitario_final = costo_total_con_cif / qty if qty > 0 else 0
 
         # PT item info
         pt_item = None
@@ -233,7 +390,9 @@ async def preview_cierre(registro_id: str, current_user: dict = Depends(get_curr
             "qty_terminada": qty,
             "merma_qty": merma_qty,
             **costos,
-            "costo_total": costos["costo_total_final"],
+            "costo_cif": cif["cif_total"],
+            "cif_detalle": cif,
+            "costo_total": round(costo_total_con_cif, 2),
             "costo_unit_pt": round(costo_unitario_final, 6),
             "costo_unitario_final": round(costo_unitario_final, 6),
             "puede_cerrar": len(errores) == 0,
@@ -279,10 +438,15 @@ async def ejecutar_cierre(registro_id: str, data: CierreRegistroInput, current_u
             costo_mp = costos["costo_mp"]
             costo_servicios = costos["costo_servicios"]
             otros_costos = costos["otros_costos"]
-            costo_total_final = costos["costo_total_final"]
-            costo_unitario_final = costo_total_final / qty_terminada if qty_terminada > 0 else 0
 
             fecha_cierre = data.fecha or date.today()
+
+            # CIF (Costos Indirectos de Fabricación)
+            cif = await _calcular_cif(conn, registro_id, fecha_cierre)
+            costo_cif = cif["cif_total"]
+
+            costo_total_final = costos["costo_total_final"] + costo_cif
+            costo_unitario_final = costo_total_final / qty_terminada if qty_terminada > 0 else 0
             empresa_id = data.empresa_id or reg.get('empresa_id') or 7
             # Validar FK empresa
             valid_empresa = await conn.fetchval("SELECT id FROM finanzas2.cont_empresa WHERE id = $1", empresa_id)
@@ -302,6 +466,7 @@ async def ejecutar_cierre(registro_id: str, data: CierreRegistroInput, current_u
                 "costo_mp": costo_mp,
                 "costo_servicios": costo_servicios,
                 "otros_costos": otros_costos,
+                "costo_cif": costo_cif,
                 "costo_total_final": round(costo_total_final, 2),
                 "costo_unitario_final": round(costo_unitario_final, 6),
                 "cerrado_por": usuario_cierre,
@@ -310,6 +475,17 @@ async def ejecutar_cierre(registro_id: str, data: CierreRegistroInput, current_u
                     "mp": costos["salidas_mp_detalle"],
                     "servicios": costos["movimientos_detalle"],
                     "otros": costos["otros_costos_detalle"],
+                },
+                "cif_detalle": {
+                    "gastos_cif": cif["gastos_cif"],
+                    "depreciacion": cif["depreciacion"],
+                    "total_cif_mes": cif["total_cif_mes"],
+                    "prendas_lote": cif["prendas_lote"],
+                    "total_prendas_mes": cif["total_prendas_mes"],
+                    "proporcion_pct": cif["proporcion_pct"],
+                    "cif_asignado": cif["cif_asignado"],
+                    "periodo": cif["periodo"],
+                    "detalle": cif.get("detalle", []),
                 },
             }
 
@@ -346,16 +522,18 @@ async def ejecutar_cierre(registro_id: str, data: CierreRegistroInput, current_u
                     UPDATE prod_registro_cierre SET
                         fecha = $2, qty_terminada = $3, merma_qty = $4,
                         costo_mp = $5, costo_servicios = $6, otros_costos = $7,
-                        costo_total = $8, costo_unit_pt = $9, costo_unitario_final = $10,
-                        pt_ingreso_id = $11, cerrado_por = $12,
-                        observacion_cierre = $13, estado_cierre = 'CERRADO',
-                        snapshot_json = $14, updated_at = NOW(),
+                        costo_cif = $8, costo_total = $9,
+                        costo_unit_pt = $10, costo_unitario_final = $11,
+                        pt_ingreso_id = $12, cerrado_por = $13,
+                        observacion_cierre = $14, estado_cierre = 'CERRADO',
+                        snapshot_json = $15, updated_at = NOW(),
                         reabierto_por = NULL, reabierto_at = NULL, motivo_reapertura = NULL
                     WHERE registro_id = $1
                 """,
                     registro_id, fecha_cierre, qty_terminada, merma_qty,
                     costo_mp, costo_servicios, otros_costos,
-                    costo_total_final, costo_unitario_final, costo_unitario_final,
+                    costo_cif, costo_total_final,
+                    costo_unitario_final, costo_unitario_final,
                     ingreso_id, usuario_cierre,
                     data.observacion_cierre, json.dumps(snapshot, default=str)
                 )
@@ -366,14 +544,14 @@ async def ejecutar_cierre(registro_id: str, data: CierreRegistroInput, current_u
                 await conn.execute("""
                     INSERT INTO prod_registro_cierre
                     (id, empresa_id, registro_id, fecha, qty_terminada, merma_qty,
-                     costo_mp, costo_servicios, otros_costos, costo_total,
+                     costo_mp, costo_servicios, otros_costos, costo_cif, costo_total,
                      costo_unit_pt, costo_unitario_final, pt_ingreso_id,
                      cerrado_por, observacion_cierre, estado_cierre, snapshot_json)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'CERRADO', $16)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'CERRADO', $17)
                 """,
                     cierre_id, empresa_id, registro_id, fecha_cierre,
                     qty_terminada, merma_qty,
-                    costo_mp, costo_servicios, otros_costos, costo_total_final,
+                    costo_mp, costo_servicios, otros_costos, costo_cif, costo_total_final,
                     costo_unitario_final, costo_unitario_final, ingreso_id,
                     usuario_cierre, data.observacion_cierre,
                     json.dumps(snapshot, default=str)
@@ -419,6 +597,7 @@ async def ejecutar_cierre(registro_id: str, data: CierreRegistroInput, current_u
             await audit_log(conn, get_usuario(current_user), "CONFIRM", "produccion", "prod_registro_cierre", registro_id,
                 datos_despues={"estado_cierre": "CERRADO", "costo_mp": round(costo_mp, 2),
                                "costo_servicios": round(costo_servicios, 2), "otros_costos": round(otros_costos, 2),
+                               "costo_cif": round(costo_cif, 2),
                                "costo_total_final": round(costo_total_final, 2), "qty_terminada": qty_terminada},
                 observacion=data.observacion_cierre, linea_negocio_id=reg.get('linea_negocio_id'),
                 referencia=cierre_id)
@@ -432,6 +611,8 @@ async def ejecutar_cierre(registro_id: str, data: CierreRegistroInput, current_u
                 "costo_mp": round(costo_mp, 2),
                 "costo_servicios": round(costo_servicios, 2),
                 "otros_costos": round(otros_costos, 2),
+                "costo_cif": round(costo_cif, 2),
+                "cif_detalle": cif,
                 "costo_total_final": round(costo_total_final, 2),
                 "costo_unitario_final": round(costo_unitario_final, 6),
                 "costo_total": round(costo_total_final, 2),
@@ -728,6 +909,7 @@ async def get_balance_pdf(registro_id: str, current_user: dict = Depends(get_cur
                 ['Costo MP (FIFO)', f"S/ {safe_float(cierre.get('costo_mp')):.2f}"],
                 ['Costo Servicios', f"S/ {safe_float(cierre.get('costo_servicios')):.2f}"],
                 ['Otros Costos', f"S/ {safe_float(cierre.get('otros_costos')):.2f}"],
+                ['CIF', f"S/ {safe_float(cierre.get('costo_cif')):.2f}"],
                 ['COSTO TOTAL FINAL', f"S/ {safe_float(cierre.get('costo_total')):.2f}"],
                 ['Costo Unitario Final', f"S/ {safe_float(cierre.get('costo_unitario_final') or cierre.get('costo_unit_pt')):.6f}"],
             ]

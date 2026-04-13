@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from db import get_pool
 from auth_utils import get_current_user, require_permiso as require_permission
 from models import (
-    ModeloCreate, ModeloTallaCreate, ModeloTallaUpdate, ModeloBomLineaCreate,
+    Modelo, ModeloCreate, ModeloTallaCreate, ModeloTallaUpdate, ModeloBomLineaCreate,
     ModeloBomLineaUpdate, ReorderRequest,
 )
 from helpers import row_to_dict, parse_jsonb, registrar_actividad, get_muestra_pool
@@ -840,9 +840,9 @@ async def crear_pt_para_modelo(modelo_id: str):
         nombre_pt = modelo['nombre']
         
         await conn.execute("""
-            INSERT INTO prod_inventario (id, codigo, nombre, tipo_item, categoria, unidad_medida, empresa_id, stock_actual, activo)
-            VALUES ($1, $2, $3, 'PT', 'PT', 'unidad', 7, 0, true)
-        """, pt_id, nuevo_codigo, nombre_pt)
+            INSERT INTO prod_inventario (id, codigo, nombre, tipo_item, categoria, unidad_medida, empresa_id, stock_actual, activo, linea_negocio_id)
+            VALUES ($1, $2, $3, 'PT', 'PT', 'unidad', 7, 0, true, $4)
+        """, pt_id, nuevo_codigo, nombre_pt, modelo.get('linea_negocio_id'))
         
         await conn.execute("UPDATE prod_modelos SET pt_item_id = $1 WHERE id = $2", pt_id, modelo_id)
         

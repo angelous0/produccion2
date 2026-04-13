@@ -7,5 +7,6 @@ export { RegistroPanelLateral } from './RegistroPanelLateral';
 export {
   ColoresDialog, MovimientoDialog, IncidenciaDialog,
   SugerenciaEstadoDialog, SugerenciaMovDialog, ForzarEstadoDialog,
+  RetrocesoEstadoDialog, AdvertenciaCantidadDialog,
   DivisionDialog, SalidaInventarioDialog,
 } from './RegistroDialogs';

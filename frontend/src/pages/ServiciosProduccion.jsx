@@ -166,6 +166,7 @@ export const ServiciosProduccion = () => {
   });
 
   const handleDelete = async (id) => {
+    if (!window.confirm('¿Estás seguro de eliminar este servicio?')) return;
     try {
       await axios.delete(`${API}/servicios-produccion/${id}`);
       toast.success('Servicio eliminado');

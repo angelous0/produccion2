@@ -402,16 +402,6 @@ async def delete_color_catalogo(color_id: str):
         await conn.execute("DELETE FROM prod_colores_catalogo WHERE id = $1", color_id)
         return {"message": "Color eliminado"}
 
-# ==================== ENDPOINT REORDENAMIENTO BATCH ====================
-
-class ReorderItem(BaseModel):
-    id: str
-    orden: int
-
-class ReorderRequest(BaseModel):
-    items: List[ReorderItem]
-
-
 # ==================== REORDENAMIENTO MODELO ↔ TALLAS ====================
 
 @router.put("/modelos/{modelo_id}/tallas/reorder")
@@ -738,94 +728,94 @@ async def get_lineas_negocio():
         )
         return [{"id": r["id"], "codigo": r["codigo"], "nombre": r["nombre"]} for r in rows]
 
-# ==================== ENDPOINT REORDENAMIENTO BATCH ====================
 
-class ReorderItem(BaseModel):
-    id: str
-    orden: int
+# ==================== CONFIGURACIÓN EMPRESA ====================
 
-class ReorderRequest(BaseModel):
-    items: List[ReorderItem]
+PROD_TABLES_EMPRESA = [
+    "prod_inventario",
+    "prod_inventario_ingresos",
+    "prod_inventario_rollos",
+    "prod_inventario_salidas",
+    "prod_inventario_reservas",
+    "prod_inventario_reservas_linea",
+    "prod_registros",
+    "prod_registro_tallas",
+    "prod_registro_requerimiento_mp",
+    "prod_registro_cierre",
+    "prod_registro_costos_servicio",
+    "prod_consumo_mp",
+    "prod_incidencia",
+    "prod_ingreso_pt",
+    "prod_orden_etapa",
+    "prod_paralizacion",
+    "prod_servicio_orden",
+    "prod_transferencias_linea",
+    "prod_wip_movimiento",
+]
 
 
-# ==================== REORDENAMIENTO MODELO ↔ TALLAS ====================
-
-@router.put("/modelos/{modelo_id}/tallas/reorder")
-async def reorder_modelo_tallas(modelo_id: str, request: ReorderRequest, current_user: dict = Depends(require_permission("modelos", "editar"))):
-    """Reordena tallas de un modelo. Se valida que cada id pertenezca al modelo."""
+@router.get("/configuracion/empresa")
+async def get_empresa_activa(current_user: dict = Depends(get_current_user)):
+    """Detecta la empresa activa y lista empresas disponibles."""
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # validar pertenencia
-        ids = [it.id for it in request.items]
-        if not ids:
-            return {"message": "Sin cambios", "items_updated": 0}
-
-        rows = await conn.fetch(
-            "SELECT id FROM prod_modelo_tallas WHERE modelo_id=$1 AND id = ANY($2::varchar[])",
-            modelo_id,
-            ids,
+        # Detectar empresa actual desde prod_registros (tabla principal)
+        empresa_actual = await conn.fetchval(
+            "SELECT empresa_id FROM prod_registros ORDER BY fecha_creacion DESC LIMIT 1"
         )
-        found = {r['id'] for r in rows}
-        missing = [i for i in ids if i not in found]
-        if missing:
-            raise HTTPException(status_code=400, detail="Hay tallas que no pertenecen a este modelo")
-
-        for item in request.items:
-            await conn.execute(
-                "UPDATE prod_modelo_tallas SET orden=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2",
-                int(item.orden),
-                item.id,
+        if not empresa_actual:
+            empresa_actual = await conn.fetchval(
+                "SELECT empresa_id FROM prod_inventario LIMIT 1"
             )
 
-    return {"message": "Orden actualizado", "items_updated": len(request.items)}
-
-
-@router.delete("/modelos/{modelo_id}/tallas/{rel_id}/hard")
-async def hard_delete_modelo_talla(modelo_id: str, rel_id: str, current_user: dict = Depends(require_permission("modelos", "editar"))):
-    """Elimina físicamente la relación modelo-talla SOLO si no tiene vinculaciones (por ahora: BOM)."""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        rel = await conn.fetchrow("SELECT * FROM prod_modelo_tallas WHERE id=$1 AND modelo_id=$2", rel_id, modelo_id)
-        if not rel:
-            raise HTTPException(status_code=404, detail="Relación modelo-talla no encontrada")
-
-        # Vinculación: BOM por talla
-        used = await conn.fetchval(
-            "SELECT COUNT(*) FROM prod_modelo_bom_linea WHERE modelo_id=$1 AND talla_id=$2",
-            modelo_id,
-            rel.get('talla_id'),
+        # Listar empresas disponibles
+        empresas = await conn.fetch(
+            "SELECT id, nombre, ruc FROM finanzas2.cont_empresa WHERE activo = true ORDER BY nombre"
         )
-        if used and int(used) > 0:
-            raise HTTPException(status_code=400, detail="No se puede borrar: hay líneas BOM vinculadas a esta talla")
 
-        await conn.execute("DELETE FROM prod_modelo_tallas WHERE id=$1", rel_id)
+        return {
+            "empresa_actual_id": empresa_actual,
+            "empresas": [{"id": r["id"], "nombre": r["nombre"], "ruc": r.get("ruc")} for r in empresas],
+        }
 
-    return {"message": "Talla eliminada"}
 
- 
+@router.put("/configuracion/empresa")
+async def cambiar_empresa_activa(
+    payload: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Cambia la empresa_id en TODAS las tablas de producción."""
+    nueva_empresa_id = payload.get("empresa_id")
+    if not nueva_empresa_id:
+        raise HTTPException(status_code=400, detail="empresa_id requerido")
 
-@router.put("/reorder/{tabla}")
-async def reorder_items(tabla: str, request: ReorderRequest):
-    """Endpoint genérico para reordenar items de cualquier tabla"""
-    tablas_permitidas = {
-        "marcas": "prod_marcas",
-        "tipos": "prod_tipos",
-        "entalles": "prod_entalles",
-        "telas": "prod_telas",
-        "hilos": "prod_hilos",
-        "tallas-catalogo": "prod_tallas_catalogo",
-        "colores-generales": "prod_colores_generales",
-        "colores-catalogo": "prod_colores_catalogo",
-        "hilos-especificos": "prod_hilos_especificos"
-    }
-    
-    if tabla not in tablas_permitidas:
-        raise HTTPException(status_code=400, detail=f"Tabla '{tabla}' no permitida para reordenamiento")
-    
-    table_name = tablas_permitidas[tabla]
     pool = await get_pool()
     async with pool.acquire() as conn:
-        for item in request.items:
-            await conn.execute(f"UPDATE {table_name} SET orden = $1 WHERE id = $2", item.orden, item.id)
-    
-    return {"message": f"Reordenamiento de {tabla} completado", "items_updated": len(request.items)}
+        # Verificar que la empresa existe
+        existe = await conn.fetchval(
+            "SELECT id FROM finanzas2.cont_empresa WHERE id = $1 AND activo = true",
+            int(nueva_empresa_id),
+        )
+        if not existe:
+            raise HTTPException(status_code=404, detail="Empresa no encontrada o inactiva")
+
+        # Actualizar todas las tablas
+        resumen = {}
+        for tabla in PROD_TABLES_EMPRESA:
+            try:
+                result = await conn.execute(
+                    f"UPDATE {tabla} SET empresa_id = $1 WHERE empresa_id IS DISTINCT FROM $1",
+                    int(nueva_empresa_id),
+                )
+                count = int(result.split(" ")[-1]) if result else 0
+                if count > 0:
+                    resumen[tabla] = count
+            except Exception:
+                # Tabla puede estar vacía o no tener columna (skip)
+                pass
+
+        return {
+            "message": f"Empresa actualizada a ID {nueva_empresa_id}",
+            "empresa_id": int(nueva_empresa_id),
+            "tablas_actualizadas": resumen,
+        }

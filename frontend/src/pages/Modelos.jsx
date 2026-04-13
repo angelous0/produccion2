@@ -109,14 +109,59 @@ export const Modelos = ({ modo: modoProp }) => {
 
   const relatedLoaded = useRef(false);
 
+  // Helpers para cargar opciones filtradas en cascada
+  const fetchTiposByMarca = async (marcaId) => {
+    try {
+      const res = await axios.get(`${API}/tipos${marcaId ? `?marca_id=${marcaId}` : ''}`);
+      setTipos(res.data);
+    } catch { setTipos([]); }
+  };
+  const fetchEntallesByTipo = async (tipoId) => {
+    try {
+      const res = await axios.get(`${API}/entalles${tipoId ? `?tipo_id=${tipoId}` : ''}`);
+      setEntalles(res.data);
+    } catch { setEntalles([]); }
+  };
+  const fetchTelasByEntalle = async (entalleId) => {
+    try {
+      const res = await axios.get(`${API}/telas${entalleId ? `?entalle_id=${entalleId}` : ''}`);
+      setTelas(res.data);
+    } catch { setTelas([]); }
+  };
+  // Cascade handlers: al cambiar un padre, limpiar hijos y recargar opciones filtradas
+  const handleMarcaChange = (marcaId) => {
+    setFormData(prev => ({ ...prev, marca_id: marcaId, tipo_id: '', entalle_id: '', tela_id: '' }));
+    fetchTiposByMarca(marcaId);
+    setEntalles([]);
+    setTelas([]);
+  };
+  const handleTipoChange = (tipoId) => {
+    setFormData(prev => ({ ...prev, tipo_id: tipoId, entalle_id: '', tela_id: '' }));
+    fetchEntallesByTipo(tipoId);
+    setTelas([]);
+  };
+  const handleEntalleChange = (entalleId) => {
+    setFormData(prev => ({ ...prev, entalle_id: entalleId, tela_id: '' }));
+    fetchTelasByEntalle(entalleId);
+  };
+  const handleTelaChange = (telaId) => {
+    setFormData(prev => ({ ...prev, tela_id: telaId }));
+  };
+
+  // Carga inicial de opciones cascada para un modelo existente (edición)
+  const loadCascadeForEdit = async (item) => {
+    await Promise.all([
+      fetchTiposByMarca(item.marca_id),
+      fetchEntallesByTipo(item.tipo_id),
+      fetchTelasByEntalle(item.entalle_id),
+    ]);
+  };
+
   const fetchRelatedData = async () => {
     if (relatedLoaded.current) return;
     try {
-      const [marcasRes, tiposRes, entallesRes, telasRes, hilosRes, heRes, rutasRes, srvRes, ptRes, lnRes, basesRes, muestrasRes, muestrasBasesRes] = await Promise.all([
+      const [marcasRes, hilosRes, heRes, rutasRes, srvRes, ptRes, lnRes, basesRes, muestrasRes, muestrasBasesRes] = await Promise.all([
         axios.get(`${API}/marcas`),
-        axios.get(`${API}/tipos`),
-        axios.get(`${API}/entalles`),
-        axios.get(`${API}/telas`),
         axios.get(`${API}/hilos`),
         axios.get(`${API}/hilos-especificos`),
         axios.get(`${API}/rutas-produccion`),
@@ -128,9 +173,6 @@ export const Modelos = ({ modo: modoProp }) => {
         axios.get(`${API}/muestras-bases`),
       ]);
       setMarcas(marcasRes.data);
-      setTipos(tiposRes.data);
-      setEntalles(entallesRes.data);
-      setTelas(telasRes.data);
       setHilos(hilosRes.data);
       setHilosEspecificos(heRes.data);
       setRutas(rutasRes.data);
@@ -166,15 +208,26 @@ export const Modelos = ({ modo: modoProp }) => {
     setFiltroTipo('todos');
     setFiltroEntalle('todos');
     setFiltroTela('todos');
-    setFiltroTipoModelo('');
+    setFiltroTipoModelo(modoProp || '');
   };
 
   const handleSubmit = guard(async (e) => {
     e.preventDefault();
     try {
+      // Validar campos requeridos en modo base
+      if (!modoVariante) {
+        if (!formData.marca_id || !formData.tipo_id || !formData.entalle_id || !formData.tela_id) {
+          toast.error('Completa Marca, Tipo, Entalle y Tela');
+          return;
+        }
+        if (!formData.ruta_produccion_id) {
+          toast.error('Asigna una Ruta de Producción. Sin ruta, los registros no tendrán flujo.');
+          return;
+        }
+      }
       const payload = {
         ...formData,
-        ruta_produccion_id: formData.ruta_produccion_id || null,
+        ruta_produccion_id: formData.ruta_produccion_id,
         linea_negocio_id: formData.linea_negocio_id ? parseInt(formData.linea_negocio_id) : null,
         base_id: formData.base_id || null,
         hilo_especifico_id: formData.hilo_especifico_id || null,
@@ -220,7 +273,7 @@ export const Modelos = ({ modo: modoProp }) => {
     setModoVariante(false);
   };
 
-  const handleEdit = (item) => {
+  const handleEdit = async (item) => {
     setEditingItem(item);
     setModoVariante(!!item.base_id);
     setFormData({
@@ -234,7 +287,11 @@ export const Modelos = ({ modo: modoProp }) => {
       muestra_modelo_id: item.muestra_modelo_id || '',
       muestra_base_id: item.muestra_base_id || '',
     });
-    fetchRelatedData();
+    await fetchRelatedData();
+    // Cargar opciones cascada filtradas para los valores existentes
+    if (!item.base_id) {
+      await loadCascadeForEdit(item);
+    }
     setDialogOpen(true);
   };
 
@@ -318,10 +375,11 @@ export const Modelos = ({ modo: modoProp }) => {
     if (!editingItem) { toast.error('Guarda el modelo primero antes de crear su PT'); return; }
     try {
       const res = await axios.post(`${API}/modelos/${editingItem.id}/crear-pt`);
-      setFormData({ ...formData, pt_item_id: res.data.pt_item_id });
       const ptRes = await axios.get(`${API}/items-pt`);
       setItemsPT(ptRes.data);
-      toast.success(`PT creado: ${res.data.pt_item_nombre} (${res.data.pt_item_codigo})`);
+      setFormData(prev => ({ ...prev, pt_item_id: res.data.pt_item_id }));
+      setEditingItem(prev => prev ? { ...prev, pt_item_id: res.data.pt_item_id } : prev);
+      toast.success(`PT creado y asignado: ${res.data.pt_item_nombre} (${res.data.pt_item_codigo})`);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error al crear PT');
     }
@@ -734,9 +792,9 @@ export const Modelos = ({ modo: modoProp }) => {
                         <Label>Marca</Label>
                         <SearchableSelect
                           value={formData.marca_id}
-                          onValueChange={(value) => setFormData({ ...formData, marca_id: value })}
+                          onValueChange={handleMarcaChange}
                           options={marcas}
-                          placeholder="Buscar marca..."
+                          placeholder="Seleccionar marca..."
                           searchPlaceholder="Buscar marca..."
                           testId="select-marca"
                         />
@@ -745,10 +803,11 @@ export const Modelos = ({ modo: modoProp }) => {
                         <Label>Tipo</Label>
                         <SearchableSelect
                           value={formData.tipo_id}
-                          onValueChange={(value) => setFormData({ ...formData, tipo_id: value })}
+                          onValueChange={handleTipoChange}
                           options={tipos}
-                          placeholder="Buscar tipo..."
+                          placeholder={formData.marca_id ? 'Seleccionar tipo...' : 'Primero selecciona marca'}
                           searchPlaceholder="Buscar tipo..."
+                          disabled={!formData.marca_id}
                           testId="select-tipo"
                         />
                       </div>
@@ -756,10 +815,11 @@ export const Modelos = ({ modo: modoProp }) => {
                         <Label>Entalle</Label>
                         <SearchableSelect
                           value={formData.entalle_id}
-                          onValueChange={(value) => setFormData({ ...formData, entalle_id: value })}
+                          onValueChange={handleEntalleChange}
                           options={entalles}
-                          placeholder="Buscar entalle..."
+                          placeholder={formData.tipo_id ? 'Seleccionar entalle...' : 'Primero selecciona tipo'}
                           searchPlaceholder="Buscar entalle..."
+                          disabled={!formData.tipo_id}
                           testId="select-entalle"
                         />
                       </div>
@@ -767,10 +827,11 @@ export const Modelos = ({ modo: modoProp }) => {
                         <Label>Tela</Label>
                         <SearchableSelect
                           value={formData.tela_id}
-                          onValueChange={(value) => setFormData({ ...formData, tela_id: value })}
+                          onValueChange={handleTelaChange}
                           options={telas}
-                          placeholder="Buscar tela..."
+                          placeholder={formData.entalle_id ? 'Seleccionar tela...' : 'Primero selecciona entalle'}
                           searchPlaceholder="Buscar tela..."
+                          disabled={!formData.entalle_id}
                           testId="select-tela"
                         />
                       </div>
@@ -780,7 +841,7 @@ export const Modelos = ({ modo: modoProp }) => {
                           value={formData.hilo_id}
                           onValueChange={(value) => setFormData({ ...formData, hilo_id: value })}
                           options={hilos}
-                          placeholder="Buscar hilo..."
+                          placeholder="Seleccionar hilo..."
                           searchPlaceholder="Buscar hilo..."
                           testId="select-hilo"
                         />
