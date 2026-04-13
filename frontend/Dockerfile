@@ -10,8 +10,6 @@ ARG REACT_APP_BACKEND_URL=""
 ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
 
 COPY . .
-# Forzar URLs relativas en producción (sobreescribir .env de desarrollo)
-RUN rm -f .env && echo "REACT_APP_BACKEND_URL=" > .env
 RUN npm run build
 
 FROM nginx:alpine
