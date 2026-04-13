@@ -227,7 +227,7 @@ export const Inventario = () => {
     setEditingItem(null);
   };
 
-  const handleOpenDialog = (item = null) => {
+  const handleOpenDialog = async (item = null) => {
     if (item) {
       setEditingItem(item);
       setFormData({
@@ -238,6 +238,10 @@ export const Inventario = () => {
       });
     } else {
       resetForm();
+      try {
+        const { data } = await axios.get(`${API}/inventario/siguiente-codigo?categoria=Otros`);
+        setFormData(prev => ({ ...prev, codigo: data.codigo }));
+      } catch (_) {}
     }
     setDialogOpen(true);
   };
@@ -575,9 +579,16 @@ export const Inventario = () => {
                 </div>
                 <div className="space-y-2">
                   <Label>Categoria</Label>
-                  <Select value={formData.categoria} onValueChange={(value) => {
+                  <Select value={formData.categoria} onValueChange={async (value) => {
                     const isServicio = value === 'Servicios';
-                    setFormData({ ...formData, categoria: value, control_por_rollos: value === 'Telas' ? formData.control_por_rollos : false, unidad_medida: isServicio ? 'servicio' : formData.unidad_medida, stock_minimo: isServicio ? 0 : formData.stock_minimo });
+                    const updates = { categoria: value, control_por_rollos: value === 'Telas' ? formData.control_por_rollos : false, unidad_medida: isServicio ? 'servicio' : formData.unidad_medida, stock_minimo: isServicio ? 0 : formData.stock_minimo };
+                    if (!editingItem) {
+                      try {
+                        const { data } = await axios.get(`${API}/inventario/siguiente-codigo?categoria=${value}`);
+                        updates.codigo = data.codigo;
+                      } catch (_) {}
+                    }
+                    setFormData({ ...formData, ...updates });
                   }}>
                     <SelectTrigger data-testid="select-categoria"><SelectValue /></SelectTrigger>
                     <SelectContent>{CATEGORIAS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>

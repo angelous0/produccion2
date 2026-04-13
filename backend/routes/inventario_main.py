@@ -19,9 +19,36 @@ CATEGORIAS_INVENTARIO = ["Telas", "Avios", "Otros"]
 
 router = APIRouter(prefix="/api")
 
+PREFIJOS_CATEGORIA = {
+    "Avios": "AVI",
+    "Telas": "TEL",
+    "PT": "PT",
+    "Servicios": "SRV",
+    "Otros": "OTR",
+}
+
 @router.get("/inventario-categorias")
 async def get_categorias():
     return {"categorias": CATEGORIAS_INVENTARIO}
+
+@router.get("/inventario/siguiente-codigo")
+async def get_siguiente_codigo(categoria: str = "Otros"):
+    prefijo = PREFIJOS_CATEGORIA.get(categoria, "OTR")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT codigo FROM prod_inventario WHERE codigo LIKE $1 ORDER BY codigo DESC",
+            f"{prefijo}-%"
+        )
+        max_num = 0
+        for r in rows:
+            try:
+                num = int(r["codigo"].split("-")[1])
+                if num > max_num:
+                    max_num = num
+            except (IndexError, ValueError):
+                continue
+        return {"codigo": f"{prefijo}-{str(max_num + 1).zfill(3)}"}
 
 @router.get("/inventario")
 async def get_inventario(
