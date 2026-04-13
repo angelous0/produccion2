@@ -192,6 +192,57 @@ async def init_transferencias_tables():
 
 # ==================== ENDPOINTS ====================
 
+@router.get("/transferencias-linea/items-con-stock")
+async def items_con_stock_en_linea(
+    linea_negocio_id: int = Query(...),
+    user=Depends(get_current_user),
+):
+    """Retorna items que tienen stock disponible en una linea de negocio especifica."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT DISTINCT i.id, i.codigo, i.nombre, i.categoria, i.unidad_medida,
+                   i.control_por_rollos,
+                   COALESCE(SUM(ing.cantidad_disponible), 0) as stock_en_linea
+            FROM produccion.prod_inventario i
+            JOIN produccion.prod_inventario_ingresos ing
+                ON ing.item_id = i.id AND ing.linea_negocio_id = $1 AND ing.cantidad_disponible > 0
+            GROUP BY i.id, i.codigo, i.nombre, i.categoria, i.unidad_medida, i.control_por_rollos
+            HAVING SUM(ing.cantidad_disponible) > 0
+            ORDER BY i.nombre
+        """, linea_negocio_id)
+
+        result = []
+        for r in rows:
+            linea_id = linea_negocio_id
+            stock_bruto = safe_float(r['stock_en_linea'])
+            reservado_row = await conn.fetchval("""
+                SELECT COALESCE(SUM(rl.cantidad_reservada - rl.cantidad_liberada), 0)
+                FROM produccion.prod_inventario_reservas_linea rl
+                JOIN produccion.prod_inventario_reservas res ON rl.reserva_id = res.id
+                JOIN produccion.prod_registros reg ON res.registro_id = reg.id
+                WHERE rl.item_id = $1
+                  AND res.estado = 'ACTIVA'
+                  AND (rl.cantidad_reservada - rl.cantidad_liberada) > 0
+                  AND reg.linea_negocio_id = $2
+            """, r['id'], linea_id)
+            reservado = safe_float(reservado_row)
+            disponible = max(0, stock_bruto - reservado)
+            if disponible > 0:
+                result.append({
+                    "id": r['id'],
+                    "codigo": r['codigo'],
+                    "nombre": r['nombre'],
+                    "categoria": r['categoria'],
+                    "unidad_medida": r['unidad_medida'],
+                    "control_por_rollos": r['control_por_rollos'],
+                    "stock_en_linea": stock_bruto,
+                    "reservado": reservado,
+                    "stock_disponible": disponible,
+                })
+        return result
+
+
 @router.get("/transferencias-linea/estimar-costo")
 async def estimar_costo_transferencia(
     item_id: str = Query(...),

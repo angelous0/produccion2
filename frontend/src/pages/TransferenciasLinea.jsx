@@ -5,6 +5,8 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
+import { Textarea } from "../components/ui/textarea";
+import { Separator } from "../components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import {
   Dialog,
@@ -31,7 +33,6 @@ import {
 } from "../components/ui/table";
 import {
   ArrowRightLeft,
-  Plus,
   Search,
   Loader2,
   Check,
@@ -43,6 +44,8 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  Layers,
+  Send,
 } from "lucide-react";
 
 import { formatCurrency, formatNumber } from "../lib/utils";
@@ -59,22 +62,40 @@ const ESTADO_BADGE = {
 // ==================== COMPONENTE PRINCIPAL ====================
 
 export const TransferenciasLinea = () => {
+  // --- Data ---
+  const [lineas, setLineas] = useState([]);
   const [transferencias, setTransferencias] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [filtroEstado, setFiltroEstado] = useState("");
   const [filtroSearch, setFiltroSearch] = useState("");
-  const [lineas, setLineas] = useState([]);
-  const [items, setItems] = useState([]);
 
-  // Modales
-  const [showCrear, setShowCrear] = useState(false);
+  // --- Form state (inline, no modal) ---
+  const [lineaOrigenId, setLineaOrigenId] = useState("");
+  const [lineaDestinoId, setLineaDestinoId] = useState("");
+  const [itemsOrigen, setItemsOrigen] = useState([]);
+  const [selectedItemId, setSelectedItemId] = useState("");
+  const [cantidad, setCantidad] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [observaciones, setObservaciones] = useState("");
+
+  // --- Loading states ---
+  const [loadingItemsOrigen, setLoadingItemsOrigen] = useState(false);
+  const [loadingEstimacion, setLoadingEstimacion] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // --- Derived data ---
+  const [estimacion, setEstimacion] = useState(null);
+  const [stockDestinoInfo, setStockDestinoInfo] = useState(null);
+
+  // --- Modals ---
   const [showDetalle, setShowDetalle] = useState(null);
   const [showConfirmar, setShowConfirmar] = useState(null);
 
   const limit = 20;
 
+  // ---- Fetch lineas ----
   const fetchLineas = useCallback(async () => {
     try {
       const { data } = await axios.get(`${API}/lineas-negocio`);
@@ -82,20 +103,11 @@ export const TransferenciasLinea = () => {
     } catch (e) { /* silenciar */ }
   }, []);
 
-  const fetchItems = useCallback(async () => {
-    try {
-      const { data } = await axios.get(`${API}/inventario?all=true`);
-      setItems(Array.isArray(data) ? data : []);
-    } catch (e) { /* silenciar */ }
-  }, []);
-
+  // ---- Fetch transferencias (historial) ----
   const fetchTransferencias = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        limit: String(limit),
-        offset: String(page * limit),
-      });
+      const params = new URLSearchParams({ limit: String(limit), offset: String(page * limit) });
       if (filtroEstado) params.set("estado", filtroEstado);
       const { data } = await axios.get(`${API}/transferencias-linea?${params}`);
       setTransferencias(data.items || []);
@@ -107,18 +119,126 @@ export const TransferenciasLinea = () => {
     }
   }, [page, filtroEstado]);
 
+  useEffect(() => { fetchLineas(); }, [fetchLineas]);
+  useEffect(() => { fetchTransferencias(); }, [fetchTransferencias]);
+
+  // ---- Fetch items con stock en linea origen ----
   useEffect(() => {
-    fetchLineas();
+    if (!lineaOrigenId) {
+      setItemsOrigen([]);
+      setSelectedItemId("");
+      setEstimacion(null);
+      setStockDestinoInfo(null);
+      return;
+    }
+    const fetchItems = async () => {
+      setLoadingItemsOrigen(true);
+      setSelectedItemId("");
+      setEstimacion(null);
+      setStockDestinoInfo(null);
+      try {
+        const { data } = await axios.get(`${API}/transferencias-linea/items-con-stock?linea_negocio_id=${lineaOrigenId}`);
+        setItemsOrigen(data || []);
+      } catch (e) {
+        setItemsOrigen([]);
+      } finally {
+        setLoadingItemsOrigen(false);
+      }
+    };
     fetchItems();
-  }, [fetchLineas, fetchItems]);
+  }, [lineaOrigenId]);
 
+  // ---- When item or destination changes, fetch stock info in destination ----
   useEffect(() => {
-    fetchTransferencias();
-  }, [fetchTransferencias]);
+    if (!selectedItemId || !lineaDestinoId) {
+      setStockDestinoInfo(null);
+      return;
+    }
+    const fetchStockDestino = async () => {
+      try {
+        const { data } = await axios.get(`${API}/transferencias-linea/stock-por-linea/${selectedItemId}`);
+        const lineaInfo = data.lineas?.find(l => String(l.linea_negocio_id) === String(lineaDestinoId));
+        setStockDestinoInfo({
+          item_nombre: data.item_nombre,
+          unidad_medida: data.unidad_medida,
+          stock_actual_destino: lineaInfo ? lineaInfo.stock_disponible : 0,
+        });
+      } catch (e) {
+        setStockDestinoInfo(null);
+      }
+    };
+    fetchStockDestino();
+  }, [selectedItemId, lineaDestinoId]);
 
-  const handleCrearExitoso = () => {
-    setShowCrear(false);
-    fetchTransferencias();
+  // ---- Reset estimacion on key changes ----
+  useEffect(() => { setEstimacion(null); }, [selectedItemId, lineaOrigenId, cantidad]);
+
+  const selectedItem = itemsOrigen.find(i => i.id === selectedItemId);
+
+  // ---- Estimar costo FIFO ----
+  const handleEstimar = async () => {
+    if (!selectedItemId || !lineaOrigenId || !cantidad) return;
+    setLoadingEstimacion(true);
+    try {
+      const params = new URLSearchParams({
+        item_id: selectedItemId,
+        linea_origen_id: lineaOrigenId,
+        cantidad,
+      });
+      const { data } = await axios.get(`${API}/transferencias-linea/estimar-costo?${params}`);
+      setEstimacion(data);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Error al estimar costo");
+    } finally {
+      setLoadingEstimacion(false);
+    }
+  };
+
+  // ---- Crear transferencia ----
+  const handleCrear = async () => {
+    if (!selectedItemId || !lineaOrigenId || !lineaDestinoId || !cantidad) {
+      toast.error("Completa todos los campos obligatorios");
+      return;
+    }
+    if (lineaOrigenId === lineaDestinoId) {
+      toast.error("La linea origen y destino no pueden ser la misma");
+      return;
+    }
+    const cantidadNum = parseFloat(cantidad);
+    if (selectedItem && cantidadNum > selectedItem.stock_disponible) {
+      toast.error(`Stock insuficiente. Disponible: ${formatNumber(selectedItem.stock_disponible)}`);
+      return;
+    }
+    setSaving(true);
+    try {
+      await axios.post(`${API}/transferencias-linea`, {
+        item_id: selectedItemId,
+        linea_origen_id: parseInt(lineaOrigenId),
+        linea_destino_id: parseInt(lineaDestinoId),
+        cantidad: cantidadNum,
+        motivo,
+        observaciones,
+      });
+      toast.success("Borrador creado exitosamente");
+      resetForm();
+      fetchTransferencias();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Error al crear transferencia");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resetForm = () => {
+    setLineaOrigenId("");
+    setLineaDestinoId("");
+    setSelectedItemId("");
+    setCantidad("");
+    setMotivo("");
+    setObservaciones("");
+    setEstimacion(null);
+    setStockDestinoInfo(null);
+    setItemsOrigen([]);
   };
 
   const handleConfirmar = async (id) => {
@@ -133,9 +253,9 @@ export const TransferenciasLinea = () => {
     }
   };
 
-  const handleCancelar = async (id, motivo) => {
+  const handleCancelar = async (id, motivoCancelacion) => {
     try {
-      await axios.post(`${API}/transferencias-linea/${id}/cancelar`, { motivo_cancelacion: motivo });
+      await axios.post(`${API}/transferencias-linea/${id}/cancelar`, { motivo_cancelacion: motivoCancelacion });
       toast.success("Transferencia cancelada");
       setShowDetalle(null);
       fetchTransferencias();
@@ -158,170 +278,468 @@ export const TransferenciasLinea = () => {
     );
   });
 
+  const cantidadExcede = selectedItem && parseFloat(cantidad || 0) > selectedItem.stock_disponible;
+  const canSubmit = selectedItemId && lineaOrigenId && lineaDestinoId && cantidad && parseFloat(cantidad) > 0 && lineaOrigenId !== lineaDestinoId && !cantidadExcede;
+
   return (
-    <div className="space-y-4" data-testid="transferencias-linea-page">
+    <div className="space-y-6" data-testid="transferencias-linea-page">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="page-title">
-            Transferencias entre Lineas
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Movimiento de stock entre lineas de negocio con trazabilidad FIFO
-          </p>
-        </div>
-        <Button onClick={() => setShowCrear(true)} data-testid="btn-nueva-transferencia">
-          <Plus className="h-4 w-4 mr-2" />
-          Nueva Transferencia
-        </Button>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2" data-testid="page-title">
+          <ArrowRightLeft className="h-6 w-6" />
+          Transferencias entre Lineas
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Movimiento de stock entre lineas de negocio con trazabilidad FIFO
+        </p>
       </div>
 
-      {/* Filtros */}
-      <div className="flex flex-wrap gap-3 items-end">
-        <div className="w-64">
-          <Label className="text-xs">Buscar</Label>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Codigo, item, linea..."
-              value={filtroSearch}
-              onChange={(e) => setFiltroSearch(e.target.value)}
-              className="pl-8"
-              data-testid="input-search"
-            />
-          </div>
-        </div>
-        <div className="w-40">
-          <Label className="text-xs">Estado</Label>
-          <Select value={filtroEstado} onValueChange={(v) => { setFiltroEstado(v === "TODOS" ? "" : v); setPage(0); }}>
-            <SelectTrigger data-testid="select-estado-filtro">
-              <SelectValue placeholder="Todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="TODOS">Todos</SelectItem>
-              <SelectItem value="BORRADOR">Borrador</SelectItem>
-              <SelectItem value="CONFIRMADO">Confirmado</SelectItem>
-              <SelectItem value="CANCELADO">Cancelado</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* Tabla */}
+      {/* ==================== FORMULARIO DOS COLUMNAS ==================== */}
       <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Codigo</TableHead>
-                <TableHead>Item</TableHead>
-                <TableHead>Origen</TableHead>
-                <TableHead className="text-center"><ArrowRight className="h-4 w-4 mx-auto" /></TableHead>
-                <TableHead>Destino</TableHead>
-                <TableHead className="text-right">Cantidad</TableHead>
-                <TableHead className="text-right">Costo Total</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead className="text-center">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={10} className="text-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin mx-auto" />
-                  </TableCell>
-                </TableRow>
-              ) : filteredTransferencias.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                    No hay transferencias registradas
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredTransferencias.map((t) => {
-                  const badge = ESTADO_BADGE[t.estado] || {};
-                  return (
-                    <TableRow key={t.id} data-testid={`row-${t.codigo}`}>
-                      <TableCell className="font-mono text-xs">{t.codigo}</TableCell>
-                      <TableCell>
-                        <div className="font-medium text-sm">{t.item_nombre}</div>
-                        <div className="text-xs text-muted-foreground">{t.item_codigo}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">{t.linea_origen_nombre}</div>
-                        <div className="text-xs text-muted-foreground">{t.linea_origen_codigo}</div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <ArrowRight className="h-4 w-4 mx-auto text-muted-foreground" />
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">{t.linea_destino_nombre}</div>
-                        <div className="text-xs text-muted-foreground">{t.linea_destino_codigo}</div>
-                      </TableCell>
-                      <TableCell className="text-right font-mono">{formatNumber(t.cantidad)}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">
-                        {t.costo_total_transferido > 0 ? formatCurrency(t.costo_total_transferido) : "-"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={badge.className} variant={badge.variant}>{t.estado}</Badge>
-                      </TableCell>
-                      <TableCell className="text-xs">{formatDate(t.fecha_creacion)}</TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex gap-1 justify-center">
-                          <Button
-                            variant="ghost" size="icon" className="h-7 w-7"
-                            onClick={() => setShowDetalle(t.id)}
-                            data-testid={`btn-ver-${t.codigo}`}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          {t.estado === "BORRADOR" && (
-                            <Button
-                              variant="ghost" size="icon" className="h-7 w-7 text-green-600"
-                              onClick={() => setShowConfirmar(t)}
-                              data-testid={`btn-confirmar-${t.codigo}`}
-                            >
-                              <Check className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Send className="h-5 w-5" />
+            Nueva Transferencia
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr,auto,1fr] gap-6">
+            {/* ====== COLUMNA ORIGEN ====== */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="h-8 w-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-bold">O</div>
+                <h3 className="font-semibold text-base">ORIGEN</h3>
+              </div>
+
+              {/* Linea Origen */}
+              <div>
+                <Label className="text-xs font-medium">Linea de Negocio *</Label>
+                <Select value={lineaOrigenId} onValueChange={(v) => { setLineaOrigenId(v); setLineaDestinoId(""); }}>
+                  <SelectTrigger data-testid="select-linea-origen">
+                    <SelectValue placeholder="Seleccionar linea..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {lineas.map((l) => (
+                      <SelectItem key={l.id} value={String(l.id)}>
+                        {l.codigo} - {l.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Item selector */}
+              <div>
+                <Label className="text-xs font-medium">Item a transferir *</Label>
+                {loadingItemsOrigen ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Cargando items...
+                  </div>
+                ) : !lineaOrigenId ? (
+                  <p className="text-xs text-muted-foreground py-2">Selecciona una linea de origen primero</p>
+                ) : itemsOrigen.length === 0 ? (
+                  <div className="text-sm text-muted-foreground flex items-center gap-2 py-2">
+                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                    No hay items con stock en esta linea
+                  </div>
+                ) : (
+                  <Select value={selectedItemId} onValueChange={setSelectedItemId}>
+                    <SelectTrigger data-testid="select-item">
+                      <SelectValue placeholder="Seleccionar item..." />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {itemsOrigen.map((i) => (
+                        <SelectItem key={i.id} value={i.id}>
+                          <span className="font-mono text-xs">{i.codigo}</span>
+                          <span className="ml-2">{i.nombre}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              {/* Stock info del item en linea origen */}
+              {selectedItem && (
+                <Card className="bg-blue-50/50 border-blue-200">
+                  <CardContent className="py-3 px-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Package className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm font-medium text-blue-800">Stock en Origen</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Bruto</span>
+                        <p className="font-mono font-medium">{formatNumber(selectedItem.stock_en_linea)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Reservado</span>
+                        <p className="font-mono font-medium text-orange-600">{formatNumber(selectedItem.reservado)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Disponible</span>
+                        <p className="font-mono font-bold text-blue-700">{formatNumber(selectedItem.stock_disponible)}</p>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
+                      <span>Unidad: <strong>{selectedItem.unidad_medida}</strong></span>
+                      <span>Tipo: <strong>{selectedItem.control_por_rollos ? "Rollo" : "Normal"}</strong></span>
+                      <span>Cat: <strong>{selectedItem.categoria}</strong></span>
+                    </div>
+                  </CardContent>
+                </Card>
               )}
-            </TableBody>
-          </Table>
+
+              {/* Cantidad */}
+              {selectedItem && (
+                <div>
+                  <Label className="text-xs font-medium">Cantidad a transferir *</Label>
+                  <Input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    max={selectedItem.stock_disponible}
+                    value={cantidad}
+                    onChange={(e) => setCantidad(e.target.value)}
+                    placeholder={`Max: ${formatNumber(selectedItem.stock_disponible)} ${selectedItem.unidad_medida}`}
+                    data-testid="input-cantidad"
+                  />
+                  {cantidadExcede && (
+                    <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" />
+                      Excede stock disponible ({formatNumber(selectedItem.stock_disponible)})
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ====== FLECHA CENTRAL ====== */}
+            <div className="hidden lg:flex flex-col items-center justify-center">
+              <div className="w-px h-16 bg-border" />
+              <div className="my-3 h-12 w-12 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                <ArrowRight className="h-6 w-6" />
+              </div>
+              <div className="w-px h-16 bg-border" />
+            </div>
+            <div className="lg:hidden flex items-center justify-center py-2">
+              <ArrowRight className="h-6 w-6 text-muted-foreground rotate-90" />
+            </div>
+
+            {/* ====== COLUMNA DESTINO ====== */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="h-8 w-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center text-sm font-bold">D</div>
+                <h3 className="font-semibold text-base">DESTINO</h3>
+              </div>
+
+              {/* Linea Destino */}
+              <div>
+                <Label className="text-xs font-medium">Linea de Negocio *</Label>
+                {!lineaOrigenId ? (
+                  <p className="text-xs text-muted-foreground py-2">Selecciona la linea de origen primero</p>
+                ) : (
+                  <Select value={lineaDestinoId} onValueChange={setLineaDestinoId}>
+                    <SelectTrigger data-testid="select-linea-destino">
+                      <SelectValue placeholder="Seleccionar linea destino..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {lineas.filter(l => String(l.id) !== lineaOrigenId).map((l) => (
+                        <SelectItem key={l.id} value={String(l.id)}>
+                          {l.codigo} - {l.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              {/* Stock preview en destino */}
+              {lineaDestinoId && selectedItem && (
+                <Card className="bg-green-50/50 border-green-200">
+                  <CardContent className="py-3 px-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Package className="h-4 w-4 text-green-600" />
+                      <span className="text-sm font-medium text-green-800">Preview en Destino</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Stock actual destino</span>
+                        <p className="font-mono font-medium">
+                          {stockDestinoInfo ? formatNumber(stockDestinoInfo.stock_actual_destino) : "0.00"}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Despues de transferir</span>
+                        <p className="font-mono font-bold text-green-700">
+                          {stockDestinoInfo
+                            ? formatNumber((stockDestinoInfo.stock_actual_destino || 0) + parseFloat(cantidad || 0))
+                            : formatNumber(parseFloat(cantidad || 0))}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {selectedItem.codigo} - {selectedItem.nombre}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Motivo y Observaciones */}
+              {selectedItem && (
+                <>
+                  <div>
+                    <Label className="text-xs font-medium">Motivo</Label>
+                    <Input
+                      value={motivo}
+                      onChange={(e) => setMotivo(e.target.value)}
+                      placeholder="Razon de la transferencia..."
+                      data-testid="input-motivo"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-medium">Observaciones</Label>
+                    <Textarea
+                      value={observaciones}
+                      onChange={(e) => setObservaciones(e.target.value)}
+                      placeholder="Notas adicionales..."
+                      rows={2}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* ====== ESTIMACION FIFO ====== */}
+          {selectedItem && lineaOrigenId && cantidad && parseFloat(cantidad) > 0 && (
+            <>
+              <Separator className="my-4" />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-medium flex items-center gap-2">
+                    <Layers className="h-4 w-4" />
+                    Estimacion de Costo FIFO
+                  </h4>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleEstimar}
+                    disabled={loadingEstimacion}
+                    data-testid="btn-estimar-costo"
+                  >
+                    {loadingEstimacion ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Calculator className="h-4 w-4 mr-2" />}
+                    Calcular
+                  </Button>
+                </div>
+
+                {estimacion && (
+                  <Card className={estimacion.stock_suficiente ? "border-green-200 bg-green-50/50" : "border-red-200 bg-red-50/50"}>
+                    <CardContent className="py-3 px-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">Capas FIFO a consumir</span>
+                        {estimacion.stock_suficiente ? (
+                          <Badge className="bg-green-100 text-green-700 border-green-300">Stock suficiente</Badge>
+                        ) : (
+                          <Badge className="bg-red-100 text-red-700 border-red-300">Stock insuficiente</Badge>
+                        )}
+                      </div>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">Fecha Ingreso</TableHead>
+                            <TableHead className="text-xs">Proveedor</TableHead>
+                            <TableHead className="text-xs text-right">Disponible</TableHead>
+                            <TableHead className="text-xs text-right">A consumir</TableHead>
+                            <TableHead className="text-xs text-right">Costo Unit.</TableHead>
+                            <TableHead className="text-xs text-right">Subtotal</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {estimacion.capas.map((c, i) => (
+                            <TableRow key={i}>
+                              <TableCell className="text-xs font-mono">{formatDate(c.fecha_ingreso)}</TableCell>
+                              <TableCell className="text-xs">{c.proveedor || "-"}</TableCell>
+                              <TableCell className="text-xs text-right font-mono">{formatNumber(c.cantidad_disponible)}</TableCell>
+                              <TableCell className="text-xs text-right font-mono font-bold">{formatNumber(c.cantidad_a_consumir)}</TableCell>
+                              <TableCell className="text-xs text-right font-mono">{formatCurrency(c.costo_unitario)}</TableCell>
+                              <TableCell className="text-xs text-right font-mono">{formatCurrency(c.costo_parcial)}</TableCell>
+                            </TableRow>
+                          ))}
+                          <TableRow className="border-t-2">
+                            <TableCell colSpan={3} className="text-xs font-bold">TOTAL</TableCell>
+                            <TableCell className="text-xs text-right font-mono font-bold">{formatNumber(estimacion.cantidad_cubierta)}</TableCell>
+                            <TableCell />
+                            <TableCell className="text-xs text-right font-mono font-bold">{formatCurrency(estimacion.costo_total_estimado)}</TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ====== BOTONES DE ACCION ====== */}
+          <Separator className="my-4" />
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={resetForm} disabled={saving}>
+              Limpiar
+            </Button>
+            <Button
+              onClick={handleCrear}
+              disabled={!canSubmit || saving}
+              data-testid="btn-crear-borrador"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ArrowRightLeft className="h-4 w-4 mr-2" />}
+              Crear Borrador
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Paginacion */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">{total} transferencia(s)</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm flex items-center">{page + 1} / {totalPages}</span>
-            <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+      {/* ==================== HISTORIAL ==================== */}
+      <div>
+        <h2 className="text-lg font-semibold mb-3">Historial de Transferencias</h2>
+
+        {/* Filtros */}
+        <div className="flex flex-wrap gap-3 items-end mb-3">
+          <div className="w-64">
+            <Label className="text-xs">Buscar</Label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Codigo, item, linea..."
+                value={filtroSearch}
+                onChange={(e) => setFiltroSearch(e.target.value)}
+                className="pl-8"
+                data-testid="input-search"
+              />
+            </div>
+          </div>
+          <div className="w-40">
+            <Label className="text-xs">Estado</Label>
+            <Select value={filtroEstado} onValueChange={(v) => { setFiltroEstado(v === "TODOS" ? "" : v); setPage(0); }}>
+              <SelectTrigger data-testid="select-estado-filtro">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TODOS">Todos</SelectItem>
+                <SelectItem value="BORRADOR">Borrador</SelectItem>
+                <SelectItem value="CONFIRMADO">Confirmado</SelectItem>
+                <SelectItem value="CANCELADO">Cancelado</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
-      )}
 
-      {/* Modal Crear */}
-      {showCrear && (
-        <CrearTransferenciaModal
-          open={showCrear}
-          onClose={() => setShowCrear(false)}
-          onSuccess={handleCrearExitoso}
-          lineas={lineas}
-          items={items}
-        />
-      )}
+        {/* Tabla */}
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Codigo</TableHead>
+                  <TableHead>Item</TableHead>
+                  <TableHead>Origen</TableHead>
+                  <TableHead className="text-center"><ArrowRight className="h-4 w-4 mx-auto" /></TableHead>
+                  <TableHead>Destino</TableHead>
+                  <TableHead className="text-right">Cantidad</TableHead>
+                  <TableHead className="text-right">Costo Total</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead className="text-center">Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                    </TableCell>
+                  </TableRow>
+                ) : filteredTransferencias.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                      No hay transferencias registradas
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredTransferencias.map((t) => {
+                    const badge = ESTADO_BADGE[t.estado] || {};
+                    return (
+                      <TableRow key={t.id} data-testid={`row-${t.codigo}`}>
+                        <TableCell className="font-mono text-xs">{t.codigo}</TableCell>
+                        <TableCell>
+                          <div className="font-medium text-sm">{t.item_nombre}</div>
+                          <div className="text-xs text-muted-foreground">{t.item_codigo}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">{t.linea_origen_nombre}</div>
+                          <div className="text-xs text-muted-foreground">{t.linea_origen_codigo}</div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <ArrowRight className="h-4 w-4 mx-auto text-muted-foreground" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">{t.linea_destino_nombre}</div>
+                          <div className="text-xs text-muted-foreground">{t.linea_destino_codigo}</div>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">{formatNumber(t.cantidad)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs">
+                          {t.costo_total_transferido > 0 ? formatCurrency(t.costo_total_transferido) : "-"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={badge.className} variant={badge.variant}>{t.estado}</Badge>
+                        </TableCell>
+                        <TableCell className="text-xs">{formatDate(t.fecha_creacion)}</TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex gap-1 justify-center">
+                            <Button
+                              variant="ghost" size="icon" className="h-7 w-7"
+                              onClick={() => setShowDetalle(t.id)}
+                              data-testid={`btn-ver-${t.codigo}`}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            {t.estado === "BORRADOR" && (
+                              <Button
+                                variant="ghost" size="icon" className="h-7 w-7 text-green-600"
+                                onClick={() => setShowConfirmar(t)}
+                                data-testid={`btn-confirmar-${t.codigo}`}
+                              >
+                                <Check className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* Paginacion */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-3">
+            <span className="text-sm text-muted-foreground">{total} transferencia(s)</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm flex items-center">{page + 1} / {totalPages}</span>
+              <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Modal Detalle */}
       {showDetalle && (
@@ -344,345 +762,6 @@ export const TransferenciasLinea = () => {
         />
       )}
     </div>
-  );
-};
-
-// ==================== MODAL CREAR ====================
-
-const CrearTransferenciaModal = ({ open, onClose, onSuccess, lineas, items }) => {
-  const [form, setForm] = useState({
-    item_id: "",
-    linea_origen_id: "",
-    linea_destino_id: "",
-    cantidad: "",
-    motivo: "",
-    observaciones: "",
-    referencia_externa: "",
-  });
-  const [stockPorLinea, setStockPorLinea] = useState(null);
-  const [estimacion, setEstimacion] = useState(null);
-  const [loadingStock, setLoadingStock] = useState(false);
-  const [loadingEstimacion, setLoadingEstimacion] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  // Cuando cambia el item, cargar stock por linea
-  useEffect(() => {
-    if (!form.item_id) {
-      setStockPorLinea(null);
-      setEstimacion(null);
-      return;
-    }
-    const fetchStock = async () => {
-      setLoadingStock(true);
-      try {
-        const { data } = await axios.get(`${API}/transferencias-linea/stock-por-linea/${form.item_id}`);
-        setStockPorLinea(data);
-      } catch (e) {
-        setStockPorLinea(null);
-      } finally {
-        setLoadingStock(false);
-      }
-    };
-    fetchStock();
-  }, [form.item_id]);
-
-  // Reset estimacion cuando cambian parametros clave
-  useEffect(() => {
-    setEstimacion(null);
-  }, [form.item_id, form.linea_origen_id, form.cantidad]);
-
-  const handleEstimar = async () => {
-    if (!form.item_id || !form.linea_origen_id || !form.cantidad) return;
-    setLoadingEstimacion(true);
-    try {
-      const params = new URLSearchParams({
-        item_id: form.item_id,
-        linea_origen_id: form.linea_origen_id,
-        cantidad: form.cantidad,
-      });
-      const { data } = await axios.get(`${API}/transferencias-linea/estimar-costo?${params}`);
-      setEstimacion(data);
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Error al estimar costo");
-    } finally {
-      setLoadingEstimacion(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!form.item_id || !form.linea_origen_id || !form.linea_destino_id || !form.cantidad) {
-      toast.error("Completa todos los campos obligatorios");
-      return;
-    }
-    if (form.linea_origen_id === form.linea_destino_id) {
-      toast.error("La linea origen y destino no pueden ser la misma");
-      return;
-    }
-    setSaving(true);
-    try {
-      await axios.post(`${API}/transferencias-linea`, {
-        item_id: form.item_id,
-        linea_origen_id: parseInt(form.linea_origen_id),
-        linea_destino_id: parseInt(form.linea_destino_id),
-        cantidad: parseFloat(form.cantidad),
-        motivo: form.motivo,
-        observaciones: form.observaciones,
-        referencia_externa: form.referencia_externa || null,
-      });
-      toast.success("Borrador creado exitosamente");
-      onSuccess();
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Error al crear transferencia");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const stockOrigen = stockPorLinea?.lineas?.find(
-    (l) => String(l.linea_negocio_id) === String(form.linea_origen_id)
-  );
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="modal-crear-transferencia">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ArrowRightLeft className="h-5 w-5" />
-            Nueva Transferencia entre Lineas
-          </DialogTitle>
-          <DialogDescription>
-            Crea un borrador que luego podras confirmar o cancelar
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          {/* Item */}
-          <div>
-            <Label>Item a transferir *</Label>
-            <Select value={form.item_id} onValueChange={(v) => setForm({ ...form, item_id: v, linea_origen_id: "", linea_destino_id: "" })}>
-              <SelectTrigger data-testid="select-item">
-                <SelectValue placeholder="Seleccionar item..." />
-              </SelectTrigger>
-              <SelectContent className="max-h-60">
-                {items.map((i) => (
-                  <SelectItem key={i.id} value={i.id}>
-                    {i.codigo} - {i.nombre}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Stock por linea del item */}
-          {loadingStock && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Cargando stock por linea...
-            </div>
-          )}
-          {stockPorLinea && stockPorLinea.lineas?.length > 0 && (
-            <Card className="bg-muted/30">
-              <CardHeader className="py-2 px-4">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Package className="h-4 w-4" />
-                  Stock por Linea - {stockPorLinea.item_nombre} ({stockPorLinea.unidad_medida})
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-4 pb-3">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-xs">Linea</TableHead>
-                      <TableHead className="text-xs text-right">Bruto</TableHead>
-                      <TableHead className="text-xs text-right">Reservado</TableHead>
-                      <TableHead className="text-xs text-right font-bold">Disponible</TableHead>
-                      <TableHead className="text-xs text-right">Valorizado</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {stockPorLinea.lineas.map((l) => (
-                      <TableRow key={l.linea_negocio_id || "null"}>
-                        <TableCell className="text-xs">{l.linea_nombre}</TableCell>
-                        <TableCell className="text-xs text-right font-mono">{formatNumber(l.stock_bruto)}</TableCell>
-                        <TableCell className="text-xs text-right font-mono text-orange-600">{formatNumber(l.reservado)}</TableCell>
-                        <TableCell className="text-xs text-right font-mono font-bold">{formatNumber(l.stock_disponible)}</TableCell>
-                        <TableCell className="text-xs text-right font-mono">{formatCurrency(l.valorizado)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
-          {stockPorLinea && stockPorLinea.lineas?.length === 0 && (
-            <div className="text-sm text-muted-foreground flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-yellow-500" />
-              Este item no tiene stock en ninguna linea
-            </div>
-          )}
-
-          {/* Linea Origen y Destino */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Linea Origen *</Label>
-              <Select value={form.linea_origen_id} onValueChange={(v) => setForm({ ...form, linea_origen_id: v })}>
-                <SelectTrigger data-testid="select-linea-origen">
-                  <SelectValue placeholder="Origen..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {lineas.map((l) => (
-                    <SelectItem key={l.id} value={String(l.id)}>
-                      {l.codigo} - {l.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {stockOrigen && (
-                <p className="text-xs mt-1 text-muted-foreground">
-                  Disponible: <span className="font-bold text-foreground">{formatNumber(stockOrigen.stock_disponible)}</span>
-                  {stockOrigen.reservado > 0 && (
-                    <span className="text-orange-600"> ({formatNumber(stockOrigen.reservado)} reservado)</span>
-                  )}
-                </p>
-              )}
-            </div>
-            <div>
-              <Label>Linea Destino *</Label>
-              <Select value={form.linea_destino_id} onValueChange={(v) => setForm({ ...form, linea_destino_id: v })}>
-                <SelectTrigger data-testid="select-linea-destino">
-                  <SelectValue placeholder="Destino..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {lineas.filter((l) => String(l.id) !== form.linea_origen_id).map((l) => (
-                    <SelectItem key={l.id} value={String(l.id)}>
-                      {l.codigo} - {l.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Cantidad */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Cantidad *</Label>
-              <Input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={form.cantidad}
-                onChange={(e) => setForm({ ...form, cantidad: e.target.value })}
-                placeholder="0.00"
-                data-testid="input-cantidad"
-              />
-              {stockOrigen && parseFloat(form.cantidad || 0) > stockOrigen.stock_disponible && (
-                <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" />
-                  Excede el stock disponible ({formatNumber(stockOrigen.stock_disponible)})
-                </p>
-              )}
-            </div>
-            <div className="flex items-end">
-              <Button
-                variant="outline"
-                onClick={handleEstimar}
-                disabled={!form.item_id || !form.linea_origen_id || !form.cantidad || loadingEstimacion}
-                data-testid="btn-estimar-costo"
-              >
-                {loadingEstimacion ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Calculator className="h-4 w-4 mr-2" />}
-                Estimar Costo FIFO
-              </Button>
-            </div>
-          </div>
-
-          {/* Estimacion FIFO */}
-          {estimacion && (
-            <Card className={estimacion.stock_suficiente ? "border-green-200 bg-green-50/50" : "border-red-200 bg-red-50/50"}>
-              <CardContent className="py-3 px-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Estimacion de Costo FIFO</span>
-                  {estimacion.stock_suficiente ? (
-                    <Badge className="bg-green-100 text-green-700 border-green-300">Stock suficiente</Badge>
-                  ) : (
-                    <Badge className="bg-red-100 text-red-700 border-red-300">Stock insuficiente</Badge>
-                  )}
-                </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-xs">Capa FIFO</TableHead>
-                      <TableHead className="text-xs">Proveedor</TableHead>
-                      <TableHead className="text-xs text-right">Disponible</TableHead>
-                      <TableHead className="text-xs text-right">A consumir</TableHead>
-                      <TableHead className="text-xs text-right">Costo Unit.</TableHead>
-                      <TableHead className="text-xs text-right">Subtotal</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {estimacion.capas.map((c, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="text-xs font-mono">{formatDate(c.fecha_ingreso)}</TableCell>
-                        <TableCell className="text-xs">{c.proveedor || "-"}</TableCell>
-                        <TableCell className="text-xs text-right font-mono">{formatNumber(c.cantidad_disponible)}</TableCell>
-                        <TableCell className="text-xs text-right font-mono font-bold">{formatNumber(c.cantidad_a_consumir)}</TableCell>
-                        <TableCell className="text-xs text-right font-mono">{formatCurrency(c.costo_unitario)}</TableCell>
-                        <TableCell className="text-xs text-right font-mono">{formatCurrency(c.costo_parcial)}</TableCell>
-                      </TableRow>
-                    ))}
-                    <TableRow className="border-t-2">
-                      <TableCell colSpan={3} className="text-xs font-bold">TOTAL</TableCell>
-                      <TableCell className="text-xs text-right font-mono font-bold">{formatNumber(estimacion.cantidad_cubierta)}</TableCell>
-                      <TableCell />
-                      <TableCell className="text-xs text-right font-mono font-bold">{formatCurrency(estimacion.costo_total_estimado)}</TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Motivo y Observaciones */}
-          <div>
-            <Label>Motivo</Label>
-            <Input
-              value={form.motivo}
-              onChange={(e) => setForm({ ...form, motivo: e.target.value })}
-              placeholder="Razon de la transferencia..."
-              data-testid="input-motivo"
-            />
-          </div>
-          <div>
-            <Label>Observaciones</Label>
-            <Input
-              value={form.observaciones}
-              onChange={(e) => setForm({ ...form, observaciones: e.target.value })}
-              placeholder="Notas adicionales..."
-            />
-          </div>
-          <div>
-            <Label>Referencia Externa (opcional)</Label>
-            <Input
-              value={form.referencia_externa}
-              onChange={(e) => setForm({ ...form, referencia_externa: e.target.value })}
-              placeholder="Para integracion con Finanzas..."
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={saving || !form.item_id || !form.linea_origen_id || !form.linea_destino_id || !form.cantidad}
-            data-testid="btn-crear-borrador"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-            Crear Borrador
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 };
 
