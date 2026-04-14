@@ -125,6 +125,7 @@ app.include_router(inventario_main_router)
 app.include_router(catalogos_router)
 app.include_router(auth_router)
 app.include_router(modelos_router)
+app.include_router(import_excel_router)
 app.include_router(registros_main_router)
 app.include_router(registros_materiales_router)
 app.include_router(registros_operaciones_router)
@@ -147,7 +148,6 @@ app.include_router(auditoria_router)
 app.include_router(conversacion_router)
 app.include_router(distribucion_pt_router)
 app.include_router(kardex_pt_router)
-app.include_router(import_excel_router)
 
 # ==================== HEALTH CHECK ====================
 
