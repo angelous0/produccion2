@@ -615,7 +615,7 @@ async def lotes_fraccionados(
         rows = await conn.fetch("""
             SELECT p.id as padre_id, p.n_corte as padre_corte, p.estado as padre_estado,
                    p.estado_op as padre_estado_op,
-                   mo.nombre as modelo_nombre,
+                   COALESCE(mo.nombre, p.modelo_manual->>'nombre_modelo') as modelo_nombre,
                    COALESCE((SELECT SUM(rt.cantidad_real) FROM prod_registro_tallas rt WHERE rt.registro_id = p.id),0) as padre_prendas,
                    (SELECT json_agg(json_build_object(
                        'id', h.id,
@@ -1058,12 +1058,12 @@ async def reporte_costura(
                 r.urgente,
                 p.nombre as persona_nombre,
                 p.tipo_persona as persona_tipo,
-                mod.nombre as modelo_nombre,
-                marca.nombre as marca_nombre,
-                tipo.nombre as tipo_nombre,
-                ent.nombre as entalle_nombre,
-                tela.nombre as tela_nombre,
-                COALESCE(he.nombre, '') as hilo_especifico_nombre,
+                COALESCE(mod.nombre, r.modelo_manual->>'nombre_modelo') as modelo_nombre,
+                COALESCE(marca.nombre, r.modelo_manual->>'marca_texto') as marca_nombre,
+                COALESCE(tipo.nombre, r.modelo_manual->>'tipo_texto') as tipo_nombre,
+                COALESCE(ent.nombre, r.modelo_manual->>'entalle_texto') as entalle_nombre,
+                COALESCE(tela.nombre, r.modelo_manual->>'tela_texto') as tela_nombre,
+                COALESCE(he.nombre, r.modelo_manual->>'hilo_especifico_texto', '') as hilo_especifico_nombre,
                 s.nombre as servicio_nombre,
                 (SELECT COUNT(*) FROM produccion.prod_incidencia i
                  WHERE i.registro_id = r.id AND i.estado = 'ABIERTA') as incidencias_abiertas
@@ -1356,7 +1356,7 @@ async def alertas_produccion():
                 r.n_corte,
                 r.urgente,
                 s.nombre as servicio_nombre,
-                mod.nombre as modelo_nombre,
+                COALESCE(mod.nombre, r.modelo_manual->>'nombre_modelo') as modelo_nombre,
                 pp.nombre as persona_nombre,
                 m.cantidad_enviada,
                 m.avance_porcentaje,
@@ -1521,12 +1521,12 @@ async def reporte_tiempos_muertos(
                 r.n_corte,
                 r.estado as estado_actual,
                 r.urgente,
-                mod.nombre as modelo_nombre,
-                marca.nombre as marca_nombre,
-                COALESCE(tp.nombre, '') as tipo_nombre,
-                COALESCE(en.nombre, '') as entalle_nombre,
-                COALESCE(te.nombre, '') as tela_nombre,
-                COALESCE(he.nombre, '') as hilo_especifico_nombre,
+                COALESCE(mod.nombre, r.modelo_manual->>'nombre_modelo') as modelo_nombre,
+                COALESCE(marca.nombre, r.modelo_manual->>'marca_texto') as marca_nombre,
+                COALESCE(tp.nombre, r.modelo_manual->>'tipo_texto', '') as tipo_nombre,
+                COALESCE(en.nombre, r.modelo_manual->>'entalle_texto', '') as entalle_nombre,
+                COALESCE(te.nombre, r.modelo_manual->>'tela_texto', '') as tela_nombre,
+                COALESCE(he.nombre, r.modelo_manual->>'hilo_especifico_texto', '') as hilo_especifico_nombre,
                 COALESCE(ts.siguiente_iniciado, false) as siguiente_iniciado
             FROM ultimo_terminado ut
             JOIN produccion.prod_registros r ON r.id = ut.registro_id
@@ -1673,8 +1673,8 @@ async def costo_por_lote(
             r.n_corte,
             r.estado,
             r.urgente,
-            m.nombre AS modelo_nombre,
-            ma.nombre AS marca_nombre,
+            COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') AS modelo_nombre,
+            COALESCE(ma.nombre, r.modelo_manual->>'marca_texto') AS marca_nombre,
             r.curva,
             c.id AS cierre_id,
             c.costo_mp,
@@ -1794,7 +1794,8 @@ async def costo_lote_detalle(registro_id: str):
         # Info del registro
         reg = await conn.fetchrow("""
             SELECT r.id, r.n_corte, r.estado, r.urgente, r.curva,
-                   m.nombre AS modelo, ma.nombre AS marca,
+                   COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') AS modelo,
+                   COALESCE(ma.nombre, r.modelo_manual->>'marca_texto') AS marca,
                    c.id AS cierre_id, c.costo_mp AS cierre_mp,
                    c.costo_servicios AS cierre_serv, c.otros_costos AS cierre_otros,
                    c.costo_cif AS cierre_cif, c.costo_total AS cierre_total,
@@ -1898,7 +1899,8 @@ async def costo_lote_detalle_pdf(registro_id: str):
     async with pool.acquire() as conn:
         reg = await conn.fetchrow("""
             SELECT r.id, r.n_corte, r.estado, r.urgente, r.tallas,
-                   m.nombre AS modelo, ma.nombre AS marca,
+                   COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') AS modelo,
+                   COALESCE(ma.nombre, r.modelo_manual->>'marca_texto') AS marca,
                    c.id AS cierre_id, c.costo_mp AS cierre_mp,
                    c.costo_servicios AS cierre_serv, c.otros_costos AS cierre_otros,
                    c.costo_cif AS cierre_cif, c.costo_total AS cierre_total,
@@ -2151,8 +2153,8 @@ async def agenda_movimientos():
                 r.n_corte,
                 r.estado_op,
                 r.fecha_entrega_final,
-                mo.nombre as modelo_nombre,
-                ma.nombre as marca_nombre,
+                COALESCE(mo.nombre, r.modelo_manual->>'nombre_modelo') as modelo_nombre,
+                COALESCE(ma.nombre, r.modelo_manual->>'marca_texto') as marca_nombre,
                 s.nombre as servicio_nombre,
                 m.servicio_id,
                 m.cantidad_enviada,

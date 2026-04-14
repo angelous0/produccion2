@@ -398,8 +398,8 @@ async def _get_kardex(item_id: str):
             modelo_nombre = None
             if sal['registro_id']:
                 registro = await conn.fetchrow("""
-                    SELECT r.n_corte, m.nombre as modelo_nombre 
-                    FROM prod_registros r 
+                    SELECT r.n_corte, COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') as modelo_nombre
+                    FROM prod_registros r
                     LEFT JOIN prod_modelos m ON r.modelo_id = m.id
                     WHERE r.id = $1
                 """, sal['registro_id'])
@@ -631,12 +631,12 @@ async def get_reporte_estados_item_detalle(
     async with pool.acquire() as conn:
         query = """
             SELECT r.id, r.n_corte, r.estado, r.urgente, r.fecha_creacion,
-                   m.nombre as modelo_nombre,
-                   ma.nombre as marca_nombre,
-                   t.nombre as tipo_nombre,
-                   e.nombre as entalle_nombre,
-                   te.nombre as tela_nombre,
-                   he.nombre as hilo_nombre
+                   COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') as modelo_nombre,
+                   COALESCE(ma.nombre, r.modelo_manual->>'marca_texto') as marca_nombre,
+                   COALESCE(t.nombre, r.modelo_manual->>'tipo_texto') as tipo_nombre,
+                   COALESCE(e.nombre, r.modelo_manual->>'entalle_texto') as entalle_nombre,
+                   COALESCE(te.nombre, r.modelo_manual->>'tela_texto') as tela_nombre,
+                   COALESCE(he.nombre, r.modelo_manual->>'hilo_especifico_texto') as hilo_nombre
             FROM prod_registros r
             LEFT JOIN prod_modelos m ON r.modelo_id = m.id
             LEFT JOIN prod_marcas ma ON m.marca_id = ma.id
@@ -1435,8 +1435,8 @@ async def reporte_paralizados(
                 r.n_corte,
                 r.estado as registro_estado,
                 r.urgente,
-                mod.nombre as modelo_nombre,
-                ma.nombre as marca_nombre,
+                COALESCE(mod.nombre, r.modelo_manual->>'nombre_modelo') as modelo_nombre,
+                COALESCE(ma.nombre, r.modelo_manual->>'marca_texto') as marca_nombre,
                 -- Último movimiento activo
                 (SELECT sp.nombre FROM prod_movimientos_produccion mp
                  JOIN prod_servicios_produccion sp ON sp.id = mp.servicio_id

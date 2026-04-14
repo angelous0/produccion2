@@ -1049,6 +1049,9 @@ export const RegistroForm = () => {
                     modeloManualForm={modeloManualForm} setModeloManualForm={setModeloManualForm}
                     catalogoMarcas={catalogoMarcas} catalogoTipos={catalogoTipos}
                     catalogoTelas={catalogoTelas} catalogoEntalles={catalogoEntalles}
+                    catalogoHilos={catalogoHilos} catalogoHilosEsp={catalogoHilosEsp}
+                    setCatalogoTipos={setCatalogoTipos} setCatalogoEntalles={setCatalogoEntalles}
+                    setCatalogoTelas={setCatalogoTelas} setCatalogoHilos={setCatalogoHilos}
                   />
                 </TabsContent>
 
