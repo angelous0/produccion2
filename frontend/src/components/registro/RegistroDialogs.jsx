@@ -320,16 +320,28 @@ export const MovimientoDialog = ({
         )}
 
         <div className="space-y-2">
-          <Label htmlFor="tarifa-movimiento">Tarifa por Prenda (S/)</Label>
+          <Label htmlFor="tarifa-movimiento" className={detalleCostos?.length > 0 ? 'text-muted-foreground' : ''}>
+            Tarifa por Prenda (S/) {detalleCostos?.length > 0 && <span className="text-xs font-normal ml-1">(deshabilitada — el detalle reemplaza la tarifa)</span>}
+          </Label>
           <NumericInput id="tarifa-movimiento" min="0" step="0.01" value={movimientoFormData.tarifa_aplicada}
             onChange={(e) => setMovimientoFormData({ ...movimientoFormData, tarifa_aplicada: e.target.value })}
-            className="font-mono" placeholder="0.00" data-testid="input-tarifa-movimiento" />
-          {movimientoFormData.persona_id && movimientoFormData.servicio_id && (
+            className={`font-mono ${detalleCostos?.length > 0 ? 'opacity-40 pointer-events-none' : ''}`}
+            placeholder="0.00" data-testid="input-tarifa-movimiento"
+            disabled={detalleCostos?.length > 0} />
+          {movimientoFormData.persona_id && movimientoFormData.servicio_id && !detalleCostos?.length && (
             <p className="text-xs text-muted-foreground">Tarifa configurada para esta persona: {formatCurrency(getTarifaPersonaServicio(movimientoFormData.persona_id, movimientoFormData.servicio_id))}</p>
           )}
         </div>
 
-        {movimientoFormData.cantidad_recibida > 0 && movimientoFormData.tarifa_aplicada > 0 && (
+        {detalleCostos?.length > 0 ? (
+          <div className="p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-green-700 dark:text-green-300">Costo por detalle:</span>
+              <span className="text-lg font-bold text-green-700 dark:text-green-300">{fmtCur(detalleCostos.reduce((s, l) => s + (l.cantidad || 0) * (l.precio_unitario || 0), 0))}</span>
+            </div>
+            <p className="text-xs text-green-600 dark:text-green-400 mt-1">El detalle de costos reemplaza la tarifa por prenda</p>
+          </div>
+        ) : movimientoFormData.cantidad_recibida > 0 && movimientoFormData.tarifa_aplicada > 0 ? (
           <div className="p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
             <div className="flex justify-between items-center">
               <span className="text-sm text-green-700 dark:text-green-300">Costo calculado:</span>
@@ -337,7 +349,7 @@ export const MovimientoDialog = ({
             </div>
             <p className="text-xs text-green-600 dark:text-green-400 mt-1">{movimientoFormData.cantidad_recibida} prendas × {formatCurrency(movimientoFormData.tarifa_aplicada)}</p>
           </div>
-        )}
+        ) : null}
 
         {movimientoFormData.servicio_id && serviciosProduccion.find(s => s.id === movimientoFormData.servicio_id)?.usa_avance_porcentaje && (
           <div className="space-y-2">
