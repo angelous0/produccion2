@@ -87,14 +87,20 @@ export const RegistroDatosCard = ({
 
   const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-  // Cascade: field → children to clear + fetch filtered children
-  const cascadeConfig = {
-    marca:   { children: ['tipo', 'entalle', 'tela', 'hilo', 'hilo_especifico'], fetch: (id) => setCatalogoTipos && axios.get(`${API}/tipos${id ? `?marca_id=${id}` : ''}`).then(r => setCatalogoTipos(r.data)).catch(() => {}) },
-    tipo:    { children: ['entalle', 'tela', 'hilo', 'hilo_especifico'], fetch: (id) => setCatalogoEntalles && axios.get(`${API}/entalles${id ? `?tipo_id=${id}` : ''}`).then(r => setCatalogoEntalles(r.data)).catch(() => {}) },
-    entalle: { children: ['tela', 'hilo', 'hilo_especifico'], fetch: (id) => setCatalogoTelas && axios.get(`${API}/telas${id ? `?entalle_id=${id}` : ''}`).then(r => setCatalogoTelas(r.data)).catch(() => {}) },
-    tela:    { children: ['hilo', 'hilo_especifico'], fetch: (id) => setCatalogoHilos && axios.get(`${API}/hilos${id ? `?tela_id=${id}` : ''}`).then(r => setCatalogoHilos(r.data)).catch(() => {}) },
-    hilo:    { children: ['hilo_especifico'], fetch: null },
-    hilo_especifico: { children: [], fetch: null },
+  // Cascade config: each field knows its children and how to fetch its own catalog
+  const cascadeFetch = {
+    tipo:    (id) => setCatalogoTipos && axios.get(`${API}/tipos${id ? `?marca_id=${id}` : ''}`).then(r => setCatalogoTipos(r.data)).catch(() => {}),
+    entalle: (id) => setCatalogoEntalles && axios.get(`${API}/entalles${id ? `?tipo_id=${id}` : ''}`).then(r => setCatalogoEntalles(r.data)).catch(() => {}),
+    tela:    (id) => setCatalogoTelas && axios.get(`${API}/telas${id ? `?entalle_id=${id}` : ''}`).then(r => setCatalogoTelas(r.data)).catch(() => {}),
+    hilo:    (id) => setCatalogoHilos && axios.get(`${API}/hilos${id ? `?tela_id=${id}` : ''}`).then(r => setCatalogoHilos(r.data)).catch(() => {}),
+  };
+  const cascadeChildren = {
+    marca:   ['tipo', 'entalle', 'tela', 'hilo', 'hilo_especifico'],
+    tipo:    ['entalle', 'tela', 'hilo', 'hilo_especifico'],
+    entalle: ['tela', 'hilo', 'hilo_especifico'],
+    tela:    ['hilo', 'hilo_especifico'],
+    hilo:    ['hilo_especifico'],
+    hilo_especifico: [],
   };
 
   const updateManualField = (field, { modo, id, texto }) => {
@@ -106,20 +112,23 @@ export const RegistroDatosCard = ({
         [`${field}_texto`]: texto,
       };
       // Clear all downstream children
-      const cfg = cascadeConfig[field];
-      if (cfg) {
-        for (const child of cfg.children) {
-          next[`${child}_id`] = '';
-          next[`${child}_texto`] = '';
-          next[`${child}_modo`] = 'select';
-        }
+      const children = cascadeChildren[field] || [];
+      for (const child of children) {
+        next[`${child}_id`] = '';
+        next[`${child}_texto`] = '';
+        next[`${child}_modo`] = 'select';
       }
       return next;
     });
-    // Fetch filtered children catalog
-    const cfg = cascadeConfig[field];
-    if (cfg?.fetch && modo === 'select') {
-      cfg.fetch(id);
+    if (modo !== 'select') return;
+    const children = cascadeChildren[field] || [];
+    if (children.length === 0) return;
+    // Fetch filtered catalog for the immediate child (by parent id)
+    const firstChild = children[0];
+    if (cascadeFetch[firstChild]) cascadeFetch[firstChild](id);
+    // Re-fetch unfiltered catalogs for all deeper children (no parent filter)
+    for (let i = 1; i < children.length; i++) {
+      if (cascadeFetch[children[i]]) cascadeFetch[children[i]]('');
     }
   };
   return (
