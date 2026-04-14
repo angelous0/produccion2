@@ -248,6 +248,13 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
   // Cantidades por rollo: { "rollo_id": cantidad }
   const [rollosCantidades, setRollosCantidades] = useState({});
 
+  // Modal agregar material manual
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualItem, setManualItem] = useState(null);
+  const [manualCantidad, setManualCantidad] = useState('');
+  const [manualObs, setManualObs] = useState('');
+  const [manualGuardando, setManualGuardando] = useState(false);
+
   // BOM selector
   const [boms, setBoms] = useState([]);
   const [selectedBomId, setSelectedBomId] = useState(null);
@@ -463,6 +470,52 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
     } catch { toast.error('Error al cargar inventario'); }
   };
 
+  const openManualModal = async () => {
+    if (!inventario.length) {
+      try {
+        const res = await axios.get(`${API}/inventario?all=true`);
+        const items = Array.isArray(res.data) ? res.data : res.data.items || [];
+        setInventario(items);
+      } catch { toast.error('Error al cargar inventario'); return; }
+    }
+    setManualItem(null);
+    setManualCantidad('');
+    setManualObs('');
+    setManualOpen(true);
+  };
+
+  const guardarManual = async () => {
+    if (!manualItem || !manualCantidad || parseFloat(manualCantidad) <= 0) {
+      return toast.error('Selecciona un item e ingresa cantidad');
+    }
+    setManualGuardando(true);
+    try {
+      await axios.post(`${API}/registros/${registroId}/requerimiento-manual`, {
+        item_id: manualItem,
+        cantidad: parseFloat(manualCantidad),
+        observaciones: manualObs,
+      });
+      toast.success('Material agregado manualmente');
+      setManualOpen(false);
+      fetchData();
+    } catch (err) {
+      toast.error(getErrorMsg(err, 'Error al agregar material'));
+    } finally {
+      setManualGuardando(false);
+    }
+  };
+
+  const eliminarManual = async (lineaId) => {
+    if (!window.confirm('¿Eliminar esta línea de material manual?')) return;
+    try {
+      await axios.delete(`${API}/registros/${registroId}/requerimiento-manual/${lineaId}`);
+      toast.success('Línea manual eliminada');
+      fetchData();
+    } catch (err) {
+      toast.error(getErrorMsg(err, 'Error al eliminar'));
+    }
+  };
+
   // Filtrar inventario por línea de negocio del registro
   const inventarioFiltrado = useMemo(() => {
     if (!lineaNegocioId) return inventario;
@@ -516,6 +569,9 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
             {generando ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <BookOpen className="h-3.5 w-3.5 mr-1" />}
             {tieneReq ? 'Regenerar desde BOM' : 'Generar desde BOM'}
           </Button>
+          <Button type="button" size="sm" variant="outline" onClick={openManualModal} data-testid="btn-agregar-manual">
+            <Plus className="h-3.5 w-3.5 mr-1" /> Agregar manualmente
+          </Button>
         </div>
       </div>
 
@@ -558,8 +614,8 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
             <p className="font-medium">Sin requerimiento de materiales</p>
             <p className="text-sm text-muted-foreground mt-1">
               {totalPrendas > 0
-                ? 'Haz click en "Generar desde BOM" para calcular los materiales necesarios.'
-                : 'Primero define las cantidades por talla en la pestaña Tallas.'}
+                ? 'Haz click en "Generar desde BOM" para calcular los materiales necesarios, o "Agregar manualmente" para añadir items sin BOM.'
+                : 'Primero define las cantidades por talla en la pestaña Tallas, o usa "Agregar manualmente" para añadir materiales.'}
             </p>
           </CardContent>
         </Card>
@@ -638,12 +694,21 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
                     return (
                       <TableRow key={key} className={completo ? 'opacity-50' : ''} data-testid={`material-row-${key}`}>
                         <TableCell>
-                          <div>
-                            <span className="text-sm font-medium">{l.item_nombre}</span>
-                            <span className="block text-xs text-muted-foreground font-mono">
-                              {l.item_codigo} · {l.item_unidad}
-                              {tieneRollos && <Badge variant="outline" className="ml-1 text-[10px] py-0 px-1">Rollos: {l.rollos_disponibles.length}</Badge>}
-                            </span>
+                          <div className="flex items-start gap-1">
+                            <div>
+                              <span className="text-sm font-medium">{l.item_nombre}</span>
+                              {l.origen === 'MANUAL' && <Badge variant="secondary" className="ml-1.5 text-[10px] py-0 px-1">Manual</Badge>}
+                              <span className="block text-xs text-muted-foreground font-mono">
+                                {l.item_codigo} · {l.item_unidad}
+                                {tieneRollos && <Badge variant="outline" className="ml-1 text-[10px] py-0 px-1">Rollos: {l.rollos_disponibles.length}</Badge>}
+                              </span>
+                            </div>
+                            {l.origen === 'MANUAL' && parseFloat(l.cantidad_consumida) === 0 && parseFloat(l.cantidad_reservada) === 0 && (
+                              <Button type="button" variant="ghost" size="sm" className="h-5 w-5 p-0 text-destructive hover:text-destructive"
+                                onClick={() => eliminarManual(l.id)} data-testid={`btn-eliminar-manual-${l.id}`}>
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -842,6 +907,56 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
           </CollapsibleContent>
         </Collapsible>
       )}
+
+      {/* Modal Agregar Material Manual */}
+      <Dialog open={manualOpen} onOpenChange={setManualOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" /> Agregar material manualmente
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-xs">Item de inventario</Label>
+              <SearchableSelect
+                value={manualItem}
+                onValueChange={setManualItem}
+                options={inventarioFiltrado.filter(i => i.tipo_item === 'MP')}
+                placeholder="Buscar item..."
+                searchPlaceholder="Buscar por nombre o código..."
+                testId="combobox-manual-item"
+                renderOption={(o) => <><span className="font-mono text-xs mr-2 text-muted-foreground">{o.codigo}</span><span className="truncate">{o.nombre}</span></>}
+              />
+            </div>
+            {manualItem && (() => {
+              const sel = inventarioFiltrado.find(i => i.id === manualItem);
+              return sel ? (
+                <div className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
+                  Unidad: <span className="font-medium">{sel.unidad_medida}</span> · Stock: <span className="font-medium">{parseFloat(sel.stock_actual || 0).toFixed(1)}</span>
+                </div>
+              ) : null;
+            })()}
+            <div>
+              <Label className="text-xs">Cantidad requerida</Label>
+              <NumericInput min={0} step={1} value={manualCantidad} onChange={(e) => setManualCantidad(e.target.value)}
+                className="h-9" placeholder="0" data-testid="input-manual-cantidad" />
+            </div>
+            <div>
+              <Label className="text-xs">Observación (opcional)</Label>
+              <Input value={manualObs} onChange={(e) => setManualObs(e.target.value)}
+                placeholder="Motivo, referencia, etc." data-testid="input-manual-obs" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" size="sm" onClick={() => setManualOpen(false)}>Cancelar</Button>
+            <Button type="button" size="sm" onClick={guardarManual} disabled={manualGuardando || !manualItem || !manualCantidad}>
+              {manualGuardando && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+              Agregar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Selector de Rollos */}
       <RollosModal

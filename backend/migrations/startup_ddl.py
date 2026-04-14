@@ -321,6 +321,10 @@ async def ensure_startup_migrations():
             "ALTER TABLE prod_registro_cierre ADD COLUMN IF NOT EXISTS motivo_reapertura TEXT",
         ]:
             await conn.execute(alter_sql)
+        # Origen de líneas de requerimiento (BOM o MANUAL)
+        await conn.execute("ALTER TABLE prod_registro_requerimiento_mp ADD COLUMN IF NOT EXISTS origen VARCHAR DEFAULT 'BOM'")
+        await conn.execute("ALTER TABLE prod_registro_requerimiento_mp ADD COLUMN IF NOT EXISTS observaciones TEXT")
+
         # Fix: estandarizar empresa_id = 7 en todas las tablas de produccion
         for tabla in [
             'prod_inventario', 'prod_inventario_reservas', 'prod_inventario_reservas_linea',

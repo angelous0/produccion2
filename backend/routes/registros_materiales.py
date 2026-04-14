@@ -147,6 +147,79 @@ async def generar_requerimiento_mp(registro_id: str, bom_id: str = Query(None)):
         }
 
 
+@router.post("/registros/{registro_id}/requerimiento-manual")
+async def agregar_requerimiento_manual(registro_id: str, body: dict):
+    """Agrega una línea de requerimiento de forma manual (sin BOM)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        registro = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
+        if not registro:
+            raise HTTPException(status_code=404, detail="Registro no encontrado")
+
+        item_id = body.get("item_id")
+        cantidad = body.get("cantidad")
+        observaciones = body.get("observaciones", "")
+
+        if not item_id or not cantidad or float(cantidad) <= 0:
+            raise HTTPException(status_code=400, detail="item_id y cantidad (>0) son requeridos")
+
+        # Verificar que el item exista
+        item = await conn.fetchrow("SELECT id, nombre, unidad_medida FROM prod_inventario WHERE id = $1", item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Item de inventario no encontrado")
+
+        cantidad = float(cantidad)
+        empresa_id = registro.get('empresa_id') or 7
+
+        # Verificar si ya existe una línea manual para este item (sin talla)
+        existing = await conn.fetchrow("""
+            SELECT * FROM prod_registro_requerimiento_mp
+            WHERE registro_id = $1 AND item_id = $2 AND talla_id IS NULL AND origen = 'MANUAL'
+        """, registro_id, item_id)
+
+        if existing:
+            # Sumar a la cantidad existente
+            nueva_cantidad = float(existing['cantidad_requerida']) + cantidad
+            nuevo_estado = calcular_estado_requerimiento(
+                nueva_cantidad, float(existing['cantidad_reservada']), float(existing['cantidad_consumida'])
+            )
+            await conn.execute("""
+                UPDATE prod_registro_requerimiento_mp
+                SET cantidad_requerida = $1, estado = $2, observaciones = $3, updated_at = CURRENT_TIMESTAMP
+                WHERE id = $4
+            """, nueva_cantidad, nuevo_estado, observaciones or existing.get('observaciones'), existing['id'])
+            return {"message": "Línea manual actualizada", "id": existing['id'], "cantidad_requerida": nueva_cantidad}
+
+        new_id = str(uuid.uuid4())
+        await conn.execute("""
+            INSERT INTO prod_registro_requerimiento_mp
+            (id, registro_id, item_id, talla_id, cantidad_requerida, cantidad_reservada, cantidad_consumida, estado, empresa_id, origen, observaciones)
+            VALUES ($1, $2, $3, NULL, $4, 0, 0, 'PENDIENTE', $5, 'MANUAL', $6)
+        """, new_id, registro_id, item_id, cantidad, empresa_id, observaciones)
+
+        return {"message": "Material agregado manualmente", "id": new_id, "cantidad_requerida": cantidad}
+
+
+@router.delete("/registros/{registro_id}/requerimiento-manual/{linea_id}")
+async def eliminar_requerimiento_manual(registro_id: str, linea_id: str):
+    """Elimina una línea de requerimiento manual (solo si origen=MANUAL y sin consumo)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        linea = await conn.fetchrow("""
+            SELECT * FROM prod_registro_requerimiento_mp
+            WHERE id = $1 AND registro_id = $2 AND origen = 'MANUAL'
+        """, linea_id, registro_id)
+        if not linea:
+            raise HTTPException(status_code=404, detail="Línea manual no encontrada")
+        if float(linea['cantidad_consumida']) > 0:
+            raise HTTPException(status_code=400, detail="No se puede eliminar: ya tiene consumo registrado")
+        if float(linea['cantidad_reservada']) > 0:
+            raise HTTPException(status_code=400, detail="No se puede eliminar: tiene reservas activas")
+
+        await conn.execute("DELETE FROM prod_registro_requerimiento_mp WHERE id = $1", linea_id)
+        return {"message": "Línea manual eliminada"}
+
+
 @router.get("/registros/{registro_id}/requerimiento")
 async def get_requerimiento_mp(registro_id: str):
     """Obtiene el requerimiento de MP de un registro"""
