@@ -220,12 +220,12 @@ export const MovimientosProduccion = () => {
       toast.error('Selecciona servicio y persona');
       return;
     }
-    if (formData.fecha_inicio && formData.fecha_fin && formData.fecha_fin <= formData.fecha_inicio) {
-      toast.error('La fecha fin debe ser mayor que la fecha inicio');
+    if (formData.fecha_inicio && formData.fecha_fin && formData.fecha_fin < formData.fecha_inicio) {
+      toast.error('La fecha fin debe ser igual o mayor que la fecha inicio');
       return;
     }
-    if (formData.fecha_inicio && formData.fecha_esperada_movimiento && formData.fecha_esperada_movimiento <= formData.fecha_inicio) {
-      toast.error('La fecha esperada debe ser mayor que la fecha inicio');
+    if (formData.fecha_inicio && formData.fecha_esperada_movimiento && formData.fecha_esperada_movimiento < formData.fecha_inicio) {
+      toast.error('La fecha esperada debe ser igual o mayor que la fecha inicio');
       return;
     }
 
@@ -294,12 +294,12 @@ export const MovimientosProduccion = () => {
       toast.error('Selecciona registro, servicio y persona');
       return;
     }
-    if (createFormData.fecha_inicio && createFormData.fecha_fin && createFormData.fecha_fin <= createFormData.fecha_inicio) {
-      toast.error('La fecha fin debe ser mayor que la fecha inicio');
+    if (createFormData.fecha_inicio && createFormData.fecha_fin && createFormData.fecha_fin < createFormData.fecha_inicio) {
+      toast.error('La fecha fin debe ser igual o mayor que la fecha inicio');
       return;
     }
-    if (createFormData.fecha_inicio && createFormData.fecha_esperada_movimiento && createFormData.fecha_esperada_movimiento <= createFormData.fecha_inicio) {
-      toast.error('La fecha esperada debe ser mayor que la fecha inicio');
+    if (createFormData.fecha_inicio && createFormData.fecha_esperada_movimiento && createFormData.fecha_esperada_movimiento < createFormData.fecha_inicio) {
+      toast.error('La fecha esperada debe ser igual o mayor que la fecha inicio');
       return;
     }
 
