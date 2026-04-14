@@ -44,7 +44,7 @@ const CampoCascada = ({ label, items, idKey = 'id', nameKey = 'nombre', selected
         <SelectTrigger className="text-sm"><SelectValue placeholder={`Seleccionar ${label.toLowerCase()}...`} /></SelectTrigger>
         <SelectContent className="max-h-60">
           {items.map((item) => (
-            <SelectItem key={item[idKey]} value={item[idKey]}>{item[nameKey]}</SelectItem>
+            <SelectItem key={item[idKey]} value={String(item[idKey])}>{item[nameKey]}</SelectItem>
           ))}
         </SelectContent>
       </Select>
