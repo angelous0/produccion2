@@ -819,3 +819,40 @@ async def cambiar_empresa_activa(
             "empresa_id": int(nueva_empresa_id),
             "tablas_actualizadas": resumen,
         }
+
+
+# ── Modo Migración ──────────────────────────────────────────────────────────
+
+@router.get("/configuracion/modo-migracion")
+async def get_modo_migracion(current_user: dict = Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT valor, updated_at, updated_by FROM prod_configuracion WHERE clave = 'modo_migracion'"
+        )
+        if not row:
+            return {"activo": False}
+        return {
+            "activo": row["valor"] == "true",
+            "updated_at": str(row["updated_at"]) if row["updated_at"] else None,
+            "updated_by": row["updated_by"],
+        }
+
+
+@router.put("/configuracion/modo-migracion")
+async def set_modo_migracion(payload: dict, current_user: dict = Depends(get_current_user)):
+    # Solo admin
+    if current_user.get("rol") != "admin":
+        raise HTTPException(status_code=403, detail="Solo administradores pueden cambiar el modo migración")
+    activo = payload.get("activo", False)
+    valor = "true" if activo else "false"
+    usuario = current_user.get("username", current_user.get("nombre_completo", ""))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO prod_configuracion (clave, valor, updated_at, updated_by)
+               VALUES ('modo_migracion', $1, CURRENT_TIMESTAMP, $2)
+               ON CONFLICT (clave) DO UPDATE SET valor = $1, updated_at = CURRENT_TIMESTAMP, updated_by = $2""",
+            valor, usuario,
+        )
+    return {"activo": activo, "message": f"Modo migración {'activado' if activo else 'desactivado'}"}

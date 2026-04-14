@@ -361,6 +361,21 @@ export const Layout = () => {
   const navigate = useNavigate();
   usePermissions('registros');
 
+  // Modo migración — banner global
+  const [modoMigracion, setModoMigracion] = useState(false);
+  useEffect(() => {
+    axios.get(`${API}/configuracion/modo-migracion`)
+      .then(r => setModoMigracion(r.data?.activo || false))
+      .catch(() => {});
+    // Re-check cada 60s
+    const interval = setInterval(() => {
+      axios.get(`${API}/configuracion/modo-migracion`)
+        .then(r => setModoMigracion(r.data?.activo || false))
+        .catch(() => {});
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   const filterItems = (items) => {
     if (isAdmin()) return items;
     return items.filter((item) => {
@@ -517,6 +532,15 @@ export const Layout = () => {
           </div>
         </div>
       </header>
+
+      {/* ── Banner Modo Migración ── */}
+      {modoMigracion && (
+        <div className="bg-yellow-400 dark:bg-yellow-600 text-yellow-900 dark:text-yellow-100 text-center text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-2 flex-shrink-0 z-40">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          MODO MIGRACIÓN ACTIVO — Los registros creados no descontarán inventario
+          <AlertTriangle className="h-3.5 w-3.5" />
+        </div>
+      )}
 
       {/* ── Dialog Contraseña ── */}
       <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>

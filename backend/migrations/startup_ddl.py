@@ -288,6 +288,23 @@ async def ensure_startup_migrations():
         await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS division_numero INT DEFAULT 0")
         # Modelo manual (ingresado a mano sin seleccionar del catálogo)
         await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS modelo_manual JSONB")
+        # Flag de descuento de inventario (false cuando se crea en modo migración)
+        await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS descuento_inventario BOOLEAN DEFAULT TRUE")
+
+        # Tabla de configuración global del sistema
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_configuracion (
+                clave VARCHAR PRIMARY KEY,
+                valor VARCHAR NOT NULL DEFAULT '',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_by VARCHAR
+            )
+        """)
+        # Seed modo_migracion si no existe
+        await conn.execute("""
+            INSERT INTO prod_configuracion (clave, valor) VALUES ('modo_migracion', 'false')
+            ON CONFLICT (clave) DO NOTHING
+        """)
         # Migración: extender prod_registro_cierre con campos de auditoría y congelamiento
         for alter_sql in [
             "ALTER TABLE prod_registro_cierre ADD COLUMN IF NOT EXISTS merma_qty NUMERIC DEFAULT 0",
