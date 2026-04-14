@@ -169,16 +169,17 @@ export default function ConfigEmpresa() {
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <label className="text-sm font-medium">Modo Migración activo</label>
-              <p className="text-xs text-muted-foreground">
+              <p className={`text-xs font-medium ${modoMigracion ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
                 {modoMigracion
-                  ? 'Los registros creados no descontarán inventario'
-                  : 'Comportamiento normal — inventario se descuenta al crear salidas'}
+                  ? 'Los registros creados NO descontarán inventario'
+                  : 'Comportamiento normal — inventario se descuenta automáticamente'}
               </p>
             </div>
             <Switch
               checked={modoMigracion}
               onCheckedChange={handleToggleMigracion}
               disabled={savingMigracion}
+              className="data-[state=unchecked]:bg-gray-300 dark:data-[state=unchecked]:bg-gray-600"
             />
           </div>
 
