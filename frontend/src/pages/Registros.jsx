@@ -24,7 +24,7 @@ import {
 } from '../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Separator } from '../components/ui/separator';
-import { Plus, Pencil, Trash2, AlertTriangle, Eye, Palette, Scissors, Package, Cog, Clock, PauseCircle, PlayCircle, FileWarning, Calendar, User, Search, X, Filter, ChevronRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, AlertTriangle, Eye, Palette, Scissors, Package, Cog, Clock, PauseCircle, PlayCircle, FileWarning, Calendar, User, Search, X, Filter, ChevronRight, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
 import { getStatusClass } from '../lib/utils';
@@ -604,6 +604,11 @@ export const Registros = () => {
             if (searchDebounced) f.search = searchDebounced;
             return f;
           })()} items={items} />
+          <Button onClick={() => navigate('/registros/importar')} variant="outline" size="sm" className="sm:size-default" data-testid="btn-importar-excel">
+            <FileSpreadsheet className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Importar Excel</span>
+            <span className="sm:hidden">Importar</span>
+          </Button>
           <Button onClick={() => navigate('/registros/nuevo')} data-testid="btn-nuevo-registro" size="sm" className="sm:size-default">
             <Plus className="h-4 w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">Nuevo Registro</span>

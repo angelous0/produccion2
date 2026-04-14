@@ -27,6 +27,7 @@ const Tipos = lazy(() => import("./pages/Tipos").then(m => ({ default: m.Tipos }
 const Entalles = lazy(() => import("./pages/Entalles").then(m => ({ default: m.Entalles })));
 const Telas = lazy(() => import("./pages/Telas").then(m => ({ default: m.Telas })));
 const Hilos = lazy(() => import("./pages/Hilos").then(m => ({ default: m.Hilos })));
+const ImportRegistros = lazy(() => import("./pages/ImportRegistros"));
 const TallasCatalogo = lazy(() => import("./pages/TallasCatalogo").then(m => ({ default: m.TallasCatalogo })));
 const ColoresCatalogo = lazy(() => import("./pages/ColoresCatalogo").then(m => ({ default: m.ColoresCatalogo })));
 const ColoresGenerales = lazy(() => import("./pages/ColoresGenerales").then(m => ({ default: m.ColoresGenerales })));
@@ -143,6 +144,7 @@ function AppRoutes() {
         <Route path="registros" element={<Registros />} />
         <Route path="registros/nuevo" element={<RegistroForm />} />
         <Route path="registros/editar/:id" element={<RegistroForm />} />
+        <Route path="registros/importar" element={<LazyWrap><ImportRegistros /></LazyWrap>} />
         <Route path="inventario" element={<LazyWrap><Inventario /></LazyWrap>} />
         <Route path="inventario/ingresos" element={<LazyWrap><InventarioIngresos /></LazyWrap>} />
         <Route path="inventario/salidas" element={<LazyWrap><InventarioSalidas /></LazyWrap>} />
