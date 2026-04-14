@@ -220,7 +220,7 @@ const RollosModal = ({ open, linea, rollosCantidades, setRollosCantidades, onClo
   );
 };
 
-const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) => {
+const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId, lineasNegocio = [] }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [generando, setGenerando] = useState(false);
@@ -534,6 +534,7 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
   const reservas = data?.reservas || [];
   const salidas = data?.salidas || [];
   const reservasActivas = reservas.filter(r => r.estado === 'ACTIVA');
+  const lineaNombre = lineaNegocioId ? lineasNegocio.find(l => l.id === lineaNegocioId)?.nombre : null;
 
   return (
     <div className="space-y-4" data-testid="materiales-tab">
@@ -574,6 +575,13 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
           </Button>
         </div>
       </div>
+
+      {/* Filtro por línea de negocio */}
+      <p className="text-xs text-muted-foreground">
+        {lineaNombre
+          ? <>Mostrando items de: <Badge variant="outline" className="text-[10px] py-0 px-1.5">{lineaNombre}</Badge></>
+          : 'Mostrando todos los items'}
+      </p>
 
       {/* Resumen rápido */}
       {tieneReq && (
@@ -915,6 +923,11 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId }) =
             <DialogTitle className="flex items-center gap-2">
               <Plus className="h-5 w-5" /> Agregar material manualmente
             </DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              {lineaNombre
+                ? <>Mostrando items de: <span className="font-medium">{lineaNombre}</span></>
+                : 'Mostrando todos los items'}
+            </p>
           </DialogHeader>
           <div className="space-y-4">
             <div>

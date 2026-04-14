@@ -1062,7 +1062,7 @@ export const RegistroForm = () => {
                 <TabsContent value="materiales" className="space-y-4 mt-0">
                   <Card><CardContent className="pt-4">
                     <MaterialesTab registroId={id} totalPrendas={1} modeloId={formData.modelo_id} lineaNegocioId={formData.linea_negocio_id}
-                      permisos={permsInventario}
+                      lineasNegocio={lineasNegocio} permisos={permsInventario}
                     />
                   </CardContent></Card>
                 </TabsContent>
