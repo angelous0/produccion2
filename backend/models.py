@@ -322,6 +322,10 @@ class ModeloManual(BaseModel):
     nombre_modelo: Optional[str] = None
     hilo: Optional[str] = None
     hilo_especifico: Optional[str] = None
+    hilo_id: Optional[str] = None
+    hilo_texto: Optional[str] = None
+    hilo_especifico_id: Optional[str] = None
+    hilo_especifico_texto: Optional[str] = None
 
 class RegistroBase(BaseModel):
     n_corte: str
