@@ -365,7 +365,7 @@ export const MovimientoDialog = ({
                 <DollarSign className="h-3.5 w-3.5" />
                 Detalle de costos
               </Label>
-              <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setDetalleCostos(prev => [...prev, { descripcion: '', cantidad: 0, precio_unitario: 0 }])}>
+              <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setDetalleCostos(prev => [...prev, { descripcion: '', cantidad: parseFloat(movimientoFormData.cantidad_enviada) || 0, precio_unitario: 0 }])}>
                 <Plus className="h-3 w-3 mr-1" /> Agregar línea
               </Button>
             </div>

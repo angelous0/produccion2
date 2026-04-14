@@ -340,8 +340,8 @@ export const MovimientosProduccion = () => {
   };
 
   // ===== Detalle de costos helpers =====
-  const addLineaDetalle = (setDetalle) => {
-    setDetalle(prev => [...prev, { descripcion: '', cantidad: 0, precio_unitario: 0 }]);
+  const addLineaDetalle = (setDetalle, cantidadDefault = 0) => {
+    setDetalle(prev => [...prev, { descripcion: '', cantidad: cantidadDefault, precio_unitario: 0 }]);
   };
   const updateLineaDetalle = (setDetalle, idx, field, value) => {
     setDetalle(prev => prev.map((l, i) => i === idx ? { ...l, [field]: value } : l));
@@ -353,14 +353,14 @@ export const MovimientosProduccion = () => {
   const calcTotalDetalle = (detalle) => detalle.reduce((sum, l) => sum + calcSubtotalLinea(l), 0);
 
   // Componente inline para sección de detalle
-  const renderDetalleCostos = (detalle, setDetalle) => (
+  const renderDetalleCostos = (detalle, setDetalle, cantidadEnviada = 0) => (
     <div className="space-y-2 border rounded-lg p-3 bg-muted/20">
       <div className="flex items-center justify-between">
         <Label className="text-xs font-semibold flex items-center gap-1.5">
           <DollarSign className="h-3.5 w-3.5" />
           Detalle de costos
         </Label>
-        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => addLineaDetalle(setDetalle)}>
+        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => addLineaDetalle(setDetalle, parseFloat(cantidadEnviada) || 0)}>
           <Plus className="h-3 w-3 mr-1" /> Agregar línea
         </Button>
       </div>
@@ -852,7 +852,7 @@ export const MovimientosProduccion = () => {
             )}
 
             {/* Detalle de costos (edit) */}
-            {renderDetalleCostos(editDetalle, setEditDetalle)}
+            {renderDetalleCostos(editDetalle, setEditDetalle, formData.cantidad_enviada)}
 
             <div className="space-y-2">
               <Label htmlFor="edit-observaciones">Observaciones</Label>
@@ -1066,7 +1066,7 @@ export const MovimientosProduccion = () => {
             )}
 
             {/* Detalle de costos (create) */}
-            {renderDetalleCostos(createDetalle, setCreateDetalle)}
+            {renderDetalleCostos(createDetalle, setCreateDetalle, createFormData.cantidad_enviada)}
 
             <div className="space-y-2">
               <Label htmlFor="create-observaciones">Observaciones</Label>
