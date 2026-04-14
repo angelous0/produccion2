@@ -727,6 +727,14 @@ async def create_salida(input: SalidaInventarioCreate, current_user: dict = Depe
             if reg.get('descuento_inventario') is False:
                 registro_sin_descuento = True
 
+        # También verificar configuración global de modo migración
+        if not registro_sin_descuento:
+            modo_mig = await conn.fetchval(
+                "SELECT valor FROM prod_configuracion WHERE clave = 'modo_migracion'"
+            )
+            if modo_mig == 'true':
+                registro_sin_descuento = True
+
         # Validar stock suficiente (solo si se va a descontar)
         if not registro_sin_descuento and not control_por_rollos:
             if float(item['stock_actual']) < input.cantidad:

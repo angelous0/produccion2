@@ -1078,7 +1078,7 @@ export const RegistroForm = () => {
                 </TabsContent>
 
                 {/* TAB MATERIALES */}
-                <TabsContent value="materiales" className="space-y-4 mt-0">
+                <TabsContent value="materiales" className="space-y-4 mt-0" onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}>
                   <Card><CardContent className="pt-4">
                     <MaterialesTab registroId={id} totalPrendas={1} modeloId={formData.modelo_id} lineaNegocioId={formData.linea_negocio_id}
                       lineasNegocio={lineasNegocio} permisos={permsInventario}
