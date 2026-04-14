@@ -7,7 +7,8 @@ from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, 
 from fastapi.responses import StreamingResponse
 from db import get_pool
 from auth_utils import get_current_user
-from helpers import row_to_dict, parse_jsonb
+from decimal import Decimal
+from helpers import row_to_dict, parse_jsonb, registrar_actividad
 from typing import Optional, List
 from pydantic import BaseModel
 from models import ESTADOS_PRODUCCION
@@ -779,13 +780,31 @@ async def export_reporte_estados_item(
 # ==================== ENDPOINTS BACKUP ====================
 
 BACKUP_TABLES = [
+    # Catálogos
     'prod_marcas', 'prod_tipos', 'prod_entalles', 'prod_telas', 'prod_hilos',
     'prod_hilos_especificos', 'prod_tallas_catalogo', 'prod_colores_generales',
-    'prod_colores_catalogo', 'prod_modelos', 'prod_registros', 'prod_inventario',
-    'prod_inventario_ingresos', 'prod_inventario_salidas', 'prod_inventario_ajustes',
-    'prod_inventario_rollos', 'prod_servicios_produccion', 'prod_personas_produccion',
-    'prod_rutas_produccion', 'prod_movimientos_produccion', 'prod_mermas',
-    'prod_guias_remision', 'prod_usuarios'
+    'prod_colores_catalogo',
+    # Maestros
+    'prod_bases', 'prod_modelos', 'prod_rutas_produccion',
+    'prod_servicios_produccion', 'prod_personas_produccion',
+    # Registros y producción
+    'prod_registros', 'prod_registro_tallas', 'prod_movimientos_produccion',
+    'prod_mermas', 'prod_fallados', 'prod_registro_arreglos', 'prod_guias_remision',
+    # Inventario
+    'prod_inventario', 'prod_inventario_ingresos', 'prod_inventario_salidas',
+    'prod_inventario_ajustes', 'prod_inventario_rollos',
+    # Requerimiento y reservas
+    'prod_registro_requerimiento_mp', 'prod_inventario_reservas',
+    'prod_inventario_reservas_linea',
+    # Incidencias y paralizaciones
+    'prod_incidencia', 'prod_motivos_incidencia', 'prod_paralizacion',
+    # BOM
+    'prod_bom_cabecera', 'prod_modelo_bom_linea', 'prod_modelo_tallas',
+    # Configuración y sistema
+    'prod_configuracion', 'prod_conversacion', 'prod_avance_historial',
+    'prod_registro_cierre', 'prod_lineas_negocio',
+    # Usuarios y empresas
+    'prod_usuarios', 'prod_empresas',
 ]
 
 @router.get("/backup/create")
@@ -805,6 +824,13 @@ async def create_backup(current_user: dict = Depends(get_current_user)):
     async with pool.acquire() as conn:
         for table in BACKUP_TABLES:
             try:
+                # Verificar que la tabla existe antes de consultar
+                exists = await conn.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = $1)",
+                    table
+                )
+                if not exists:
+                    continue
                 rows = await conn.fetch(f"SELECT * FROM {table}")
                 table_data = []
                 for row in rows:
@@ -819,10 +845,14 @@ async def create_backup(current_user: dict = Depends(get_current_user)):
                             row_dict[key] = str(value)
                         elif isinstance(value, Decimal):
                             row_dict[key] = float(value)
+                        elif isinstance(value, bytes):
+                            row_dict[key] = value.decode('utf-8', errors='replace')
+                        elif isinstance(value, (list, dict)):
+                            pass  # JSON-compatible, keep as-is
                     table_data.append(row_dict)
                 backup_data["tables"][table] = table_data
             except Exception as e:
-                backup_data["tables"][table] = {"error": str(e)}
+                backup_data["tables"][table] = {"error": str(e), "rows": 0}
     
     # Registrar actividad
     await registrar_actividad(
@@ -856,6 +886,13 @@ async def backup_info(current_user: dict = Depends(get_current_user)):
     async with pool.acquire() as conn:
         for table in BACKUP_TABLES:
             try:
+                exists = await conn.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = $1)",
+                    table
+                )
+                if not exists:
+                    info["tables"].append({"name": table, "count": 0, "missing": True})
+                    continue
                 count = await conn.fetchval(f"SELECT COUNT(*) FROM {table}")
                 info["tables"].append({"name": table, "count": count})
             except Exception:
