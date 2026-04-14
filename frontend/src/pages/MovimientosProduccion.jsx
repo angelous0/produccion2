@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useSaving } from '../hooks/useSaving';
 import { Button } from '../components/ui/button';
@@ -595,7 +595,8 @@ export const MovimientosProduccion = () => {
                 </TableHeader>
                 <TableBody>
                   {movimientos.filter(filtrarPorEstado).map((mov) => (
-                    <TableRow key={mov.id} data-testid={`movimiento-row-${mov.id}`}>
+                    <React.Fragment key={mov.id}>
+                    <TableRow data-testid={`movimiento-row-${mov.id}`}>
                       <TableCell>
                         <span className="font-medium">{getRegistroLabel(mov)}</span>
                       </TableCell>
@@ -697,6 +698,7 @@ export const MovimientosProduccion = () => {
                         </TableCell>
                       </TableRow>
                     )}
+                    </React.Fragment>
                   ))}
                 </TableBody>
               </Table>
