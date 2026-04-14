@@ -6,7 +6,7 @@ import {
 } from '../ui/select';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, AlertTriangle, Play, CheckCircle2, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Save, AlertTriangle, Play, CheckCircle2, MessageCircle, FileSpreadsheet } from 'lucide-react';
 
 // Mini-componente de stats de mensajes para el header
 const HeaderMensajes = ({ registroId, API, onOpen, refreshKey }) => {
@@ -117,6 +117,30 @@ export const RegistroHeader = ({
         </div>
         {isEditing && id && (
           <HeaderMensajes registroId={id} API={API} onOpen={() => setConvOpen?.(true)} refreshKey={convRefreshKey} />
+        )}
+        {isEditing && id && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="text-xs h-8 px-2 text-muted-foreground hover:text-foreground"
+            onClick={async () => {
+              try {
+                const res = await axios.get(`${API}/registros/${id}/export-template`, { responseType: 'blob' });
+                const url = window.URL.createObjectURL(new Blob([res.data]));
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `registro_${formData.n_corte || id}.xlsx`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+                toast.success('Plantilla exportada');
+              } catch { toast.error('Error al exportar'); }
+            }}
+            data-testid="btn-exportar-plantilla"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5 mr-1" />
+            <span className="hidden sm:inline">Exportar</span>
+          </Button>
         )}
         <Button
           type="button"

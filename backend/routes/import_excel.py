@@ -350,6 +350,156 @@ async def download_template():
     )
 
 
+# ─────────────── EXPORT REGISTRO AS TEMPLATE ─────────────────
+
+@router.get("/registros/{registro_id}/export-template")
+async def export_registro_template(registro_id: str):
+    """Exporta un registro existente como Excel compatible con la plantilla de importación."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        reg = await conn.fetchrow("""
+            SELECT r.*, m.nombre AS modelo_nombre,
+                   ma.nombre AS marca_nombre, tp.nombre AS tipo_nombre,
+                   en.nombre AS entalle_nombre, te.nombre AS tela_nombre,
+                   he.nombre AS hilo_esp_nombre, hi.nombre AS hilo_nombre,
+                   ln.nombre AS linea_nombre
+            FROM prod_registros r
+            LEFT JOIN prod_modelos m ON m.id = r.modelo_id
+            LEFT JOIN prod_marcas ma ON ma.id = m.marca_id
+            LEFT JOIN prod_tipos tp ON tp.id = m.tipo_id
+            LEFT JOIN prod_entalles en ON en.id = m.entalle_id
+            LEFT JOIN prod_telas te ON te.id = m.tela_id
+            LEFT JOIN prod_hilos_especificos he ON he.id = COALESCE(m.hilo_especifico_id, r.hilo_especifico_id)
+            LEFT JOIN prod_hilos hi ON hi.id = m.hilo_id
+            LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = r.linea_negocio_id
+            WHERE r.id = $1
+        """, registro_id)
+        if not reg:
+            raise HTTPException(404, "Registro no encontrado")
+
+        # Parse modelo_manual for fallback values
+        mm = None
+        if reg.get('modelo_manual'):
+            import json as _json
+            raw = reg['modelo_manual']
+            mm = _json.loads(raw) if isinstance(raw, str) else dict(raw)
+
+        modelo_nombre = reg['modelo_nombre'] or (mm.get('nombre_modelo') if mm else None) or ''
+        marca_nombre = reg['marca_nombre'] or (mm.get('marca_texto') if mm else None) or ''
+        tipo_nombre = reg['tipo_nombre'] or (mm.get('tipo_texto') if mm else None) or ''
+        tela_nombre = reg['tela_nombre'] or (mm.get('tela_texto') if mm else None) or ''
+        entalle_nombre = reg['entalle_nombre'] or (mm.get('entalle_texto') if mm else None) or ''
+        hilo_nombre = reg['hilo_nombre'] or (mm.get('hilo_texto') if mm else None) or ''
+        hilo_esp_nombre = reg['hilo_esp_nombre'] or (mm.get('hilo_especifico_texto') if mm else None) or ''
+
+        # Tallas
+        tallas_rows = await conn.fetch(
+            "SELECT t.nombre, rt.cantidad_real FROM prod_registro_tallas rt JOIN prod_tallas_catalogo t ON t.id = rt.talla_id WHERE rt.registro_id = $1",
+            registro_id
+        )
+        talla_map = {r['nombre']: int(r['cantidad_real'] or 0) for r in tallas_rows}
+
+        # Prendas total
+        prendas = sum(talla_map.values()) or 0
+
+        # Movimientos
+        movs = await conn.fetch("""
+            SELECT s.nombre AS servicio, p.nombre AS persona,
+                   mp.fecha_inicio, mp.fecha_fin, mp.cantidad_enviada,
+                   mp.cantidad_recibida, mp.tarifa_aplicada, mp.observaciones
+            FROM prod_movimientos_produccion mp
+            LEFT JOIN prod_servicios_produccion s ON s.id = mp.servicio_id
+            LEFT JOIN prod_personas_produccion p ON p.id = mp.persona_id
+            WHERE mp.registro_id = $1
+            ORDER BY mp.created_at
+        """, registro_id)
+
+    # ── Build Excel ──
+    wb = openpyxl.Workbook()
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    header_fill = PatternFill(start_color="2563EB", end_color="2563EB", fill_type="solid")
+    data_fill = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
+    thin_border = Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"), bottom=Side(style="thin"),
+    )
+
+    def write_headers(ws, headers):
+        for c, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=c, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", wrap_text=True)
+            cell.border = thin_border
+            ws.column_dimensions[cell.column_letter].width = max(15, len(h) + 4)
+
+    def write_row(ws, row_num, values):
+        for c, v in enumerate(values, 1):
+            cell = ws.cell(row=row_num, column=c, value=v)
+            cell.fill = data_fill
+            cell.border = thin_border
+
+    def fmt_date(d):
+        if d is None:
+            return ''
+        if hasattr(d, 'strftime'):
+            return d.strftime('%d/%m/%Y')
+        return str(d)
+
+    # Pestaña Registros
+    ws1 = wb.active
+    ws1.title = "Registros"
+    reg_headers = [
+        "N_Corte", "Nombre_Modelo", "Marca", "Tipo", "Tela", "Entalle",
+        "Hilo", "Hilo_Especifico", "Prendas_Total", "Estado_Actual",
+        "Fecha_Inicio", "Fecha_Entrega", "Linea_Negocio", "Urgente", "Observaciones"
+    ]
+    write_headers(ws1, reg_headers)
+    write_row(ws1, 2, [
+        reg['n_corte'], modelo_nombre, marca_nombre, tipo_nombre,
+        tela_nombre, entalle_nombre, hilo_nombre, hilo_esp_nombre,
+        prendas, reg['estado'],
+        fmt_date(reg.get('fecha_inicio_real')), fmt_date(reg.get('fecha_entrega_final')),
+        reg['linea_nombre'] or '', 'SI' if reg['urgente'] else 'NO',
+        reg.get('observaciones') or '',
+    ])
+
+    # Pestaña Movimientos
+    ws2 = wb.create_sheet("Movimientos")
+    mov_headers = [
+        "N_Corte", "Servicio", "Persona", "Fecha_Inicio", "Fecha_Fin",
+        "Cantidad_Enviada", "Cantidad_Recibida", "Tarifa", "Observaciones"
+    ]
+    write_headers(ws2, mov_headers)
+    for i, mv in enumerate(movs, 2):
+        write_row(ws2, i, [
+            reg['n_corte'], mv['servicio'] or '', mv['persona'] or '',
+            fmt_date(mv['fecha_inicio']), fmt_date(mv['fecha_fin']),
+            int(mv['cantidad_enviada'] or 0), int(mv['cantidad_recibida'] or 0),
+            float(mv['tarifa_aplicada'] or 0), mv['observaciones'] or '',
+        ])
+
+    # Pestaña Tallas
+    ws3 = wb.create_sheet("Tallas")
+    talla_headers = ["N_Corte"] + TALLA_COLS
+    write_headers(ws3, talla_headers)
+    write_row(ws3, 2, [reg['n_corte']] + [talla_map.get(t, '') for t in TALLA_COLS])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f"registro_{reg['n_corte']}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 # ─────────────── VALIDATE ─────────────────
 
 @router.post("/registros/import-validate")
