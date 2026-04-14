@@ -71,6 +71,31 @@ export const RegistroPanelLateral = ({
             </div>
           </div>
         )}
+        {/* Card Modelo Manual */}
+        {!modeloSeleccionado && formData.modelo_manual && (
+          <div className="registro-panel-card registro-panel-card-modelo">
+            <div className="flex items-center gap-2 mb-1">
+              <p className="registro-panel-modelo-name">{formData.modelo_manual.nombre_modelo || 'Modelo Manual'}</p>
+              <span className="inline-flex items-center rounded px-1 py-0.5 text-[9px] font-medium bg-gray-100 text-gray-500 border border-gray-200">Manual</span>
+            </div>
+            <div className="registro-panel-modelo-grid">
+              <span className="registro-panel-stat-label">Marca</span>
+              <span className="registro-panel-modelo-val">{formData.modelo_manual.marca_texto || '—'}</span>
+              <span className="registro-panel-stat-label">Tipo</span>
+              <span className="registro-panel-modelo-val">{formData.modelo_manual.tipo_texto || '—'}</span>
+              <span className="registro-panel-stat-label">Entalle</span>
+              <span className="registro-panel-modelo-val">{formData.modelo_manual.entalle_texto || '—'}</span>
+              <span className="registro-panel-stat-label">Tela</span>
+              <span className="registro-panel-modelo-val">{formData.modelo_manual.tela_texto || '—'}</span>
+              {formData.modelo_manual.hilo && (
+                <>
+                  <span className="registro-panel-stat-label">Hilo</span>
+                  <span className="registro-panel-modelo-val">{formData.modelo_manual.hilo}</span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Card Resumen del Lote */}
         <div className="registro-panel-card">

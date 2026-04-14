@@ -63,9 +63,22 @@ export const RegistroForm = () => {
   const { saving, guard } = useSaving();
 
   const [formData, setFormData] = useState({
-    n_corte: '', modelo_id: '', curva: '', estado: 'Para Corte', urgente: false,
+    n_corte: '', modelo_id: '', modelo_manual: null, curva: '', estado: 'Para Corte', urgente: false,
     hilo_especifico_id: '', pt_item_id: '',
     observaciones: '', fecha_entrega_final: '', fecha_inicio_real: '', linea_negocio_id: null,
+  });
+
+  const [modoManual, setModoManual] = useState(false);
+  const [catalogoMarcas, setCatalogoMarcas] = useState([]);
+  const [catalogoTipos, setCatalogoTipos] = useState([]);
+  const [catalogoTelas, setCatalogoTelas] = useState([]);
+  const [catalogoEntalles, setCatalogoEntalles] = useState([]);
+  const [modeloManualForm, setModeloManualForm] = useState({
+    marca_id: '', marca_texto: '', marca_modo: 'select',
+    tipo_id: '', tipo_texto: '', tipo_modo: 'select',
+    tela_id: '', tela_texto: '', tela_modo: 'select',
+    entalle_id: '', entalle_texto: '', entalle_modo: 'select',
+    nombre_modelo: '', hilo: '', hilo_especifico: '',
   });
 
   const [modeloSeleccionado, setModeloSeleccionado] = useState(null);
@@ -184,6 +197,11 @@ export const RegistroForm = () => {
     axios.get(`${API}/tallas-catalogo`).then(r => setTallasCatalogo(r.data)).catch(() => {});
     axios.get(`${API}/colores-catalogo`).then(r => setColoresCatalogo(r.data)).catch(() => {});
     axios.get(`${API}/lineas-negocio`).then(r => setLineasNegocio(r.data)).catch(() => {});
+    // Catálogos para modo manual
+    axios.get(`${API}/marcas`).then(r => setCatalogoMarcas(r.data)).catch(() => {});
+    axios.get(`${API}/tipos`).then(r => setCatalogoTipos(r.data)).catch(() => {});
+    axios.get(`${API}/telas`).then(r => setCatalogoTelas(r.data)).catch(() => {});
+    axios.get(`${API}/entalles`).then(r => setCatalogoEntalles(r.data)).catch(() => {});
     // Datos para dialogos (se cargan en segundo plano, no bloquean render)
     setTimeout(() => {
       axios.get(`${API}/inventario?all=true`).then(r => setItemsInventario(r.data)).catch(() => {});
@@ -238,13 +256,26 @@ export const RegistroForm = () => {
       const response = await axios.get(`${API}/registros/${id}`);
       const registro = response.data;
       setFormData({
-        n_corte: registro.n_corte, modelo_id: registro.modelo_id, curva: registro.curva || '',
+        n_corte: registro.n_corte, modelo_id: registro.modelo_id, modelo_manual: registro.modelo_manual || null,
+        curva: registro.curva || '',
         estado: registro.estado, urgente: registro.urgente, hilo_especifico_id: registro.hilo_especifico_id || '',
         pt_item_id: registro.pt_item_id || '',
         observaciones: registro.observaciones || '', fecha_entrega_final: registro.fecha_entrega_final || '',
         fecha_inicio_real: registro.fecha_inicio_real || '',
         skip_validacion_estado: registro.skip_validacion_estado || false, linea_negocio_id: registro.linea_negocio_id || null,
       });
+      // Restore manual mode if registro was created with modelo_manual
+      if (registro.modelo_manual && !registro.modelo_id) {
+        const mm = registro.modelo_manual;
+        setModoManual(true);
+        setModeloManualForm({
+          marca_id: mm.marca_id || '', marca_texto: mm.marca_texto || '', marca_modo: mm.marca_id ? 'select' : (mm.marca_texto ? 'text' : 'select'),
+          tipo_id: mm.tipo_id || '', tipo_texto: mm.tipo_texto || '', tipo_modo: mm.tipo_id ? 'select' : (mm.tipo_texto ? 'text' : 'select'),
+          tela_id: mm.tela_id || '', tela_texto: mm.tela_texto || '', tela_modo: mm.tela_id ? 'select' : (mm.tela_texto ? 'text' : 'select'),
+          entalle_id: mm.entalle_id || '', entalle_texto: mm.entalle_texto || '', entalle_modo: mm.entalle_id ? 'select' : (mm.entalle_texto ? 'text' : 'select'),
+          nombre_modelo: mm.nombre_modelo || '', hilo: mm.hilo || '', hilo_especifico: mm.hilo_especifico || '',
+        });
+      }
       setTallasSeleccionadas(registro.tallas || []);
       setDistribucionColores(registro.distribucion_colores || []);
       // Usar modelos ya cargados por fetchRelatedData (evita llamada duplicada)
@@ -693,6 +724,24 @@ export const RegistroForm = () => {
     if (e) e.preventDefault(); setLoading(true);
     try {
       const payload = { ...formData, tallas: tallasSeleccionadas, distribucion_colores: distribucionColores };
+      if (modoManual) {
+        payload.modelo_id = null;
+        payload.modelo_manual = {
+          marca_id: modeloManualForm.marca_modo === 'select' ? modeloManualForm.marca_id || null : null,
+          marca_texto: modeloManualForm.marca_modo === 'text' ? modeloManualForm.marca_texto : (catalogoMarcas.find(m => m.id === modeloManualForm.marca_id)?.nombre || null),
+          tipo_id: modeloManualForm.tipo_modo === 'select' ? modeloManualForm.tipo_id || null : null,
+          tipo_texto: modeloManualForm.tipo_modo === 'text' ? modeloManualForm.tipo_texto : (catalogoTipos.find(t => t.id === modeloManualForm.tipo_id)?.nombre || null),
+          tela_id: modeloManualForm.tela_modo === 'select' ? modeloManualForm.tela_id || null : null,
+          tela_texto: modeloManualForm.tela_modo === 'text' ? modeloManualForm.tela_texto : (catalogoTelas.find(t => t.id === modeloManualForm.tela_id)?.nombre || null),
+          entalle_id: modeloManualForm.entalle_modo === 'select' ? modeloManualForm.entalle_id || null : null,
+          entalle_texto: modeloManualForm.entalle_modo === 'text' ? modeloManualForm.entalle_texto : (catalogoEntalles.find(e => e.id === modeloManualForm.entalle_id)?.nombre || null),
+          nombre_modelo: modeloManualForm.nombre_modelo || null,
+          hilo: modeloManualForm.hilo || null,
+          hilo_especifico: modeloManualForm.hilo_especifico || null,
+        };
+      } else {
+        payload.modelo_manual = null;
+      }
       if (isEditing) { await axios.put(`${API}/registros/${id}`, payload); if (!silentMode) toast.success('Registro actualizado'); }
       else { const res = await axios.post(`${API}/registros`, payload); if (silentMode && res.data?.id) navigate(`/registros/editar/${res.data.id}`, { replace: true }); if (!silentMode) toast.success('Registro creado'); }
       savedRef.current = true;
@@ -923,6 +972,10 @@ export const RegistroForm = () => {
                   modeloSearch={modeloSearch} setModeloSearch={setModeloSearch} onModeloChange={handleModeloChange}
                   lineasNegocio={lineasNegocio} itemsInventario={itemsInventario} modeloSeleccionado={modeloSeleccionado}
                   onReunificar={handleReunificar} isEditing={isEditing} hilosEspecificos={hilosEspecificos}
+                  modoManual={modoManual} setModoManual={setModoManual}
+                  modeloManualForm={modeloManualForm} setModeloManualForm={setModeloManualForm}
+                  catalogoMarcas={catalogoMarcas} catalogoTipos={catalogoTipos}
+                  catalogoTelas={catalogoTelas} catalogoEntalles={catalogoEntalles}
                 />
               </>
             ) : (
@@ -973,6 +1026,10 @@ export const RegistroForm = () => {
                     modeloSearch={modeloSearch} setModeloSearch={setModeloSearch} onModeloChange={handleModeloChange}
                     lineasNegocio={lineasNegocio} itemsInventario={itemsInventario} modeloSeleccionado={modeloSeleccionado}
                     onReunificar={handleReunificar} isEditing={isEditing} hilosEspecificos={hilosEspecificos}
+                    modoManual={modoManual} setModoManual={setModoManual}
+                    modeloManualForm={modeloManualForm} setModeloManualForm={setModeloManualForm}
+                    catalogoMarcas={catalogoMarcas} catalogoTipos={catalogoTipos}
+                    catalogoTelas={catalogoTelas} catalogoEntalles={catalogoEntalles}
                   />
                 </TabsContent>
 

@@ -310,9 +310,23 @@ class TallaConColores(BaseModel):
     cantidad_total: int = 0
     colores: List[ColorDistribucion] = []
 
+class ModeloManual(BaseModel):
+    marca_id: Optional[str] = None
+    marca_texto: Optional[str] = None
+    tipo_id: Optional[str] = None
+    tipo_texto: Optional[str] = None
+    tela_id: Optional[str] = None
+    tela_texto: Optional[str] = None
+    entalle_id: Optional[str] = None
+    entalle_texto: Optional[str] = None
+    nombre_modelo: Optional[str] = None
+    hilo: Optional[str] = None
+    hilo_especifico: Optional[str] = None
+
 class RegistroBase(BaseModel):
     n_corte: str
     modelo_id: Optional[str] = None
+    modelo_manual: Optional[ModeloManual] = None
     curva: str = ""
     estado: str = "Para Corte"
     urgente: bool = False

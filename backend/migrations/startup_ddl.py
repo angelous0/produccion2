@@ -286,6 +286,8 @@ async def ensure_startup_migrations():
         # Columnas para división de lote
         await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS dividido_desde_registro_id VARCHAR NULL")
         await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS division_numero INT DEFAULT 0")
+        # Modelo manual (ingresado a mano sin seleccionar del catálogo)
+        await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS modelo_manual JSONB")
         # Migración: extender prod_registro_cierre con campos de auditoría y congelamiento
         for alter_sql in [
             "ALTER TABLE prod_registro_cierre ADD COLUMN IF NOT EXISTS merma_qty NUMERIC DEFAULT 0",

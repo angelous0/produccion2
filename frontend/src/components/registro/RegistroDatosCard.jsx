@@ -10,8 +10,46 @@ import {
 } from '../ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../ui/command';
-import { AlertTriangle, Scissors, Package, Check, ChevronsUpDown, FileDown, Lock, RotateCcw, Clock } from 'lucide-react';
+import { AlertTriangle, Scissors, Package, Check, ChevronsUpDown, FileDown, Lock, RotateCcw, Clock, PenLine, Plus } from 'lucide-react';
 import { Textarea } from '../ui/textarea';
+
+// Helper: campo con selector + fallback texto libre
+const CampoCascada = ({ label, items, idKey = 'id', nameKey = 'nombre', selectedId, texto, modo, onChange }) => {
+  if (modo === 'text') {
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs">{label}</Label>
+          <Button type="button" variant="ghost" size="sm" className="h-5 px-1 text-[10px] text-blue-600"
+            onClick={() => onChange({ modo: 'select', id: '', texto: '' })}>
+            Volver a selector
+          </Button>
+        </div>
+        <Input value={texto} onChange={(e) => onChange({ modo: 'text', id: '', texto: e.target.value })}
+          placeholder={`Escribir ${label.toLowerCase()}...`} className="text-sm" />
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs">{label}</Label>
+        <Button type="button" variant="ghost" size="sm" className="h-5 px-1 text-[10px] text-blue-600 gap-1"
+          onClick={() => onChange({ modo: 'text', id: '', texto: '' })}>
+          <Plus className="h-3 w-3" /> Texto libre
+        </Button>
+      </div>
+      <Select value={selectedId} onValueChange={(v) => onChange({ modo: 'select', id: v, texto: '' })}>
+        <SelectTrigger className="text-sm"><SelectValue placeholder={`Seleccionar ${label.toLowerCase()}...`} /></SelectTrigger>
+        <SelectContent className="max-h-60">
+          {items.map((item) => (
+            <SelectItem key={item[idKey]} value={item[idKey]}>{item[nameKey]}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+};
 
 export const RegistroDatosCard = ({
   formData, setFormData,
@@ -22,7 +60,34 @@ export const RegistroDatosCard = ({
   modelos, modeloPopoverOpen, setModeloPopoverOpen, modeloSearch, setModeloSearch, onModeloChange,
   lineasNegocio, itemsInventario, modeloSeleccionado,
   onReunificar, isEditing, hilosEspecificos,
+  modoManual, setModoManual,
+  modeloManualForm, setModeloManualForm,
+  catalogoMarcas = [], catalogoTipos = [], catalogoTelas = [], catalogoEntalles = [],
 }) => {
+  const handleToggleManual = () => {
+    if (!modoManual) {
+      setModoManual(true);
+      setFormData({ ...formData, modelo_id: '' });
+    } else {
+      setModoManual(false);
+      setModeloManualForm({
+        marca_id: '', marca_texto: '', marca_modo: 'select',
+        tipo_id: '', tipo_texto: '', tipo_modo: 'select',
+        tela_id: '', tela_texto: '', tela_modo: 'select',
+        entalle_id: '', entalle_texto: '', entalle_modo: 'select',
+        nombre_modelo: '', hilo: '', hilo_especifico: '',
+      });
+    }
+  };
+
+  const updateManualField = (field, { modo, id, texto }) => {
+    setModeloManualForm(prev => ({
+      ...prev,
+      [`${field}_modo`]: modo,
+      [`${field}_id`]: id,
+      [`${field}_texto`]: texto,
+    }));
+  };
   return (
     <Card>
       <CardHeader className="py-3 px-4">
@@ -282,45 +347,63 @@ export const RegistroDatosCard = ({
           </div>
           <div className="space-y-2">
             <Label>Modelo *</Label>
-            <Popover open={modeloPopoverOpen} onOpenChange={(open) => { setModeloPopoverOpen(open); if (!open) setModeloSearch(''); }}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" role="combobox" aria-expanded={modeloPopoverOpen} className="w-full justify-between font-normal" data-testid="select-modelo">
-                  {modelos.length === 0
-                    ? <span className="flex items-center gap-2 text-muted-foreground"><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Cargando modelos...</span>
-                    : (formData.modelo_id ? modelos.find(m => m.id === formData.modelo_id)?.nombre || 'Seleccionar modelo' : 'Seleccionar modelo')
-                  }
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            {!modoManual ? (
+              <>
+                <Popover open={modeloPopoverOpen} onOpenChange={(open) => { setModeloPopoverOpen(open); if (!open) setModeloSearch(''); }}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" aria-expanded={modeloPopoverOpen} className="w-full justify-between font-normal" data-testid="select-modelo">
+                      {modelos.length === 0
+                        ? <span className="flex items-center gap-2 text-muted-foreground"><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Cargando modelos...</span>
+                        : (formData.modelo_id ? modelos.find(m => m.id === formData.modelo_id)?.nombre || 'Seleccionar modelo' : 'Seleccionar modelo')
+                      }
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command shouldFilter={false}>
+                      <CommandInput placeholder="Buscar modelo..." value={modeloSearch} onValueChange={setModeloSearch} />
+                      <CommandList>
+                        {modelos.length === 0 ? (
+                          <div className="py-6 text-center text-sm text-muted-foreground">Cargando modelos...</div>
+                        ) : (() => {
+                          const term = modeloSearch.toLowerCase();
+                          const filtered = term ? modelos.filter(m => m.nombre.toLowerCase().includes(term)) : modelos;
+                          const limited = filtered.slice(0, 50);
+                          if (limited.length === 0) return <CommandEmpty>No se encontró modelo.</CommandEmpty>;
+                          return (
+                            <CommandGroup>
+                              {limited.map((m) => (
+                                <CommandItem key={m.id} value={m.id} onSelect={() => { onModeloChange(m.id); setModeloPopoverOpen(false); setModeloSearch(''); }}>
+                                  <Check className={`mr-2 h-4 w-4 ${formData.modelo_id === m.id ? 'opacity-100' : 'opacity-0'}`} />
+                                  {m.nombre}
+                                </CommandItem>
+                              ))}
+                              {filtered.length > 50 && (
+                                <div className="px-2 py-1.5 text-xs text-muted-foreground text-center">+{filtered.length - 50} más. Escribe para filtrar...</div>
+                              )}
+                            </CommandGroup>
+                          );
+                        })()}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs text-blue-600 gap-1"
+                  onClick={handleToggleManual}>
+                  <PenLine className="h-3 w-3" /> No encuentras el modelo? Ingresar manualmente
                 </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                <Command shouldFilter={false}>
-                  <CommandInput placeholder="Buscar modelo..." value={modeloSearch} onValueChange={setModeloSearch} />
-                  <CommandList>
-                    {modelos.length === 0 ? (
-                      <div className="py-6 text-center text-sm text-muted-foreground">Cargando modelos...</div>
-                    ) : (() => {
-                      const term = modeloSearch.toLowerCase();
-                      const filtered = term ? modelos.filter(m => m.nombre.toLowerCase().includes(term)) : modelos;
-                      const limited = filtered.slice(0, 50);
-                      if (limited.length === 0) return <CommandEmpty>No se encontró modelo.</CommandEmpty>;
-                      return (
-                        <CommandGroup>
-                          {limited.map((m) => (
-                            <CommandItem key={m.id} value={m.id} onSelect={() => { onModeloChange(m.id); setModeloPopoverOpen(false); setModeloSearch(''); }}>
-                              <Check className={`mr-2 h-4 w-4 ${formData.modelo_id === m.id ? 'opacity-100' : 'opacity-0'}`} />
-                              {m.nombre}
-                            </CommandItem>
-                          ))}
-                          {filtered.length > 50 && (
-                            <div className="px-2 py-1.5 text-xs text-muted-foreground text-center">+{filtered.length - 50} más. Escribe para filtrar...</div>
-                          )}
-                        </CommandGroup>
-                      );
-                    })()}
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs border-amber-400 text-amber-700 bg-amber-50 gap-1">
+                  <PenLine className="h-3 w-3" /> Modo Manual
+                </Badge>
+                <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs"
+                  onClick={handleToggleManual}>
+                  Volver a selector de modelo
+                </Button>
+              </div>
+            )}
           </div>
           <div className="space-y-2">
             <Label>Línea de Negocio</Label>
@@ -351,6 +434,53 @@ export const RegistroDatosCard = ({
             </Select>
           </div>
         </div>
+
+        {/* Campos cascada modo manual */}
+        {modoManual && modeloManualForm && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/10 p-4 space-y-3" data-testid="panel-modelo-manual">
+            <p className="text-xs font-medium text-amber-800 dark:text-amber-400 flex items-center gap-1">
+              <PenLine className="h-3.5 w-3.5" /> Datos del modelo (ingreso manual)
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <CampoCascada label="Marca" items={catalogoMarcas}
+                selectedId={modeloManualForm.marca_id} texto={modeloManualForm.marca_texto}
+                modo={modeloManualForm.marca_modo}
+                onChange={(v) => updateManualField('marca', v)} />
+              <CampoCascada label="Tipo" items={catalogoTipos}
+                selectedId={modeloManualForm.tipo_id} texto={modeloManualForm.tipo_texto}
+                modo={modeloManualForm.tipo_modo}
+                onChange={(v) => updateManualField('tipo', v)} />
+              <CampoCascada label="Tela" items={catalogoTelas}
+                selectedId={modeloManualForm.tela_id} texto={modeloManualForm.tela_texto}
+                modo={modeloManualForm.tela_modo}
+                onChange={(v) => updateManualField('tela', v)} />
+              <CampoCascada label="Entalle" items={catalogoEntalles}
+                selectedId={modeloManualForm.entalle_id} texto={modeloManualForm.entalle_texto}
+                modo={modeloManualForm.entalle_modo}
+                onChange={(v) => updateManualField('entalle', v)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Nombre del modelo</Label>
+              <Input value={modeloManualForm.nombre_modelo}
+                onChange={(e) => setModeloManualForm({ ...modeloManualForm, nombre_modelo: e.target.value })}
+                placeholder="Ej: Pantalón Cargo Ripstop 2022" className="text-sm" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Hilo</Label>
+                <Input value={modeloManualForm.hilo}
+                  onChange={(e) => setModeloManualForm({ ...modeloManualForm, hilo: e.target.value })}
+                  placeholder="Hilo..." className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Hilo específico</Label>
+                <Input value={modeloManualForm.hilo_especifico}
+                  onChange={(e) => setModeloManualForm({ ...modeloManualForm, hilo_especifico: e.target.value })}
+                  placeholder="Hilo específico..." className="text-sm" />
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center space-x-2 pt-2">
           <Checkbox id="urgente" checked={formData.urgente} onCheckedChange={(checked) => setFormData({ ...formData, urgente: checked })} data-testid="checkbox-urgente" />

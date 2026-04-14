@@ -837,7 +837,10 @@ export const Registros = () => {
                       <Badge variant="outline" className="text-[9px] px-1 py-0 border-blue-300 text-blue-600">div</Badge>
                     )}
                   </div>
-                  <p className="text-sm text-muted-foreground truncate mt-0.5">{item.modelo_nombre || '-'}</p>
+                  <p className="text-sm text-muted-foreground truncate mt-0.5">
+                    {item.modelo_nombre || '-'}
+                    {item.es_modelo_manual && <span className="ml-1 inline-flex items-center rounded px-1 py-0.5 text-[9px] font-medium bg-gray-100 text-gray-500 border border-gray-200">Manual</span>}
+                  </p>
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
                   <Badge variant="outline" className={`${getStatusClass(item.estado)} text-[11px] whitespace-nowrap`}>
@@ -932,7 +935,10 @@ export const Registros = () => {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm">{item.modelo_nombre || '-'}</TableCell>
+                      <TableCell className="text-sm">
+                        {item.modelo_nombre || '-'}
+                        {item.es_modelo_manual && <span className="ml-1 inline-flex items-center rounded px-1 py-0.5 text-[9px] font-medium bg-gray-100 text-gray-500 border border-gray-200">Manual</span>}
+                      </TableCell>
                       <TableCell className="text-xs whitespace-nowrap text-muted-foreground" title={formatDate(item.ultima_actividad || item.fecha_creacion)}>
                         {formatRelativeDate(item.ultima_actividad || item.fecha_creacion)}
                       </TableCell>
@@ -1189,7 +1195,10 @@ export const Registros = () => {
                         </div>
                         <div>
                           <span className="text-muted-foreground">Modelo:</span>
-                          <p className="font-medium">{viewingItem.modelo_nombre || '-'}</p>
+                          <p className="font-medium">
+                            {viewingItem.modelo_nombre || '-'}
+                            {viewingItem.es_modelo_manual && <span className="ml-1 inline-flex items-center rounded px-1 py-0.5 text-[9px] font-medium bg-gray-100 text-gray-500 border border-gray-200">Manual</span>}
+                          </p>
                         </div>
                         <div>
                           <span className="text-muted-foreground">Marca:</span>

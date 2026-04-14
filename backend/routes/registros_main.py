@@ -295,6 +295,23 @@ async def get_registros(
                 import json as json_mod
                 par_json = json_mod.loads(par_json)
             d['paralizacion_activa'] = par_json
+            # Modelo manual: COALESCE nombres
+            mm = parse_jsonb(d.get('modelo_manual')) if d.get('modelo_manual') else None
+            d['modelo_manual'] = mm
+            if mm:
+                d['es_modelo_manual'] = True
+                if not d.get('modelo_nombre'):
+                    d['modelo_nombre'] = mm.get('nombre_modelo') or 'Manual'
+                if not d.get('marca_nombre'):
+                    d['marca_nombre'] = mm.get('marca_texto') or d.get('marca_nombre')
+                if not d.get('tipo_nombre'):
+                    d['tipo_nombre'] = mm.get('tipo_texto') or d.get('tipo_nombre')
+                if not d.get('tela_nombre'):
+                    d['tela_nombre'] = mm.get('tela_texto') or d.get('tela_nombre')
+                if not d.get('entalle_nombre'):
+                    d['entalle_nombre'] = mm.get('entalle_texto') or d.get('entalle_nombre')
+            else:
+                d['es_modelo_manual'] = False
             # Estado operativo
             movs_vencidos = d.pop('movs_vencidos', 0) or 0
             if par_json:
@@ -390,6 +407,7 @@ async def get_registro(registro_id: str):
             d['fecha_entrega_final'] = str(d['fecha_entrega_final'])
         if d.get('fecha_inicio_real'):
             d['fecha_inicio_real'] = str(d['fecha_inicio_real'])
+        d['modelo_manual'] = parse_jsonb(d.get('modelo_manual')) if d.get('modelo_manual') else None
         return d
 
 @router.post("/registros")
@@ -421,12 +439,14 @@ async def create_registro(input: RegistroCreate, current_user: dict = Depends(ge
                 fecha_ir = None
         if not fecha_ir:
             fecha_ir = registro.fecha_creacion.date() if hasattr(registro.fecha_creacion, 'date') else registro.fecha_creacion
+        modelo_manual_json = json.dumps(registro.modelo_manual.model_dump()) if registro.modelo_manual else None
         await conn.execute(
-            """INSERT INTO prod_registros (id, n_corte, modelo_id, curva, estado, urgente, hilo_especifico_id, tallas, distribucion_colores, fecha_creacion, pt_item_id, empresa_id, observaciones, linea_negocio_id, fecha_entrega_final, fecha_inicio_real)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)""",
+            """INSERT INTO prod_registros (id, n_corte, modelo_id, curva, estado, urgente, hilo_especifico_id, tallas, distribucion_colores, fecha_creacion, pt_item_id, empresa_id, observaciones, linea_negocio_id, fecha_entrega_final, fecha_inicio_real, modelo_manual)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)""",
             registro.id, registro.n_corte, registro.modelo_id, registro.curva, registro.estado, registro.urgente,
             registro.hilo_especifico_id, tallas_json, dist_json, registro.fecha_creacion.replace(tzinfo=None),
-            registro.pt_item_id, registro.empresa_id, registro.observaciones, registro.linea_negocio_id, fecha_ef, fecha_ir
+            registro.pt_item_id, registro.empresa_id, registro.observaciones, registro.linea_negocio_id, fecha_ef, fecha_ir,
+            modelo_manual_json
         )
         cant_total = sum(t.cantidad for t in registro.tallas) if registro.tallas else 0
         await audit_log_safe(conn, get_usuario(current_user), "CREATE", "produccion", "prod_registros", registro.id,
@@ -501,9 +521,10 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
                 fecha_ir = date.fromisoformat(input.fecha_inicio_real)
             except Exception:
                 fecha_ir = None
+        modelo_manual_json = json.dumps(input.modelo_manual.model_dump()) if input.modelo_manual else None
         await conn.execute(
-            """UPDATE prod_registros SET n_corte=$1, modelo_id=$2, curva=$3, estado=$4, urgente=$5, hilo_especifico_id=$6, tallas=$7, distribucion_colores=$8, pt_item_id=$9, observaciones=$10, linea_negocio_id=$11, fecha_entrega_final=$13, fecha_inicio_real=$14 WHERE id=$12""",
-            input.n_corte, input.modelo_id, input.curva, input.estado, input.urgente, input.hilo_especifico_id, tallas_json, dist_json, input.pt_item_id, input.observaciones, input.linea_negocio_id, registro_id, fecha_ef, fecha_ir
+            """UPDATE prod_registros SET n_corte=$1, modelo_id=$2, curva=$3, estado=$4, urgente=$5, hilo_especifico_id=$6, tallas=$7, distribucion_colores=$8, pt_item_id=$9, observaciones=$10, linea_negocio_id=$11, fecha_entrega_final=$13, fecha_inicio_real=$14, modelo_manual=$15 WHERE id=$12""",
+            input.n_corte, input.modelo_id, input.curva, input.estado, input.urgente, input.hilo_especifico_id, tallas_json, dist_json, input.pt_item_id, input.observaciones, input.linea_negocio_id, registro_id, fecha_ef, fecha_ir, modelo_manual_json
         )
         
         # Sincronizar prod_registro_tallas con las cantidades del JSON
