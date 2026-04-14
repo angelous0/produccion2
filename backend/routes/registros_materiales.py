@@ -200,6 +200,72 @@ async def agregar_requerimiento_manual(registro_id: str, body: dict):
         return {"message": "Material agregado manualmente", "id": new_id, "cantidad_requerida": cantidad}
 
 
+@router.post("/registros/{registro_id}/copiar-materiales")
+async def copiar_materiales(registro_id: str, body: dict):
+    """Copia líneas de requerimiento de materiales desde otro registro."""
+    pool = await get_pool()
+    registro_origen_id = body.get("registro_origen_id")
+    linea_ids = body.get("linea_ids", [])
+    cantidad_destino = float(body.get("cantidad_destino", 0))
+    cantidad_origen = float(body.get("cantidad_origen", 0))
+
+    if not registro_origen_id or not linea_ids:
+        raise HTTPException(status_code=400, detail="registro_origen_id y linea_ids son requeridos")
+
+    async with pool.acquire() as conn:
+        dest = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
+        if not dest:
+            raise HTTPException(status_code=404, detail="Registro destino no encontrado")
+        origen = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_origen_id)
+        if not origen:
+            raise HTTPException(status_code=404, detail="Registro origen no encontrado")
+
+        lineas = await conn.fetch("""
+            SELECT * FROM prod_registro_requerimiento_mp
+            WHERE id = ANY($1) AND registro_id = $2
+        """, linea_ids, registro_origen_id)
+
+        if not lineas:
+            raise HTTPException(status_code=400, detail="No se encontraron materiales para copiar")
+
+        ratio = (cantidad_destino / cantidad_origen) if cantidad_origen > 0 and cantidad_destino > 0 else 1.0
+        empresa_id = dest.get('empresa_id') or 7
+        creados = 0
+
+        for linea in lineas:
+            item_id = linea['item_id']
+            talla_id = linea['talla_id']
+            cantidad_requerida = round(float(linea['cantidad_requerida']) * ratio, 4)
+
+            # Verificar si ya existe
+            if talla_id:
+                existing = await conn.fetchrow("""
+                    SELECT id FROM prod_registro_requerimiento_mp
+                    WHERE registro_id = $1 AND item_id = $2 AND talla_id = $3
+                """, registro_id, item_id, talla_id)
+            else:
+                existing = await conn.fetchrow("""
+                    SELECT id FROM prod_registro_requerimiento_mp
+                    WHERE registro_id = $1 AND item_id = $2 AND talla_id IS NULL
+                """, registro_id, item_id)
+
+            if existing:
+                continue  # No sobreescribir líneas existentes
+
+            new_id = str(uuid.uuid4())
+            origen_val = linea.get('origen') or 'BOM'
+            await conn.execute("""
+                INSERT INTO prod_registro_requerimiento_mp
+                (id, registro_id, item_id, talla_id, cantidad_requerida, cantidad_reservada,
+                 cantidad_consumida, estado, empresa_id, origen, observaciones)
+                VALUES ($1, $2, $3, $4, $5, 0, 0, 'PENDIENTE', $6, $7, $8)
+            """, new_id, registro_id, item_id, talla_id, cantidad_requerida,
+                empresa_id, origen_val, f"Copiado desde Corte #{origen['n_corte']}")
+            creados += 1
+
+        return {"message": f"Se copiaron {creados} materiales desde Corte #{origen['n_corte']}", "creados": creados}
+
+
 @router.delete("/registros/{registro_id}/requerimiento-manual/{linea_id}")
 async def eliminar_requerimiento_manual(registro_id: str, linea_id: str):
     """Elimina una línea de requerimiento manual (solo si origen=MANUAL y sin consumo)."""

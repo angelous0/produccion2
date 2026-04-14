@@ -22,10 +22,11 @@ import { SearchableSelect } from './SearchableSelect';
 import {
   Package, PackageCheck, PackageMinus, PackageX, RefreshCw,
   ChevronDown, ChevronUp, Loader2, Plus, Trash2, BookOpen,
-  ArrowDownCircle, ArrowUpCircle, AlertTriangle, Search, Layers,
+  ArrowDownCircle, ArrowUpCircle, AlertTriangle, Search, Layers, Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from './ui/numeric-input';
+import CopiarDesdeRegistroDialog from './registro/CopiarDesdeRegistroDialog';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -247,6 +248,9 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId, lin
   const [rollosFiltroTono, setRollosFiltroTono] = useState('todos');
   // Cantidades por rollo: { "rollo_id": cantidad }
   const [rollosCantidades, setRollosCantidades] = useState({});
+
+  // Copiar desde otro registro
+  const [copiarOpen, setCopiarOpen] = useState(false);
 
   // Modal agregar material manual
   const [manualOpen, setManualOpen] = useState(false);
@@ -572,6 +576,9 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId, lin
           </Button>
           <Button type="button" size="sm" variant="outline" onClick={openManualModal} data-testid="btn-agregar-manual">
             <Plus className="h-3.5 w-3.5 mr-1" /> Agregar manualmente
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => setCopiarOpen(true)} data-testid="btn-copiar-materiales">
+            <Copy className="h-3.5 w-3.5 mr-1" /> Copiar desde otro
           </Button>
         </div>
       </div>
@@ -984,6 +991,16 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId, lin
         setFiltroAncho={setRollosFiltroAncho}
         filtroTono={rollosFiltroTono}
         setFiltroTono={setRollosFiltroTono}
+      />
+
+      {/* Copiar materiales desde otro registro */}
+      <CopiarDesdeRegistroDialog
+        open={copiarOpen}
+        onOpenChange={setCopiarOpen}
+        registroDestinoId={registroId}
+        cantidadDestino={totalPrendas}
+        tipo="materiales"
+        onSuccess={fetchData}
       />
     </div>
   );

@@ -8,11 +8,12 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
-import { Plus, Play, Cog, Users, Calendar, Pencil, FileText, Trash2, MoreHorizontal } from 'lucide-react';
+import { Plus, Play, Cog, Users, Calendar, Pencil, FileText, Trash2, MoreHorizontal, Copy } from 'lucide-react';
 
 export const RegistroMovimientosCard = ({
   movimientosProduccion, serviciosProduccion, isParalizado,
   onOpenDialog, onDelete, onGenerarGuia, totalCantidad, permisos,
+  onCopiarDesdeRegistro,
 }) => {
   const showAvance = serviciosProduccion.some(s => s.usa_avance_porcentaje && movimientosProduccion.some(m => m.servicio_id === s.id));
   const canCreate = permisos?.canAction?.('crear_movimientos') !== false;
@@ -33,19 +34,35 @@ export const RegistroMovimientosCard = ({
           </div>
           <span className="registro-movimientos-title">Movimientos de Producción</span>
         </div>
-        {canCreate && (
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => onOpenDialog()}
-            disabled={isParalizado}
-            className={`registro-btn-nuevo-mov ${isParalizado ? 'opacity-50 cursor-not-allowed' : ''}`}
-            data-testid="btn-nuevo-movimiento"
-          >
-            <Plus className="h-4 w-4 sm:mr-1.5" />
-            <span className="hidden sm:inline">Agregar</span>
-          </Button>
-        )}
+        <div className="flex items-center gap-1.5">
+          {canCreate && onCopiarDesdeRegistro && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={onCopiarDesdeRegistro}
+              disabled={isParalizado}
+              className="text-xs"
+              data-testid="btn-copiar-movimientos"
+            >
+              <Copy className="h-3.5 w-3.5 sm:mr-1" />
+              <span className="hidden sm:inline">Copiar desde otro</span>
+            </Button>
+          )}
+          {canCreate && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => onOpenDialog()}
+              disabled={isParalizado}
+              className={`registro-btn-nuevo-mov ${isParalizado ? 'opacity-50 cursor-not-allowed' : ''}`}
+              data-testid="btn-nuevo-movimiento"
+            >
+              <Plus className="h-4 w-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">Agregar</span>
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="registro-movimientos-body">

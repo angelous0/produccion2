@@ -19,6 +19,7 @@ import { SalidaRollosDialog } from '../components/SalidaRollosDialog';
 import { TrazabilidadPanel } from '../components/TrazabilidadPanel';
 import { ArreglosPanel } from '../components/ArreglosPanel';
 import MaterialesTab from '../components/MaterialesTab';
+import CopiarDesdeRegistroDialog from '../components/registro/CopiarDesdeRegistroDialog';
 import { DistribucionPTPanel } from '../components/registro/DistribucionPTPanel';
 import { ConversacionPanel, ConversacionTrigger } from '../components/ConversacionPanel';
 import { ConversacionInline } from '../components/ConversacionInline';
@@ -159,6 +160,7 @@ export const RegistroForm = () => {
   const isParalizado = incidencias.some(i => i.paraliza && i.paralizacion_activa && i.estado === 'ABIERTA');
   const [motivosIncidencia, setMotivosIncidencia] = useState([]);
   const [incidenciaDialogOpen, setIncidenciaDialogOpen] = useState(false);
+  const [copiarMovOpen, setCopiarMovOpen] = useState(false);
   const [incidenciaForm, setIncidenciaForm] = useState({ motivo_id: '', comentario: '', paraliza: false });
   const [showResueltas, setShowResueltas] = useState(false);
   const [nuevoMotivoNombre, setNuevoMotivoNombre] = useState('');
@@ -1045,6 +1047,7 @@ export const RegistroForm = () => {
                     onDelete={handleDeleteMovimiento} onGenerarGuia={handleGenerarGuia}
                     totalCantidad={totalCantidadMovimientos}
                     permisos={permsMovimientos}
+                    onCopiarDesdeRegistro={() => setCopiarMovOpen(true)}
                   />
                 </TabsContent>
 
@@ -1202,6 +1205,16 @@ export const RegistroForm = () => {
       <DivisionDialog open={divisionDialogOpen} onOpenChange={setDivisionDialogOpen}
         formData={formData} divisionTallas={divisionTallas} setDivisionTallas={setDivisionTallas}
         onDividir={handleDividirLote} />
+
+      {/* Copiar movimientos desde otro registro */}
+      <CopiarDesdeRegistroDialog
+        open={copiarMovOpen}
+        onOpenChange={setCopiarMovOpen}
+        registroDestinoId={id}
+        cantidadDestino={prendasEfectivas}
+        tipo="movimientos"
+        onSuccess={fetchMovimientosProduccion}
+      />
 
       {/* Conversación */}
       {isEditing && (

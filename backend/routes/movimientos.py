@@ -311,6 +311,88 @@ async def delete_movimiento(movimiento_id: str, current_user: dict = Depends(get
             descripcion=f"Elimino movimiento de {servicio_nombre}")
     return {"message": "Movimiento eliminado"}
 
+# ==================== COPIAR MOVIMIENTOS ====================
+
+@router.post("/registros/{registro_id}/copiar-movimientos")
+async def copiar_movimientos(registro_id: str, body: dict, current_user: dict = Depends(get_current_user)):
+    """Copia movimientos desde otro registro al registro destino."""
+    pool = await get_pool()
+    registro_origen_id = body.get("registro_origen_id")
+    movimiento_ids = body.get("movimiento_ids", [])
+    cantidad_destino = body.get("cantidad_destino", 0)
+
+    if not registro_origen_id or not movimiento_ids:
+        raise HTTPException(status_code=400, detail="registro_origen_id y movimiento_ids son requeridos")
+
+    async with pool.acquire() as conn:
+        dest = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
+        if not dest:
+            raise HTTPException(status_code=404, detail="Registro destino no encontrado")
+        origen = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_origen_id)
+        if not origen:
+            raise HTTPException(status_code=404, detail="Registro origen no encontrado")
+
+        # Obtener movimientos del origen
+        movs = await conn.fetch("""
+            SELECT * FROM prod_movimientos_produccion
+            WHERE id = ANY($1) AND registro_id = $2
+        """, movimiento_ids, registro_origen_id)
+
+        if not movs:
+            raise HTTPException(status_code=400, detail="No se encontraron movimientos para copiar")
+
+        # Calcular cantidad del origen para proporción
+        cantidad_origen = float(body.get("cantidad_origen", 0))
+        ratio = (float(cantidad_destino) / cantidad_origen) if cantidad_origen > 0 and cantidad_destino > 0 else 1.0
+
+        creados = 0
+        for mov in movs:
+            new_id = str(uuid.uuid4())
+            cant_enviada = int(round(float(mov['cantidad_enviada'] or 0) * ratio))
+            cant_recibida = int(round(float(mov['cantidad_recibida'] or 0) * ratio))
+            tarifa = float(mov['tarifa_aplicada'] or 0)
+            diferencia = cant_enviada - cant_recibida
+
+            # Ajustar detalle_costos proporcionalmente
+            detalle_raw = mov['detalle_costos']
+            detalle_costos = []
+            if detalle_raw:
+                if isinstance(detalle_raw, str):
+                    detalle_costos = json.loads(detalle_raw)
+                else:
+                    detalle_costos = list(detalle_raw)
+                for linea in detalle_costos:
+                    linea['cantidad'] = round(float(linea.get('cantidad', 0)) * ratio, 2)
+
+            if detalle_costos:
+                costo_calculado = sum(
+                    (l.get('cantidad', 0) or 0) * (l.get('precio_unitario', 0) or 0) for l in detalle_costos
+                )
+            else:
+                costo_calculado = cant_recibida * tarifa
+
+            detalle_json = json.dumps(detalle_costos) if detalle_costos else None
+
+            await conn.execute("""
+                INSERT INTO prod_movimientos_produccion
+                (id, registro_id, servicio_id, persona_id, cantidad_enviada, cantidad_recibida,
+                 diferencia, costo_calculado, tarifa_aplicada, fecha_inicio, fecha_fin,
+                 fecha_esperada_movimiento, responsable_movimiento, observaciones,
+                 avance_porcentaje, avance_updated_at, created_at, detalle_costos)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+            """, new_id, registro_id, mov['servicio_id'], mov['persona_id'],
+                cant_enviada, cant_recibida, diferencia, costo_calculado, tarifa,
+                mov['fecha_inicio'], mov['fecha_fin'], mov['fecha_esperada_movimiento'],
+                mov['responsable_movimiento'],
+                f"Copiado desde Corte #{origen['n_corte']}",
+                mov['avance_porcentaje'],
+                datetime.now() if mov['avance_porcentaje'] is not None else None,
+                datetime.now(timezone.utc).replace(tzinfo=None), detalle_json)
+            creados += 1
+
+        return {"message": f"Se copiaron {creados} movimientos desde Corte #{origen['n_corte']}", "creados": creados}
+
+
 # ==================== ENDPOINTS MERMAS ====================
 
 @router.get("/mermas")
