@@ -59,9 +59,9 @@ export const SearchableSelect = ({
       <PopoverContent className={cn(popoverWidth, 'p-0')} align="start">
         <Command>
           <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
+          <CommandList className="max-h-[240px] overflow-y-auto overscroll-contain" onWheel={(e) => e.stopPropagation()}>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
-            <CommandGroup className="max-h-[220px] overflow-auto">
+            <CommandGroup>
               {options.map((opt) => (
                 <CommandItem
                   key={opt.id}
