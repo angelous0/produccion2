@@ -5,9 +5,9 @@ WORKDIR /app
 COPY package.json yarn.lock* ./
 RUN npm install --legacy-peer-deps --force
 
-# Vacío = URLs relativas (/api/...) que nginx proxea al backend
-ARG REACT_APP_BACKEND_URL=""
-ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
+# Vacío = URLs relativas (/api/...) que nginx proxea al backend internamente
+# NO pasar REACT_APP_BACKEND_URL como build arg — debe quedar vacío siempre
+ENV REACT_APP_BACKEND_URL=""
 
 COPY . .
 RUN npm run build
