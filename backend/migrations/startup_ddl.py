@@ -156,6 +156,8 @@ async def ensure_bom_tables():
         await conn.execute("ALTER TABLE prod_servicios_produccion ADD COLUMN IF NOT EXISTS usa_avance_porcentaje BOOLEAN DEFAULT FALSE")
         await conn.execute("ALTER TABLE prod_movimientos_produccion ADD COLUMN IF NOT EXISTS avance_porcentaje INTEGER")
         await conn.execute("ALTER TABLE prod_movimientos_produccion ADD COLUMN IF NOT EXISTS avance_updated_at TIMESTAMP")
+        # Líneas de detalle de costos para movimientos con múltiples componentes
+        await conn.execute("ALTER TABLE prod_movimientos_produccion ADD COLUMN IF NOT EXISTS detalle_costos JSONB")
         # Historial de avances
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS produccion.prod_avance_historial (

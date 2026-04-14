@@ -1,6 +1,6 @@
-import { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import axios from 'axios';
-import { DollarSign, Lock, Search, X, Loader2, Package, Scissors, Truck, Receipt, FileDown } from 'lucide-react';
+import { DollarSign, Lock, Search, X, Loader2, Package, Scissors, Truck, Receipt, FileDown, ChevronDown, ChevronRight } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent } from '../components/ui/card';
 import { Input } from '../components/ui/input';
@@ -39,6 +39,7 @@ export default function CostoPorLote() {
     setDetalleOpen(true);
     setDetalleLoading(true);
     setDetalle(null);
+    setExpandedServicio(null);
     axios.get(`${API}/reportes-produccion/costo-lote/${lote.id}/detalle`)
       .then(r => setDetalle(r.data))
       .catch(() => setDetalle(null))
@@ -79,6 +80,8 @@ export default function CostoPorLote() {
     const set = new Set((data.items || []).map(l => l.estado).filter(Boolean));
     return [...set].sort();
   }, [data.items]);
+
+  const [expandedServicio, setExpandedServicio] = useState(null);
 
   const hayFiltros = busqueda || filtroEstado || filtroCerrado;
   const limpiarFiltros = () => { setBusqueda(''); setFiltroEstado(''); setFiltroCerrado(''); };
@@ -337,13 +340,33 @@ export default function CostoPorLote() {
                       </thead>
                       <tbody>
                         {detalle.detalle_servicios.map((s, i) => (
-                          <tr key={i} className="border-t">
-                            <td className="px-2 py-1.5 font-medium">{s.servicio}</td>
-                            <td className="px-2 py-1.5 text-muted-foreground">{s.persona || '—'}</td>
-                            <td className="px-2 py-1.5 text-right font-mono">{s.enviadas}</td>
-                            <td className="px-2 py-1.5 text-right font-mono text-muted-foreground">S/ {s.tarifa}</td>
-                            <td className="px-2 py-1.5 text-right font-mono font-medium">{fmt(s.costo)}</td>
-                          </tr>
+                          <React.Fragment key={i}>
+                            <tr className="border-t">
+                              <td className="px-2 py-1.5 font-medium">
+                                <div className="flex items-center gap-1">
+                                  {s.detalle_costos?.length > 0 && (
+                                    <button onClick={() => setExpandedServicio(expandedServicio === i ? null : i)} className="p-0.5 rounded hover:bg-muted">
+                                      {expandedServicio === i ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                    </button>
+                                  )}
+                                  {s.servicio}
+                                  {s.detalle_costos?.length > 0 && <span className="text-[9px] text-violet-500 ml-1">({s.detalle_costos.length} líneas)</span>}
+                                </div>
+                              </td>
+                              <td className="px-2 py-1.5 text-muted-foreground">{s.persona || '—'}</td>
+                              <td className="px-2 py-1.5 text-right font-mono">{s.enviadas}</td>
+                              <td className="px-2 py-1.5 text-right font-mono text-muted-foreground">{s.detalle_costos?.length > 0 ? '—' : `S/ ${s.tarifa}`}</td>
+                              <td className="px-2 py-1.5 text-right font-mono font-medium">{fmt(s.costo)}</td>
+                            </tr>
+                            {expandedServicio === i && s.detalle_costos?.length > 0 && s.detalle_costos.map((l, j) => (
+                              <tr key={`${i}-${j}`} className="bg-violet-50/50 dark:bg-violet-950/20">
+                                <td className="px-2 py-1 pl-8 text-[10px] text-muted-foreground" colSpan={2}>{l.descripcion || '—'}</td>
+                                <td className="px-2 py-1 text-right font-mono text-[10px]">{l.cantidad}</td>
+                                <td className="px-2 py-1 text-right font-mono text-[10px] text-muted-foreground">S/ {(l.precio_unitario || 0).toFixed(2)}</td>
+                                <td className="px-2 py-1 text-right font-mono text-[10px]">{fmt((l.cantidad || 0) * (l.precio_unitario || 0))}</td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
                         ))}
                       </tbody>
                       <tfoot className="bg-muted/40 border-t">

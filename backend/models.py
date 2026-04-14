@@ -425,6 +425,7 @@ class MovimientoBase(BaseModel):
     responsable_movimiento: Optional[str] = None
     observaciones: str = ""
     avance_porcentaje: Optional[int] = None
+    detalle_costos: Optional[list] = None
 
 class MovimientoCreate(MovimientoBase):
     pass

@@ -1823,7 +1823,7 @@ async def costo_lote_detalle(registro_id: str):
         serv_rows = await conn.fetch("""
             SELECT mp.id, sv.nombre AS servicio, p.nombre AS persona,
                    mp.cantidad_enviada, mp.cantidad_recibida, mp.tarifa_aplicada,
-                   mp.costo_calculado, mp.fecha_inicio, mp.fecha_fin
+                   mp.costo_calculado, mp.fecha_inicio, mp.fecha_fin, mp.detalle_costos
             FROM produccion.prod_movimientos_produccion mp
             LEFT JOIN produccion.prod_servicios_produccion sv ON sv.id = mp.servicio_id
             LEFT JOIN produccion.prod_personas_produccion p ON p.id = mp.persona_id
@@ -1850,7 +1850,9 @@ async def costo_lote_detalle(registro_id: str):
                         "enviadas": int(r["cantidad_enviada"] or 0), "recibidas": int(r["cantidad_recibida"] or 0),
                         "tarifa": float(r["tarifa_aplicada"] or 0), "costo": float(r["costo_calculado"] or 0),
                         "fecha_inicio": str(r["fecha_inicio"]) if r["fecha_inicio"] else None,
-                        "fecha_fin": str(r["fecha_fin"]) if r["fecha_fin"] else None} for r in serv_rows]
+                        "fecha_fin": str(r["fecha_fin"]) if r["fecha_fin"] else None,
+                        "detalle_costos": parse_jsonb(r["detalle_costos"]) if r.get("detalle_costos") else None,
+                        } for r in serv_rows]
 
         otros_items = [{"descripcion": r["descripcion"], "proveedor": r["proveedor"],
                          "monto": float(r["monto"] or 0), "fecha": str(r["fecha"]) if r["fecha"] else None}

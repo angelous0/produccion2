@@ -102,6 +102,7 @@ async def get_movimientos(
                 d['fecha_fin'] = str(d['fecha_fin'])
             if d.get('fecha_esperada_movimiento'):
                 d['fecha_esperada_movimiento'] = str(d['fecha_esperada_movimiento'])
+            d['detalle_costos'] = parse_jsonb(d.get('detalle_costos')) if d.get('detalle_costos') else None
             result.append(d)
 
         if all == "true":
@@ -139,12 +140,23 @@ async def create_movimiento(input: MovimientoCreate, current_user: dict = Depend
                     break
         
         diferencia = input.cantidad_enviada - input.cantidad_recibida
-        costo_calculado = input.cantidad_recibida * tarifa
-        
+
+        # Si hay líneas de detalle, el costo es la suma de subtotales
+        detalle_costos = input.detalle_costos or []
+        if detalle_costos:
+            costo_calculado = sum(
+                (linea.get('cantidad', 0) or 0) * (linea.get('precio_unitario', 0) or 0)
+                for linea in detalle_costos
+            )
+        else:
+            costo_calculado = input.cantidad_recibida * tarifa
+
+        detalle_costos_json = json.dumps(detalle_costos) if detalle_costos else None
+
         movimiento = Movimiento(**input.model_dump())
         movimiento.diferencia = diferencia
         movimiento.costo_calculado = costo_calculado
-        
+
         fecha_inicio = None
         fecha_fin = None
         if input.fecha_inicio:
@@ -157,23 +169,23 @@ async def create_movimiento(input: MovimientoCreate, current_user: dict = Depend
                 fecha_fin = datetime.strptime(input.fecha_fin, '%Y-%m-%d').date()
             except (ValueError, TypeError):
                 pass
-        
+
         fecha_esperada = None
         if input.fecha_esperada_movimiento:
             try:
                 fecha_esperada = datetime.strptime(input.fecha_esperada_movimiento, '%Y-%m-%d').date()
             except (ValueError, TypeError):
                 pass
-        
+
         await conn.execute(
-            """INSERT INTO prod_movimientos_produccion (id, registro_id, servicio_id, persona_id, cantidad_enviada, cantidad_recibida, diferencia, costo_calculado, tarifa_aplicada, fecha_inicio, fecha_fin, fecha_esperada_movimiento, responsable_movimiento, observaciones, avance_porcentaje, avance_updated_at, created_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)""",
+            """INSERT INTO prod_movimientos_produccion (id, registro_id, servicio_id, persona_id, cantidad_enviada, cantidad_recibida, diferencia, costo_calculado, tarifa_aplicada, fecha_inicio, fecha_fin, fecha_esperada_movimiento, responsable_movimiento, observaciones, avance_porcentaje, avance_updated_at, created_at, detalle_costos)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)""",
             movimiento.id, movimiento.registro_id, movimiento.servicio_id, movimiento.persona_id,
             movimiento.cantidad_enviada, movimiento.cantidad_recibida, diferencia, costo_calculado,
             tarifa, fecha_inicio, fecha_fin, fecha_esperada, input.responsable_movimiento or None,
             movimiento.observaciones, input.avance_porcentaje,
             datetime.now() if input.avance_porcentaje is not None else None,
-            movimiento.created_at.replace(tzinfo=None)
+            movimiento.created_at.replace(tzinfo=None), detalle_costos_json
         )
         
         # Crear merma si hay diferencia
@@ -224,11 +236,22 @@ async def update_movimiento(movimiento_id: str, input: MovimientoCreate):
                     break
         
         diferencia = input.cantidad_enviada - input.cantidad_recibida
-        costo_calculado = input.cantidad_recibida * tarifa
-        
+
+        # Si hay líneas de detalle, el costo es la suma de subtotales
+        detalle_costos = input.detalle_costos or []
+        if detalle_costos:
+            costo_calculado = sum(
+                (linea.get('cantidad', 0) or 0) * (linea.get('precio_unitario', 0) or 0)
+                for linea in detalle_costos
+            )
+        else:
+            costo_calculado = input.cantidad_recibida * tarifa
+
+        detalle_costos_json = json.dumps(detalle_costos) if detalle_costos else None
+
         # Eliminar mermas anteriores
         await conn.execute("DELETE FROM prod_mermas WHERE movimiento_id = $1", movimiento_id)
-        
+
         fecha_inicio = None
         fecha_fin = None
         if input.fecha_inicio:
@@ -241,18 +264,18 @@ async def update_movimiento(movimiento_id: str, input: MovimientoCreate):
                 fecha_fin = datetime.strptime(input.fecha_fin, '%Y-%m-%d').date()
             except (ValueError, TypeError):
                 pass
-        
+
         fecha_esperada = None
         if input.fecha_esperada_movimiento:
             try:
                 fecha_esperada = datetime.strptime(input.fecha_esperada_movimiento, '%Y-%m-%d').date()
             except (ValueError, TypeError):
                 pass
-        
+
         await conn.execute(
-            """UPDATE prod_movimientos_produccion SET registro_id=$1, servicio_id=$2, persona_id=$3, cantidad_enviada=$4, cantidad_recibida=$5, diferencia=$6, costo_calculado=$7, tarifa_aplicada=$8, fecha_inicio=$9, fecha_fin=$10, fecha_esperada_movimiento=$11, responsable_movimiento=$12, observaciones=$13, avance_porcentaje=$14, avance_updated_at=CASE WHEN $14 IS DISTINCT FROM avance_porcentaje THEN NOW() ELSE avance_updated_at END WHERE id=$15""",
+            """UPDATE prod_movimientos_produccion SET registro_id=$1, servicio_id=$2, persona_id=$3, cantidad_enviada=$4, cantidad_recibida=$5, diferencia=$6, costo_calculado=$7, tarifa_aplicada=$8, fecha_inicio=$9, fecha_fin=$10, fecha_esperada_movimiento=$11, responsable_movimiento=$12, observaciones=$13, avance_porcentaje=$14, avance_updated_at=CASE WHEN $14 IS DISTINCT FROM avance_porcentaje THEN NOW() ELSE avance_updated_at END, detalle_costos=$16 WHERE id=$15""",
             input.registro_id, input.servicio_id, input.persona_id, input.cantidad_enviada, input.cantidad_recibida,
-            diferencia, costo_calculado, tarifa, fecha_inicio, fecha_fin, fecha_esperada, input.responsable_movimiento or None, input.observaciones, input.avance_porcentaje, movimiento_id
+            diferencia, costo_calculado, tarifa, fecha_inicio, fecha_fin, fecha_esperada, input.responsable_movimiento or None, input.observaciones, input.avance_porcentaje, movimiento_id, detalle_costos_json
         )
         
         # Crear nueva merma si hay diferencia

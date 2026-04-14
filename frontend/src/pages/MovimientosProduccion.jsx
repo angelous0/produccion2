@@ -32,7 +32,7 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
-import { Play, Pencil, Trash2, Calendar, Users, Cog, Filter, X, Plus, DollarSign, Search, ChevronsUpDown, Check } from 'lucide-react';
+import { Play, Pencil, Trash2, Calendar, Users, Cog, Filter, X, Plus, DollarSign, Search, ChevronsUpDown, Check, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
 import { formatDate } from '../lib/dateUtils';
@@ -75,6 +75,7 @@ export const MovimientosProduccion = () => {
     cantidad_recibida: 0,
     observaciones: '',
   });
+  const [createDetalle, setCreateDetalle] = useState([]);
 
   // Dialog de edición
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -91,6 +92,10 @@ export const MovimientosProduccion = () => {
     cantidad_recibida: 0,
     observaciones: '',
   });
+  const [editDetalle, setEditDetalle] = useState([]);
+
+  // Expandir detalle en tabla
+  const [expandedRow, setExpandedRow] = useState(null);
 
   // Debounce search
   useEffect(() => {
@@ -172,6 +177,7 @@ export const MovimientosProduccion = () => {
       return tieneEnDetalle || tieneEnServicios || tieneEnIds;
     });
     setPersonasFiltradas(filtradas);
+    setEditDetalle(movimiento.detalle_costos || []);
     setDialogOpen(true);
   };
 
@@ -230,7 +236,8 @@ export const MovimientosProduccion = () => {
     }
 
     try {
-      await axios.put(`${API}/movimientos-produccion/${editingMovimiento.id}`, formData);
+      const payload = { ...formData, detalle_costos: editDetalle.length > 0 ? editDetalle : null };
+      await axios.put(`${API}/movimientos-produccion/${editingMovimiento.id}`, payload);
       toast.success('Movimiento actualizado');
       setDialogOpen(false);
       fetchMovimientos(false);
@@ -264,6 +271,7 @@ export const MovimientosProduccion = () => {
       observaciones: '',
     });
     setPersonasFiltradasCreate([]);
+    setCreateDetalle([]);
     setCreateDialogOpen(true);
   };
 
@@ -304,7 +312,8 @@ export const MovimientosProduccion = () => {
     }
 
     try {
-      await axios.post(`${API}/movimientos-produccion`, createFormData);
+      const payload = { ...createFormData, detalle_costos: createDetalle.length > 0 ? createDetalle : null };
+      await axios.post(`${API}/movimientos-produccion`, payload);
       toast.success('Movimiento creado');
       setCreateDialogOpen(false);
       fetchMovimientos(false);
@@ -329,6 +338,79 @@ export const MovimientosProduccion = () => {
   const getTotalCosto = () => {
     return movimientos.reduce((sum, m) => sum + (m.costo_calculado || m.costo || 0), 0);
   };
+
+  // ===== Detalle de costos helpers =====
+  const addLineaDetalle = (setDetalle) => {
+    setDetalle(prev => [...prev, { descripcion: '', cantidad: 0, precio_unitario: 0 }]);
+  };
+  const updateLineaDetalle = (setDetalle, idx, field, value) => {
+    setDetalle(prev => prev.map((l, i) => i === idx ? { ...l, [field]: value } : l));
+  };
+  const removeLineaDetalle = (setDetalle, idx) => {
+    setDetalle(prev => prev.filter((_, i) => i !== idx));
+  };
+  const calcSubtotalLinea = (linea) => (linea.cantidad || 0) * (linea.precio_unitario || 0);
+  const calcTotalDetalle = (detalle) => detalle.reduce((sum, l) => sum + calcSubtotalLinea(l), 0);
+
+  // Componente inline para sección de detalle
+  const renderDetalleCostos = (detalle, setDetalle) => (
+    <div className="space-y-2 border rounded-lg p-3 bg-muted/20">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs font-semibold flex items-center gap-1.5">
+          <DollarSign className="h-3.5 w-3.5" />
+          Detalle de costos
+        </Label>
+        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => addLineaDetalle(setDetalle)}>
+          <Plus className="h-3 w-3 mr-1" /> Agregar línea
+        </Button>
+      </div>
+      {detalle.length > 0 && (
+        <>
+          <div className="grid grid-cols-[1fr,80px,90px,80px,32px] gap-1.5 text-[10px] font-medium text-muted-foreground px-1">
+            <span>Descripción</span><span className="text-right">Cant.</span><span className="text-right">P. Unit.</span><span className="text-right">Subtotal</span><span />
+          </div>
+          {detalle.map((linea, idx) => (
+            <div key={idx} className="grid grid-cols-[1fr,80px,90px,80px,32px] gap-1.5 items-center">
+              <Input
+                placeholder="Ej: Pretina"
+                value={linea.descripcion}
+                onChange={(e) => updateLineaDetalle(setDetalle, idx, 'descripcion', e.target.value)}
+                className="h-8 text-xs"
+              />
+              <NumericInput
+                min="0"
+                value={linea.cantidad}
+                onChange={(e) => updateLineaDetalle(setDetalle, idx, 'cantidad', parseFloat(e.target.value) || 0)}
+                className="h-8 text-xs text-right font-mono"
+              />
+              <NumericInput
+                min="0"
+                step="0.01"
+                value={linea.precio_unitario}
+                onChange={(e) => updateLineaDetalle(setDetalle, idx, 'precio_unitario', parseFloat(e.target.value) || 0)}
+                className="h-8 text-xs text-right font-mono"
+              />
+              <span className="text-xs font-mono text-right text-green-600 font-medium pr-1">
+                {formatCurrency(calcSubtotalLinea(linea))}
+              </span>
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeLineaDetalle(setDetalle, idx)}>
+                <X className="h-3 w-3 text-destructive" />
+              </Button>
+            </div>
+          ))}
+          <div className="flex justify-end items-center gap-2 pt-1 border-t">
+            <span className="text-xs font-medium text-muted-foreground">Total detalle:</span>
+            <span className="text-sm font-bold font-mono text-green-600">{formatCurrency(calcTotalDetalle(detalle))}</span>
+          </div>
+        </>
+      )}
+      {detalle.length === 0 && (
+        <p className="text-xs text-muted-foreground text-center py-2">
+          Sin líneas de detalle — el costo se calcula como cantidad × tarifa
+        </p>
+      )}
+    </div>
+  );
 
   const hayFiltrosActivos = filtroServicio || filtroPersona || filtroEstado || filtroFechaDesde || filtroFechaHasta || searchTerm;
 
@@ -549,7 +631,18 @@ export const MovimientosProduccion = () => {
                         {(mov.cantidad_recibida ?? mov.cantidad ?? 0).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right font-mono text-green-600">
-                        {(mov.costo_calculado || mov.costo || 0) > 0 ? formatCurrency(mov.costo_calculado || mov.costo) : '-'}
+                        <div className="flex items-center justify-end gap-1">
+                          {(mov.costo_calculado || mov.costo || 0) > 0 ? formatCurrency(mov.costo_calculado || mov.costo) : '-'}
+                          {mov.detalle_costos?.length > 0 && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setExpandedRow(expandedRow === mov.id ? null : mov.id); }}
+                              className="p-0.5 rounded hover:bg-muted"
+                              title="Ver detalle de costos"
+                            >
+                              {expandedRow === mov.id ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            </button>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-center">
                         {(() => {
@@ -578,6 +671,32 @@ export const MovimientosProduccion = () => {
                         </div>
                       </TableCell>
                     </TableRow>
+                    {expandedRow === mov.id && mov.detalle_costos?.length > 0 && (
+                      <TableRow className="bg-muted/30">
+                        <TableCell colSpan={10} className="py-2 px-6">
+                          <div className="text-xs space-y-1">
+                            <span className="font-semibold text-muted-foreground">Detalle de costos:</span>
+                            <div className="grid grid-cols-[1fr,80px,90px,90px] gap-1 text-[10px] font-medium text-muted-foreground">
+                              <span>Descripción</span><span className="text-right">Cant.</span><span className="text-right">P. Unit.</span><span className="text-right">Subtotal</span>
+                            </div>
+                            {mov.detalle_costos.map((l, i) => (
+                              <div key={i} className="grid grid-cols-[1fr,80px,90px,90px] gap-1 text-xs">
+                                <span>{l.descripcion || '—'}</span>
+                                <span className="text-right font-mono">{l.cantidad}</span>
+                                <span className="text-right font-mono">{formatCurrency(l.precio_unitario)}</span>
+                                <span className="text-right font-mono font-medium text-green-600">{formatCurrency((l.cantidad || 0) * (l.precio_unitario || 0))}</span>
+                              </div>
+                            ))}
+                            <div className="grid grid-cols-[1fr,80px,90px,90px] gap-1 text-xs border-t pt-1 font-bold">
+                              <span />
+                              <span />
+                              <span className="text-right text-muted-foreground">Total:</span>
+                              <span className="text-right font-mono text-green-600">{formatCurrency(mov.detalle_costos.reduce((s, l) => s + (l.cantidad || 0) * (l.precio_unitario || 0), 0))}</span>
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
                   ))}
                 </TableBody>
               </Table>
@@ -729,6 +848,9 @@ export const MovimientosProduccion = () => {
                 </div>
               </div>
             )}
+
+            {/* Detalle de costos (edit) */}
+            {renderDetalleCostos(editDetalle, setEditDetalle)}
 
             <div className="space-y-2">
               <Label htmlFor="edit-observaciones">Observaciones</Label>
@@ -940,6 +1062,9 @@ export const MovimientosProduccion = () => {
                 </p>
               </div>
             )}
+
+            {/* Detalle de costos (create) */}
+            {renderDetalleCostos(createDetalle, setCreateDetalle)}
 
             <div className="space-y-2">
               <Label htmlFor="create-observaciones">Observaciones</Label>
