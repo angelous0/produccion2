@@ -17,7 +17,8 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Separator } from '../ui/separator';
 import { NumericInput as NumInput } from '../ui/numeric-input';
 import { MultiSelectColors } from '../MultiSelectColors';
-import { Divide, ArrowRight, Check, ChevronsUpDown, Scissors, Trash2, Plus, Pencil, ArrowLeft, Lock } from 'lucide-react';
+import { Divide, ArrowRight, Check, ChevronsUpDown, Scissors, Trash2, Plus, Pencil, ArrowLeft, Lock, DollarSign, X } from 'lucide-react';
+import { formatCurrency as fmtCur } from '../../lib/utils';
 
 /**
  * Colores Distribution Dialog
@@ -139,6 +140,7 @@ export const MovimientoDialog = ({
   getTarifaPersonaServicio, formatCurrency,
   calcularCostoMovimiento, calcularDiferenciaMovimiento,
   usaRuta, etapasCompletas, movimientosProduccion,
+  detalleCostos = [], setDetalleCostos,
 }) => (
   <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
@@ -352,6 +354,55 @@ export const MovimientoDialog = ({
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Detalle de costos */}
+        {setDetalleCostos && (
+          <div className="space-y-2 border rounded-lg p-3 bg-muted/20">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold flex items-center gap-1.5">
+                <DollarSign className="h-3.5 w-3.5" />
+                Detalle de costos
+              </Label>
+              <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setDetalleCostos(prev => [...prev, { descripcion: '', cantidad: 0, precio_unitario: 0 }])}>
+                <Plus className="h-3 w-3 mr-1" /> Agregar línea
+              </Button>
+            </div>
+            {detalleCostos.length > 0 ? (
+              <>
+                <div className="grid grid-cols-[1fr,80px,90px,80px,32px] gap-1.5 text-[10px] font-medium text-muted-foreground px-1">
+                  <span>Descripción</span><span className="text-right">Cant.</span><span className="text-right">P. Unit.</span><span className="text-right">Subtotal</span><span />
+                </div>
+                {detalleCostos.map((linea, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr,80px,90px,80px,32px] gap-1.5 items-center">
+                    <Input placeholder="Ej: Pretina" value={linea.descripcion}
+                      onChange={(e) => setDetalleCostos(prev => prev.map((l, i) => i === idx ? { ...l, descripcion: e.target.value } : l))}
+                      className="h-8 text-xs" />
+                    <NumericInput min="0" value={linea.cantidad}
+                      onChange={(e) => setDetalleCostos(prev => prev.map((l, i) => i === idx ? { ...l, cantidad: parseFloat(e.target.value) || 0 } : l))}
+                      className="h-8 text-xs text-right font-mono" />
+                    <NumericInput min="0" step="0.01" value={linea.precio_unitario}
+                      onChange={(e) => setDetalleCostos(prev => prev.map((l, i) => i === idx ? { ...l, precio_unitario: parseFloat(e.target.value) || 0 } : l))}
+                      className="h-8 text-xs text-right font-mono" />
+                    <span className="text-xs font-mono text-right text-green-600 font-medium pr-1">
+                      {fmtCur((linea.cantidad || 0) * (linea.precio_unitario || 0))}
+                    </span>
+                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDetalleCostos(prev => prev.filter((_, i) => i !== idx))}>
+                      <X className="h-3 w-3 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+                <div className="flex justify-end items-center gap-2 pt-1 border-t">
+                  <span className="text-xs font-medium text-muted-foreground">Total detalle:</span>
+                  <span className="text-sm font-bold font-mono text-green-600">{fmtCur(detalleCostos.reduce((s, l) => s + (l.cantidad || 0) * (l.precio_unitario || 0), 0))}</span>
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                Sin líneas de detalle — el costo se calcula como cantidad × tarifa
+              </p>
+            )}
           </div>
         )}
 

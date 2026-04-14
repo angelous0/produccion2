@@ -147,6 +147,7 @@ export const RegistroForm = () => {
     cantidad_enviada: 0, cantidad_recibida: 0, tarifa_aplicada: 0,
     fecha_esperada_movimiento: '', observaciones: '', avance_porcentaje: null,
   });
+  const [detalleCostosMovimiento, setDetalleCostosMovimiento] = useState([]);
 
   const [hilosEspecificos, setHilosEspecificos] = useState([]);
   const [modeloPopoverOpen, setModeloPopoverOpen] = useState(false);
@@ -619,6 +620,7 @@ export const RegistroForm = () => {
         return tieneEnDetalle || tieneEnServicios || tieneEnIds;
       });
       setPersonasFiltradas(filtradas);
+      setDetalleCostosMovimiento(movimiento.detalle_costos || []);
     } else {
       setEditingMovimiento(null);
       setMovimientoFormData({
@@ -627,6 +629,7 @@ export const RegistroForm = () => {
         fecha_esperada_movimiento: '', responsable_movimiento: '', observaciones: '', avance_porcentaje: null,
       });
       setPersonasFiltradas([]);
+      setDetalleCostosMovimiento([]);
     }
     setMovimientoDialogOpen(true);
   };
@@ -663,8 +666,9 @@ export const RegistroForm = () => {
     if (movimientoFormData.fecha_inicio && movimientoFormData.fecha_fin && movimientoFormData.fecha_fin <= movimientoFormData.fecha_inicio) { toast.error('La fecha fin debe ser mayor que la fecha inicio'); return; }
     if (movimientoFormData.fecha_inicio && movimientoFormData.fecha_esperada_movimiento && movimientoFormData.fecha_esperada_movimiento <= movimientoFormData.fecha_inicio) { toast.error('La fecha esperada debe ser mayor que la fecha inicio'); return; }
     try {
-      if (editingMovimiento) { await axios.put(`${API}/movimientos-produccion/${editingMovimiento.id}`, { ...movimientoFormData, registro_id: id }); toast.success('Movimiento actualizado'); }
-      else { await axios.post(`${API}/movimientos-produccion`, { ...movimientoFormData, registro_id: id }); toast.success('Movimiento registrado'); }
+      const payload = { ...movimientoFormData, registro_id: id, detalle_costos: detalleCostosMovimiento.length > 0 ? detalleCostosMovimiento : null };
+      if (editingMovimiento) { await axios.put(`${API}/movimientos-produccion/${editingMovimiento.id}`, payload); toast.success('Movimiento actualizado'); }
+      else { await axios.post(`${API}/movimientos-produccion`, payload); toast.success('Movimiento registrado'); }
       setMovimientoDialogOpen(false); setEditingMovimiento(null); await fetchMovimientosProduccion();
       // Sugerencia bidireccional
       if (usaRuta && etapasCompletas.length > 0) {
@@ -1165,6 +1169,7 @@ export const RegistroForm = () => {
         getTarifaPersonaServicio={getTarifaPersonaServicio} formatCurrency={formatCurrency}
         calcularCostoMovimiento={calcularCostoMovimiento} calcularDiferenciaMovimiento={calcularDiferenciaMovimiento}
         usaRuta={usaRuta} etapasCompletas={etapasCompletas} movimientosProduccion={movimientosProduccion}
+        detalleCostos={detalleCostosMovimiento} setDetalleCostos={setDetalleCostosMovimiento}
       />
 
       <SugerenciaEstadoDialog dialog={sugerenciaEstadoDialog} onClose={() => setSugerenciaEstadoDialog(null)}
