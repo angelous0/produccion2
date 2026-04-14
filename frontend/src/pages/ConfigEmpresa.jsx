@@ -179,7 +179,6 @@ export default function ConfigEmpresa() {
               checked={modoMigracion}
               onCheckedChange={handleToggleMigracion}
               disabled={savingMigracion}
-              className="data-[state=unchecked]:bg-gray-300 dark:data-[state=unchecked]:bg-gray-600"
             />
           </div>
 
