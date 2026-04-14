@@ -77,11 +77,12 @@ def _read_excel(content: bytes):
     registros_data = sheet_to_dicts(wb["Registros"]) if "Registros" in wb.sheetnames else []
     movimientos_data = sheet_to_dicts(wb["Movimientos"]) if "Movimientos" in wb.sheetnames else []
     tallas_data = sheet_to_dicts(wb["Tallas"]) if "Tallas" in wb.sheetnames else []
+    materiales_data = sheet_to_dicts(wb["Materiales"]) if "Materiales" in wb.sheetnames else []
 
-    return registros_data, movimientos_data, tallas_data
+    return registros_data, movimientos_data, tallas_data, materiales_data
 
 
-async def _validate(registros_data, movimientos_data, tallas_data, conn):
+async def _validate(registros_data, movimientos_data, tallas_data, materiales_data, conn):
     """Valida datos y devuelve errores/advertencias + datos procesados."""
     errors = []
     warnings = []
@@ -267,12 +268,47 @@ async def _validate(registros_data, movimientos_data, tallas_data, conn):
         }
         movimientos_por_corte.setdefault(n_corte, []).append(mov)
 
+    # ── validar materiales ──
+    items_by_codigo = {r["codigo"].strip().lower(): {"id": str(r["id"]), "nombre": r["nombre"], "unidad": r["unidad_medida"]}
+                       for r in await conn.fetch("SELECT id, codigo, nombre, unidad_medida FROM prod_inventario WHERE codigo IS NOT NULL AND codigo != ''")}
+    materiales_por_corte = {}
+    for row in materiales_data:
+        rn = row["_row"]
+        n_corte = _clean_str(row.get("N_Corte"))
+        if not n_corte:
+            errors.append({"row": rn, "sheet": "Materiales", "msg": "N_Corte es obligatorio"})
+            continue
+        if n_corte not in n_corte_map:
+            errors.append({"row": rn, "sheet": "Materiales", "msg": f"N_Corte '{n_corte}' no existe en pestaña Registros"})
+            continue
+
+        codigo = _clean_str(row.get("Item_Codigo")).lower()
+        if not codigo:
+            errors.append({"row": rn, "sheet": "Materiales", "msg": "Item_Codigo es obligatorio"})
+            continue
+        item_info = items_by_codigo.get(codigo)
+        if not item_info:
+            errors.append({"row": rn, "sheet": "Materiales", "msg": f"Item con código '{row.get('Item_Codigo')}' no existe en inventario"})
+            continue
+
+        cantidad = float(_parse_num(row.get("Cantidad"), 0))
+        if cantidad <= 0:
+            errors.append({"row": rn, "sheet": "Materiales", "msg": "Cantidad debe ser mayor a 0"})
+            continue
+
+        materiales_por_corte.setdefault(n_corte, []).append({
+            "item_id": item_info["id"],
+            "cantidad": cantidad,
+            "observaciones": _clean_str(row.get("Observaciones")) or None,
+        })
+
     return {
         "errors": errors,
         "warnings": warnings,
         "registros": n_corte_map,
         "tallas": tallas_por_corte,
         "movimientos": movimientos_por_corte,
+        "materiales": materiales_por_corte,
     }
 
 
@@ -338,6 +374,12 @@ async def download_template():
     talla_headers = ["N_Corte"] + TALLA_COLS
     talla_example = ["C-001", "", 100, 150, 150, 100, "", "", "", "", "", "", "", "", ""]
     style_header(ws3, talla_headers, talla_example)
+
+    # ── Pestaña Materiales ──
+    ws4 = wb.create_sheet("Materiales")
+    mat_headers = ["N_Corte", "Item_Codigo", "Item_Nombre", "Cantidad", "Unidad", "Observaciones"]
+    mat_example = ["C-001", "AVI-018", "Cierre Azul", 338, "unidad", "Opcional"]
+    style_header(ws4, mat_headers, mat_example)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -417,6 +459,16 @@ async def export_registro_template(registro_id: str):
             ORDER BY mp.created_at
         """, registro_id)
 
+        # Materiales manuales
+        materiales = await conn.fetch("""
+            SELECT i.codigo, i.nombre, i.unidad_medida,
+                   r.cantidad_requerida, r.observaciones
+            FROM prod_registro_requerimiento_mp r
+            JOIN prod_inventario i ON i.id = r.item_id
+            WHERE r.registro_id = $1 AND r.origen = 'MANUAL'
+            ORDER BY r.created_at
+        """, registro_id)
+
     # ── Build Excel ──
     wb = openpyxl.Workbook()
     header_font = Font(bold=True, color="FFFFFF", size=11)
@@ -488,6 +540,17 @@ async def export_registro_template(registro_id: str):
     write_headers(ws3, talla_headers)
     write_row(ws3, 2, [reg['n_corte']] + [talla_map.get(t, '') for t in TALLA_COLS])
 
+    # Pestaña Materiales
+    ws4 = wb.create_sheet("Materiales")
+    mat_headers = ["N_Corte", "Item_Codigo", "Item_Nombre", "Cantidad", "Unidad", "Observaciones"]
+    write_headers(ws4, mat_headers)
+    for i, mat in enumerate(materiales, 2):
+        write_row(ws4, i, [
+            reg['n_corte'], mat['codigo'] or '', mat['nombre'] or '',
+            float(mat['cantidad_requerida'] or 0), mat['unidad_medida'] or '',
+            mat['observaciones'] or '',
+        ])
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -506,17 +569,18 @@ async def export_registro_template(registro_id: str):
 async def validate_import(file: UploadFile = File(...), user=Depends(get_current_user)):
     content = await file.read()
     try:
-        registros_data, movimientos_data, tallas_data = _read_excel(content)
+        registros_data, movimientos_data, tallas_data, materiales_data = _read_excel(content)
     except Exception as e:
         raise HTTPException(400, f"Error al leer Excel: {e}")
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        result = await _validate(registros_data, movimientos_data, tallas_data, conn)
+        result = await _validate(registros_data, movimientos_data, tallas_data, materiales_data, conn)
 
     regs = result["registros"]
     movs = result["movimientos"]
     talls = result["tallas"]
+    mats = result["materiales"]
 
     # Build preview
     preview = []
@@ -530,6 +594,7 @@ async def validate_import(file: UploadFile = File(...), user=Depends(get_current
             "prendas": reg["prendas_total"],
             "movimientos": len(movs.get(nc, [])),
             "tallas": len(talls.get(nc, [])),
+            "materiales": len(mats.get(nc, [])),
         })
 
     return {
@@ -537,6 +602,7 @@ async def validate_import(file: UploadFile = File(...), user=Depends(get_current
         "total_registros": len(regs),
         "total_movimientos": sum(len(v) for v in movs.values()),
         "total_tallas": sum(len(v) for v in talls.values()),
+        "total_materiales": sum(len(v) for v in mats.values()),
         "errors": result["errors"],
         "warnings": result["warnings"],
         "preview": preview,
@@ -549,13 +615,13 @@ async def validate_import(file: UploadFile = File(...), user=Depends(get_current
 async def execute_import(file: UploadFile = File(...), empresa_id: int = Query(8), user=Depends(get_current_user)):
     content = await file.read()
     try:
-        registros_data, movimientos_data, tallas_data = _read_excel(content)
+        registros_data, movimientos_data, tallas_data, materiales_data = _read_excel(content)
     except Exception as e:
         raise HTTPException(400, f"Error al leer Excel: {e}")
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        result = await _validate(registros_data, movimientos_data, tallas_data, conn)
+        result = await _validate(registros_data, movimientos_data, tallas_data, materiales_data, conn)
 
         if result["errors"]:
             raise HTTPException(400, detail={"message": "Hay errores de validación", "errors": result["errors"]})
@@ -563,11 +629,13 @@ async def execute_import(file: UploadFile = File(...), empresa_id: int = Query(8
         regs = result["registros"]
         movs = result["movimientos"]
         talls = result["tallas"]
+        mats = result["materiales"]
 
         async with conn.transaction():
             registros_creados = 0
             movimientos_creados = 0
             tallas_creadas = 0
+            materiales_creados = 0
 
             for n_corte, reg in regs.items():
                 # Build tallas JSON
@@ -632,9 +700,24 @@ async def execute_import(file: UploadFile = File(...), empresa_id: int = Query(8
                     )
                     movimientos_creados += 1
 
+                # INSERT materiales manuales
+                for mat in mats.get(n_corte, []):
+                    await conn.execute("""
+                        INSERT INTO prod_registro_requerimiento_mp (
+                            id, registro_id, item_id, talla_id,
+                            cantidad_requerida, cantidad_reservada, cantidad_consumida,
+                            estado, empresa_id, origen, observaciones
+                        ) VALUES ($1,$2,$3,NULL,$4,0,0,'PENDIENTE',$5,'MANUAL',$6)
+                    """,
+                        str(uuid.uuid4()), reg["id"], mat["item_id"],
+                        mat["cantidad"], empresa_id, mat.get("observaciones", ""),
+                    )
+                    materiales_creados += 1
+
     return {
         "success": True,
         "registros_creados": registros_creados,
         "movimientos_creados": movimientos_creados,
         "tallas_creadas": tallas_creadas,
+        "materiales_creados": materiales_creados,
     }

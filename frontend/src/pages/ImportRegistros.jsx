@@ -204,7 +204,7 @@ export default function ImportRegistros() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="grid grid-cols-4 gap-4 text-center">
                 <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20">
                   <div className="text-2xl font-bold text-blue-600">{validation.total_registros}</div>
                   <div className="text-xs text-muted-foreground">Registros</div>
@@ -216,6 +216,10 @@ export default function ImportRegistros() {
                 <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
                   <div className="text-2xl font-bold text-emerald-600">{validation.total_tallas}</div>
                   <div className="text-xs text-muted-foreground">Tallas</div>
+                </div>
+                <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-900/20">
+                  <div className="text-2xl font-bold text-orange-600">{validation.total_materiales || 0}</div>
+                  <div className="text-xs text-muted-foreground">Materiales</div>
                 </div>
               </div>
             </CardContent>
@@ -335,7 +339,7 @@ export default function ImportRegistros() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="grid grid-cols-4 gap-4 text-center">
               <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20">
                 <div className="text-3xl font-bold text-green-600">{result.registros_creados}</div>
                 <div className="text-sm text-muted-foreground">Registros creados</div>
@@ -347,6 +351,10 @@ export default function ImportRegistros() {
               <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20">
                 <div className="text-3xl font-bold text-green-600">{result.tallas_creadas}</div>
                 <div className="text-sm text-muted-foreground">Tallas asignadas</div>
+              </div>
+              <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20">
+                <div className="text-3xl font-bold text-green-600">{result.materiales_creados || 0}</div>
+                <div className="text-sm text-muted-foreground">Materiales creados</div>
               </div>
             </div>
             <div className="flex items-center gap-3">
