@@ -407,7 +407,17 @@ export const RegistroDatosCard = ({
           </div>
           <div className="space-y-2">
             <Label>Línea de Negocio</Label>
-            {formData.linea_negocio_id ? (
+            {modoManual ? (
+              <Select value={formData.linea_negocio_id ? String(formData.linea_negocio_id) : "none"} onValueChange={(value) => setFormData({ ...formData, linea_negocio_id: value === "none" ? null : Number(value) })}>
+                <SelectTrigger data-testid="select-linea-negocio"><SelectValue placeholder="Seleccionar línea de negocio" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin línea asignada</SelectItem>
+                  {lineasNegocio.map((l) => (
+                    <SelectItem key={l.id} value={String(l.id)}>{l.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : formData.linea_negocio_id ? (
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-xs" data-testid="badge-linea-negocio">
                   {lineasNegocio.find(l => l.id === formData.linea_negocio_id)?.nombre || `Línea #${formData.linea_negocio_id}`}
