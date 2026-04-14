@@ -77,10 +77,14 @@ export const RegistroForm = () => {
   const [modeloManualForm, setModeloManualForm] = useState({
     marca_id: '', marca_texto: '', marca_modo: 'select',
     tipo_id: '', tipo_texto: '', tipo_modo: 'select',
-    tela_id: '', tela_texto: '', tela_modo: 'select',
     entalle_id: '', entalle_texto: '', entalle_modo: 'select',
-    nombre_modelo: '', hilo: '', hilo_especifico: '',
+    tela_id: '', tela_texto: '', tela_modo: 'select',
+    hilo_id: '', hilo_texto: '', hilo_modo: 'select',
+    hilo_especifico_id: '', hilo_especifico_texto: '', hilo_especifico_modo: 'select',
+    nombre_modelo: '',
   });
+  const [catalogoHilos, setCatalogoHilos] = useState([]);
+  const [catalogoHilosEsp, setCatalogoHilosEsp] = useState([]);
 
   const [modeloSeleccionado, setModeloSeleccionado] = useState(null);
   const [tallasSeleccionadas, setTallasSeleccionadas] = useState([]);
@@ -205,6 +209,8 @@ export const RegistroForm = () => {
     axios.get(`${API}/tipos`).then(r => setCatalogoTipos(r.data)).catch(() => {});
     axios.get(`${API}/telas`).then(r => setCatalogoTelas(r.data)).catch(() => {});
     axios.get(`${API}/entalles`).then(r => setCatalogoEntalles(r.data)).catch(() => {});
+    axios.get(`${API}/hilos`).then(r => setCatalogoHilos(r.data)).catch(() => {});
+    axios.get(`${API}/hilos-especificos`).then(r => setCatalogoHilosEsp(r.data)).catch(() => {});
     // Datos para dialogos (se cargan en segundo plano, no bloquean render)
     setTimeout(() => {
       axios.get(`${API}/inventario?all=true`).then(r => setItemsInventario(r.data)).catch(() => {});
@@ -274,9 +280,11 @@ export const RegistroForm = () => {
         setModeloManualForm({
           marca_id: mm.marca_id || '', marca_texto: mm.marca_texto || '', marca_modo: mm.marca_id ? 'select' : (mm.marca_texto ? 'text' : 'select'),
           tipo_id: mm.tipo_id || '', tipo_texto: mm.tipo_texto || '', tipo_modo: mm.tipo_id ? 'select' : (mm.tipo_texto ? 'text' : 'select'),
-          tela_id: mm.tela_id || '', tela_texto: mm.tela_texto || '', tela_modo: mm.tela_id ? 'select' : (mm.tela_texto ? 'text' : 'select'),
           entalle_id: mm.entalle_id || '', entalle_texto: mm.entalle_texto || '', entalle_modo: mm.entalle_id ? 'select' : (mm.entalle_texto ? 'text' : 'select'),
-          nombre_modelo: mm.nombre_modelo || '', hilo: mm.hilo || '', hilo_especifico: mm.hilo_especifico || '',
+          tela_id: mm.tela_id || '', tela_texto: mm.tela_texto || '', tela_modo: mm.tela_id ? 'select' : (mm.tela_texto ? 'text' : 'select'),
+          hilo_id: mm.hilo_id || '', hilo_texto: mm.hilo_texto || mm.hilo || '', hilo_modo: mm.hilo_id ? 'select' : (mm.hilo_texto || mm.hilo ? 'text' : 'select'),
+          hilo_especifico_id: mm.hilo_especifico_id || '', hilo_especifico_texto: mm.hilo_especifico_texto || mm.hilo_especifico || '', hilo_especifico_modo: mm.hilo_especifico_id ? 'select' : (mm.hilo_especifico_texto || mm.hilo_especifico ? 'text' : 'select'),
+          nombre_modelo: mm.nombre_modelo || '',
         });
       }
       setTallasSeleccionadas(registro.tallas || []);
@@ -742,8 +750,10 @@ export const RegistroForm = () => {
           entalle_id: modeloManualForm.entalle_modo === 'select' ? modeloManualForm.entalle_id || null : null,
           entalle_texto: modeloManualForm.entalle_modo === 'text' ? modeloManualForm.entalle_texto : (catalogoEntalles.find(e => e.id === modeloManualForm.entalle_id)?.nombre || null),
           nombre_modelo: modeloManualForm.nombre_modelo || null,
-          hilo: modeloManualForm.hilo || null,
-          hilo_especifico: modeloManualForm.hilo_especifico || null,
+          hilo_id: modeloManualForm.hilo_modo === 'select' ? modeloManualForm.hilo_id || null : null,
+          hilo_texto: modeloManualForm.hilo_modo === 'text' ? modeloManualForm.hilo_texto : (catalogoHilos.find(h => h.id === modeloManualForm.hilo_id)?.nombre || null),
+          hilo_especifico_id: modeloManualForm.hilo_especifico_modo === 'select' ? modeloManualForm.hilo_especifico_id || null : null,
+          hilo_especifico_texto: modeloManualForm.hilo_especifico_modo === 'text' ? modeloManualForm.hilo_especifico_texto : (catalogoHilosEsp.find(h => h.id === modeloManualForm.hilo_especifico_id)?.nombre || null),
         };
       } else {
         payload.modelo_manual = null;
@@ -982,6 +992,9 @@ export const RegistroForm = () => {
                   modeloManualForm={modeloManualForm} setModeloManualForm={setModeloManualForm}
                   catalogoMarcas={catalogoMarcas} catalogoTipos={catalogoTipos}
                   catalogoTelas={catalogoTelas} catalogoEntalles={catalogoEntalles}
+                  catalogoHilos={catalogoHilos} catalogoHilosEsp={catalogoHilosEsp}
+                  setCatalogoTipos={setCatalogoTipos} setCatalogoEntalles={setCatalogoEntalles}
+                  setCatalogoTelas={setCatalogoTelas} setCatalogoHilos={setCatalogoHilos}
                 />
               </>
             ) : (

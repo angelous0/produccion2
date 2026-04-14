@@ -1,4 +1,5 @@
 import React from 'react';
+import axios from 'axios';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
@@ -63,6 +64,8 @@ export const RegistroDatosCard = ({
   modoManual, setModoManual,
   modeloManualForm, setModeloManualForm,
   catalogoMarcas = [], catalogoTipos = [], catalogoTelas = [], catalogoEntalles = [],
+  catalogoHilos = [], catalogoHilosEsp = [],
+  setCatalogoTipos, setCatalogoEntalles, setCatalogoTelas, setCatalogoHilos,
 }) => {
   const handleToggleManual = () => {
     if (!modoManual) {
@@ -73,20 +76,51 @@ export const RegistroDatosCard = ({
       setModeloManualForm({
         marca_id: '', marca_texto: '', marca_modo: 'select',
         tipo_id: '', tipo_texto: '', tipo_modo: 'select',
-        tela_id: '', tela_texto: '', tela_modo: 'select',
         entalle_id: '', entalle_texto: '', entalle_modo: 'select',
-        nombre_modelo: '', hilo: '', hilo_especifico: '',
+        tela_id: '', tela_texto: '', tela_modo: 'select',
+        hilo_id: '', hilo_texto: '', hilo_modo: 'select',
+        hilo_especifico_id: '', hilo_especifico_texto: '', hilo_especifico_modo: 'select',
+        nombre_modelo: '',
       });
     }
   };
 
+  const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+  // Cascade: field → children to clear + fetch filtered children
+  const cascadeConfig = {
+    marca:   { children: ['tipo', 'entalle', 'tela', 'hilo', 'hilo_especifico'], fetch: (id) => setCatalogoTipos && axios.get(`${API}/tipos${id ? `?marca_id=${id}` : ''}`).then(r => setCatalogoTipos(r.data)).catch(() => {}) },
+    tipo:    { children: ['entalle', 'tela', 'hilo', 'hilo_especifico'], fetch: (id) => setCatalogoEntalles && axios.get(`${API}/entalles${id ? `?tipo_id=${id}` : ''}`).then(r => setCatalogoEntalles(r.data)).catch(() => {}) },
+    entalle: { children: ['tela', 'hilo', 'hilo_especifico'], fetch: (id) => setCatalogoTelas && axios.get(`${API}/telas${id ? `?entalle_id=${id}` : ''}`).then(r => setCatalogoTelas(r.data)).catch(() => {}) },
+    tela:    { children: ['hilo', 'hilo_especifico'], fetch: (id) => setCatalogoHilos && axios.get(`${API}/hilos${id ? `?tela_id=${id}` : ''}`).then(r => setCatalogoHilos(r.data)).catch(() => {}) },
+    hilo:    { children: ['hilo_especifico'], fetch: null },
+    hilo_especifico: { children: [], fetch: null },
+  };
+
   const updateManualField = (field, { modo, id, texto }) => {
-    setModeloManualForm(prev => ({
-      ...prev,
-      [`${field}_modo`]: modo,
-      [`${field}_id`]: id,
-      [`${field}_texto`]: texto,
-    }));
+    setModeloManualForm(prev => {
+      const next = {
+        ...prev,
+        [`${field}_modo`]: modo,
+        [`${field}_id`]: id,
+        [`${field}_texto`]: texto,
+      };
+      // Clear all downstream children
+      const cfg = cascadeConfig[field];
+      if (cfg) {
+        for (const child of cfg.children) {
+          next[`${child}_id`] = '';
+          next[`${child}_texto`] = '';
+          next[`${child}_modo`] = 'select';
+        }
+      }
+      return next;
+    });
+    // Fetch filtered children catalog
+    const cfg = cascadeConfig[field];
+    if (cfg?.fetch && modo === 'select') {
+      cfg.fetch(id);
+    }
   };
   return (
     <Card>
@@ -451,6 +485,12 @@ export const RegistroDatosCard = ({
             <p className="text-xs font-medium text-amber-800 dark:text-amber-400 flex items-center gap-1">
               <PenLine className="h-3.5 w-3.5" /> Datos del modelo (ingreso manual)
             </p>
+            <div className="space-y-1">
+              <Label className="text-xs">Nombre del modelo</Label>
+              <Input value={modeloManualForm.nombre_modelo}
+                onChange={(e) => setModeloManualForm({ ...modeloManualForm, nombre_modelo: e.target.value })}
+                placeholder="Ej: Pantalón Cargo Ripstop 2022" className="text-sm" data-testid="input-nombre-modelo" />
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <CampoCascada label="Marca" items={catalogoMarcas}
                 selectedId={modeloManualForm.marca_id} texto={modeloManualForm.marca_texto}
@@ -460,34 +500,22 @@ export const RegistroDatosCard = ({
                 selectedId={modeloManualForm.tipo_id} texto={modeloManualForm.tipo_texto}
                 modo={modeloManualForm.tipo_modo}
                 onChange={(v) => updateManualField('tipo', v)} />
-              <CampoCascada label="Tela" items={catalogoTelas}
-                selectedId={modeloManualForm.tela_id} texto={modeloManualForm.tela_texto}
-                modo={modeloManualForm.tela_modo}
-                onChange={(v) => updateManualField('tela', v)} />
               <CampoCascada label="Entalle" items={catalogoEntalles}
                 selectedId={modeloManualForm.entalle_id} texto={modeloManualForm.entalle_texto}
                 modo={modeloManualForm.entalle_modo}
                 onChange={(v) => updateManualField('entalle', v)} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Nombre del modelo</Label>
-              <Input value={modeloManualForm.nombre_modelo}
-                onChange={(e) => setModeloManualForm({ ...modeloManualForm, nombre_modelo: e.target.value })}
-                placeholder="Ej: Pantalón Cargo Ripstop 2022" className="text-sm" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Hilo</Label>
-                <Input value={modeloManualForm.hilo}
-                  onChange={(e) => setModeloManualForm({ ...modeloManualForm, hilo: e.target.value })}
-                  placeholder="Hilo..." className="text-sm" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Hilo específico</Label>
-                <Input value={modeloManualForm.hilo_especifico}
-                  onChange={(e) => setModeloManualForm({ ...modeloManualForm, hilo_especifico: e.target.value })}
-                  placeholder="Hilo específico..." className="text-sm" />
-              </div>
+              <CampoCascada label="Tela" items={catalogoTelas}
+                selectedId={modeloManualForm.tela_id} texto={modeloManualForm.tela_texto}
+                modo={modeloManualForm.tela_modo}
+                onChange={(v) => updateManualField('tela', v)} />
+              <CampoCascada label="Hilo" items={catalogoHilos}
+                selectedId={modeloManualForm.hilo_id} texto={modeloManualForm.hilo_texto}
+                modo={modeloManualForm.hilo_modo}
+                onChange={(v) => updateManualField('hilo', v)} />
+              <CampoCascada label="Hilo específico" items={catalogoHilosEsp}
+                selectedId={modeloManualForm.hilo_especifico_id} texto={modeloManualForm.hilo_especifico_texto}
+                modo={modeloManualForm.hilo_especifico_modo}
+                onChange={(v) => updateManualField('hilo_especifico', v)} />
             </div>
           </div>
         )}
