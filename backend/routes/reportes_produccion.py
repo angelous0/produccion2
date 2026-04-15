@@ -67,11 +67,10 @@ async def dashboard_kpis(
                    COALESCE(SUM((SELECT COALESCE(SUM(rt.cantidad_real),0) FROM prod_registro_tallas rt WHERE rt.registro_id = r.id)),0) as prendas
             FROM prod_registros r
             LEFT JOIN prod_modelos m ON r.modelo_id = m.id
-            WHERE r.empresa_id = $1
-              AND r.dividido_desde_registro_id IS NULL
+            WHERE r.dividido_desde_registro_id IS NULL
               {linea_filter}
             GROUP BY r.estado_op
-        """, empresa_id)
+        """)
 
         total_en_proceso = 0
         total_prendas_proceso = 0
@@ -88,21 +87,19 @@ async def dashboard_kpis(
             SELECT r.estado, COUNT(*) as cnt,
                    COALESCE(SUM((SELECT COALESCE(SUM(rt.cantidad_real),0) FROM prod_registro_tallas rt WHERE rt.registro_id = r.id)),0) as prendas
             FROM prod_registros r
-            WHERE r.empresa_id = $1
-              AND r.estado_op IN ('ABIERTA', 'EN_PROCESO')
+            WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
               AND r.dividido_desde_registro_id IS NULL
               {linea_filter}
             GROUP BY r.estado
             ORDER BY cnt DESC
-        """, empresa_id)
+        """)
         dist_estado = [{"estado": r["estado"], "cantidad": int(r["cnt"]), "prendas": int(r["prendas"])} for r in rows_estado]
 
         # KPI 3: Lotes atrasados
         atrasados_count = await conn.fetchval("""
             SELECT COUNT(DISTINCT r.id)
             FROM prod_registros r
-            WHERE r.empresa_id = $1
-              AND r.estado_op IN ('ABIERTA', 'EN_PROCESO')
+            WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
               AND (
                 r.fecha_entrega_final < CURRENT_DATE
                 OR EXISTS (
@@ -112,33 +109,31 @@ async def dashboard_kpis(
                       AND mp.fecha_fin IS NULL
                 )
               )
-        """, empresa_id)
+        """)
 
         # KPI 4: Movimientos abiertos (sin fecha_fin)
         movs_abiertos = await conn.fetchval("""
             SELECT COUNT(*)
             FROM prod_movimientos_produccion mp
             JOIN prod_registros r ON mp.registro_id = r.id
-            WHERE r.empresa_id = $1
-              AND r.estado_op IN ('ABIERTA', 'EN_PROCESO')
+            WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
               AND mp.fecha_fin IS NULL
-        """, empresa_id)
+        """)
 
         # KPI 5: Prendas por servicio (top 10)
         rows_srv = await conn.fetch("""
-            SELECT sp.nombre as servicio, 
+            SELECT sp.nombre as servicio,
                    COUNT(DISTINCT mp.registro_id) as lotes,
                    COALESCE(SUM(mp.cantidad_enviada),0) as enviadas,
                    COALESCE(SUM(mp.cantidad_recibida),0) as recibidas
             FROM prod_movimientos_produccion mp
             JOIN prod_registros r ON mp.registro_id = r.id
             JOIN prod_servicios_produccion sp ON mp.servicio_id = sp.id
-            WHERE r.empresa_id = $1
-              AND r.estado_op IN ('ABIERTA', 'EN_PROCESO')
+            WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
             GROUP BY sp.nombre
             ORDER BY lotes DESC
             LIMIT 10
-        """, empresa_id)
+        """)
         por_servicio = [
             {"servicio": r["servicio"], "lotes": int(r["lotes"]),
              "enviadas": safe_int(r["enviadas"]), "recibidas": safe_int(r["recibidas"])}
@@ -148,8 +143,8 @@ async def dashboard_kpis(
         # KPI 6: Lotes fraccionados count
         fraccionados = await conn.fetchval("""
             SELECT COUNT(*) FROM prod_registros
-            WHERE empresa_id = $1 AND dividido_desde_registro_id IS NOT NULL
-        """, empresa_id)
+            WHERE dividido_desde_registro_id IS NOT NULL
+        """)
 
         return {
             "total_en_proceso": total_en_proceso,
@@ -193,10 +188,9 @@ async def produccion_en_proceso(
             LEFT JOIN prod_modelos m ON r.modelo_id = m.id
             LEFT JOIN prod_marcas ma ON m.marca_id = ma.id
             LEFT JOIN prod_rutas_produccion rp ON m.ruta_produccion_id = rp.id
-            WHERE r.empresa_id = $1
-              AND r.estado_op IN ('ABIERTA', 'EN_PROCESO')
+            WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
         """
-        params = [empresa_id]
+        params = []
 
         if estado:
             params.append(estado)
@@ -247,12 +241,11 @@ async def wip_por_etapa(
                    MIN(r.fecha_creacion) as lote_mas_antiguo,
                    COUNT(*) FILTER (WHERE r.urgente = true) as urgentes
             FROM prod_registros r
-            WHERE r.empresa_id = $1
-              AND r.estado_op IN ('ABIERTA', 'EN_PROCESO')
+            WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
               AND r.dividido_desde_registro_id IS NULL
             GROUP BY r.estado
             ORDER BY lotes DESC
-        """, empresa_id)
+        """)
 
         etapas = []
         for r in rows:
@@ -289,14 +282,13 @@ async def lotes_atrasados(
                    (SELECT COUNT(*) FROM prod_movimientos_produccion mp
                     WHERE mp.registro_id = r.id AND mp.fecha_esperada_movimiento < CURRENT_DATE AND mp.fecha_fin IS NULL) as movs_vencidos,
                    -- Días de atraso
-                   CASE WHEN r.fecha_entrega_final < CURRENT_DATE 
-                        THEN (CURRENT_DATE - r.fecha_entrega_final) 
+                   CASE WHEN r.fecha_entrega_final < CURRENT_DATE
+                        THEN (CURRENT_DATE - r.fecha_entrega_final)
                         ELSE 0 END as dias_atraso_entrega
             FROM prod_registros r
             LEFT JOIN prod_modelos m ON r.modelo_id = m.id
             LEFT JOIN prod_marcas ma ON m.marca_id = ma.id
-            WHERE r.empresa_id = $1
-              AND r.estado_op IN ('ABIERTA', 'EN_PROCESO')
+            WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
               AND (
                 r.fecha_entrega_final < CURRENT_DATE
                 OR EXISTS (
@@ -307,7 +299,7 @@ async def lotes_atrasados(
                 )
               )
             ORDER BY dias_atraso_entrega DESC NULLS LAST, r.urgente DESC
-        """, empresa_id)
+        """)
 
         registros = []
         for r in rows:
@@ -437,12 +429,11 @@ async def cumplimiento_ruta(
             FROM prod_registros r
             LEFT JOIN prod_modelos m ON r.modelo_id = m.id
             LEFT JOIN prod_rutas_produccion rp ON m.ruta_produccion_id = rp.id
-            WHERE r.empresa_id = $1
-              AND r.estado_op IN ('ABIERTA', 'EN_PROCESO')
+            WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
               AND r.dividido_desde_registro_id IS NULL
               AND rp.id IS NOT NULL
         """
-        params = [empresa_id]
+        params = []
         if ruta_id:
             params.append(ruta_id)
             query += f" AND rp.id = ${len(params)}"
@@ -556,15 +547,18 @@ async def balance_terceros(
             JOIN prod_registros r ON mp.registro_id = r.id
             JOIN prod_servicios_produccion sp ON mp.servicio_id = sp.id
             LEFT JOIN prod_personas_produccion pp ON mp.persona_id = pp.id
-            WHERE r.empresa_id = $1
         """
-        params = [empresa_id]
+        params = []
+        where_clauses_srv = []
         if servicio_id:
             params.append(servicio_id)
-            query_srv += f" AND mp.servicio_id = ${len(params)}"
+            where_clauses_srv.append(f"mp.servicio_id = ${len(params)}")
         if persona_id:
             params.append(persona_id)
-            query_srv += f" AND mp.persona_id = ${len(params)}"
+            where_clauses_srv.append(f"mp.persona_id = ${len(params)}")
+
+        if where_clauses_srv:
+            query_srv += " WHERE " + " AND ".join(where_clauses_srv)
 
         query_srv += " GROUP BY sp.id, sp.nombre, pp.id, pp.nombre, pp.tipo_persona ORDER BY costo_total DESC"
         rows = await conn.fetch(query_srv, *params)
@@ -628,10 +622,9 @@ async def lotes_fraccionados(
                    FROM prod_registros h WHERE h.dividido_desde_registro_id = p.id) as hijos
             FROM prod_registros p
             LEFT JOIN prod_modelos mo ON p.modelo_id = mo.id
-            WHERE p.empresa_id = $1
-              AND EXISTS (SELECT 1 FROM prod_registros h WHERE h.dividido_desde_registro_id = p.id)
+            WHERE EXISTS (SELECT 1 FROM prod_registros h WHERE h.dividido_desde_registro_id = p.id)
             ORDER BY p.fecha_creacion DESC
-        """, empresa_id)
+        """)
 
         familias = []
         for r in rows:
@@ -670,8 +663,8 @@ async def get_filtros_reportes(
         rutas = await conn.fetch("SELECT id, nombre FROM prod_rutas_produccion ORDER BY nombre")
         modelos = await conn.fetch("SELECT id, nombre FROM prod_modelos ORDER BY nombre")
         estados = await conn.fetch("""
-            SELECT DISTINCT estado FROM prod_registros WHERE empresa_id = $1 AND estado_op IN ('ABIERTA','EN_PROCESO') ORDER BY estado
-        """, empresa_id)
+            SELECT DISTINCT estado FROM prod_registros WHERE estado_op IN ('ABIERTA','EN_PROCESO') ORDER BY estado
+        """)
 
         return {
             "servicios": [{"id": r["id"], "nombre": r["nombre"]} for r in servicios],
@@ -751,8 +744,8 @@ async def matriz_produccion(
             columnas = ["Sin estado"]
 
         # ── 2. Query principal: un registro por fila ──────────────
-        where_clauses = ["r.empresa_id = $1"]
-        params = [empresa_id]
+        where_clauses = []
+        params = []
 
         if solo_activos:
             where_clauses.append("r.estado_op IN ('ABIERTA','EN_PROCESO')")
@@ -795,7 +788,7 @@ async def matriz_produccion(
                 "SELECT 1 FROM prod_registros ch WHERE ch.dividido_desde_registro_id = r.id))"
             )
 
-        where_sql = " AND ".join(where_clauses)
+        where_sql = " AND ".join(where_clauses) if where_clauses else "TRUE"
 
         rows = await conn.fetch(f"""
             SELECT

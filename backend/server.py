@@ -35,11 +35,14 @@ from routes.conversacion import router as conversacion_router
 from routes.distribucion_pt import router as distribucion_pt_router, init_distribucion_pt_tables
 from routes.kardex_pt import router as kardex_pt_router
 from routes.import_excel import router as import_excel_router
+from routes.salidas_libres import router as salidas_libres_router
+from routes.muestras import router as muestras_router
 
 # DDL startup migrations
 from migrations.startup_ddl import (
     ensure_bom_tables, ensure_fase2_tables,
     ensure_startup_migrations, ensure_startup_indices,
+    ensure_salidas_libres_tables,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -101,6 +104,7 @@ async def startup():
     await init_transferencias_tables()
     await init_audit_tables()
     await init_distribucion_pt_tables()
+    await ensure_salidas_libres_tables()
     # Índices de performance
     await ensure_startup_indices()
 
@@ -148,6 +152,8 @@ app.include_router(auditoria_router)
 app.include_router(conversacion_router)
 app.include_router(distribucion_pt_router)
 app.include_router(kardex_pt_router)
+app.include_router(salidas_libres_router)
+app.include_router(muestras_router)
 
 # ==================== HEALTH CHECK ====================
 

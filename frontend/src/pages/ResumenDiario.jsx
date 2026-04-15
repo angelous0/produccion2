@@ -16,8 +16,8 @@ export default function ResumenDiario() {
     setLoading(true);
     try {
       const [regs, alertas, mermas] = await Promise.all([
-        axios.get(`${API}/registros/?limit=500`).then(r => r.data?.items || r.data || []),
-        axios.get(`${API}/reportes-produccion/alertas-produccion`).then(r => r.data?.alertas || []),
+        axios.get(`${API}/registros/?limit=500`).then(r => r.data?.items || r.data || []).catch(() => []),
+        axios.get(`${API}/reportes-produccion/alertas-produccion`).then(r => r.data?.alertas || []).catch(() => []),
         axios.get(`${API}/reportes/mermas/`).then(r => r.data).catch(() => null),
       ]);
 

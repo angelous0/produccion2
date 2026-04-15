@@ -29,7 +29,7 @@ import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
 import { getStatusClass } from '../lib/utils';
 import { MultiSelectColors } from '../components/MultiSelectColors';
-import { formatDate, formatRelativeDate } from '../lib/dateUtils';
+import { formatDate, formatRelativeDate, formatDateTime } from '../lib/dateUtils';
 import { ExportButton } from '../components/ExportButton';
 import { RegistroDetalleFase2 } from './RegistroDetalleFase2';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -1454,7 +1454,7 @@ export const Registros = () => {
                       </Badge>
                     </div>
                     {inc.comentario && <p className="text-sm mt-1 text-muted-foreground">{inc.comentario}</p>}
-                    <p className="text-xs text-muted-foreground mt-1">{new Date(inc.fecha_hora).toLocaleString('es-PE')} - {inc.usuario}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{formatDateTime(inc.fecha_hora)} - {inc.usuario}</p>
                   </div>
                   {inc.estado === 'ABIERTA' && (
                     <Button variant="ghost" size="sm" onClick={() => handleResolverIncidencia(inc.id)} disabled={saving} data-testid={`resolver-inc-${inc.id}`}>
@@ -1492,7 +1492,7 @@ export const Registros = () => {
                     {paralizaciones.find(p => p.activa)?.comentario && (
                       <p className="text-sm text-muted-foreground">{paralizaciones.find(p => p.activa)?.comentario}</p>
                     )}
-                    <p className="text-xs text-muted-foreground mt-1">Desde: {new Date(paralizaciones.find(p => p.activa)?.fecha_inicio).toLocaleString('es-PE')}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Desde: {formatDateTime(paralizaciones.find(p => p.activa)?.fecha_inicio)}</p>
                   </div>
                   <Button variant="destructive" onClick={() => handleLevantarParalizacion(paralizaciones.find(p => p.activa)?.id)} disabled={saving} data-testid="btn-levantar-paralizacion">
                     {saving ? 'Levantando...' : 'Levantar'}
@@ -1554,8 +1554,8 @@ export const Registros = () => {
                   </div>
                   {par.comentario && <p className="text-sm mt-1 text-muted-foreground">{par.comentario}</p>}
                   <p className="text-xs text-muted-foreground mt-1">
-                    Inicio: {new Date(par.fecha_inicio).toLocaleString('es-PE')}
-                    {par.fecha_fin && ` | Fin: ${new Date(par.fecha_fin).toLocaleString('es-PE')}`}
+                    Inicio: {formatDateTime(par.fecha_inicio)}
+                    {par.fecha_fin && ` | Fin: ${formatDateTime(par.fecha_fin)}`}
                   </p>
                 </div>
               ))

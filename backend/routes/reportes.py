@@ -437,24 +437,27 @@ async def get_reporte_ordenes(
             LEFT JOIN prod_orden_etapa e ON r.etapa_actual_id = e.id
             LEFT JOIN v_wip_resumen w ON r.id = w.orden_id
             LEFT JOIN prod_registro_cierre c ON c.registro_id = r.id
-            WHERE r.empresa_id = $1
         """
-        params = [empresa_id]
-        
+        params = []
+        where_clauses = []
+
         if estado_op:
             params.append(estado_op)
-            query += f" AND r.estado_op = ${len(params)}"
-        
+            where_clauses.append(f"r.estado_op = ${len(params)}")
+
         if fecha_desde:
             params.append(fecha_desde)
-            query += f" AND r.fecha_creacion >= ${len(params)}"
-        
+            where_clauses.append(f"r.fecha_creacion >= ${len(params)}")
+
         if fecha_hasta:
             params.append(fecha_hasta)
-            query += f" AND r.fecha_creacion <= ${len(params)}"
-        
+            where_clauses.append(f"r.fecha_creacion <= ${len(params)}")
+
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+
         query += " ORDER BY r.fecha_creacion DESC"
-        
+
         rows = await conn.fetch(query, *params)
         
         ordenes = []
@@ -507,32 +510,31 @@ async def get_resumen_general(
             SELECT COALESCE(SUM(ing.cantidad_disponible * ing.costo_unitario), 0)
             FROM prod_inventario_ingresos ing
             JOIN prod_inventario i ON ing.item_id = i.id
-            WHERE i.empresa_id = $1 AND i.tipo_item IN ('MP', 'AVIO') AND ing.cantidad_disponible > 0
-        """, empresa_id)
-        
+            WHERE i.tipo_item IN ('MP', 'AVIO') AND ing.cantidad_disponible > 0
+        """)
+
         # WIP value - Solo órdenes ABIERTA/EN_PROCESO
         wip_valor = await conn.fetchval("""
             SELECT COALESCE(SUM(w.costo_total), 0)
             FROM v_wip_resumen w
             JOIN prod_registros r ON w.orden_id = r.id
-            WHERE r.empresa_id = $1 AND r.estado_op IN ('ABIERTA', 'EN_PROCESO')
-        """, empresa_id)
-        
+            WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
+        """)
+
         # PT value
         pt_valor = await conn.fetchval("""
             SELECT COALESCE(SUM(ing.cantidad_disponible * ing.costo_unitario), 0)
             FROM prod_inventario_ingresos ing
             JOIN prod_inventario i ON ing.item_id = i.id
-            WHERE i.empresa_id = $1 AND i.tipo_item = 'PT' AND ing.cantidad_disponible > 0
-        """, empresa_id)
-        
+            WHERE i.tipo_item = 'PT' AND ing.cantidad_disponible > 0
+        """)
+
         # Ordenes counts
         ordenes_stats = await conn.fetch("""
             SELECT estado_op, COUNT(*) as count
             FROM prod_registros
-            WHERE empresa_id = $1
             GROUP BY estado_op
-        """, empresa_id)
+        """)
         
         ordenes_by_estado = {r['estado_op']: int(r['count']) for r in ordenes_stats}
         

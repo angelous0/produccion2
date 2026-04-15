@@ -333,6 +333,85 @@ async def ensure_startup_migrations():
             await conn.execute(f"UPDATE {tabla} SET empresa_id = 7 WHERE empresa_id != 7")
 
 
+async def ensure_salidas_libres_tables():
+    """Crea tablas para módulo Salidas Libres y Muestras."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # ── Salidas Libres ──────────────────────────────────────────────────
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_salidas_libres (
+                id VARCHAR PRIMARY KEY,
+                fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+                item_id VARCHAR NOT NULL,
+                cantidad NUMERIC(14,4) NOT NULL,
+                tipo_salida VARCHAR NOT NULL DEFAULT 'MERMA',
+                motivo TEXT,
+                destino VARCHAR,
+                costo_unitario NUMERIC(14,6) DEFAULT 0,
+                costo_total NUMERIC(14,6) DEFAULT 0,
+                detalle_fifo JSONB DEFAULT '[]',
+                linea_negocio_id INT,
+                usuario VARCHAR,
+                observaciones TEXT,
+                en_migracion BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_salidas_libres_item ON prod_salidas_libres(item_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_salidas_libres_fecha ON prod_salidas_libres(fecha DESC)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_salidas_libres_tipo ON prod_salidas_libres(tipo_salida)")
+
+        # ── Muestras ────────────────────────────────────────────────────────
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_muestras (
+                id VARCHAR PRIMARY KEY,
+                codigo VARCHAR,
+                cliente VARCHAR,
+                fecha_envio DATE,
+                modelo_id VARCHAR,
+                modelo_nombre VARCHAR,
+                linea_negocio_id INT,
+                estado VARCHAR NOT NULL DEFAULT 'PENDIENTE',
+                observaciones TEXT,
+                costo_total NUMERIC(14,6) DEFAULT 0,
+                usuario_creador VARCHAR,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestras_estado ON prod_muestras(estado)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestras_fecha ON prod_muestras(fecha_envio DESC)")
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_muestras_materiales (
+                id VARCHAR PRIMARY KEY,
+                muestra_id VARCHAR NOT NULL,
+                item_id VARCHAR NOT NULL,
+                cantidad NUMERIC(14,4) NOT NULL,
+                costo_unitario NUMERIC(14,6) DEFAULT 0,
+                costo_total NUMERIC(14,6) DEFAULT 0,
+                detalle_fifo JSONB DEFAULT '[]',
+                en_migracion BOOLEAN DEFAULT FALSE,
+                observaciones TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestras_mat_muestra ON prod_muestras_materiales(muestra_id)")
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_muestras_historial_estado (
+                id VARCHAR PRIMARY KEY,
+                muestra_id VARCHAR NOT NULL,
+                estado_anterior VARCHAR,
+                estado_nuevo VARCHAR NOT NULL,
+                comentario TEXT,
+                usuario VARCHAR,
+                fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestras_hist_muestra ON prod_muestras_historial_estado(muestra_id)")
+
+
 async def ensure_startup_indices():
     """Crea índices de performance para queries frecuentes."""
     pool = await get_pool()

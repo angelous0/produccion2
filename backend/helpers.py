@@ -34,7 +34,9 @@ def row_to_dict(row):
     from decimal import Decimal
     d = dict(row)
     for k, v in d.items():
-        if isinstance(v, (datetime, date)):
+        if isinstance(v, datetime):
+            d[k] = v.isoformat() + "Z"
+        elif isinstance(v, date):
             d[k] = v.isoformat()
         elif isinstance(v, Decimal):
             d[k] = float(v)

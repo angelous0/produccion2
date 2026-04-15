@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Shield, User, Package, Database, RefreshCw, ChevronDown, ChevronRight, Search, Filter } from 'lucide-react';
+import { formatDateTime, formatDate } from '../lib/dateUtils';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 
@@ -51,9 +52,8 @@ function AuditoriaRow({ item }) {
   const ModIcon = MODULO_ICON[item.modulo] || Shield;
   const cambios = getCambios(item.datos_antes, item.datos_despues);
   const tabla = TABLE_LABELS[item.tabla] || item.tabla;
-  const fecha = new Date(item.fecha_hora);
-  const fechaStr = fecha.toLocaleDateString('es-PE', { day:'2-digit', month:'2-digit' });
-  const horaStr = fecha.toLocaleTimeString('es-PE', { hour:'2-digit', minute:'2-digit' });
+  const fechaStr = formatDate(item.fecha_hora);
+  const horaStr = new Date(item.fecha_hora).toLocaleTimeString('es-PE', { hour:'2-digit', minute:'2-digit', timeZone: 'America/Lima' });
 
   return (
     <div className="relative pl-8">

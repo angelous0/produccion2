@@ -340,7 +340,7 @@ async def listar_transferencias(
             # Convertir timestamps a string
             for key in ('fecha_creacion', 'fecha_confirmacion', 'cancelado_at'):
                 if d.get(key):
-                    d[key] = d[key].isoformat()
+                    d[key] = d[key].isoformat() + "Z"
             # Convertir Decimals a float
             for key in ('cantidad', 'costo_total_transferido'):
                 d[key] = safe_float(d.get(key))
@@ -375,7 +375,7 @@ async def detalle_transferencia(
         d = dict(row)
         for key in ('fecha_creacion', 'fecha_confirmacion', 'cancelado_at'):
             if d.get(key):
-                d[key] = d[key].isoformat()
+                d[key] = d[key].isoformat() + "Z"
         for key in ('cantidad', 'costo_total_transferido'):
             d[key] = safe_float(d.get(key))
 
@@ -397,7 +397,9 @@ async def detalle_transferencia(
             dd['costo_unitario'] = safe_float(dd.get('costo_unitario'))
             dd['costo_parcial'] = round(dd['cantidad'] * dd['costo_unitario'], 4)
             if dd.get('fecha_ingreso_origen'):
-                dd['fecha_ingreso_origen'] = dd['fecha_ingreso_origen'].isoformat()
+                from datetime import datetime as _dt
+                v = dd['fecha_ingreso_origen']
+                dd['fecha_ingreso_origen'] = v.isoformat() + ("Z" if isinstance(v, _dt) else "")
             d['detalles'].append(dd)
 
         return d

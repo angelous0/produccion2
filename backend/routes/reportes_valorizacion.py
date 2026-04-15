@@ -44,10 +44,9 @@ async def reporte_mp_valorizado(
                     WHERE rl.item_id = i.id AND r.estado = 'ACTIVA'
                 ), 0) as reservado
             FROM prod_inventario i
-            WHERE i.empresa_id = $1
-            AND i.tipo_articulo IS DISTINCT FROM 'PT'
+            WHERE i.tipo_articulo IS DISTINCT FROM 'PT'
             ORDER BY i.codigo
-        """, empresa_id)
+        """)
         
         items = []
         total_valor = 0
@@ -93,10 +92,9 @@ async def reporte_wip(
             LEFT JOIN prod_modelos m ON r.modelo_id = m.id
             LEFT JOIN prod_marcas ma ON m.marca_id = ma.id
             LEFT JOIN prod_inventario pt ON r.pt_item_id = pt.id
-            WHERE r.empresa_id = $1
-            AND r.estado NOT IN ('CERRADA', 'ANULADA')
+            WHERE r.estado NOT IN ('CERRADA', 'ANULADA')
             ORDER BY r.fecha_creacion DESC
-        """, empresa_id)
+        """)
         
         items = []
         total_wip = 0
@@ -152,10 +150,9 @@ async def reporte_pt_valorizado(
                  JOIN prod_inventario_ingresos ing ON c.pt_ingreso_id = ing.id 
                  WHERE ing.item_id = i.id) as ops_cerradas
             FROM prod_inventario i
-            WHERE i.empresa_id = $1
-            AND i.tipo_articulo = 'PT'
+            WHERE i.tipo_articulo = 'PT'
             ORDER BY i.codigo
-        """, empresa_id)
+        """)
         
         items = []
         total_valor = 0
@@ -197,9 +194,9 @@ async def ingreso_from_finanzas(data: dict, current_user: dict = Depends(get_cur
         # Idempotency check
         if data.get('fin_origen_tipo') and data.get('fin_origen_id'):
             existing = await conn.fetchrow("""
-                SELECT id FROM prod_inventario_ingresos 
-                WHERE empresa_id = $1 AND fin_origen_tipo = $2 AND fin_origen_id = $3 AND item_id = $4
-            """, data['empresa_id'], data['fin_origen_tipo'], data['fin_origen_id'], data['item_id'])
+                SELECT id FROM prod_inventario_ingresos
+                WHERE fin_origen_tipo = $1 AND fin_origen_id = $2 AND item_id = $3
+            """, data['fin_origen_tipo'], data['fin_origen_id'], data['item_id'])
             if existing:
                 raise HTTPException(status_code=409, detail="Ingreso ya registrado (duplicado)")
         

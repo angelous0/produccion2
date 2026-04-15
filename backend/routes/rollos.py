@@ -54,21 +54,24 @@ async def get_rollos(
     pool = await get_pool()
     async with pool.acquire() as conn:
         query = """
-            SELECT r.*, 
+            SELECT r.*,
                    i.codigo as item_codigo, i.nombre as item_nombre
             FROM prod_inventario_rollos r
             LEFT JOIN prod_inventario i ON r.item_id = i.id
-            WHERE r.empresa_id = $1
         """
-        params = [empresa_id]
-        
+        params = []
+        where_clauses = []
+
         if item_id:
             params.append(item_id)
-            query += f" AND r.item_id = ${len(params)}"
-        
+            where_clauses.append(f"r.item_id = ${len(params)}")
+
         if estado:
             params.append(estado)
-            query += f" AND r.estado = ${len(params)}"
+            where_clauses.append(f"r.estado = ${len(params)}")
+
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
         
         query += " ORDER BY r.created_at DESC"
         

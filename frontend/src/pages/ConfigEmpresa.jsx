@@ -194,7 +194,7 @@ export default function ConfigEmpresa() {
           {modoMigracionInfo?.updated_by && (
             <p className="text-xs text-muted-foreground">
               Última modificación por <span className="font-medium">{modoMigracionInfo.updated_by}</span>
-              {modoMigracionInfo.updated_at && ` el ${new Date(modoMigracionInfo.updated_at).toLocaleString()}`}
+              {modoMigracionInfo.updated_at && ` el ${new Date(modoMigracionInfo.updated_at).toLocaleString('es-PE', { timeZone: 'America/Lima' })}`}
             </p>
           )}
         </CardContent>

@@ -756,10 +756,31 @@ async def create_salida(input: SalidaInventarioCreate, current_user: dict = Depe
         
         costo_total = 0.0
         detalle_fifo = []
-        
+
         if registro_sin_descuento:
-            # Modo migración: registrar salida sin descontar stock real
-            detalle_fifo = [{"migracion": True, "cantidad": input.cantidad, "costo_unitario": 0}]
+            # Modo migración: calcular costo FIFO pero NO descontar stock
+            if input.rollo_id:
+                rollo = await conn.fetchrow("SELECT * FROM prod_inventario_rollos WHERE id = $1", input.rollo_id)
+                ingreso = await conn.fetchrow("SELECT costo_unitario FROM prod_inventario_ingresos WHERE id = $1", rollo['ingreso_id'])
+                costo_unitario = float(ingreso['costo_unitario']) if ingreso else 0
+                costo_total = input.cantidad * costo_unitario
+                detalle_fifo = [{"rollo_id": input.rollo_id, "cantidad": input.cantidad, "costo_unitario": costo_unitario, "migracion": True}]
+            else:
+                ingresos = await conn.fetch(
+                    "SELECT * FROM prod_inventario_ingresos WHERE item_id = $1 AND cantidad_disponible > 0 ORDER BY fecha ASC", input.item_id
+                )
+                cantidad_restante = input.cantidad
+                for ing in ingresos:
+                    if cantidad_restante <= 0:
+                        break
+                    disponible = float(ing['cantidad_disponible'])
+                    consumir = min(disponible, cantidad_restante)
+                    costo_unitario = float(ing['costo_unitario'])
+                    costo_total += consumir * costo_unitario
+                    detalle_fifo.append({"ingreso_id": str(ing['id']), "cantidad": consumir, "costo_unitario": costo_unitario, "migracion": True})
+                    cantidad_restante -= consumir
+                if not detalle_fifo:
+                    detalle_fifo = [{"migracion": True, "cantidad": input.cantidad, "costo_unitario": 0}]
         elif input.rollo_id:
             # Ya validamos el rollo arriba, lo obtenemos de nuevo para el ingreso
             rollo = await conn.fetchrow("SELECT * FROM prod_inventario_rollos WHERE id = $1", input.rollo_id)

@@ -834,7 +834,7 @@ async def get_modo_migracion(current_user: dict = Depends(get_current_user)):
             return {"activo": False}
         return {
             "activo": row["valor"] == "true",
-            "updated_at": str(row["updated_at"]) if row["updated_at"] else None,
+            "updated_at": row["updated_at"].isoformat() + "Z" if row["updated_at"] else None,
             "updated_by": row["updated_by"],
         }
 

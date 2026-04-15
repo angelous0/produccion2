@@ -838,7 +838,7 @@ async def create_backup(current_user: dict = Depends(get_current_user)):
                     # Convertir tipos no serializables
                     for key, value in row_dict.items():
                         if isinstance(value, datetime):
-                            row_dict[key] = value.isoformat()
+                            row_dict[key] = value.isoformat() + "Z"
                         elif isinstance(value, date):
                             row_dict[key] = value.isoformat()
                         elif isinstance(value, uuid.UUID):

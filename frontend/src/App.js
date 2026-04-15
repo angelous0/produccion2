@@ -61,6 +61,9 @@ const TransferenciasLinea = lazy(() => import("./pages/TransferenciasLinea").the
 const AuditoriaLogs = lazy(() => import("./pages/AuditoriaLogs").then(m => ({ default: m.AuditoriaLogs })));
 const ValorizacionConsolidado = lazy(() => import("./pages/ValorizacionConsolidado").then(m => ({ default: m.ValorizacionConsolidado })));
 const CalidadConsolidado = lazy(() => import("./pages/CalidadConsolidado").then(m => ({ default: m.CalidadConsolidado })));
+const SalidasLibres = lazy(() => import("./pages/SalidasLibres").then(m => ({ default: m.SalidasLibres })));
+const Muestras = lazy(() => import("./pages/Muestras").then(m => ({ default: m.Muestras })));
+const MuestraDetalle = lazy(() => import("./pages/MuestraDetalle").then(m => ({ default: m.MuestraDetalle })));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center h-64">
@@ -155,6 +158,9 @@ function AppRoutes() {
         <Route path="inventario/kardex-pt" element={<LazyWrap><KardexPT /></LazyWrap>} />
         <Route path="inventario/alertas-stock" element={<LazyWrap><ReporteStockBajo /></LazyWrap>} />
         <Route path="inventario/transferencias-linea" element={<LazyWrap><TransferenciasLinea /></LazyWrap>} />
+        <Route path="inventario/salidas-libres" element={<LazyWrap><SalidasLibres /></LazyWrap>} />
+        <Route path="muestras" element={<LazyWrap><Muestras /></LazyWrap>} />
+        <Route path="muestras/:id" element={<LazyWrap><MuestraDetalle /></LazyWrap>} />
         <Route path="maestros/servicios" element={<LazyWrap><ServiciosProduccion /></LazyWrap>} />
         <Route path="maestros/personas" element={<LazyWrap><PersonasProduccion /></LazyWrap>} />
         <Route path="maestros/rutas" element={<LazyWrap><RutasProduccion /></LazyWrap>} />

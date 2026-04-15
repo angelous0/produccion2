@@ -10,6 +10,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 import uuid
 import json
+import asyncio
 from db import get_pool
 from auth_utils import get_current_user
 from helpers import row_to_dict, validar_registro_activo
@@ -44,27 +45,17 @@ def safe_float(v):
 
 async def _calcular_costos(conn, registro_id):
     """Calcula costos reales desde las fuentes oficiales. Reutilizable por preview y cierre."""
-    # Costo MP desde salidas FIFO (fuente unica)
     costo_mp = safe_float(await conn.fetchval(
-        "SELECT COALESCE(SUM(costo_total), 0) FROM prod_inventario_salidas WHERE registro_id = $1",
-        registro_id
+        "SELECT COALESCE(SUM(costo_total), 0) FROM prod_inventario_salidas WHERE registro_id = $1", registro_id
     ))
-
-    # Costo servicios desde movimientos de produccion (fuente unica)
     costo_servicios = safe_float(await conn.fetchval(
-        "SELECT COALESCE(SUM(costo_calculado), 0) FROM prod_movimientos_produccion WHERE registro_id = $1",
-        registro_id
+        "SELECT COALESCE(SUM(costo_calculado), 0) FROM prod_movimientos_produccion WHERE registro_id = $1", registro_id
     ))
-
-    # Otros costos adicionales
     otros_costos = safe_float(await conn.fetchval(
-        "SELECT COALESCE(SUM(monto), 0) FROM prod_registro_costos_servicio WHERE registro_id = $1",
-        registro_id
+        "SELECT COALESCE(SUM(monto), 0) FROM prod_registro_costos_servicio WHERE registro_id = $1", registro_id
     ))
-
     costo_total_final = costo_mp + costo_servicios + otros_costos
 
-    # Detalle salidas MP
     salidas_detalle = await conn.fetch("""
         SELECT s.item_id, i.codigo, i.nombre, SUM(s.cantidad) as cantidad_total,
                SUM(s.costo_total) as costo_total
@@ -73,8 +64,6 @@ async def _calcular_costos(conn, registro_id):
         WHERE s.registro_id = $1
         GROUP BY s.item_id, i.codigo, i.nombre ORDER BY i.nombre
     """, registro_id)
-
-    # Detalle movimientos (servicios)
     movimientos_detalle = await conn.fetch("""
         SELECT mp.servicio_id, sp.nombre as servicio_nombre,
                SUM(mp.cantidad_recibida) as cantidad_total,
@@ -84,8 +73,6 @@ async def _calcular_costos(conn, registro_id):
         WHERE mp.registro_id = $1
         GROUP BY mp.servicio_id, sp.nombre ORDER BY sp.nombre
     """, registro_id)
-
-    # Detalle otros costos
     otros_detalle = await conn.fetch("""
         SELECT cs.descripcion, cs.monto, cs.proveedor_texto
         FROM prod_registro_costos_servicio cs
@@ -150,39 +137,35 @@ async def _calcular_cif(conn, registro_id, fecha_cierre=None):
     fecha_inicio_lote = reg['fecha_inicio_real'] or fecha_creacion_date
     if isinstance(fecha_inicio_lote, datetime):
         fecha_inicio_lote = fecha_inicio_lote.date()
-    empresa_id = reg['empresa_id'] or 7
 
     # Período: mes de la fecha de cierre
     primer_dia_mes = fecha_cierre.replace(day=1)
     ultimo_dia_mes = (primer_dia_mes + timedelta(days=32)).replace(day=1) - timedelta(days=1)
     periodo_str = fecha_cierre.strftime('%Y-%m')
 
-    # --- GASTOS CIF del mes ---
-    # Fuente 1: cont_gasto_linea → cont_categoria donde padre = "CIF Producción"
+    # --- GASTOS CIF del mes (todas las empresas) ---
     gastos_cif = safe_float(await conn.fetchval("""
         SELECT COALESCE(SUM(g.total), 0)
         FROM finanzas2.cont_gasto g
         JOIN finanzas2.cont_gasto_linea gl ON g.id = gl.gasto_id
         JOIN finanzas2.cont_categoria c ON gl.categoria_id = c.id
         LEFT JOIN finanzas2.cont_categoria cp ON c.padre_id = cp.id
-        WHERE g.empresa_id = $1
-          AND g.fecha >= $2 AND g.fecha <= $3
+        WHERE g.fecha >= $1 AND g.fecha <= $2
           AND (c.nombre = 'CIF Producción' OR cp.nombre = 'CIF Producción')
-    """, empresa_id, primer_dia_mes, ultimo_dia_mes))
+    """, primer_dia_mes, ultimo_dia_mes))
 
-    # Fuente 2: líneas de facturas proveedor con categoría CIF Producción
+    # Fuente 2: líneas de facturas proveedor con categoría CIF Producción (todas las empresas)
     facturas_cif = safe_float(await conn.fetchval("""
         SELECT COALESCE(SUM(fl.importe), 0)
         FROM finanzas2.cont_factura_proveedor_linea fl
         JOIN finanzas2.cont_factura_proveedor f ON fl.factura_id = f.id
         JOIN finanzas2.cont_categoria c ON fl.categoria_id = c.id
         LEFT JOIN finanzas2.cont_categoria cp ON c.padre_id = cp.id
-        WHERE f.empresa_id = $1
-          AND COALESCE(f.fecha_contable, f.fecha_factura) >= $2
-          AND COALESCE(f.fecha_contable, f.fecha_factura) <= $3
+        WHERE COALESCE(f.fecha_contable, f.fecha_factura) >= $1
+          AND COALESCE(f.fecha_contable, f.fecha_factura) <= $2
           AND f.estado != 'anulada'
           AND (c.nombre = 'CIF Producción' OR cp.nombre = 'CIF Producción')
-    """, empresa_id, primer_dia_mes, ultimo_dia_mes))
+    """, primer_dia_mes, ultimo_dia_mes))
 
     # Detalle por categoría CIF — gastos
     detalle_cif = [row_to_dict(r) for r in await conn.fetch("""
@@ -193,11 +176,10 @@ async def _calcular_cif(conn, registro_id, fecha_cierre=None):
         JOIN finanzas2.cont_gasto_linea gl ON g.id = gl.gasto_id
         JOIN finanzas2.cont_categoria c ON gl.categoria_id = c.id
         LEFT JOIN finanzas2.cont_categoria cp ON c.padre_id = cp.id
-        WHERE g.empresa_id = $1
-          AND g.fecha >= $2 AND g.fecha <= $3
+        WHERE g.fecha >= $1 AND g.fecha <= $2
           AND (c.nombre = 'CIF Producción' OR cp.nombre = 'CIF Producción')
         ORDER BY g.fecha
-    """, empresa_id, primer_dia_mes, ultimo_dia_mes)]
+    """, primer_dia_mes, ultimo_dia_mes)]
 
     # Detalle por categoría CIF — líneas de facturas proveedor
     detalle_facturas_cif = [row_to_dict(r) for r in await conn.fetch("""
@@ -208,47 +190,43 @@ async def _calcular_cif(conn, registro_id, fecha_cierre=None):
         JOIN finanzas2.cont_factura_proveedor f ON fl.factura_id = f.id
         JOIN finanzas2.cont_categoria c ON fl.categoria_id = c.id
         LEFT JOIN finanzas2.cont_categoria cp ON c.padre_id = cp.id
-        WHERE f.empresa_id = $1
-          AND COALESCE(f.fecha_contable, f.fecha_factura) >= $2
-          AND COALESCE(f.fecha_contable, f.fecha_factura) <= $3
+        WHERE COALESCE(f.fecha_contable, f.fecha_factura) >= $1
+          AND COALESCE(f.fecha_contable, f.fecha_factura) <= $2
           AND f.estado != 'anulada'
           AND (c.nombre = 'CIF Producción' OR cp.nombre = 'CIF Producción')
         ORDER BY COALESCE(f.fecha_contable, f.fecha_factura)
-    """, empresa_id, primer_dia_mes, ultimo_dia_mes)]
+    """, primer_dia_mes, ultimo_dia_mes)]
 
     detalle_cif.extend(detalle_facturas_cif)
 
-    # --- DEPRECIACIÓN del mes ---
+    # --- DEPRECIACIÓN del mes (todas las empresas) ---
     depreciacion = safe_float(await conn.fetchval("""
         SELECT COALESCE(SUM(d.valor_depreciacion), 0)
         FROM finanzas2.fin_depreciacion_activo d
         JOIN finanzas2.fin_activo_fijo a ON d.activo_id = a.id
-        WHERE d.periodo = $1 AND a.empresa_id = $2 AND a.estado = 'activo'
-    """, periodo_str, empresa_id))
+        WHERE d.periodo = $1 AND a.estado = 'activo'
+    """, periodo_str))
 
     total_cif_mes = gastos_cif + facturas_cif + depreciacion
 
-    # --- PRORRATEO POR PRENDAS ---
-    # Prendas de este lote
+    # --- PRORRATEO POR PRENDAS (todos los registros activos del mes) ---
     prendas_lote = safe_float(await conn.fetchval("""
         SELECT COALESCE(SUM(cantidad_real), 0)
         FROM prod_registro_tallas WHERE registro_id = $1
     """, registro_id))
 
-    # Total prendas de todos los lotes activos en el mes
     total_prendas_mes = safe_float(await conn.fetchval("""
         SELECT COALESCE(SUM(t.cantidad_real), 0)
         FROM prod_registros r
         JOIN prod_registro_tallas t ON r.id = t.registro_id
-        WHERE r.empresa_id = $1
-          AND COALESCE(r.fecha_inicio_real, r.fecha_creacion::date) <= $3
+        WHERE COALESCE(r.fecha_inicio_real, r.fecha_creacion::date) <= $2
           AND r.estado NOT IN ('ANULADA', 'Anulada')
           AND NOT EXISTS (
             SELECT 1 FROM prod_registro_cierre c
             WHERE c.registro_id = r.id AND c.estado_cierre = 'CERRADO'
-              AND c.fecha < $2
+              AND c.fecha < $1
           )
-    """, empresa_id, primer_dia_mes, ultimo_dia_mes))
+    """, primer_dia_mes, ultimo_dia_mes))
 
     # Calcular proporción y CIF asignado
     proporcion = 0.0
@@ -338,75 +316,98 @@ async def update_pt_item(registro_id: str, data: PtItemUpdate, current_user: dic
 async def preview_cierre(registro_id: str, current_user: dict = Depends(get_current_user)):
     """Preview del cierre: calcula costos sin ejecutar. Incluye validaciones."""
     pool = await get_pool()
+
+    # Obtener registro primero (requerido por las demás operaciones)
     async with pool.acquire() as conn:
         reg = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
         if not reg:
             raise HTTPException(status_code=404, detail="Registro no encontrado")
-
-        # Si ya esta cerrado, redirigir a get_cierre
         existing = await conn.fetchrow(
             "SELECT id, estado_cierre FROM prod_registro_cierre WHERE registro_id = $1", registro_id
         )
         if existing and existing["estado_cierre"] == "CERRADO":
             raise HTTPException(status_code=400, detail="Este registro ya tiene un cierre activo")
 
-        qty = await _get_qty_terminada(conn, registro_id)
-        merma_qty = await _get_merma_qty(conn, registro_id)
-        costos = await _calcular_costos(conn, registro_id)
-        cif = await _calcular_cif(conn, registro_id)
+    # Ejecutar todos los cálculos independientes en paralelo
+    async def _qty():
+        async with pool.acquire() as c:
+            return await _get_qty_terminada(c, registro_id)
 
-        costo_total_con_cif = costos["costo_total_final"] + cif["cif_total"]
-        costo_unitario_final = costo_total_con_cif / qty if qty > 0 else 0
+    async def _merma():
+        async with pool.acquire() as c:
+            return await _get_merma_qty(c, registro_id)
 
-        # PT item info
-        pt_item = None
-        if reg['pt_item_id']:
-            pt_row = await conn.fetchrow(
+    async def _costos():
+        async with pool.acquire() as c:
+            return await _calcular_costos(c, registro_id)
+
+    async def _cif():
+        async with pool.acquire() as c:
+            return await _calcular_cif(c, registro_id)
+
+    async def _pt_item():
+        if not reg['pt_item_id']:
+            return None
+        async with pool.acquire() as c:
+            pt_row = await c.fetchrow(
                 "SELECT id, codigo, nombre FROM prod_inventario WHERE id = $1", reg['pt_item_id']
             )
-            if pt_row:
-                pt_item = row_to_dict(pt_row)
+            return row_to_dict(pt_row) if pt_row else None
 
-        # Validar
+    async def _fallados():
+        async with pool.acquire() as c:
+            return safe_float(await c.fetchval(
+                "SELECT COALESCE(SUM(cantidad_detectada), 0) FROM prod_fallados WHERE registro_id = $1", registro_id
+            ))
+
+    async def _arreglos():
+        async with pool.acquire() as c:
+            return await c.fetch(
+                "SELECT cantidad, cantidad_recuperada, cantidad_liquidacion, cantidad_merma, estado FROM prod_registro_arreglos WHERE registro_id = $1", registro_id
+            )
+
+    qty, merma_qty, costos, cif, pt_item, total_fallados, arreglos_rows = await asyncio.gather(
+        _qty(), _merma(), _costos(), _cif(), _pt_item(), _fallados(), _arreglos()
+    )
+
+    # Validar (necesita qty ya calculado)
+    async with pool.acquire() as conn:
         errores = await _validar_pre_cierre(conn, reg, qty)
 
-        # Datos de arreglos para cierre
-        total_fallados = safe_float(await conn.fetchval(
-            "SELECT COALESCE(SUM(cantidad_detectada), 0) FROM prod_fallados WHERE registro_id = $1", registro_id))
-        arreglos_rows = await conn.fetch(
-            "SELECT cantidad, cantidad_recuperada, cantidad_liquidacion, cantidad_merma, estado FROM prod_registro_arreglos WHERE registro_id = $1", registro_id)
-        total_en_arreglo = sum(safe_float(a["cantidad"]) for a in arreglos_rows)
-        total_recuperado = sum(safe_float(a["cantidad_recuperada"]) for a in arreglos_rows)
-        total_liquidacion = sum(safe_float(a["cantidad_liquidacion"]) for a in arreglos_rows)
-        total_merma_arreglos = sum(safe_float(a["cantidad_merma"]) for a in arreglos_rows)
-        fallado_pendiente = max(total_fallados - total_en_arreglo, 0)
-        normal = max(qty - total_fallados - merma_qty, 0)
+    costo_total_con_cif = costos["costo_total_final"] + cif["cif_total"]
+    costo_unitario_final = costo_total_con_cif / qty if qty > 0 else 0
 
-        return {
-            "registro_id": registro_id,
-            "n_corte": reg['n_corte'],
-            "estado": reg['estado'],
-            "pt_item": pt_item,
-            "qty_terminada": qty,
-            "merma_qty": merma_qty,
-            **costos,
-            "costo_cif": cif["cif_total"],
-            "cif_detalle": cif,
-            "costo_total": round(costo_total_con_cif, 2),
-            "costo_unit_pt": round(costo_unitario_final, 6),
-            "costo_unitario_final": round(costo_unitario_final, 6),
-            "puede_cerrar": len(errores) == 0,
-            "errores_validacion": errores,
-            # Resultado final arreglos
-            "resultado_final": {
-                "normal": normal,
-                "recuperado": total_recuperado,
-                "liquidacion": total_liquidacion,
-                "merma": merma_qty + total_merma_arreglos,
-                "fallado_pendiente": fallado_pendiente,
-                "total_fallados": total_fallados,
-            },
-        }
+    total_en_arreglo = sum(safe_float(a["cantidad"]) for a in arreglos_rows)
+    total_recuperado = sum(safe_float(a["cantidad_recuperada"]) for a in arreglos_rows)
+    total_liquidacion = sum(safe_float(a["cantidad_liquidacion"]) for a in arreglos_rows)
+    total_merma_arreglos = sum(safe_float(a["cantidad_merma"]) for a in arreglos_rows)
+    fallado_pendiente = max(total_fallados - total_en_arreglo, 0)
+    normal = max(qty - total_fallados - merma_qty, 0)
+
+    return {
+        "registro_id": registro_id,
+        "n_corte": reg['n_corte'],
+        "estado": reg['estado'],
+        "pt_item": pt_item,
+        "qty_terminada": qty,
+        "merma_qty": merma_qty,
+        **costos,
+        "costo_cif": cif["cif_total"],
+        "cif_detalle": cif,
+        "costo_total": round(costo_total_con_cif, 2),
+        "costo_unit_pt": round(costo_unitario_final, 6),
+        "costo_unitario_final": round(costo_unitario_final, 6),
+        "puede_cerrar": len(errores) == 0,
+        "errores_validacion": errores,
+        "resultado_final": {
+            "normal": normal,
+            "recuperado": total_recuperado,
+            "liquidacion": total_liquidacion,
+            "merma": merma_qty + total_merma_arreglos,
+            "fallado_pendiente": fallado_pendiente,
+            "total_fallados": total_fallados,
+        },
+    }
 
 
 @router.post("/registros/{registro_id}/cierre-produccion")

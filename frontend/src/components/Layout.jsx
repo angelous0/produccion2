@@ -73,6 +73,7 @@ import {
   Search,
   Building2,
   AlertTriangle,
+  FlaskConical,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -107,12 +108,14 @@ function getUserInitials(user) {
 const operacionesItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/registros', icon: ClipboardList, label: 'Registros' },
+  { to: '/muestras', icon: FlaskConical, label: 'Muestras' },
 ];
 
 const inventarioItems = [
   { to: '/inventario', icon: Package, label: 'Inventario' },
   { to: '/inventario/ingresos', icon: ArrowDownCircle, label: 'Ingresos' },
   { to: '/inventario/salidas', icon: ArrowUpCircle, label: 'Salidas' },
+  { to: '/inventario/salidas-libres', icon: PackageX, label: 'Salidas Libres' },
   { to: '/inventario/ajustes', icon: RefreshCw, label: 'Ajustes' },
   { to: '/inventario/rollos', icon: Layers, label: 'Rollos' },
   { to: '/inventario/movimientos', icon: FileText, label: 'Movimientos' },
