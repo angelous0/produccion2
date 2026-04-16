@@ -474,7 +474,7 @@ export const InventarioIngresos = () => {
                     <PopoverContent className="w-[620px] p-0" align="start">
                       <Command>
                         <CommandInput placeholder="Buscar por nombre o código..." data-testid="search-item" />
-                        <CommandList className="max-h-[280px]">
+                        <CommandList className="max-h-[280px]" onWheel={e => e.stopPropagation()}>
                           <CommandEmpty>Sin resultados</CommandEmpty>
                           <CommandGroup>
                             {itemsFiltrados.map((item) => {
