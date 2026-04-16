@@ -474,9 +474,9 @@ export const InventarioIngresos = () => {
                     <PopoverContent className="w-[620px] p-0" align="start">
                       <Command>
                         <CommandInput placeholder="Buscar por nombre o código..." data-testid="search-item" />
-                        <CommandList>
+                        <CommandList className="max-h-[280px]">
                           <CommandEmpty>Sin resultados</CommandEmpty>
-                          <CommandGroup className="max-h-[280px] overflow-auto">
+                          <CommandGroup>
                             {itemsFiltrados.map((item) => {
                               const ln = item.linea_negocio_id ? lineasNegocio.find(l => l.id === item.linea_negocio_id) : null;
                               return (
