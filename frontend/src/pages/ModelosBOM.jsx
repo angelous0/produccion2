@@ -99,7 +99,7 @@ export const ModelosTallasTab = ({ modeloId }) => {
     if (selectedTallaIds.length === 0) { toast.error('Selecciona al menos una talla'); return; }
     setAddingTallas(true);
     let added = 0;
-    let errors = 0;
+    const errorMsgs = [];
     for (const tallaId of selectedTallaIds) {
       try {
         const res = await axios.post(`${API}/modelos/${modeloId}/tallas`, {
@@ -107,13 +107,15 @@ export const ModelosTallasTab = ({ modeloId }) => {
         });
         setRows((prev) => [...prev, res.data]);
         added++;
-      } catch {
-        errors++;
+      } catch (e) {
+        const detail = e?.response?.data?.detail;
+        const msg = typeof detail === 'string' ? detail : 'Error al agregar';
+        errorMsgs.push(msg);
       }
     }
     setSelectedTallaIds([]);
     if (added > 0) toast.success(`${added} talla(s) agregada(s)`);
-    if (errors > 0) toast.error(`${errors} talla(s) no se pudieron agregar`);
+    if (errorMsgs.length > 0) toast.error(errorMsgs[0] + (errorMsgs.length > 1 ? ` (+${errorMsgs.length - 1} más)` : ''));
     setAddingTallas(false);
   };
 

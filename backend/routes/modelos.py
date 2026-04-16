@@ -379,37 +379,52 @@ async def add_modelo_talla(modelo_id: str, data: ModeloTallaCreate, current_user
         # Nota: prod_tallas_catalogo no tiene campo 'activo' en este proyecto; todas las tallas del catálogo se consideran disponibles.
 
 
-        # Validación duplicado activo (mensaje claro)
-        exists = await conn.fetchval(
-            "SELECT COUNT(*) FROM prod_modelo_tallas WHERE modelo_id=$1 AND talla_id=$2 AND activo=true",
+        # Si existe un registro inactivo, reactivarlo (UPSERT)
+        existing = await conn.fetchrow(
+            "SELECT * FROM prod_modelo_tallas WHERE modelo_id=$1 AND talla_id=$2",
             modelo_id,
             data.talla_id,
         )
-        if exists and int(exists) > 0:
-            raise HTTPException(status_code=400, detail="La talla ya está agregada (activa) en este modelo")
-
-        new_id = str(uuid4())
-        await conn.execute(
-            """
-            INSERT INTO prod_modelo_tallas (id, modelo_id, talla_id, activo, orden, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
-            """,
-            new_id,
-            modelo_id,
-            data.talla_id,
-            bool(data.activo),
-            int(data.orden),
-        )
-
-        row = await conn.fetchrow(
-            """
-            SELECT mt.*, tc.nombre as talla_nombre
-            FROM prod_modelo_tallas mt
-            LEFT JOIN prod_tallas_catalogo tc ON mt.talla_id = tc.id
-            WHERE mt.id = $1
-            """,
-            new_id,
-        )
+        if existing:
+            if existing['activo']:
+                raise HTTPException(status_code=400, detail="La talla ya está agregada (activa) en este modelo")
+            # Reactivar registro inactivo
+            await conn.execute(
+                "UPDATE prod_modelo_tallas SET activo=true, orden=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2",
+                int(data.orden),
+                existing['id'],
+            )
+            row = await conn.fetchrow(
+                """
+                SELECT mt.*, tc.nombre as talla_nombre
+                FROM prod_modelo_tallas mt
+                LEFT JOIN prod_tallas_catalogo tc ON mt.talla_id = tc.id
+                WHERE mt.id = $1
+                """,
+                existing['id'],
+            )
+        else:
+            new_id = str(uuid4())
+            await conn.execute(
+                """
+                INSERT INTO prod_modelo_tallas (id, modelo_id, talla_id, activo, orden, created_at, updated_at)
+                VALUES ($1,$2,$3,$4,$5,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """,
+                new_id,
+                modelo_id,
+                data.talla_id,
+                bool(data.activo),
+                int(data.orden),
+            )
+            row = await conn.fetchrow(
+                """
+                SELECT mt.*, tc.nombre as talla_nombre
+                FROM prod_modelo_tallas mt
+                LEFT JOIN prod_tallas_catalogo tc ON mt.talla_id = tc.id
+                WHERE mt.id = $1
+                """,
+                new_id,
+            )
 
     return row_to_dict(row)
 
