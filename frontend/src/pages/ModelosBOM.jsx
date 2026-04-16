@@ -112,10 +112,12 @@ export const ModelosTallasTab = ({ modeloId }) => {
       const status = e?.response?.status;
       if (typeof detail === 'string') {
         toast.error(detail);
+      } else if (Array.isArray(detail)) {
+        toast.error(detail[0]?.msg || 'Error de validación');
       } else if (status) {
-        toast.error(`Error ${status} al actualizar talla`);
+        toast.error(`Error ${status}: ${e?.response?.data?.detail || e?.message || 'Error desconocido'}`);
       } else {
-        toast.error('No se pudo conectar con el servidor');
+        toast.error(`Sin respuesta: ${e?.message || 'Error de red'}`);
       }
     } finally {
       setSavingIds(prev => { const s = new Set(prev); s.delete(catalogTalla.id); return s; });
