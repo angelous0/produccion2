@@ -292,6 +292,7 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId, baseId }) => {
   const [costoEstandar, setCostoEstandar] = useState(null);
   const [inventario, setInventario] = useState([]);
   const [tallas, setTallas] = useState([]);
+  const [tallasSource, setTallasSource] = useState('catalogo'); // 'modelo' | 'base' | 'catalogo'
   const [serviciosProduccion, setServiciosProduccion] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingLineas, setLoadingLineas] = useState(false);
@@ -346,10 +347,11 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId, baseId }) => {
         axios.get(`${API}/tallas-catalogo`).then(r => r.data).catch(() => []),
       ]).then(([modeloTallas, baseTallas, catalogoTallas]) => {
         // 1. Tallas propias del modelo (variante)
-        if (modeloTallas.length > 0) return modeloTallas;
+        if (modeloTallas.length > 0) { setTallasSource('modelo'); return modeloTallas; }
         // 2. Tallas de la base
-        if (baseTallas.length > 0) return baseTallas;
+        if (baseTallas.length > 0) { setTallasSource('base'); return baseTallas; }
         // 3. Catálogo completo como fallback
+        setTallasSource('catalogo');
         return catalogoTallas.map(t => ({ talla_id: t.id, talla_nombre: t.nombre }));
       }).catch(() => []),
       axios.get(`${API}/servicios-produccion`).then(r => r.data).catch(() => []),
@@ -366,7 +368,7 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId, baseId }) => {
     }).finally(() => {
       setLoading(false);
     });
-  }, [modeloId, fetchCabeceras, fetchBomDetalle]);
+  }, [modeloId, baseId, fetchCabeceras, fetchBomDetalle]);
 
   // Create new BOM
   const crearBom = async () => {
@@ -713,6 +715,15 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId, baseId }) => {
                 </div>
               )}
             </div>
+
+            {/* Indicador de origen de tallas */}
+            {baseId && (
+              <div className={`text-xs px-2 py-1 rounded flex items-center gap-1 w-fit ${tallasSource === 'base' ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-400' : 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400'}`}>
+                {tallasSource === 'base'
+                  ? '✓ Tallas filtradas por la base'
+                  : '⚠ Sin tallas en la base — asigna tallas a la base para filtrar'}
+              </div>
+            )}
 
             {/* Tabla de líneas */}
             {loadingLineas ? (
