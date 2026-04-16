@@ -325,6 +325,10 @@ async def ensure_startup_migrations():
         await conn.execute("ALTER TABLE prod_registro_requerimiento_mp ADD COLUMN IF NOT EXISTS origen VARCHAR DEFAULT 'BOM'")
         await conn.execute("ALTER TABLE prod_registro_requerimiento_mp ADD COLUMN IF NOT EXISTS observaciones TEXT")
 
+        # Vinculación con facturas de proveedor (Finanzas)
+        await conn.execute("ALTER TABLE prod_movimientos_produccion ADD COLUMN IF NOT EXISTS factura_numero VARCHAR(50)")
+        await conn.execute("ALTER TABLE prod_movimientos_produccion ADD COLUMN IF NOT EXISTS factura_id VARCHAR(50)")
+
         # Fix: estandarizar empresa_id = 7 en todas las tablas de produccion
         for tabla in [
             'prod_inventario', 'prod_inventario_reservas', 'prod_inventario_reservas_linea',

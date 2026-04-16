@@ -613,5 +613,139 @@ async def delete_guia_remision(guia_id: str, _u=Depends(get_current_user)):
         await conn.execute("DELETE FROM prod_guias_remision WHERE id = $1", guia_id)
         return {"message": "Guía eliminada"}
 
+# ==================== VINCULACIÓN CON FACTURAS (FINANZAS) ====================
+
+class FacturaVinculacion(BaseModel):
+    factura_numero: str
+    factura_id: str
+
+
+@router.get("/movimientos-produccion-sin-factura")
+async def get_movimientos_sin_factura(
+    persona_nombre: Optional[str] = Query(None),
+):
+    """Movimientos de producción sin factura asignada. Llamado desde Finanzas para vincular."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        conditions = ["mp.factura_numero IS NULL", "COALESCE(mp.costo_calculado, 0) > 0"]
+        params: list = []
+        idx = 1
+
+        if persona_nombre:
+            conditions.append(f"p.nombre ILIKE ${idx}")
+            params.append(f"%{persona_nombre}%")
+            idx += 1
+
+        where = " AND ".join(conditions)
+        rows = await conn.fetch(f"""
+            SELECT
+                mp.id, mp.registro_id, mp.servicio_id, mp.persona_id,
+                mp.cantidad_recibida, mp.costo_calculado,
+                mp.fecha_inicio, mp.factura_numero, mp.factura_id,
+                s.nombre  AS servicio_nombre,
+                p.nombre  AS persona_nombre,
+                r.n_corte AS registro_n_corte
+            FROM prod_movimientos_produccion mp
+            LEFT JOIN prod_servicios_produccion s ON mp.servicio_id = s.id
+            LEFT JOIN prod_personas_produccion  p ON mp.persona_id  = p.id
+            LEFT JOIN prod_registros            r ON mp.registro_id = r.id
+            WHERE {where}
+            ORDER BY mp.fecha_inicio DESC NULLS LAST
+            LIMIT 300
+        """, *params)
+
+        result = []
+        for r in rows:
+            d = row_to_dict(r)
+            fecha_str = ""
+            if d.get("fecha_inicio"):
+                d["fecha_inicio"] = str(d["fecha_inicio"])
+                try:
+                    from datetime import datetime as _dt
+                    fecha_str = _dt.strptime(d["fecha_inicio"], "%Y-%m-%d").strftime("%d/%m/%Y")
+                except Exception:
+                    fecha_str = d["fecha_inicio"]
+            costo = float(d.get("costo_calculado") or 0)
+            d["label"] = (
+                f"Corte #{d.get('registro_n_corte', '?')} — "
+                f"{d.get('servicio_nombre', 'Servicio')} — "
+                f"S/{costo:,.2f} — {fecha_str}"
+            )
+            result.append(d)
+        return result
+
+
+@router.patch("/movimientos-produccion/{movimiento_id}/factura")
+async def vincular_factura_movimiento(movimiento_id: str, body: FacturaVinculacion):
+    """Marca un movimiento de producción como facturado. Llamado desde Finanzas al guardar factura."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        mov = await conn.fetchrow(
+            "SELECT id FROM prod_movimientos_produccion WHERE id = $1", movimiento_id
+        )
+        if not mov:
+            raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+        await conn.execute(
+            "UPDATE prod_movimientos_produccion SET factura_numero=$1, factura_id=$2 WHERE id=$3",
+            body.factura_numero, body.factura_id, movimiento_id,
+        )
+        return {"message": "Movimiento vinculado a factura", "movimiento_id": movimiento_id, "factura_numero": body.factura_numero}
+
+
+@router.get("/movimientos-produccion-finanzas")
+async def get_movimientos_produccion_finanzas(
+    persona_nombre: Optional[str] = Query(None),
+    fecha_desde: Optional[str] = Query(None),
+    fecha_hasta: Optional[str] = Query(None),
+):
+    """Lista todos los movimientos de producción con estado de facturación. Para Finanzas → pestaña Servicios."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        conditions = ["COALESCE(mp.costo_calculado, 0) > 0"]
+        params: list = []
+        idx = 1
+
+        if persona_nombre:
+            conditions.append(f"p.nombre ILIKE ${idx}")
+            params.append(f"%{persona_nombre}%")
+            idx += 1
+        if fecha_desde:
+            conditions.append(f"mp.fecha_inicio >= ${idx}::date")
+            params.append(fecha_desde)
+            idx += 1
+        if fecha_hasta:
+            conditions.append(f"mp.fecha_inicio <= ${idx}::date")
+            params.append(fecha_hasta)
+            idx += 1
+
+        where = " AND ".join(conditions)
+        rows = await conn.fetch(f"""
+            SELECT
+                mp.id, mp.registro_id, mp.servicio_id, mp.persona_id,
+                mp.cantidad_recibida, mp.costo_calculado,
+                mp.fecha_inicio, mp.factura_numero, mp.factura_id,
+                s.nombre  AS servicio_nombre,
+                p.nombre  AS persona_nombre,
+                r.n_corte AS registro_n_corte
+            FROM prod_movimientos_produccion mp
+            LEFT JOIN prod_servicios_produccion s ON mp.servicio_id = s.id
+            LEFT JOIN prod_personas_produccion  p ON mp.persona_id  = p.id
+            LEFT JOIN prod_registros            r ON mp.registro_id = r.id
+            WHERE {where}
+            ORDER BY mp.fecha_inicio DESC NULLS LAST
+            LIMIT 500
+        """, *params)
+
+        items = []
+        for r in rows:
+            d = row_to_dict(r)
+            if d.get("fecha_inicio"):
+                d["fecha_inicio"] = str(d["fecha_inicio"])
+            d["facturado"] = bool(d.get("factura_numero"))
+            items.append(d)
+
+        return {"items": items, "total": len(items)}
+
+
 # ==================== ENDPOINTS ESTADISTICAS ====================
 
