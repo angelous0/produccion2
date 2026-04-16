@@ -337,11 +337,13 @@ async def get_wip_detalle(registro_id: str, current_user: dict = Depends(get_cur
 
         # Servicios / mano de obra
         serv_rows = await conn.fetch("""
-            SELECT mp.tipo_movimiento, mp.descripcion, mp.cantidad,
-                   mp.costo_calculado, mp.fecha
+            SELECT sp.nombre as servicio_nombre,
+                   mp.cantidad_enviada, mp.cantidad_recibida,
+                   mp.costo_calculado, mp.fecha_inicio, mp.observaciones
             FROM prod_movimientos_produccion mp
+            LEFT JOIN prod_servicios_produccion sp ON sp.id = mp.servicio_id
             WHERE mp.registro_id = $1
-            ORDER BY mp.fecha
+            ORDER BY mp.fecha_inicio
         """, registro_id)
 
         # Tallas producidas
@@ -404,15 +406,15 @@ async def get_pt_detalle(item_id: str, current_user: dict = Depends(get_current_
 
         # Órdenes de producción cerradas que generaron este PT
         cierres_rows = await conn.fetch("""
-            SELECT r.n_corte, r.fecha_creacion, c.fecha_cierre,
-                   c.total_prendas, c.costo_total_mp, c.costo_total_servicio,
-                   (COALESCE(c.costo_total_mp,0) + COALESCE(c.costo_total_servicio,0)) as costo_total,
+            SELECT r.n_corte, r.fecha_creacion, c.fecha as fecha_cierre,
+                   c.qty_terminada as total_prendas, c.costo_mp, c.costo_servicios,
+                   c.costo_total,
                    m.nombre as modelo_nombre
             FROM prod_registro_cierre c
             JOIN prod_registros r ON c.registro_id = r.id
             LEFT JOIN prod_modelos m ON r.modelo_id = m.id
             WHERE r.pt_item_id = $1
-            ORDER BY c.fecha_cierre DESC
+            ORDER BY c.fecha DESC
         """, item_id)
 
         fifo = [row_to_dict(r) for r in fifo_rows]

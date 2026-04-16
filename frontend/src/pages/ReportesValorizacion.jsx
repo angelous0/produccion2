@@ -123,18 +123,18 @@ function WIPDetalleModal({ registroId, onClose }) {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/50">
-                        <TableHead className="text-xs">Tipo</TableHead>
-                        <TableHead className="text-xs">Descripción</TableHead>
-                        <TableHead className="text-right text-xs">Cant.</TableHead>
+                        <TableHead className="text-xs">Servicio</TableHead>
+                        <TableHead className="text-xs">Observaciones</TableHead>
+                        <TableHead className="text-right text-xs">Cant. Enviada</TableHead>
                         <TableHead className="text-right text-xs">Costo</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {detalle.servicios.map((s, i) => (
                         <TableRow key={i}>
-                          <TableCell className="text-xs"><Badge variant="outline" className="text-xs">{s.tipo_movimiento}</Badge></TableCell>
-                          <TableCell className="text-xs">{s.descripcion || '—'}</TableCell>
-                          <TableCell className="text-right font-mono text-xs">{s.cantidad}</TableCell>
+                          <TableCell className="text-xs font-medium">{s.servicio_nombre || '—'}</TableCell>
+                          <TableCell className="text-xs">{s.observaciones || '—'}</TableCell>
+                          <TableCell className="text-right font-mono text-xs">{s.cantidad_enviada ?? '—'}</TableCell>
                           <TableCell className="text-right font-mono text-xs font-semibold">{formatCurrency(s.costo_calculado)}</TableCell>
                         </TableRow>
                       ))}
@@ -262,8 +262,8 @@ function PTDetalleModal({ itemId, onClose }) {
                           <TableCell className="text-xs">{c.modelo_nombre}</TableCell>
                           <TableCell className="text-xs font-mono">{c.fecha_cierre ? new Date(c.fecha_cierre).toLocaleDateString('es-PE') : '—'}</TableCell>
                           <TableCell className="text-right font-mono text-xs">{c.total_prendas}</TableCell>
-                          <TableCell className="text-right font-mono text-xs">{formatCurrency(c.costo_total_mp)}</TableCell>
-                          <TableCell className="text-right font-mono text-xs">{formatCurrency(c.costo_total_servicio)}</TableCell>
+                          <TableCell className="text-right font-mono text-xs">{formatCurrency(c.costo_mp)}</TableCell>
+                          <TableCell className="text-right font-mono text-xs">{formatCurrency(c.costo_servicios)}</TableCell>
                           <TableCell className="text-right font-mono text-xs font-semibold">{formatCurrency(c.costo_total)}</TableCell>
                         </TableRow>
                       ))}
