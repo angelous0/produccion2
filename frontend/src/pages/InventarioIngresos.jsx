@@ -52,10 +52,26 @@ export const InventarioIngresos = () => {
   const [rollos, setRollos] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [lineasNegocio, setLineasNegocio] = useState([]);
+  const [filtroLinea, setFiltroLinea] = useState('');
   // Combobox states
   const [itemPopoverOpen, setItemPopoverOpen] = useState(false);
   const [proveedorPopoverOpen, setProveedorPopoverOpen] = useState(false);
   const [ultimoCosto, setUltimoCosto] = useState(null);
+
+  // Items filtrados para el combobox del modal según línea activa
+  const itemsFiltrados = useMemo(() => {
+    const base = items.filter(i => i.categoria !== 'PT');
+    if (!filtroLinea) return base;
+    return base.filter(i =>
+      !i.linea_negocio_id || String(i.linea_negocio_id) === filtroLinea
+    );
+  }, [items, filtroLinea]);
+
+  // Ingresos filtrados para la tabla
+  const ingresosFiltrados = useMemo(() => {
+    if (!filtroLinea) return ingresos;
+    return ingresos.filter(i => String(i.linea_negocio_id || '') === filtroLinea);
+  }, [ingresos, filtroLinea]);
 
   const fetchData = async () => {
     try {
@@ -99,8 +115,10 @@ export const InventarioIngresos = () => {
   const handleItemChange = async (itemId) => {
     const item = items.find(i => i.id === itemId);
     setSelectedItem(item);
-    // Auto-heredar línea de negocio del item si es exclusivo
-    const lineaSugerida = item?.linea_negocio_id ? String(item.linea_negocio_id) : '';
+    // Hereda línea del item, si no tiene usa el filtro activo, si no hay ninguno queda vacío
+    const lineaSugerida = item?.linea_negocio_id
+      ? String(item.linea_negocio_id)
+      : (filtroLinea || '');
     setFormData({ ...formData, item_id: itemId, cantidad: '', linea_negocio_id: lineaSugerida });
     setRollos([]);
     setItemPopoverOpen(false);
@@ -146,6 +164,10 @@ export const InventarioIngresos = () => {
   const handleOpenDialog = () => {
     setEditingIngreso(null);
     resetForm();
+    // Pre-selecciona la línea activa del filtro
+    if (filtroLinea) {
+      setFormData(f => ({ ...f, linea_negocio_id: filtroLinea }));
+    }
     setDialogOpen(true);
   };
 
@@ -238,15 +260,31 @@ export const InventarioIngresos = () => {
 
   return (
     <div className="space-y-6" data-testid="ingresos-page">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Ingresos de Inventario</h2>
           <p className="text-muted-foreground">Registro de entradas al inventario</p>
         </div>
-        <Button onClick={handleOpenDialog} data-testid="btn-nuevo-ingreso">
-          <Plus className="h-4 w-4 mr-2" />
-          Nuevo Ingreso
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select
+            value={filtroLinea || 'todas'}
+            onValueChange={v => setFiltroLinea(v === 'todas' ? '' : v)}
+          >
+            <SelectTrigger className="w-[220px] h-9 text-sm" data-testid="filtro-linea">
+              <SelectValue placeholder="Todas las líneas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas las líneas</SelectItem>
+              {lineasNegocio.map(ln => (
+                <SelectItem key={ln.id} value={String(ln.id)}>{ln.nombre}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button onClick={handleOpenDialog} data-testid="btn-nuevo-ingreso">
+            <Plus className="h-4 w-4 mr-2" />
+            Nuevo Ingreso
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -274,14 +312,16 @@ export const InventarioIngresos = () => {
                       Cargando...
                     </TableCell>
                   </TableRow>
-                ) : ingresos.length === 0 ? (
+                ) : ingresosFiltrados.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                      No hay ingresos registrados
+                      {filtroLinea
+                        ? `Sin ingresos para la línea seleccionada`
+                        : 'No hay ingresos registrados'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  ingresos.map((ingreso) => (
+                  ingresosFiltrados.map((ingreso) => (
                     <TableRow key={ingreso.id} className="data-table-row" data-testid={`ingreso-row-${ingreso.id}`}>
                       <TableCell className="font-mono text-sm">
                         {formatDate(ingreso.fecha)}
@@ -394,14 +434,28 @@ export const InventarioIngresos = () => {
                 </div>
               ) : (
               <div className="space-y-2">
-                  <Label>Item *</Label>
+                  <Label>
+                    Item *
+                    {filtroLinea && (
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">
+                        — {itemsFiltrados.length} items en {lineasNegocio.find(l => String(l.id) === filtroLinea)?.nombre}
+                      </span>
+                    )}
+                  </Label>
+                  {!filtroLinea && (
+                    <p className="text-xs text-amber-600 flex items-center gap-1">
+                      <Info className="h-3 w-3" /> Selecciona una línea de negocio arriba para filtrar los items
+                    </p>
+                  )}
                   <Popover open={itemPopoverOpen} onOpenChange={setItemPopoverOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
-                        className="w-full justify-between font-normal"
+                        disabled={!filtroLinea}
+                        className="w-full justify-between font-normal disabled:opacity-60"
                         data-testid="combobox-item"
+                        title={!filtroLinea ? 'Selecciona una línea de negocio primero' : ''}
                       >
                         {formData.item_id ? (
                           <span className="truncate flex items-center gap-2">
@@ -410,18 +464,20 @@ export const InventarioIngresos = () => {
                             {(() => { const ln = lineasNegocio.find(l => l.id === items.find(i => i.id === formData.item_id)?.linea_negocio_id); return ln ? <span className="text-[11px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">{ln.nombre}</span> : null; })()}
                           </span>
                         ) : (
-                          <span className="text-muted-foreground">Buscar item...</span>
+                          <span className="text-muted-foreground">
+                            {filtroLinea ? 'Buscar item...' : 'Selecciona una línea primero'}
+                          </span>
                         )}
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-[620px] p-0" align="start">
                       <Command>
-                        <CommandInput placeholder="Buscar por nombre, codigo o linea..." data-testid="search-item" />
+                        <CommandInput placeholder="Buscar por nombre o código..." data-testid="search-item" />
                         <CommandList>
                           <CommandEmpty>Sin resultados</CommandEmpty>
                           <CommandGroup className="max-h-[280px] overflow-auto">
-                            {items.filter(i => i.categoria !== 'PT').map((item) => {
+                            {itemsFiltrados.map((item) => {
                               const ln = item.linea_negocio_id ? lineasNegocio.find(l => l.id === item.linea_negocio_id) : null;
                               return (
                                 <CommandItem
@@ -435,6 +491,7 @@ export const InventarioIngresos = () => {
                                   <span className="font-mono text-xs text-muted-foreground shrink-0">{item.codigo}</span>
                                   <span className="truncate">{item.nombre}</span>
                                   {ln && <span className="ml-auto text-[11px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">{ln.nombre}</span>}
+                                  {!item.linea_negocio_id && <span className="ml-auto text-[10px] text-muted-foreground shrink-0 italic">global</span>}
                                   {item.control_por_rollos && (
                                     <Badge variant="outline" className="text-[10px] shrink-0">Rollos</Badge>
                                   )}
@@ -684,11 +741,16 @@ export const InventarioIngresos = () => {
               </div>
               
               <div className="space-y-2">
-                <Label>Linea de Negocio</Label>
+                <Label>Línea de Negocio</Label>
                 {selectedItem?.linea_negocio_id ? (
                   <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/50">
                     <span className="text-sm">{lineasNegocio.find(l => l.id === selectedItem.linea_negocio_id)?.nombre || `Línea #${selectedItem.linea_negocio_id}`}</span>
                     <span className="text-[10px] text-muted-foreground ml-auto">Heredada del item</span>
+                  </div>
+                ) : filtroLinea && !editingIngreso ? (
+                  <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-primary/5 border-primary/20">
+                    <span className="text-sm font-medium">{lineasNegocio.find(l => String(l.id) === filtroLinea)?.nombre}</span>
+                    <span className="text-[10px] text-muted-foreground ml-auto">Del filtro activo</span>
                   </div>
                 ) : (
                   <Select value={formData.linea_negocio_id || 'global'} onValueChange={(v) => setFormData({ ...formData, linea_negocio_id: v === 'global' ? '' : v })}>
