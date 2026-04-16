@@ -335,14 +335,6 @@ export const Muestras = () => {
                   />
                 </div>
                 <div className="space-y-2 col-span-2">
-                  <Label>Descripción <span className="text-muted-foreground font-normal">(opcional)</span></Label>
-                  <Input
-                    value={form.descripcion}
-                    onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))}
-                    placeholder="Descripción o referencia adicional..."
-                  />
-                </div>
-                <div className="space-y-2 col-span-2">
                   <Label>Observaciones</Label>
                   <Textarea
                     value={form.observaciones}
