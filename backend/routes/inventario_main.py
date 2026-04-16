@@ -256,6 +256,224 @@ async def toggle_ignorar_alerta(item_id: str, _u=Depends(get_current_user)):
         return {"id": item_id, "ignorar_alerta_stock": nuevo_valor}
 
 
+# ==================== KARDEX GENERAL ====================
+
+@router.get("/inventario/kardex-general")
+async def get_kardex_general(
+    fecha_inicio: str = Query(...),
+    fecha_fin: str = Query(...),
+    linea_negocio_id: Optional[str] = Query(None),
+    categoria: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    formato: Optional[str] = Query(None),  # "xlsx" para exportar
+    current_user: dict = Depends(get_current_user),
+):
+    """Kardex general consolidado por rango de fechas. Una fila por item."""
+    from datetime import date as date_type
+    import io
+
+    from datetime import timedelta
+    try:
+        fi = date_type.fromisoformat(fecha_inicio)
+        ff = date_type.fromisoformat(fecha_fin)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Formato de fecha inválido (use YYYY-MM-DD)")
+
+    # ff_excl: día siguiente para comparar con < en lugar de <= en timestamps
+    ff_excl = ff + timedelta(days=1)
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Build WHERE conditions for prod_inventario
+        conditions = ["i.activo = true", "i.tipo_item != 'SERVICIO'"]
+        params: list = [fi, ff_excl]
+        p = 3  # next param index
+
+        if linea_negocio_id and linea_negocio_id != "todos":
+            conditions.append(f"i.linea_negocio_id = ${p}")
+            params.append(int(linea_negocio_id))
+            p += 1
+
+        if categoria and categoria != "todos":
+            conditions.append(f"i.categoria = ${p}")
+            params.append(categoria)
+            p += 1
+
+        if search:
+            conditions.append(f"(LOWER(i.nombre) LIKE ${p} OR LOWER(i.codigo) LIKE ${p})")
+            params.append(f"%{search.lower()}%")
+            p += 1
+
+        where_clause = " AND ".join(conditions)
+
+        sql = f"""
+        WITH
+        ing_antes AS (
+            SELECT item_id, COALESCE(SUM(cantidad), 0) AS total
+            FROM prod_inventario_ingresos WHERE fecha < $1 GROUP BY item_id
+        ),
+        sal_antes AS (
+            SELECT item_id, COALESCE(SUM(cantidad), 0) AS total
+            FROM prod_inventario_salidas WHERE fecha < $1 GROUP BY item_id
+        ),
+        adj_antes AS (
+            SELECT item_id,
+                   COALESCE(SUM(CASE WHEN tipo='entrada' THEN cantidad ELSE -cantidad END), 0) AS total
+            FROM prod_inventario_ajustes WHERE fecha < $1 GROUP BY item_id
+        ),
+        ing_rango AS (
+            SELECT item_id, COALESCE(SUM(cantidad), 0) AS total
+            FROM prod_inventario_ingresos
+            WHERE fecha >= $1 AND fecha < $2 GROUP BY item_id
+        ),
+        sal_rango AS (
+            SELECT item_id, COALESCE(SUM(cantidad), 0) AS total
+            FROM prod_inventario_salidas
+            WHERE fecha >= $1 AND fecha < $2 GROUP BY item_id
+        ),
+        adj_rango AS (
+            SELECT item_id,
+                   COALESCE(SUM(CASE WHEN tipo='entrada' THEN cantidad ELSE 0 END), 0) AS entradas,
+                   COALESCE(SUM(CASE WHEN tipo='salida' THEN cantidad ELSE 0 END), 0) AS salidas
+            FROM prod_inventario_ajustes
+            WHERE fecha >= $1 AND fecha < $2 GROUP BY item_id
+        )
+        SELECT
+            i.id, i.codigo, i.nombre, i.categoria,
+            i.unidad_medida,
+            COALESCE(i.costo_promedio, 0) AS costo_promedio,
+            COALESCE(ln.nombre, '') AS linea_negocio_nombre,
+            -- Saldo inicial
+            COALESCE(ia.total, 0) - COALESCE(sa.total, 0) + COALESCE(aa.total, 0) AS saldo_inicial,
+            -- Ingresos en rango (ingresos + ajustes entrada)
+            COALESCE(ir.total, 0) + COALESCE(ar.entradas, 0) AS ingresos,
+            -- Salidas en rango (salidas + ajustes salida)
+            COALESCE(sr.total, 0) + COALESCE(ar.salidas, 0) AS salidas
+        FROM prod_inventario i
+        LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = i.linea_negocio_id
+        LEFT JOIN ing_antes ia ON ia.item_id = i.id
+        LEFT JOIN sal_antes sa ON sa.item_id = i.id
+        LEFT JOIN adj_antes aa ON aa.item_id = i.id
+        LEFT JOIN ing_rango ir ON ir.item_id = i.id
+        LEFT JOIN sal_rango sr ON sr.item_id = i.id
+        LEFT JOIN adj_rango ar ON ar.item_id = i.id
+        WHERE {where_clause}
+          AND (
+            COALESCE(ia.total, 0) - COALESCE(sa.total, 0) + COALESCE(aa.total, 0) > 0
+            OR COALESCE(ir.total, 0) + COALESCE(ar.entradas, 0) > 0
+            OR COALESCE(sr.total, 0) + COALESCE(ar.salidas, 0) > 0
+          )
+        ORDER BY i.categoria, i.nombre
+        """
+
+        rows = await conn.fetch(sql, *params)
+
+        items = []
+        for r in rows:
+            saldo_inicial = float(r['saldo_inicial'] or 0)
+            ingresos = float(r['ingresos'] or 0)
+            salidas = float(r['salidas'] or 0)
+            saldo_final = saldo_inicial + ingresos - salidas
+            costo_prom = float(r['costo_promedio'] or 0)
+            valor_saldo = round(saldo_final * costo_prom, 2)
+            items.append({
+                "id": r['id'],
+                "codigo": r['codigo'],
+                "nombre": r['nombre'],
+                "categoria": r['categoria'] or '',
+                "linea_negocio_nombre": r['linea_negocio_nombre'],
+                "unidad_medida": r['unidad_medida'] or '',
+                "saldo_inicial": round(saldo_inicial, 4),
+                "ingresos": round(ingresos, 4),
+                "salidas": round(salidas, 4),
+                "saldo_final": round(saldo_final, 4),
+                "costo_promedio": round(costo_prom, 4),
+                "valor_saldo_final": valor_saldo,
+            })
+
+        if formato == "xlsx":
+            import openpyxl
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            from fastapi.responses import StreamingResponse
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Kardex General"
+
+            # Title
+            ws.merge_cells("A1:K1")
+            ws["A1"] = f"Kardex General — {fecha_inicio} al {fecha_fin}"
+            ws["A1"].font = Font(bold=True, size=13)
+            ws["A1"].alignment = Alignment(horizontal="center")
+
+            # Header row
+            headers = ["Código", "Nombre", "Categoría", "Línea de Negocio", "Unidad",
+                       "Saldo Inicial", "Ingresos", "Salidas", "Saldo Final", "Costo Prom.", "Valor Saldo Final"]
+            header_fill = PatternFill(start_color="1D4ED8", end_color="1D4ED8", fill_type="solid")
+            thin = Side(style="thin")
+            border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+            for col_idx, h in enumerate(headers, 1):
+                cell = ws.cell(row=2, column=col_idx, value=h)
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal="center")
+                cell.border = border
+
+            # Data rows
+            for row_idx, item in enumerate(items, 3):
+                vals = [
+                    item["codigo"], item["nombre"], item["categoria"],
+                    item["linea_negocio_nombre"], item["unidad_medida"],
+                    item["saldo_inicial"], item["ingresos"], item["salidas"],
+                    item["saldo_final"], item["costo_promedio"], item["valor_saldo_final"],
+                ]
+                fill = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid") if row_idx % 2 == 0 else None
+                for col_idx, val in enumerate(vals, 1):
+                    cell = ws.cell(row=row_idx, column=col_idx, value=val)
+                    cell.border = border
+                    if fill:
+                        cell.fill = fill
+                    if col_idx >= 6:
+                        cell.number_format = '#,##0.00##'
+
+            # Totals row
+            total_row = len(items) + 3
+            ws.cell(row=total_row, column=1, value="TOTAL").font = Font(bold=True)
+            ws.merge_cells(f"A{total_row}:E{total_row}")
+            total_valor = sum(i["valor_saldo_final"] for i in items)
+            for col_idx in range(1, 12):
+                cell = ws.cell(row=total_row, column=col_idx)
+                cell.border = border
+                cell.fill = PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid")
+            ws.cell(row=total_row, column=11, value=round(total_valor, 2)).font = Font(bold=True)
+            ws.cell(row=total_row, column=11).number_format = '#,##0.00'
+
+            # Column widths
+            widths = [12, 32, 14, 20, 10, 14, 14, 14, 14, 13, 18]
+            for i, w in enumerate(widths, 1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+            buf = io.BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+            filename = f"kardex_general_{fecha_inicio}_{fecha_fin}.xlsx"
+            return StreamingResponse(
+                buf,
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
+
+        total_valor = sum(i["valor_saldo_final"] for i in items)
+        return {
+            "items": items,
+            "total_items": len(items),
+            "total_valor_saldo": round(total_valor, 2),
+            "fecha_inicio": fecha_inicio,
+            "fecha_fin": fecha_fin,
+        }
+
+
 @router.get("/inventario/{item_id}")
 async def get_item_inventario(item_id: str):
     pool = await get_pool()
@@ -1335,217 +1553,3 @@ async def get_tipos_item():
             {"codigo": "PT", "nombre": "Producto Terminado", "descripcion": "Prendas terminadas"}
         ]
     }
-
-
-# ==================== KARDEX GENERAL ====================
-
-@router.get("/inventario/kardex-general")
-async def get_kardex_general(
-    fecha_inicio: str = Query(...),
-    fecha_fin: str = Query(...),
-    linea_negocio_id: Optional[str] = Query(None),
-    categoria: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
-    formato: Optional[str] = Query(None),  # "xlsx" para exportar
-    current_user: dict = Depends(get_current_user),
-):
-    """Kardex general consolidado por rango de fechas. Una fila por item."""
-    from datetime import date as date_type
-    import io
-
-    try:
-        fi = date_type.fromisoformat(fecha_inicio)
-        ff = date_type.fromisoformat(fecha_fin)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Formato de fecha inválido (use YYYY-MM-DD)")
-
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        # Build WHERE conditions for prod_inventario
-        conditions = ["i.activo = true", "i.tipo_item != 'SERVICIO'"]
-        params: list = [fi, ff]
-        p = 3  # next param index
-
-        if linea_negocio_id and linea_negocio_id != "todos":
-            conditions.append(f"i.linea_negocio_id = ${p}")
-            params.append(int(linea_negocio_id))
-            p += 1
-
-        if categoria and categoria != "todos":
-            conditions.append(f"i.categoria = ${p}")
-            params.append(categoria)
-            p += 1
-
-        if search:
-            conditions.append(f"(LOWER(i.nombre) LIKE ${p} OR LOWER(i.codigo) LIKE ${p})")
-            params.append(f"%{search.lower()}%")
-            p += 1
-
-        where_clause = " AND ".join(conditions)
-
-        sql = f"""
-        WITH
-        ing_antes AS (
-            SELECT item_id, COALESCE(SUM(cantidad), 0) AS total
-            FROM prod_inventario_ingresos WHERE fecha < $1 GROUP BY item_id
-        ),
-        sal_antes AS (
-            SELECT item_id, COALESCE(SUM(cantidad), 0) AS total
-            FROM prod_inventario_salidas WHERE fecha < $1 GROUP BY item_id
-        ),
-        adj_antes AS (
-            SELECT item_id,
-                   COALESCE(SUM(CASE WHEN tipo='entrada' THEN cantidad ELSE -cantidad END), 0) AS total
-            FROM prod_inventario_ajustes WHERE fecha < $1 GROUP BY item_id
-        ),
-        ing_rango AS (
-            SELECT item_id, COALESCE(SUM(cantidad), 0) AS total
-            FROM prod_inventario_ingresos
-            WHERE fecha >= $1 AND fecha <= $2 GROUP BY item_id
-        ),
-        sal_rango AS (
-            SELECT item_id, COALESCE(SUM(cantidad), 0) AS total
-            FROM prod_inventario_salidas
-            WHERE fecha >= $1 AND fecha <= $2 GROUP BY item_id
-        ),
-        adj_rango AS (
-            SELECT item_id,
-                   COALESCE(SUM(CASE WHEN tipo='entrada' THEN cantidad ELSE 0 END), 0) AS entradas,
-                   COALESCE(SUM(CASE WHEN tipo='salida' THEN cantidad ELSE 0 END), 0) AS salidas
-            FROM prod_inventario_ajustes
-            WHERE fecha >= $1 AND fecha <= $2 GROUP BY item_id
-        )
-        SELECT
-            i.id, i.codigo, i.nombre, i.categoria,
-            i.unidad_medida,
-            COALESCE(i.costo_promedio, 0) AS costo_promedio,
-            COALESCE(ln.nombre, '') AS linea_negocio_nombre,
-            -- Saldo inicial
-            COALESCE(ia.total, 0) - COALESCE(sa.total, 0) + COALESCE(aa.total, 0) AS saldo_inicial,
-            -- Ingresos en rango (ingresos + ajustes entrada)
-            COALESCE(ir.total, 0) + COALESCE(ar.entradas, 0) AS ingresos,
-            -- Salidas en rango (salidas + ajustes salida)
-            COALESCE(sr.total, 0) + COALESCE(ar.salidas, 0) AS salidas
-        FROM prod_inventario i
-        LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = i.linea_negocio_id
-        LEFT JOIN ing_antes ia ON ia.item_id = i.id
-        LEFT JOIN sal_antes sa ON sa.item_id = i.id
-        LEFT JOIN adj_antes aa ON aa.item_id = i.id
-        LEFT JOIN ing_rango ir ON ir.item_id = i.id
-        LEFT JOIN sal_rango sr ON sr.item_id = i.id
-        LEFT JOIN adj_rango ar ON ar.item_id = i.id
-        WHERE {where_clause}
-          AND (
-            COALESCE(ia.total, 0) - COALESCE(sa.total, 0) + COALESCE(aa.total, 0) > 0
-            OR COALESCE(ir.total, 0) + COALESCE(ar.entradas, 0) > 0
-            OR COALESCE(sr.total, 0) + COALESCE(ar.salidas, 0) > 0
-          )
-        ORDER BY i.categoria, i.nombre
-        """
-
-        rows = await conn.fetch(sql, *params)
-
-        items = []
-        for r in rows:
-            saldo_inicial = float(r['saldo_inicial'] or 0)
-            ingresos = float(r['ingresos'] or 0)
-            salidas = float(r['salidas'] or 0)
-            saldo_final = saldo_inicial + ingresos - salidas
-            costo_prom = float(r['costo_promedio'] or 0)
-            valor_saldo = round(saldo_final * costo_prom, 2)
-            items.append({
-                "id": r['id'],
-                "codigo": r['codigo'],
-                "nombre": r['nombre'],
-                "categoria": r['categoria'] or '',
-                "linea_negocio_nombre": r['linea_negocio_nombre'],
-                "unidad_medida": r['unidad_medida'] or '',
-                "saldo_inicial": round(saldo_inicial, 4),
-                "ingresos": round(ingresos, 4),
-                "salidas": round(salidas, 4),
-                "saldo_final": round(saldo_final, 4),
-                "costo_promedio": round(costo_prom, 4),
-                "valor_saldo_final": valor_saldo,
-            })
-
-        if formato == "xlsx":
-            import openpyxl
-            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-            from fastapi.responses import StreamingResponse
-
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = "Kardex General"
-
-            # Title
-            ws.merge_cells("A1:K1")
-            ws["A1"] = f"Kardex General — {fecha_inicio} al {fecha_fin}"
-            ws["A1"].font = Font(bold=True, size=13)
-            ws["A1"].alignment = Alignment(horizontal="center")
-
-            # Header row
-            headers = ["Código", "Nombre", "Categoría", "Línea de Negocio", "Unidad",
-                       "Saldo Inicial", "Ingresos", "Salidas", "Saldo Final", "Costo Prom.", "Valor Saldo Final"]
-            header_fill = PatternFill(start_color="1D4ED8", end_color="1D4ED8", fill_type="solid")
-            thin = Side(style="thin")
-            border = Border(left=thin, right=thin, top=thin, bottom=thin)
-
-            for col_idx, h in enumerate(headers, 1):
-                cell = ws.cell(row=2, column=col_idx, value=h)
-                cell.font = Font(bold=True, color="FFFFFF")
-                cell.fill = header_fill
-                cell.alignment = Alignment(horizontal="center")
-                cell.border = border
-
-            # Data rows
-            for row_idx, item in enumerate(items, 3):
-                vals = [
-                    item["codigo"], item["nombre"], item["categoria"],
-                    item["linea_negocio_nombre"], item["unidad_medida"],
-                    item["saldo_inicial"], item["ingresos"], item["salidas"],
-                    item["saldo_final"], item["costo_promedio"], item["valor_saldo_final"],
-                ]
-                fill = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid") if row_idx % 2 == 0 else None
-                for col_idx, val in enumerate(vals, 1):
-                    cell = ws.cell(row=row_idx, column=col_idx, value=val)
-                    cell.border = border
-                    if fill:
-                        cell.fill = fill
-                    if col_idx >= 6:
-                        cell.number_format = '#,##0.00##'
-
-            # Totals row
-            total_row = len(items) + 3
-            ws.cell(row=total_row, column=1, value="TOTAL").font = Font(bold=True)
-            ws.merge_cells(f"A{total_row}:E{total_row}")
-            total_valor = sum(i["valor_saldo_final"] for i in items)
-            for col_idx in range(1, 12):
-                cell = ws.cell(row=total_row, column=col_idx)
-                cell.border = border
-                cell.fill = PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid")
-            ws.cell(row=total_row, column=11, value=round(total_valor, 2)).font = Font(bold=True)
-            ws.cell(row=total_row, column=11).number_format = '#,##0.00'
-
-            # Column widths
-            widths = [12, 32, 14, 20, 10, 14, 14, 14, 14, 13, 18]
-            for i, w in enumerate(widths, 1):
-                ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
-
-            buf = io.BytesIO()
-            wb.save(buf)
-            buf.seek(0)
-            filename = f"kardex_general_{fecha_inicio}_{fecha_fin}.xlsx"
-            return StreamingResponse(
-                buf,
-                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                headers={"Content-Disposition": f"attachment; filename={filename}"}
-            )
-
-        total_valor = sum(i["valor_saldo_final"] for i in items)
-        return {
-            "items": items,
-            "total_items": len(items),
-            "total_valor_saldo": round(total_valor, 2),
-            "fecha_inicio": fecha_inicio,
-            "fecha_fin": fecha_fin,
-        }
