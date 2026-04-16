@@ -124,8 +124,8 @@ export const MuestraDetalle = () => {
             </span>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Cliente: <span className="font-semibold text-foreground">{muestra.cliente}</span>
-            {muestra.linea_negocio_nombre && <> · {muestra.linea_negocio_nombre}</>}
+            {muestra.linea_negocio_nombre && <span className="font-semibold text-foreground">{muestra.linea_negocio_nombre}</span>}
+            {muestra.cliente && <> · <span>{muestra.cliente}</span></>}
           </p>
         </div>
         {siguientes.length > 0 && (

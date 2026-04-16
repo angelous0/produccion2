@@ -33,12 +33,11 @@ const ESTADO_CFG = {
 };
 
 const EMPTY_FORM = {
-  cliente: '',
+  descripcion: '',
   fecha_envio: new Date().toISOString().slice(0, 10),
   modelo_nombre: '',
   linea_negocio_id: '',
   observaciones: '',
-  materiales: [],
 };
 
 const EMPTY_MAT = { item_id: '', cantidad: '' };
@@ -49,7 +48,8 @@ export const Muestras = () => {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [items, setItems] = useState([]);
+  const [allItems, setAllItems] = useState([]);
+  const [filteredItems, setFilteredItems] = useState([]);
   const [lineas, setLineas] = useState([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -65,10 +65,30 @@ export const Muestras = () => {
         axios.get(`${API}/inventario?all=true`),
         axios.get(`${API}/lineas-negocio`).catch(() => ({ data: [] })),
       ]);
-      setItems(Array.isArray(itemsRes.data) ? itemsRes.data : (itemsRes.data?.items || []));
+      const itemsData = Array.isArray(itemsRes.data) ? itemsRes.data : (itemsRes.data?.items || []);
+      setAllItems(itemsData);
+      setFilteredItems(itemsData.filter(i => i.categoria !== 'PT'));
       setLineas(Array.isArray(lineasRes.data) ? lineasRes.data : (lineasRes.data?.items || []));
     } catch { /* silencioso */ }
   }, []);
+
+  // Filtra los items de materiales según la línea de negocio seleccionada
+  const handleLineaChange = useCallback(async (lineaId) => {
+    setForm(f => ({ ...f, linea_negocio_id: lineaId === 'none' ? '' : lineaId }));
+    // Limpiar materiales al cambiar línea para evitar items inválidos
+    setMateriales([]);
+    if (!lineaId || lineaId === 'none') {
+      setFilteredItems(allItems.filter(i => i.categoria !== 'PT'));
+      return;
+    }
+    try {
+      const res = await axios.get(`${API}/inventario?all=true&linea_negocio_id=${lineaId}`);
+      const data = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+      setFilteredItems(data.filter(i => i.categoria !== 'PT'));
+    } catch {
+      setFilteredItems(allItems.filter(i => i.categoria !== 'PT'));
+    }
+  }, [allItems]);
 
   const fetchMuestras = useCallback(async (p = 0) => {
     setLoading(true);
@@ -93,6 +113,7 @@ export const Muestras = () => {
   const openDialog = () => {
     setForm(EMPTY_FORM);
     setMateriales([]);
+    setFilteredItems(allItems.filter(i => i.categoria !== 'PT'));
     setDialogOpen(true);
   };
 
@@ -104,7 +125,7 @@ export const Muestras = () => {
 
   const handleSubmit = guard(async (e) => {
     e.preventDefault();
-    if (!form.cliente.trim()) { toast.error('El cliente es obligatorio'); return; }
+    if (!form.linea_negocio_id) { toast.error('Selecciona una línea de negocio'); return; }
     for (const mat of materiales) {
       if (!mat.item_id) { toast.error('Todos los materiales deben tener item seleccionado'); return; }
       if (!parseFloat(mat.cantidad) || parseFloat(mat.cantidad) <= 0) {
@@ -113,10 +134,10 @@ export const Muestras = () => {
     }
     try {
       await axios.post(`${API}/muestras`, {
-        cliente: form.cliente.trim(),
+        cliente: form.descripcion?.trim() || null,
         fecha_envio: form.fecha_envio || undefined,
         modelo_nombre: form.modelo_nombre || null,
-        linea_negocio_id: form.linea_negocio_id ? parseInt(form.linea_negocio_id) : null,
+        linea_negocio_id: parseInt(form.linea_negocio_id),
         observaciones: form.observaciones || null,
         materiales: materiales.map(m => ({
           item_id: m.item_id,
@@ -174,7 +195,7 @@ export const Muestras = () => {
         ))}
         <div className="ml-auto flex gap-2 items-center">
           <Input
-            placeholder="Buscar cliente..."
+            placeholder="Buscar descripción..."
             value={filtroCliente}
             onChange={e => setFiltroCliente(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && fetchMuestras(0)}
@@ -193,7 +214,7 @@ export const Muestras = () => {
               <TableHeader>
                 <TableRow className="data-table-header">
                   <TableHead>Código</TableHead>
-                  <TableHead>Cliente</TableHead>
+                  <TableHead>Descripción</TableHead>
                   <TableHead>Fecha Envío</TableHead>
                   <TableHead>Modelo</TableHead>
                   <TableHead>Estado</TableHead>
@@ -226,7 +247,7 @@ export const Muestras = () => {
                         onClick={() => navigate(`/muestras/${m.id}`)}
                       >
                         <TableCell className="font-mono text-sm font-semibold">{m.codigo}</TableCell>
-                        <TableCell className="font-medium">{m.cliente}</TableCell>
+                        <TableCell className="text-muted-foreground text-sm">{m.cliente || <span className="italic">Sin descripción</span>}</TableCell>
                         <TableCell className="font-mono text-sm">{formatDate(m.fecha_envio)}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{m.modelo_nombre || '-'}</TableCell>
                         <TableCell>
@@ -275,15 +296,28 @@ export const Muestras = () => {
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4">
+
+                {/* Línea de Negocio PRIMERO y OBLIGATORIA */}
                 <div className="space-y-2 col-span-2">
-                  <Label>Cliente *</Label>
-                  <Input
-                    value={form.cliente}
-                    onChange={e => setForm(f => ({ ...f, cliente: e.target.value }))}
-                    placeholder="Nombre del cliente..."
-                    required
-                  />
+                  <Label>
+                    Línea de Negocio <span className="text-destructive">*</span>
+                  </Label>
+                  <Select
+                    value={form.linea_negocio_id || 'none'}
+                    onValueChange={handleLineaChange}
+                  >
+                    <SelectTrigger className={!form.linea_negocio_id ? 'border-destructive/50' : ''}>
+                      <SelectValue placeholder="Selecciona una línea de negocio..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {lineas.map(l => <SelectItem key={l.id} value={String(l.id)}>{l.nombre}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {!form.linea_negocio_id && (
+                    <p className="text-xs text-muted-foreground">Requerido — filtra los materiales disponibles</p>
+                  )}
                 </div>
+
                 <div className="space-y-2">
                   <Label>Fecha de Envío</Label>
                   <Input
@@ -300,18 +334,14 @@ export const Muestras = () => {
                     placeholder="Nombre del modelo..."
                   />
                 </div>
-                {lineas.length > 0 && (
-                  <div className="space-y-2 col-span-2">
-                    <Label>Línea de Negocio</Label>
-                    <Select value={form.linea_negocio_id || 'none'} onValueChange={v => setForm(f => ({ ...f, linea_negocio_id: v === 'none' ? '' : v }))}>
-                      <SelectTrigger><SelectValue placeholder="Sin asignar" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Sin asignar</SelectItem>
-                        {lineas.map(l => <SelectItem key={l.id} value={String(l.id)}>{l.nombre}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                <div className="space-y-2 col-span-2">
+                  <Label>Descripción <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                  <Input
+                    value={form.descripcion}
+                    onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))}
+                    placeholder="Descripción o referencia adicional..."
+                  />
+                </div>
                 <div className="space-y-2 col-span-2">
                   <Label>Observaciones</Label>
                   <Textarea
@@ -326,25 +356,41 @@ export const Muestras = () => {
               {/* Materiales */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <Label className="text-sm font-semibold">Materiales</Label>
-                  <Button type="button" variant="outline" size="sm" onClick={addMaterial}>
+                  <div>
+                    <Label className="text-sm font-semibold">Materiales</Label>
+                    {form.linea_negocio_id && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({filteredItems.length} items disponibles en esta línea)
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    type="button" variant="outline" size="sm"
+                    onClick={addMaterial}
+                    disabled={!form.linea_negocio_id}
+                    title={!form.linea_negocio_id ? 'Selecciona una línea de negocio primero' : ''}
+                  >
                     <Plus className="h-3.5 w-3.5 mr-1" /> Agregar
                   </Button>
                 </div>
-                {materiales.length === 0 ? (
+                {!form.linea_negocio_id ? (
+                  <p className="text-xs text-muted-foreground py-3 text-center border rounded-lg border-dashed">
+                    Selecciona una línea de negocio para agregar materiales
+                  </p>
+                ) : materiales.length === 0 ? (
                   <p className="text-xs text-muted-foreground py-3 text-center border rounded-lg border-dashed">
                     Sin materiales. Opcional — agrega items para calcular costo FIFO.
                   </p>
                 ) : (
                   <div className="space-y-2">
                     {materiales.map((mat, idx) => {
-                      const itemSel = items.find(i => i.id === mat.item_id);
+                      const itemSel = filteredItems.find(i => i.id === mat.item_id);
                       return (
                         <div key={idx} className="grid grid-cols-[1fr_100px_32px] gap-2 items-start">
                           <Select value={mat.item_id || 'none'} onValueChange={v => updateMaterial(idx, 'item_id', v === 'none' ? '' : v)}>
                             <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Seleccionar item..." /></SelectTrigger>
                             <SelectContent>
-                              {items.filter(i => i.categoria !== 'PT').map(i => (
+                              {filteredItems.map(i => (
                                 <SelectItem key={i.id} value={i.id}>
                                   <span className="font-mono mr-1 text-muted-foreground text-xs">{i.codigo}</span> {i.nombre}
                                   <span className="ml-1 text-xs text-muted-foreground">({i.stock_actual} {i.unidad_medida})</span>

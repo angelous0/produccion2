@@ -22,11 +22,11 @@ class MaterialMuestraIn(BaseModel):
 
 
 class MuestraCreate(BaseModel):
-    cliente: str
+    cliente: Optional[str] = None           # campo descripción opcional (renombrado en UI)
     fecha_envio: Optional[str] = None       # YYYY-MM-DD
     modelo_id: Optional[str] = None
     modelo_nombre: Optional[str] = None
-    linea_negocio_id: Optional[int] = None
+    linea_negocio_id: int                   # ahora obligatorio
     observaciones: Optional[str] = None
     materiales: List[MaterialMuestraIn] = []
 
@@ -100,7 +100,7 @@ async def list_muestras(
     estado: Optional[str] = None,
     cliente: Optional[str] = None,
     linea_negocio_id: Optional[int] = None,
-    current_user=Depends(get_current_user),
+    _current_user=Depends(get_current_user),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -170,8 +170,7 @@ async def get_muestra(muestra_id: str, _current_user=Depends(get_current_user)):
 
 @router.post("/muestras")
 async def crear_muestra(data: MuestraCreate, current_user=Depends(get_current_user)):
-    if not data.cliente.strip():
-        raise HTTPException(400, "El campo cliente es obligatorio")
+    # linea_negocio_id es obligatorio (ya validado por tipo int en Pydantic)
 
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -198,7 +197,7 @@ async def crear_muestra(data: MuestraCreate, current_user=Depends(get_current_us
                (id, codigo, cliente, fecha_envio, modelo_id, modelo_nombre,
                 linea_negocio_id, estado, observaciones, usuario_creador)
                VALUES ($1,$2,$3,$4,$5,$6,$7,'PENDIENTE',$8,$9)""",
-            mid, codigo, data.cliente.strip(), fecha_val,
+            mid, codigo, (data.cliente or '').strip() or None, fecha_val,
             data.modelo_id, data.modelo_nombre,
             data.linea_negocio_id, data.observaciones, usuario,
         )
@@ -237,7 +236,7 @@ async def crear_muestra(data: MuestraCreate, current_user=Depends(get_current_us
         await audit_log_safe(
             conn, usuario, "INSERT", "produccion", "prod_muestras",
             registro_id=mid, referencia=codigo,
-            datos_despues={"cliente": data.cliente, "codigo": codigo},
+            datos_despues={"descripcion": data.cliente, "codigo": codigo},
         )
 
         return await get_muestra(mid)
