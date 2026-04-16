@@ -418,10 +418,12 @@ async def get_ingresos():
             SELECT ing.*,
                 COALESCE(inv.nombre, '') as item_nombre,
                 COALESCE(inv.codigo, '') as item_codigo,
+                COALESCE(ln.nombre, '') as linea_negocio_nombre,
                 COALESCE(rol.cnt, 0) as rollos_count,
                 COALESCE(fac.qty_facturada, 0) as qty_facturada
             FROM prod_inventario_ingresos ing
             LEFT JOIN prod_inventario inv ON ing.item_id = inv.id
+            LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = ing.linea_negocio_id
             LEFT JOIN LATERAL (
                 SELECT COUNT(*) as cnt FROM prod_inventario_rollos WHERE ingreso_id = ing.id
             ) rol ON true

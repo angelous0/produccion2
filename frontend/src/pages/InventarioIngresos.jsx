@@ -22,7 +22,7 @@ import {
 import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from '../components/ui/command';
-import { Plus, Trash2, ArrowDownCircle, Layers, Pencil, ChevronsUpDown, Check, Info } from 'lucide-react';
+import { Plus, Trash2, ArrowDownCircle, Layers, Pencil, ChevronsUpDown, Check, Info, Columns3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '../lib/dateUtils';
 import { NumericInput } from '../components/ui/numeric-input';
@@ -38,6 +38,7 @@ export const InventarioIngresos = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingIngreso, setEditingIngreso] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [mostrarCodigo, setMostrarCodigo] = useState(false);
   const [formData, setFormData] = useState({
     item_id: '',
     cantidad: 0,
@@ -280,6 +281,15 @@ export const InventarioIngresos = () => {
               ))}
             </SelectContent>
           </Select>
+          <Button
+            variant={mostrarCodigo ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setMostrarCodigo(v => !v)}
+            title="Mostrar/ocultar columna Código"
+          >
+            <Columns3 className="h-4 w-4 mr-1" />
+            Código
+          </Button>
           <Button onClick={handleOpenDialog} data-testid="btn-nuevo-ingreso">
             <Plus className="h-4 w-4 mr-2" />
             Nuevo Ingreso
@@ -294,8 +304,9 @@ export const InventarioIngresos = () => {
               <TableHeader>
                 <TableRow className="data-table-header">
                   <TableHead>Fecha</TableHead>
-                  <TableHead>Código</TableHead>
+                  {mostrarCodigo && <TableHead>Código</TableHead>}
                   <TableHead>Item</TableHead>
+                  <TableHead>Línea de Negocio</TableHead>
                   <TableHead className="text-right">Cantidad</TableHead>
                   <TableHead className="text-right">Disponible</TableHead>
                   <TableHead className="text-right">Costo Unit.</TableHead>
@@ -308,13 +319,13 @@ export const InventarioIngresos = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8">
+                    <TableCell colSpan={mostrarCodigo ? 11 : 10} className="text-center py-8">
                       Cargando...
                     </TableCell>
                   </TableRow>
                 ) : ingresosFiltrados.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={mostrarCodigo ? 11 : 10} className="text-center py-8 text-muted-foreground">
                       {filtroLinea
                         ? `Sin ingresos para la línea seleccionada`
                         : 'No hay ingresos registrados'}
@@ -326,7 +337,7 @@ export const InventarioIngresos = () => {
                       <TableCell className="font-mono text-sm">
                         {formatDate(ingreso.fecha)}
                       </TableCell>
-                      <TableCell className="font-mono">{ingreso.item_codigo}</TableCell>
+                      {mostrarCodigo && <TableCell className="font-mono text-sm">{ingreso.item_codigo}</TableCell>}
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <ArrowDownCircle className="h-4 w-4 text-green-600" />
@@ -341,6 +352,7 @@ export const InventarioIngresos = () => {
                           </div>
                         </div>
                       </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{ingreso.linea_negocio_nombre || '—'}</TableCell>
                       <TableCell className="text-right font-mono font-semibold">
                         {ingreso.cantidad}
                       </TableCell>
