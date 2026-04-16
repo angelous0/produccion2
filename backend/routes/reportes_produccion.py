@@ -2321,3 +2321,234 @@ async def rendimiento_servicios(
                 "peor": {"persona": peor["persona"], "servicio": peor["servicio"], "confiabilidad": peor["confiabilidad"]} if peor else None,
             },
         }
+
+
+# ==================== COSTOS DE PRODUCCIÓN ====================
+
+@router.get("/costos-produccion")
+async def get_costos_produccion(
+    empresa_id: int = Query(7),
+    estado: Optional[str] = Query(None),
+    fecha_desde: Optional[str] = Query(None),
+    fecha_hasta: Optional[str] = Query(None),
+    linea_negocio_id: Optional[int] = Query(None),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Reporte de costos de producción agrupado por línea de negocio.
+    Devuelve materiales (por ítem) y servicios (por tipo) desagregados por corte.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # ── Build filter ──────────────────────────────────────────────
+        where_parts = ["r.empresa_id = $1"]
+        params = [empresa_id]
+        idx = 2
+
+        if estado:
+            params.append(estado)
+            where_parts.append(f"r.estado_op = ${idx}"); idx += 1
+        if fecha_desde:
+            params.append(fecha_desde)
+            where_parts.append(f"r.fecha_creacion >= ${idx}::date"); idx += 1
+        if fecha_hasta:
+            params.append(fecha_hasta)
+            where_parts.append(f"r.fecha_creacion <= ${idx}::date"); idx += 1
+        if linea_negocio_id:
+            params.append(linea_negocio_id)
+            where_parts.append(f"r.linea_negocio_id = ${idx}"); idx += 1
+
+        where_sql = " AND ".join(where_parts)
+
+        # ── 1. Main registros ─────────────────────────────────────────
+        reg_rows = await conn.fetch(f"""
+            SELECT
+                r.id,
+                r.n_corte,
+                r.estado_op,
+                r.fecha_creacion,
+                r.tallas AS tallas_json,
+                r.linea_negocio_id,
+                COALESCE(ln.nombre, 'SIN CLASIFICAR') AS linea_nombre,
+                m.nombre AS modelo_nombre
+            FROM produccion.prod_registros r
+            LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = r.linea_negocio_id
+            LEFT JOIN produccion.prod_modelos m ON m.id = r.modelo_id
+            WHERE {where_sql}
+            ORDER BY ln.nombre NULLS LAST, r.fecha_creacion DESC
+        """, *params)
+
+        if not reg_rows:
+            return {"grupos": [], "tallas_keys": [], "servicios_keys": [], "materiales_keys": []}
+
+        reg_ids = [str(r["id"]) for r in reg_rows]
+
+        # ── 2. Service costs per registro ─────────────────────────────
+        serv_rows = await conn.fetch("""
+            SELECT
+                mp.registro_id::text AS registro_id,
+                sv.nombre            AS servicio,
+                SUM(COALESCE(mp.costo_calculado, 0)) AS costo
+            FROM produccion.prod_movimientos_produccion mp
+            LEFT JOIN produccion.prod_servicios_produccion sv ON sv.id = mp.servicio_id
+            WHERE mp.registro_id = ANY($1::uuid[])
+              AND COALESCE(mp.costo_calculado, 0) > 0
+            GROUP BY mp.registro_id, sv.nombre
+        """, reg_ids)
+
+        # ── 3. Material costs per registro ────────────────────────────
+        mat_rows = await conn.fetch("""
+            SELECT
+                s.registro_id::text AS registro_id,
+                COALESCE(inv.nombre, 'Otro') AS material,
+                COALESCE(inv.codigo, '') AS codigo,
+                SUM(COALESCE(s.costo_total, 0)) AS costo
+            FROM produccion.prod_inventario_salidas s
+            LEFT JOIN produccion.prod_inventario inv ON inv.id = s.item_id
+            WHERE s.registro_id = ANY($1::uuid[])
+              AND COALESCE(s.costo_total, 0) > 0
+            GROUP BY s.registro_id, inv.nombre, inv.codigo
+        """, reg_ids)
+
+        # ── Index by registro_id ──────────────────────────────────────
+        servicios_by_reg = {}  # {reg_id: {servicio: costo}}
+        all_servicios = set()
+        for row in serv_rows:
+            rid = row["registro_id"]
+            svc = row["servicio"] or "Sin nombre"
+            servicios_by_reg.setdefault(rid, {})[svc] = float(row["costo"])
+            all_servicios.add(svc)
+
+        materiales_by_reg = {}  # {reg_id: {material_key: costo}}
+        all_materiales = set()
+        for row in mat_rows:
+            rid = row["registro_id"]
+            mat_key = row["material"] or "Otro"
+            materiales_by_reg.setdefault(rid, {})[mat_key] = \
+                materiales_by_reg.get(rid, {}).get(mat_key, 0) + float(row["costo"])
+            all_materiales.add(mat_key)
+
+        # ── Collect all talla keys ────────────────────────────────────
+        all_tallas = set()
+        for row in reg_rows:
+            tallas_list = parse_jsonb(row["tallas_json"])
+            for t in tallas_list:
+                tn = t.get("talla_nombre") or t.get("talla") or ""
+                if tn:
+                    all_tallas.add(tn)
+
+        # Ordered talla keys: numeric first, then alpha
+        def talla_sort_key(t):
+            try:
+                return (0, int(t))
+            except ValueError:
+                return (1, t)
+        tallas_keys = sorted(all_tallas, key=talla_sort_key)
+
+        # Ordered service keys: canonical order then alphabetical
+        SVC_ORDER = ["Corte", "Costura", "Lavanderia", "Lavandería", "Acabado",
+                     "Estampado", "Bordado", "Atraque", "Cuero lazer", "Pegado cuero"]
+        def svc_sort_key(s):
+            s_lower = s.lower()
+            for i, canonical in enumerate(SVC_ORDER):
+                if canonical.lower() in s_lower or s_lower in canonical.lower():
+                    return (i, s)
+            return (len(SVC_ORDER), s)
+        servicios_keys = sorted(all_servicios, key=svc_sort_key)
+
+        # Material keys order
+        MAT_ORDER = ["denim", "tocuyo", "forro", "tela"]
+        def mat_sort_key(m):
+            m_lower = m.lower()
+            for i, canonical in enumerate(MAT_ORDER):
+                if canonical in m_lower:
+                    return (i, m)
+            return (len(MAT_ORDER), m)
+        materiales_keys = sorted(all_materiales, key=mat_sort_key)
+
+        # ── Group registros by linea ──────────────────────────────────
+        from collections import defaultdict, OrderedDict
+        grupos_dict = OrderedDict()
+
+        for row in reg_rows:
+            rid = str(row["id"])
+            linea_id = row["linea_negocio_id"]
+            linea_nombre = row["linea_nombre"]
+            grupo_key = linea_id or 0
+
+            if grupo_key not in grupos_dict:
+                grupos_dict[grupo_key] = {
+                    "linea_negocio_id": linea_id,
+                    "linea_nombre": linea_nombre,
+                    "registros": [],
+                    "totales": {
+                        "total_prendas": 0,
+                        "costo_materiales": 0,
+                        "costo_servicios": 0,
+                        "costo_total": 0,
+                    }
+                }
+
+            # Build tallas dict for this registro
+            tallas_list = parse_jsonb(row["tallas_json"])
+            tallas_dict = {}
+            total_prendas = 0
+            for t in tallas_list:
+                tn = t.get("talla_nombre") or t.get("talla") or ""
+                qty = safe_int(t.get("cantidad", 0))
+                if tn:
+                    tallas_dict[tn] = tallas_dict.get(tn, 0) + qty
+                    total_prendas += qty
+
+            svc_dict = servicios_by_reg.get(rid, {})
+            mat_dict = materiales_by_reg.get(rid, {})
+
+            costo_mat = sum(mat_dict.values())
+            costo_svc = sum(svc_dict.values())
+            costo_total = costo_mat + costo_svc
+
+            registro_item = {
+                "id": rid,
+                "n_corte": row["n_corte"],
+                "estado_op": row["estado_op"],
+                "fecha_creacion": str(row["fecha_creacion"]) if row["fecha_creacion"] else None,
+                "modelo_nombre": row["modelo_nombre"] or "",
+                "total_prendas": total_prendas,
+                "tallas": tallas_dict,
+                "materiales": mat_dict,
+                "servicios": svc_dict,
+                "costo_materiales": round(costo_mat, 2),
+                "costo_servicios": round(costo_svc, 2),
+                "costo_total": round(costo_total, 2),
+                "costo_unitario": round(costo_total / total_prendas, 4) if total_prendas > 0 else 0,
+            }
+
+            grupos_dict[grupo_key]["registros"].append(registro_item)
+            g = grupos_dict[grupo_key]["totales"]
+            g["total_prendas"] += total_prendas
+            g["costo_materiales"] = round(g.get("costo_materiales", 0) + costo_mat, 2)
+            g["costo_servicios"] = round(g.get("costo_servicios", 0) + costo_svc, 2)
+            g["costo_total"] = round(g.get("costo_total", 0) + costo_total, 2)
+
+        # Add per-column totals per grupo
+        for grupo in grupos_dict.values():
+            tallas_total = {}
+            mat_total = {}
+            svc_total = {}
+            for reg in grupo["registros"]:
+                for k, v in reg["tallas"].items():
+                    tallas_total[k] = tallas_total.get(k, 0) + v
+                for k, v in reg["materiales"].items():
+                    mat_total[k] = mat_total.get(k, 0) + v
+                for k, v in reg["servicios"].items():
+                    svc_total[k] = svc_total.get(k, 0) + v
+            grupo["totales"]["tallas"] = tallas_total
+            grupo["totales"]["materiales"] = {k: round(v, 2) for k, v in mat_total.items()}
+            grupo["totales"]["servicios"] = {k: round(v, 2) for k, v in svc_total.items()}
+
+        return {
+            "grupos": list(grupos_dict.values()),
+            "tallas_keys": tallas_keys,
+            "servicios_keys": servicios_keys,
+            "materiales_keys": materiales_keys,
+        }

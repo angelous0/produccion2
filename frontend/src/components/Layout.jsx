@@ -74,6 +74,7 @@ import {
   Building2,
   AlertTriangle,
   FlaskConical,
+  Receipt,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -139,6 +140,7 @@ const reportesItems = [
   { to: '/reportes/lotes', icon: GitBranch, label: 'Lotes & Trazabilidad' },
   { to: '/reportes/matriz', icon: Grid3X3, label: 'Matriz Dinamica' },
   { to: '/reportes/rendimiento-servicios', icon: TrendingUp, label: 'Rendimiento Servicios' },
+  { to: '/reportes/costos-produccion', icon: Receipt, label: 'Costos de Producción' },
 ];
 
 const catalogosItems = [

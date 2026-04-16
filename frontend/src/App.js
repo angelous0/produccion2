@@ -14,6 +14,7 @@ import { Loader2 } from "lucide-react";
 // Lazy imports - se cargan solo cuando se navega a la ruta
 const AgendaEntregas = lazy(() => import('./pages/AgendaEntregas'));
 const CostoPorLote = lazy(() => import('./pages/CostoPorLote'));
+const CostosProduccion = lazy(() => import('./pages/CostosProduccion'));
 const TendenciaFallados = lazy(() => import('./pages/TendenciaFallados'));
 const DashboardEjecutivo = lazy(() => import('./pages/DashboardEjecutivo'));
 const ReporteAlertas = lazy(() => import('./pages/ReporteAlertas'));
@@ -181,6 +182,7 @@ function AppRoutes() {
         
         <Route path="reportes/agenda-entregas" element={<LazyWrap><AgendaEntregas /></LazyWrap>} />
         <Route path="reportes/costo-lote" element={<LazyWrap><CostoPorLote /></LazyWrap>} />
+        <Route path="reportes/costos-produccion" element={<LazyWrap><CostosProduccion /></LazyWrap>} />
         <Route path="reportes/tendencia-fallados" element={<LazyWrap><TendenciaFallados /></LazyWrap>} />
         <Route path="reportes/entregas" element={<LazyWrap><ReporteEntregas /></LazyWrap>} />
         <Route path="control-fallados" element={<Navigate to="/reportes/calidad?tab=fallados" replace />} />
