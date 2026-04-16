@@ -300,6 +300,147 @@ async def get_pt_valorizado(
         }
 
 
+# ==================== DETALLE WIP POR REGISTRO ====================
+
+@router.get("/reportes/wip/{registro_id}/detalle")
+async def get_wip_detalle(registro_id: str, current_user: dict = Depends(get_current_user)):
+    """Desglose de costos de un registro WIP: MP consumido y servicios."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Cabecera del registro
+        reg = await conn.fetchrow("""
+            SELECT r.id, r.n_corte, r.estado, r.estado_op, r.fecha_creacion,
+                   m.nombre as modelo_nombre,
+                   pt.codigo as pt_codigo, pt.nombre as pt_nombre,
+                   ln.nombre as linea_negocio_nombre
+            FROM prod_registros r
+            LEFT JOIN prod_modelos m ON r.modelo_id = m.id
+            LEFT JOIN prod_inventario pt ON r.pt_item_id = pt.id
+            LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = r.linea_negocio_id
+            WHERE r.id = $1
+        """, registro_id)
+        if not reg:
+            raise HTTPException(404, "Registro no encontrado")
+
+        # MP consumido (salidas de inventario)
+        mp_rows = await conn.fetch("""
+            SELECT i.codigo, i.nombre as item_nombre, i.unidad_medida,
+                   s.cantidad, s.costo_total,
+                   CASE WHEN s.cantidad > 0 THEN s.costo_total / s.cantidad ELSE 0 END as costo_unitario,
+                   tc.nombre as talla_nombre
+            FROM prod_inventario_salidas s
+            LEFT JOIN prod_inventario i ON s.item_id = i.id
+            LEFT JOIN prod_tallas_catalogo tc ON s.talla_id = tc.id
+            WHERE s.registro_id = $1
+            ORDER BY i.nombre, tc.nombre
+        """, registro_id)
+
+        # Servicios / mano de obra
+        serv_rows = await conn.fetch("""
+            SELECT mp.tipo_movimiento, mp.descripcion, mp.cantidad,
+                   mp.costo_calculado, mp.fecha
+            FROM prod_movimientos_produccion mp
+            WHERE mp.registro_id = $1
+            ORDER BY mp.fecha
+        """, registro_id)
+
+        # Tallas producidas
+        talla_rows = await conn.fetch("""
+            SELECT tc.nombre as talla_nombre, rt.cantidad_real
+            FROM prod_registro_tallas rt
+            LEFT JOIN prod_tallas_catalogo tc ON rt.talla_id = tc.id
+            WHERE rt.registro_id = $1
+            ORDER BY tc.nombre
+        """, registro_id)
+
+        mp_items = [row_to_dict(r) for r in mp_rows]
+        serv_items = [row_to_dict(r) for r in serv_rows]
+        tallas = [row_to_dict(r) for r in talla_rows]
+
+        total_mp = sum(float(r.get('costo_total') or 0) for r in mp_items)
+        total_serv = sum(float(r.get('costo_calculado') or 0) for r in serv_items)
+
+        return {
+            "registro": row_to_dict(reg),
+            "mp": mp_items,
+            "servicios": serv_items,
+            "tallas": tallas,
+            "resumen": {
+                "total_mp": round(total_mp, 2),
+                "total_servicios": round(total_serv, 2),
+                "total_costo": round(total_mp + total_serv, 2),
+                "total_prendas": sum(int(t.get('cantidad_real') or 0) for t in tallas),
+            }
+        }
+
+
+# ==================== DETALLE PT VALORIZADO POR ITEM ====================
+
+@router.get("/reportes/pt-valorizado/{item_id}/detalle")
+async def get_pt_detalle(item_id: str, current_user: dict = Depends(get_current_user)):
+    """Desglose FIFO y órdenes cerradas de un item PT."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        item = await conn.fetchrow("""
+            SELECT i.id, i.codigo, i.nombre, i.unidad_medida, i.stock_actual,
+                   ln.nombre as linea_negocio_nombre
+            FROM prod_inventario i
+            LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = i.linea_negocio_id
+            WHERE i.id = $1
+        """, item_id)
+        if not item:
+            raise HTTPException(404, "Item no encontrado")
+
+        # Capas FIFO disponibles
+        fifo_rows = await conn.fetch("""
+            SELECT ing.fecha, ing.cantidad, ing.cantidad_disponible,
+                   ing.costo_unitario,
+                   (ing.cantidad_disponible * ing.costo_unitario) as valor_capa,
+                   ing.observaciones
+            FROM prod_inventario_ingresos ing
+            WHERE ing.item_id = $1 AND ing.cantidad_disponible > 0
+            ORDER BY ing.fecha ASC
+        """, item_id)
+
+        # Órdenes de producción cerradas que generaron este PT
+        cierres_rows = await conn.fetch("""
+            SELECT r.n_corte, r.fecha_creacion, c.fecha_cierre,
+                   c.total_prendas, c.costo_total_mp, c.costo_total_servicio,
+                   (COALESCE(c.costo_total_mp,0) + COALESCE(c.costo_total_servicio,0)) as costo_total,
+                   m.nombre as modelo_nombre
+            FROM prod_registro_cierre c
+            JOIN prod_registros r ON c.registro_id = r.id
+            LEFT JOIN prod_modelos m ON r.modelo_id = m.id
+            WHERE r.pt_item_id = $1
+            ORDER BY c.fecha_cierre DESC
+        """, item_id)
+
+        fifo = [row_to_dict(r) for r in fifo_rows]
+        cierres = [row_to_dict(r) for r in cierres_rows]
+
+        for f in fifo:
+            f['cantidad'] = float(f.get('cantidad') or 0)
+            f['cantidad_disponible'] = float(f.get('cantidad_disponible') or 0)
+            f['costo_unitario'] = float(f.get('costo_unitario') or 0)
+            f['valor_capa'] = float(f.get('valor_capa') or 0)
+
+        valor_total = sum(f['valor_capa'] for f in fifo)
+        costo_prom = valor_total / sum(f['cantidad_disponible'] for f in fifo) if fifo else 0
+
+        return {
+            "item": row_to_dict(item),
+            "fifo_capas": fifo,
+            "cierres": cierres,
+            "resumen": {
+                "stock_actual": float(item['stock_actual'] or 0),
+                "valor_total": round(valor_total, 2),
+                "costo_promedio": round(costo_prom, 4),
+                "total_capas": len(fifo),
+                "total_cierres": len(cierres),
+            }
+        }
+
+
 # ==================== KARDEX POR ITEM ====================
 
 @router.get("/reportes/kardex/{item_id}")

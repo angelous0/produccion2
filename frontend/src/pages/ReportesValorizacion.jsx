@@ -5,10 +5,281 @@ import { formatCurrency, formatNumber } from '../lib/utils';
 import { Card, CardContent } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { Package, DollarSign, TrendingUp, Loader2 } from 'lucide-react';
+import { Package, DollarSign, TrendingUp, Loader2, ChevronRight, Layers, Wrench, Shirt } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
+
+// ==================== MODAL DETALLE WIP ====================
+
+function WIPDetalleModal({ registroId, onClose }) {
+  const [detalle, setDetalle] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!registroId) return;
+    const token = localStorage.getItem('token');
+    axios.get(`${API}/reportes/wip/${registroId}/detalle`, {
+      headers: { Authorization: `Bearer ${token}` }
+    }).then(r => setDetalle(r.data))
+      .catch(() => toast.error('Error al cargar detalle'))
+      .finally(() => setLoading(false));
+  }, [registroId]);
+
+  return (
+    <Dialog open={!!registroId} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        {loading ? (
+          <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+        ) : detalle ? (
+          <div className="space-y-5">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-amber-500" />
+                Desglose WIP — Corte {detalle.registro.n_corte}
+              </DialogTitle>
+              <p className="text-sm text-muted-foreground">{detalle.registro.modelo_nombre} · {detalle.registro.linea_negocio_nombre || 'Sin línea'}</p>
+            </DialogHeader>
+
+            {/* Resumen */}
+            <div className="grid grid-cols-3 gap-3">
+              <Card className="bg-blue-50 dark:bg-blue-950/30 border-blue-200">
+                <CardContent className="p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Costo MP</p>
+                  <p className="text-lg font-bold font-mono text-blue-700">{formatCurrency(detalle.resumen.total_mp)}</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-purple-50 dark:bg-purple-950/30 border-purple-200">
+                <CardContent className="p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Servicios</p>
+                  <p className="text-lg font-bold font-mono text-purple-700">{formatCurrency(detalle.resumen.total_servicios)}</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-amber-50 dark:bg-amber-950/30 border-amber-200">
+                <CardContent className="p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Total WIP</p>
+                  <p className="text-lg font-bold font-mono text-amber-700">{formatCurrency(detalle.resumen.total_costo)}</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Tallas producidas */}
+            {detalle.tallas.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-sm flex items-center gap-1 mb-2"><Shirt className="h-4 w-4" /> Prendas por talla ({detalle.resumen.total_prendas} total)</h3>
+                <div className="flex flex-wrap gap-2">
+                  {detalle.tallas.map((t, i) => (
+                    <Badge key={i} variant="secondary" className="font-mono">
+                      {t.talla_nombre}: {t.cantidad_real}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* MP consumido */}
+            <div>
+              <h3 className="font-semibold text-sm flex items-center gap-1 mb-2"><Layers className="h-4 w-4 text-blue-500" /> Materia Prima consumida ({detalle.mp.length} items)</h3>
+              {detalle.mp.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sin consumos registrados</p>
+              ) : (
+                <div className="rounded-md border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="text-xs">Código</TableHead>
+                        <TableHead className="text-xs">Nombre</TableHead>
+                        <TableHead className="text-xs">Talla</TableHead>
+                        <TableHead className="text-right text-xs">Cant.</TableHead>
+                        <TableHead className="text-right text-xs">C. Unit.</TableHead>
+                        <TableHead className="text-right text-xs">Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {detalle.mp.map((m, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="font-mono text-xs">{m.codigo}</TableCell>
+                          <TableCell className="text-xs">{m.item_nombre}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{m.talla_nombre || '—'}</TableCell>
+                          <TableCell className="text-right font-mono text-xs">{formatNumber(m.cantidad)} {m.unidad_medida}</TableCell>
+                          <TableCell className="text-right font-mono text-xs">{formatCurrency(m.costo_unitario)}</TableCell>
+                          <TableCell className="text-right font-mono text-xs font-semibold">{formatCurrency(m.costo_total)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+
+            {/* Servicios */}
+            <div>
+              <h3 className="font-semibold text-sm flex items-center gap-1 mb-2"><Wrench className="h-4 w-4 text-purple-500" /> Servicios / Mano de obra ({detalle.servicios.length})</h3>
+              {detalle.servicios.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sin servicios registrados</p>
+              ) : (
+                <div className="rounded-md border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="text-xs">Tipo</TableHead>
+                        <TableHead className="text-xs">Descripción</TableHead>
+                        <TableHead className="text-right text-xs">Cant.</TableHead>
+                        <TableHead className="text-right text-xs">Costo</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {detalle.servicios.map((s, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="text-xs"><Badge variant="outline" className="text-xs">{s.tipo_movimiento}</Badge></TableCell>
+                          <TableCell className="text-xs">{s.descripcion || '—'}</TableCell>
+                          <TableCell className="text-right font-mono text-xs">{s.cantidad}</TableCell>
+                          <TableCell className="text-right font-mono text-xs font-semibold">{formatCurrency(s.costo_calculado)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ==================== MODAL DETALLE PT ====================
+
+function PTDetalleModal({ itemId, onClose }) {
+  const [detalle, setDetalle] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!itemId) return;
+    const token = localStorage.getItem('token');
+    axios.get(`${API}/reportes/pt-valorizado/${itemId}/detalle`, {
+      headers: { Authorization: `Bearer ${token}` }
+    }).then(r => setDetalle(r.data))
+      .catch(() => toast.error('Error al cargar detalle'))
+      .finally(() => setLoading(false));
+  }, [itemId]);
+
+  return (
+    <Dialog open={!!itemId} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        {loading ? (
+          <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+        ) : detalle ? (
+          <div className="space-y-5">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-green-500" />
+                Desglose PT — {detalle.item.codigo}
+              </DialogTitle>
+              <p className="text-sm text-muted-foreground">{detalle.item.nombre} · {detalle.item.linea_negocio_nombre || 'Sin línea'}</p>
+            </DialogHeader>
+
+            {/* Resumen */}
+            <div className="grid grid-cols-3 gap-3">
+              <Card className="bg-green-50 dark:bg-green-950/30 border-green-200">
+                <CardContent className="p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Stock Actual</p>
+                  <p className="text-lg font-bold font-mono text-green-700">{formatNumber(detalle.resumen.stock_actual)}</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-blue-50 dark:bg-blue-950/30 border-blue-200">
+                <CardContent className="p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Costo Promedio</p>
+                  <p className="text-lg font-bold font-mono text-blue-700">{formatCurrency(detalle.resumen.costo_promedio)}</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-amber-50 dark:bg-amber-950/30 border-amber-200">
+                <CardContent className="p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Valor Total</p>
+                  <p className="text-lg font-bold font-mono text-amber-700">{formatCurrency(detalle.resumen.valor_total)}</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Capas FIFO */}
+            <div>
+              <h3 className="font-semibold text-sm flex items-center gap-1 mb-2"><Layers className="h-4 w-4 text-blue-500" /> Capas FIFO ({detalle.resumen.total_capas})</h3>
+              {detalle.fifo_capas.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sin capas de inventario activas</p>
+              ) : (
+                <div className="rounded-md border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="text-xs">Fecha Ingreso</TableHead>
+                        <TableHead className="text-right text-xs">Ingresado</TableHead>
+                        <TableHead className="text-right text-xs">Disponible</TableHead>
+                        <TableHead className="text-right text-xs">Costo Unit.</TableHead>
+                        <TableHead className="text-right text-xs">Valor Capa</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {detalle.fifo_capas.map((c, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="text-xs font-mono">{c.fecha ? new Date(c.fecha).toLocaleDateString('es-PE') : '—'}</TableCell>
+                          <TableCell className="text-right font-mono text-xs">{formatNumber(c.cantidad)}</TableCell>
+                          <TableCell className="text-right font-mono text-xs font-semibold">{formatNumber(c.cantidad_disponible)}</TableCell>
+                          <TableCell className="text-right font-mono text-xs">{formatCurrency(c.costo_unitario)}</TableCell>
+                          <TableCell className="text-right font-mono text-xs font-semibold">{formatCurrency(c.valor_capa)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+
+            {/* Órdenes cerradas */}
+            <div>
+              <h3 className="font-semibold text-sm flex items-center gap-1 mb-2"><Shirt className="h-4 w-4 text-green-600" /> Órdenes de producción cerradas ({detalle.resumen.total_cierres})</h3>
+              {detalle.cierres.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sin órdenes cerradas</p>
+              ) : (
+                <div className="rounded-md border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="text-xs">N° Corte</TableHead>
+                        <TableHead className="text-xs">Modelo</TableHead>
+                        <TableHead className="text-xs">Cierre</TableHead>
+                        <TableHead className="text-right text-xs">Prendas</TableHead>
+                        <TableHead className="text-right text-xs">Costo MP</TableHead>
+                        <TableHead className="text-right text-xs">Servicios</TableHead>
+                        <TableHead className="text-right text-xs">Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {detalle.cierres.map((c, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="font-mono text-xs font-semibold">{c.n_corte}</TableCell>
+                          <TableCell className="text-xs">{c.modelo_nombre}</TableCell>
+                          <TableCell className="text-xs font-mono">{c.fecha_cierre ? new Date(c.fecha_cierre).toLocaleDateString('es-PE') : '—'}</TableCell>
+                          <TableCell className="text-right font-mono text-xs">{c.total_prendas}</TableCell>
+                          <TableCell className="text-right font-mono text-xs">{formatCurrency(c.costo_total_mp)}</TableCell>
+                          <TableCell className="text-right font-mono text-xs">{formatCurrency(c.costo_total_servicio)}</TableCell>
+                          <TableCell className="text-right font-mono text-xs font-semibold">{formatCurrency(c.costo_total)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ==================== MP VALORIZADO ====================
 
 export function ReporteMPValorizado({ categoria = 'todos', lineaNegocioId = 'todos' }) {
   const { empresaId } = useAuth();
@@ -107,10 +378,13 @@ export function ReporteMPValorizado({ categoria = 'todos', lineaNegocioId = 'tod
   );
 }
 
+// ==================== WIP ====================
+
 export function ReporteWIP({ lineaNegocioId = 'todos' }) {
   const { empresaId } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [detalleId, setDetalleId] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -140,7 +414,7 @@ export function ReporteWIP({ lineaNegocioId = 'todos' }) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">WIP - Trabajo en Proceso</h1>
-          <p className="text-muted-foreground">Registros en producción con costos acumulados</p>
+          <p className="text-muted-foreground">Registros en producción con costos acumulados · clic en una fila para ver el desglose</p>
         </div>
         <Card className="bg-amber-500/5 border-amber-500/20">
           <CardContent className="p-4 flex items-center gap-3">
@@ -167,11 +441,16 @@ export function ReporteWIP({ lineaNegocioId = 'todos' }) {
                 <TableHead className="text-right">Costo MP</TableHead>
                 <TableHead className="text-right">Costo Servicios</TableHead>
                 <TableHead className="text-right">Total</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {(data.ordenes || []).map((reg) => (
-                <TableRow key={reg.id}>
+                <TableRow
+                  key={reg.id}
+                  className="cursor-pointer hover:bg-amber-50/60 dark:hover:bg-amber-950/20 transition-colors"
+                  onClick={() => setDetalleId(reg.id)}
+                >
                   <TableCell className="font-mono font-semibold">{reg.n_corte}</TableCell>
                   <TableCell>{reg.modelo_nombre}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{reg.linea_negocio_nombre || '—'}</TableCell>
@@ -187,25 +466,31 @@ export function ReporteWIP({ lineaNegocioId = 'todos' }) {
                   <TableCell className="text-right font-mono">{formatCurrency(reg.costo_mp)}</TableCell>
                   <TableCell className="text-right font-mono">{formatCurrency(reg.costo_servicio)}</TableCell>
                   <TableCell className="text-right font-mono font-semibold">{formatCurrency(reg.costo_wip)}</TableCell>
+                  <TableCell className="text-muted-foreground"><ChevronRight className="h-4 w-4" /></TableCell>
                 </TableRow>
               ))}
               {(data.ordenes || []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No hay registros en proceso</TableCell>
+                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No hay registros en proceso</TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      <WIPDetalleModal registroId={detalleId} onClose={() => setDetalleId(null)} />
     </div>
   );
 }
+
+// ==================== PT VALORIZADO ====================
 
 export function ReportePTValorizado({ categoria = 'todos', lineaNegocioId = 'todos' }) {
   const { empresaId } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [detalleId, setDetalleId] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -236,7 +521,7 @@ export function ReportePTValorizado({ categoria = 'todos', lineaNegocioId = 'tod
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Inventario PT Valorizado</h1>
-          <p className="text-muted-foreground">Producto terminado con stock y valorización</p>
+          <p className="text-muted-foreground">Producto terminado con stock y valorización · clic en una fila para ver el desglose</p>
         </div>
         <Card className="bg-green-500/5 border-green-500/20">
           <CardContent className="p-4 flex items-center gap-3">
@@ -261,11 +546,16 @@ export function ReportePTValorizado({ categoria = 'todos', lineaNegocioId = 'tod
                 <TableHead className="text-right">Costo Prom.</TableHead>
                 <TableHead className="text-right">Valor Stock</TableHead>
                 <TableHead className="text-right">OPs Cerradas</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {data.items.map((item) => (
-                <TableRow key={item.id}>
+                <TableRow
+                  key={item.id}
+                  className="cursor-pointer hover:bg-green-50/60 dark:hover:bg-green-950/20 transition-colors"
+                  onClick={() => setDetalleId(item.id)}
+                >
                   <TableCell className="font-mono">{item.codigo}</TableCell>
                   <TableCell>{item.nombre}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{item.linea_negocio_nombre || '—'}</TableCell>
@@ -273,17 +563,20 @@ export function ReportePTValorizado({ categoria = 'todos', lineaNegocioId = 'tod
                   <TableCell className="text-right font-mono">{formatCurrency(item.costo_promedio)}</TableCell>
                   <TableCell className="text-right font-mono font-semibold">{formatCurrency(item.valor_total)}</TableCell>
                   <TableCell className="text-right font-mono">{item.total_cierres}</TableCell>
+                  <TableCell className="text-muted-foreground"><ChevronRight className="h-4 w-4" /></TableCell>
                 </TableRow>
               ))}
               {data.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No hay items PT</TableCell>
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No hay items PT</TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      <PTDetalleModal itemId={detalleId} onClose={() => setDetalleId(null)} />
     </div>
   );
 }
