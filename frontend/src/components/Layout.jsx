@@ -121,6 +121,7 @@ const inventarioItems = [
   { to: '/inventario/movimientos', icon: FileText, label: 'Movimientos' },
   { to: '/inventario/kardex', icon: BookOpen, label: 'Kardex' },
   { to: '/inventario/kardex-pt', icon: Database, label: 'Kardex PT' },
+  { to: '/inventario/kardex-general', icon: BarChart3, label: 'Kardex General' },
   { to: '/inventario/alertas-stock', icon: PackageX, label: 'Alertas Stock' },
   { to: '/inventario/transferencias-linea', icon: ArrowRightLeft, label: 'Transferencias' },
 ];
