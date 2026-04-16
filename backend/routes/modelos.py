@@ -404,7 +404,7 @@ async def add_modelo_talla(modelo_id: str, data: ModeloTallaCreate, current_user
                 existing['id'],
             )
         else:
-            new_id = str(uuid4())
+            new_id = str(uuid.uuid4())
             await conn.execute(
                 """
                 INSERT INTO prod_modelo_tallas (id, modelo_id, talla_id, activo, orden, created_at, updated_at)
@@ -562,7 +562,7 @@ async def add_modelo_bom_linea(modelo_id: str, data: ModeloBomLineaCreate, curre
         if exists and int(exists) > 0:
             raise HTTPException(status_code=400, detail="Ya existe una línea activa duplicada para este item y talla")
 
-        new_id = str(uuid4())
+        new_id = str(uuid.uuid4())
         await conn.execute(
             """
             INSERT INTO prod_modelo_bom_linea (id, modelo_id, inventario_id, talla_id, unidad_base, cantidad_base, orden, activo, created_at, updated_at)
@@ -612,7 +612,7 @@ async def copiar_bom_de_modelo(modelo_id: str, source_modelo_id: str, current_us
             )
             if exists and int(exists) > 0:
                 continue
-            new_id = str(uuid4())
+            new_id = str(uuid.uuid4())
             await conn.execute(
                 "INSERT INTO prod_modelo_bom_linea (id, modelo_id, inventario_id, talla_id, unidad_base, cantidad_base, orden, activo, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,true,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
                 new_id, modelo_id, sl['inventario_id'], sl['talla_id'], sl['unidad_base'], sl['cantidad_base'], sl['orden']

@@ -117,13 +117,26 @@ async def shutdown():
 _cors_origins_raw = os.environ.get("CORS_ORIGINS", "*")
 _cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# allow_origins=["*"] + allow_credentials=True is invalid per CORS spec — browsers
+# reject credentialed responses when the reflected origin is the literal "*".
+# Use allow_origin_regex=r".*" so Starlette reflects the actual request origin
+# instead of "*", satisfying both credentials and wildcard-origin requirements.
+if _cors_origins == ["*"]:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r".*",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 app.include_router(inventario_main_router)
 app.include_router(catalogos_router)
