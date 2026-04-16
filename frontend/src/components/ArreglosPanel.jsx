@@ -113,7 +113,7 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
       setEditingFalladoId(null);
       fetchAll();
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'Error al guardar');
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : 'Error al guardar');
     } finally {
       setSaving(false);
     }
@@ -126,7 +126,7 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
       toast.success('Fallado eliminado');
       fetchAll();
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'Error al eliminar');
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : 'Error al eliminar');
     }
   };
 
@@ -148,7 +148,7 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
       setArregloDialogOpen(false);
       fetchAll();
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'Error al crear arreglo');
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : 'Error al crear arreglo');
     } finally {
       setSaving(false);
     }
@@ -168,7 +168,7 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
       setSelectedArreglo(null);
       fetchAll();
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'Error al guardar resolucion');
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : 'Error al guardar resolucion');
     } finally {
       setSaving(false);
     }
@@ -181,7 +181,7 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
       toast.success('Arreglo eliminado');
       fetchAll();
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'Error al eliminar');
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : 'Error al eliminar');
     }
   };
 

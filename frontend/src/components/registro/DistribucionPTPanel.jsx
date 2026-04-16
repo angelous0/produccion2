@@ -207,7 +207,7 @@ export const DistribucionPTPanel = ({ registroId }) => {
       toast.success('Distribucion guardada correctamente');
       await fetchAll();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al guardar distribucion');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al guardar distribucion');
     } finally {
       setSaving(false);
     }
@@ -223,7 +223,7 @@ export const DistribucionPTPanel = ({ registroId }) => {
       setAjustePopoverOpen(false);
       await fetchAll();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al vincular ajuste');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al vincular ajuste');
     } finally {
       setVinculando(false);
     }

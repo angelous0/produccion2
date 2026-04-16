@@ -161,7 +161,7 @@ export const ServiciosProduccion = () => {
       setDialogOpen(false);
       fetchServicios();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al guardar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al guardar');
     }
   });
 
@@ -172,7 +172,7 @@ export const ServiciosProduccion = () => {
       toast.success('Servicio eliminado');
       fetchServicios();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al eliminar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al eliminar');
     }
   };
 

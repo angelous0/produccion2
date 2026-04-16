@@ -211,7 +211,7 @@ async def create_movimiento(input: MovimientoCreate, current_user: dict = Depend
     return movimiento
 
 @router.put("/movimientos-produccion/{movimiento_id}")
-async def update_movimiento(movimiento_id: str, input: MovimientoCreate):
+async def update_movimiento(movimiento_id: str, input: MovimientoCreate, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.fetchrow("SELECT * FROM prod_movimientos_produccion WHERE id = $1", movimiento_id)
@@ -425,7 +425,7 @@ async def get_mermas(registro_id: str = None, servicio_id: str = None, persona_i
         return result
 
 @router.post("/mermas")
-async def create_merma(input: MermaCreate):
+async def create_merma(input: MermaCreate, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         merma = Merma(**input.model_dump())
@@ -438,7 +438,7 @@ async def create_merma(input: MermaCreate):
         return merma
 
 @router.put("/mermas/{merma_id}")
-async def update_merma(merma_id: str, input: MermaCreate):
+async def update_merma(merma_id: str, input: MermaCreate, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.fetchrow("SELECT * FROM prod_mermas WHERE id = $1", merma_id)
@@ -451,7 +451,7 @@ async def update_merma(merma_id: str, input: MermaCreate):
         return {**row_to_dict(result), **input.model_dump()}
 
 @router.delete("/mermas/{merma_id}")
-async def delete_merma(merma_id: str):
+async def delete_merma(merma_id: str, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM prod_mermas WHERE id = $1", merma_id)
@@ -516,7 +516,7 @@ async def get_guia_remision(guia_id: str):
         return d
 
 @router.post("/guias-remision")
-async def create_guia_remision(input: GuiaRemisionCreate):
+async def create_guia_remision(input: GuiaRemisionCreate, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         guia = GuiaRemision(**input.model_dump())
@@ -540,7 +540,7 @@ async def create_guia_remision(input: GuiaRemisionCreate):
         return guia
 
 @router.post("/guias-remision/from-movimiento/{movimiento_id}")
-async def create_guia_from_movimiento(movimiento_id: str):
+async def create_guia_from_movimiento(movimiento_id: str, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         mov = await conn.fetchrow("SELECT * FROM prod_movimientos_produccion WHERE id = $1", movimiento_id)
@@ -607,7 +607,7 @@ async def create_guia_from_movimiento(movimiento_id: str):
         return {"message": "Guía creada", "guia": guia_dict, "updated": False}
 
 @router.delete("/guias-remision/{guia_id}")
-async def delete_guia_remision(guia_id: str):
+async def delete_guia_remision(guia_id: str, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM prod_guias_remision WHERE id = $1", guia_id)

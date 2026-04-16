@@ -21,7 +21,7 @@ def calcular_estado_requerimiento(cantidad_requerida: float, cantidad_reservada:
 
 
 @router.post("/registros/{registro_id}/generar-requerimiento")
-async def generar_requerimiento_mp(registro_id: str, bom_id: str = Query(None)):
+async def generar_requerimiento_mp(registro_id: str, bom_id: str = Query(None), _u=Depends(get_current_user)):
     """Genera el requerimiento de MP a partir de la explosión del BOM.
     Si bom_id se proporciona, usa ese BOM específico.
     Si no, auto-selecciona el mejor BOM (APROBADO > BORRADOR, versión más reciente)."""
@@ -148,7 +148,7 @@ async def generar_requerimiento_mp(registro_id: str, bom_id: str = Query(None)):
 
 
 @router.post("/registros/{registro_id}/requerimiento-manual")
-async def agregar_requerimiento_manual(registro_id: str, body: dict):
+async def agregar_requerimiento_manual(registro_id: str, body: dict, _u=Depends(get_current_user)):
     """Agrega una línea de requerimiento de forma manual (sin BOM)."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -201,7 +201,7 @@ async def agregar_requerimiento_manual(registro_id: str, body: dict):
 
 
 @router.post("/registros/{registro_id}/copiar-materiales")
-async def copiar_materiales(registro_id: str, body: dict):
+async def copiar_materiales(registro_id: str, body: dict, _u=Depends(get_current_user)):
     """Copia líneas de requerimiento de materiales desde otro registro."""
     pool = await get_pool()
     registro_origen_id = body.get("registro_origen_id")
@@ -267,7 +267,7 @@ async def copiar_materiales(registro_id: str, body: dict):
 
 
 @router.delete("/registros/{registro_id}/requerimiento-manual/{linea_id}")
-async def eliminar_requerimiento_manual(registro_id: str, linea_id: str):
+async def eliminar_requerimiento_manual(registro_id: str, linea_id: str, _u=Depends(get_current_user)):
     """Elimina una línea de requerimiento manual (solo si origen=MANUAL y sin consumo)."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -510,7 +510,7 @@ async def get_disponibilidad_inventario(item_id: str):
 
 
 @router.post("/registros/{registro_id}/reservas")
-async def crear_reserva(registro_id: str, input: ReservaCreateInput):
+async def crear_reserva(registro_id: str, input: ReservaCreateInput, _u=Depends(get_current_user)):
     """Crea una reserva para un registro"""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -710,7 +710,7 @@ async def get_reservas_registro(registro_id: str):
 
 
 @router.delete("/reservas/{reserva_id}")
-async def anular_reserva(reserva_id: str):
+async def anular_reserva(reserva_id: str, _u=Depends(get_current_user)):
     """Anula una reserva completa, liberando todo el stock reservado."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -762,7 +762,7 @@ async def anular_reserva(reserva_id: str):
 
 
 @router.post("/registros/{registro_id}/liberar-reservas")
-async def liberar_reservas(registro_id: str, input: LiberarReservaInput):
+async def liberar_reservas(registro_id: str, input: LiberarReservaInput, _u=Depends(get_current_user)):
     """Libera parcial o totalmente reservas de un registro"""
     pool = await get_pool()
     async with pool.acquire() as conn:

@@ -556,7 +556,7 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
     return {**row_to_dict(result), **input.model_dump()}
 
 @router.delete("/registros/{registro_id}")
-async def delete_registro(registro_id: str):
+async def delete_registro(registro_id: str, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         # Eliminar datos relacionados en cascada
@@ -1028,7 +1028,7 @@ async def get_registro_tallas(registro_id: str):
 
 
 @router.post("/registros/{registro_id}/tallas")
-async def upsert_registro_tallas(registro_id: str, input: RegistroTallaBulkUpdate):
+async def upsert_registro_tallas(registro_id: str, input: RegistroTallaBulkUpdate, _u=Depends(get_current_user)):
     """Actualiza (upsert) las cantidades reales por talla de un registro"""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1074,7 +1074,7 @@ async def upsert_registro_tallas(registro_id: str, input: RegistroTallaBulkUpdat
 
 
 @router.put("/registros/{registro_id}/tallas/{talla_id}")
-async def update_single_registro_talla(registro_id: str, talla_id: str, input: RegistroTallaUpdate):
+async def update_single_registro_talla(registro_id: str, talla_id: str, input: RegistroTallaUpdate, _u=Depends(get_current_user)):
     """Actualiza una sola talla de un registro (para autosave)"""
     pool = await get_pool()
     async with pool.acquire() as conn:

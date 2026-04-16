@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, date, timezone, timedelta
 import uuid
 from helpers import row_to_dict
+from auth_utils import get_current_user
 
 router = APIRouter(prefix="/api", tags=["Control Producción"])
 
@@ -37,7 +38,7 @@ async def get_motivos_incidencia():
         return [row_to_dict(r) for r in rows]
 
 @router.post("/motivos-incidencia")
-async def create_motivo_incidencia(input: MotivoCreate):
+async def create_motivo_incidencia(input: MotivoCreate, _u=Depends(get_current_user)):
     from server import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -54,7 +55,7 @@ async def create_motivo_incidencia(input: MotivoCreate):
         return row_to_dict(row)
 
 @router.put("/motivos-incidencia/reordenar")
-async def reordenar_motivos(payload: dict):
+async def reordenar_motivos(payload: dict, _u=Depends(get_current_user)):
     from server import get_pool
     orden_ids = payload.get("orden", [])
     if not orden_ids:
@@ -69,7 +70,7 @@ async def reordenar_motivos(payload: dict):
     return {"ok": True}
 
 @router.delete("/motivos-incidencia/{motivo_id}")
-async def delete_motivo_incidencia(motivo_id: str):
+async def delete_motivo_incidencia(motivo_id: str, _u=Depends(get_current_user)):
     from server import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -77,7 +78,7 @@ async def delete_motivo_incidencia(motivo_id: str):
         return {"ok": True}
 
 @router.put("/motivos-incidencia/{motivo_id}")
-async def update_motivo_incidencia(motivo_id: str, input: MotivoCreate):
+async def update_motivo_incidencia(motivo_id: str, input: MotivoCreate, _u=Depends(get_current_user)):
     from server import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -127,7 +128,7 @@ async def get_incidencias(registro_id: str):
         return result
 
 @router.post("/incidencias")
-async def create_incidencia(input: IncidenciaCreate):
+async def create_incidencia(input: IncidenciaCreate, _u=Depends(get_current_user)):
     from server import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -184,7 +185,7 @@ async def create_incidencia(input: IncidenciaCreate):
         return row_to_dict(row)
 
 @router.put("/incidencias/{incidencia_id}")
-async def update_incidencia(incidencia_id: str, input: IncidenciaUpdate):
+async def update_incidencia(incidencia_id: str, input: IncidenciaUpdate, _u=Depends(get_current_user)):
     from server import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -244,7 +245,7 @@ async def update_incidencia(incidencia_id: str, input: IncidenciaUpdate):
         return row_to_dict(updated)
 
 @router.delete("/incidencias/{incidencia_id}")
-async def delete_incidencia(incidencia_id: str):
+async def delete_incidencia(incidencia_id: str, _u=Depends(get_current_user)):
     from server import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -268,7 +269,7 @@ async def get_paralizaciones(registro_id: str):
         return [row_to_dict(r) for r in rows]
 
 @router.put("/paralizaciones/{paralizacion_id}/levantar")
-async def levantar_paralizacion(paralizacion_id: str):
+async def levantar_paralizacion(paralizacion_id: str, _u=Depends(get_current_user)):
     from server import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -306,7 +307,7 @@ async def levantar_paralizacion(paralizacion_id: str):
 # ========== UPDATE REGISTRO CONTROL ==========
 
 @router.put("/registros/{registro_id}/control")
-async def update_registro_control(registro_id: str, data: dict):
+async def update_registro_control(registro_id: str, data: dict, _u=Depends(get_current_user)):
     from server import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:

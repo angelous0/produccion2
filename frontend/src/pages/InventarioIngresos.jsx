@@ -243,7 +243,7 @@ export const InventarioIngresos = () => {
       setEditingIngreso(null);
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al guardar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al guardar');
     }
   });
 
@@ -254,7 +254,7 @@ export const InventarioIngresos = () => {
       toast.success('Ingreso eliminado');
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al eliminar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al eliminar');
     }
   };
 

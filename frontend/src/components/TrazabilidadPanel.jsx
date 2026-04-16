@@ -185,7 +185,7 @@ export const TrazabilidadPanel = ({ registroId, servicios = [], personas = [] })
       resetFalladoForm();
       fetchAll();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al guardar fallado');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al guardar fallado');
     } finally {
       setSaving(false);
     }
@@ -233,7 +233,7 @@ export const TrazabilidadPanel = ({ registroId, servicios = [], personas = [] })
       resetArregloForm();
       fetchAll();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al crear arreglo');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al crear arreglo');
     } finally {
       setSaving(false);
     }
@@ -248,7 +248,7 @@ export const TrazabilidadPanel = ({ registroId, servicios = [], personas = [] })
       setCierreArregloDialogOpen(false);
       fetchAll();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al cerrar arreglo');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al cerrar arreglo');
     } finally {
       setSaving(false);
     }
@@ -292,7 +292,7 @@ export const TrazabilidadPanel = ({ registroId, servicios = [], personas = [] })
       setEditArregloDialogOpen(false);
       fetchAll();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al actualizar arreglo');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al actualizar arreglo');
     } finally {
       setSaving(false);
     }
@@ -317,7 +317,7 @@ export const TrazabilidadPanel = ({ registroId, servicios = [], personas = [] })
       setLiquidacionDialogOpen(false);
       fetchAll();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al registrar liquidacion');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al registrar liquidacion');
     } finally {
       setSaving(false);
     }

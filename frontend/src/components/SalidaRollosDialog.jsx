@@ -237,7 +237,7 @@ export const SalidaRollosDialog = ({
           </DialogDescription>
         </DialogHeader>
         
-        <div className="flex-1 overflow-y-auto space-y-4 py-4">
+        <div className="flex-1 overflow-y-auto space-y-4 py-4" onWheel={(e) => e.stopPropagation()}>
           {/* Selector de Item */}
           <div className="space-y-2">
             <Label>Tela *</Label>
@@ -375,7 +375,7 @@ export const SalidaRollosDialog = ({
                           </div>
                         </div>
 
-                        <div className="border rounded-lg divide-y max-h-[250px] overflow-y-auto">
+                        <div className="border rounded-lg divide-y max-h-[250px] overflow-y-auto" onWheel={(e) => e.stopPropagation()}>
                           {rollosFiltrados.map((rollo) => {
                             const seleccion = rollosSeleccionados[rollo.id];
                             const isSelected = seleccion?.selected;

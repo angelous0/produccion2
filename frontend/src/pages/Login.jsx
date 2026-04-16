@@ -31,7 +31,7 @@ export const Login = () => {
       toast.success('¡Bienvenido!');
       navigate('/');
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al iniciar sesión');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al iniciar sesión');
     } finally {
       setLoading(false);
     }

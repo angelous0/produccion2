@@ -436,7 +436,7 @@ export const Layout = () => {
       setPasswordDialogOpen(false);
       setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al cambiar contraseña');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al cambiar contraseña');
     } finally {
       setPasswordLoading(false);
     }

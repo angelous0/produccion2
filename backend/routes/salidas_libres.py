@@ -177,7 +177,8 @@ async def crear_salida_libre(
 
         import json
         sid = str(uuid.uuid4())
-        fecha_val = data.fecha or date.today().isoformat()
+        _fecha_str = data.fecha or date.today().isoformat()
+        fecha_val = date.fromisoformat(_fecha_str)
         usuario = get_usuario(current_user)
 
         await conn.execute(

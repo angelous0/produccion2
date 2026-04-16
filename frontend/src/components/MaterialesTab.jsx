@@ -144,7 +144,7 @@ const RollosModal = ({ open, linea, rollosCantidades, setRollosCantidades, onClo
         </div>
 
         {/* Tabla de rollos */}
-        <div className="flex-1 overflow-y-auto border rounded-md">
+        <div className="flex-1 overflow-y-auto border rounded-md" onWheel={(e) => e.stopPropagation()}>
           <Table>
             <TableHeader>
               <TableRow>

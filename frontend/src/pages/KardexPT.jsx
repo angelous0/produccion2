@@ -172,7 +172,7 @@ export const KardexPT = () => {
                 data-testid="filtro-producto"
               />
               {productoOptions.length > 0 && searchProducto.length >= 2 && !productTmplId && (
-                <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto" onWheel={(e) => e.stopPropagation()}>
                   {productoOptions.map(p => (
                     <button key={p.odoo_id} type="button"
                       className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-100 border-b last:border-0"

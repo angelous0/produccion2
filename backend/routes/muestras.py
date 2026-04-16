@@ -178,7 +178,8 @@ async def crear_muestra(data: MuestraCreate, current_user=Depends(get_current_us
         usuario = get_usuario(current_user)
         mid = str(uuid.uuid4())
         codigo = await _gen_codigo_muestra(conn)
-        fecha_val = data.fecha_envio or date.today().isoformat()
+        _fecha_str = data.fecha_envio or date.today().isoformat()
+        fecha_val = date.fromisoformat(_fecha_str)
 
         # Verificar items disponibles
         for mat in data.materiales:

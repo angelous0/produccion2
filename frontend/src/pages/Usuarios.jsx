@@ -127,7 +127,7 @@ export const Usuarios = () => {
       resetForm();
       fetchUsuarios();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al guardar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al guardar');
     }
   });
 
@@ -174,7 +174,7 @@ export const Usuarios = () => {
       toast.success(`Contraseña de ${editingUser.username} actualizada`);
       setPasswordDialogOpen(false);
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al cambiar contraseña');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al cambiar contraseña');
     }
   };
 
@@ -185,7 +185,7 @@ export const Usuarios = () => {
       toast.success('Usuario eliminado');
       fetchUsuarios();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al eliminar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al eliminar');
     }
   };
 

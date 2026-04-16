@@ -242,7 +242,7 @@ export const MovimientosProduccion = () => {
       setDialogOpen(false);
       fetchMovimientos(false);
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al actualizar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al actualizar');
     }
   });
 
@@ -253,7 +253,7 @@ export const MovimientosProduccion = () => {
       toast.success('Movimiento eliminado');
       fetchMovimientos(false);
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al eliminar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al eliminar');
     }
   };
 
@@ -318,7 +318,7 @@ export const MovimientosProduccion = () => {
       setCreateDialogOpen(false);
       fetchMovimientos(false);
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al crear');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al crear');
     }
   });
 

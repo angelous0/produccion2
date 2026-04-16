@@ -381,7 +381,7 @@ export const Modelos = ({ modo: modoProp }) => {
       setEditingItem(prev => prev ? { ...prev, pt_item_id: res.data.pt_item_id } : prev);
       toast.success(`PT creado y asignado: ${res.data.pt_item_nombre} (${res.data.pt_item_codigo})`);
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al crear PT');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al crear PT');
     }
   };
 
@@ -856,7 +856,7 @@ export const Modelos = ({ modo: modoProp }) => {
               </TabsContent>
 
               <TabsContent value="bom" className="space-y-4 mt-4">
-                {editingItem ? <ModelosBOMTab modeloId={editingItem.id} lineaNegocioId={editingItem.linea_negocio_id} /> : <p className="text-sm text-muted-foreground">Primero crea el modelo para poder definir su BOM.</p>}
+                {editingItem ? <ModelosBOMTab modeloId={editingItem.id} lineaNegocioId={editingItem.linea_negocio_id} baseId={editingItem.base_id} /> : <p className="text-sm text-muted-foreground">Primero crea el modelo para poder definir su BOM.</p>}
               </TabsContent>
 
               <TabsContent value="produccion" className="space-y-4 mt-4">

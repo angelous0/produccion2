@@ -240,7 +240,7 @@ async def get_stock_por_linea():
 
 
 @router.put("/inventario/{item_id}/ignorar-alerta")
-async def toggle_ignorar_alerta(item_id: str):
+async def toggle_ignorar_alerta(item_id: str, _u=Depends(get_current_user)):
     """Activa/desactiva ignorar alertas de stock para un item."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -353,7 +353,7 @@ async def get_reservas_detalle_item(item_id: str):
 
 
 @router.post("/inventario")
-async def create_item_inventario(input: ItemInventarioCreate):
+async def create_item_inventario(input: ItemInventarioCreate, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         existing = await conn.fetchrow("SELECT id FROM prod_inventario WHERE codigo = $1", input.codigo)
@@ -369,7 +369,7 @@ async def create_item_inventario(input: ItemInventarioCreate):
         return item
 
 @router.put("/inventario/{item_id}")
-async def update_item_inventario(item_id: str, input: ItemInventarioCreate):
+async def update_item_inventario(item_id: str, input: ItemInventarioCreate, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.fetchrow("SELECT * FROM prod_inventario WHERE id = $1", item_id)
@@ -386,7 +386,7 @@ async def update_item_inventario(item_id: str, input: ItemInventarioCreate):
         return {**row_to_dict(result), **input.model_dump()}
 
 @router.delete("/inventario/{item_id}")
-async def delete_item_inventario(item_id: str):
+async def delete_item_inventario(item_id: str, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         # Validar que no tenga movimientos
@@ -552,7 +552,7 @@ async def get_ingreso_rollos(ingreso_id: str):
         return [row_to_dict(r) for r in rollos]
 
 @router.put("/inventario-ingresos/{ingreso_id}")
-async def update_ingreso(ingreso_id: str, input: IngresoUpdateData):
+async def update_ingreso(ingreso_id: str, input: IngresoUpdateData, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         ingreso = await conn.fetchrow("SELECT * FROM prod_inventario_ingresos WHERE id = $1", ingreso_id)
@@ -631,7 +631,7 @@ async def update_ingreso(ingreso_id: str, input: IngresoUpdateData):
         return {"message": "Ingreso actualizado"}
 
 @router.delete("/inventario-ingresos/{ingreso_id}")
-async def delete_ingreso(ingreso_id: str):
+async def delete_ingreso(ingreso_id: str, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         ingreso = await conn.fetchrow("SELECT * FROM prod_inventario_ingresos WHERE id = $1", ingreso_id)
@@ -892,7 +892,7 @@ async def create_salida(input: SalidaInventarioCreate, current_user: dict = Depe
 
 
 @router.post("/inventario/reconciliar-reservas")
-async def reconciliar_reservas():
+async def reconciliar_reservas(_u=Depends(get_current_user)):
     """Sincroniza cantidad_liberada en reservas: si ya hubo salida para un item+registro, libera toda la reserva."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -940,7 +940,7 @@ class SalidaExtraCreate(BaseModel):
     motivo: str = "Consumo adicional"
 
 @router.post("/inventario-salidas/extra")
-async def create_salida_extra(input: SalidaExtraCreate):
+async def create_salida_extra(input: SalidaExtraCreate, _u=Depends(get_current_user)):
     """
     Crea una salida SIN validar reserva previa.
     Útil para excedentes, reposiciones o ajustes.
@@ -1069,7 +1069,7 @@ class SalidaUpdateData(BaseModel):
     observaciones: str = ""
 
 @router.put("/inventario-salidas/{salida_id}")
-async def update_salida(salida_id: str, input: SalidaUpdateData):
+async def update_salida(salida_id: str, input: SalidaUpdateData, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         salida = await conn.fetchrow("SELECT * FROM prod_inventario_salidas WHERE id = $1", salida_id)
@@ -1079,7 +1079,7 @@ async def update_salida(salida_id: str, input: SalidaUpdateData):
         return {"message": "Salida actualizada"}
 
 @router.delete("/inventario-salidas/{salida_id}")
-async def delete_salida(salida_id: str):
+async def delete_salida(salida_id: str, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         salida = await conn.fetchrow("SELECT * FROM prod_inventario_salidas WHERE id = $1", salida_id)
@@ -1252,7 +1252,7 @@ class AjusteUpdateData(BaseModel):
     observaciones: str = ""
 
 @router.put("/inventario-ajustes/{ajuste_id}")
-async def update_ajuste(ajuste_id: str, input: AjusteUpdateData):
+async def update_ajuste(ajuste_id: str, input: AjusteUpdateData, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         ajuste = await conn.fetchrow("SELECT * FROM prod_inventario_ajustes WHERE id = $1", ajuste_id)
@@ -1263,7 +1263,7 @@ async def update_ajuste(ajuste_id: str, input: AjusteUpdateData):
         return {"message": "Ajuste actualizado"}
 
 @router.delete("/inventario-ajustes/{ajuste_id}")
-async def delete_ajuste(ajuste_id: str):
+async def delete_ajuste(ajuste_id: str, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         ajuste = await conn.fetchrow("SELECT * FROM prod_inventario_ajustes WHERE id = $1", ajuste_id)

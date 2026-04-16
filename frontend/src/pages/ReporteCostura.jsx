@@ -372,7 +372,7 @@ export const ReporteCostura = () => {
         fetchIncidencias(incDialog.registro_id);
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al crear incidencia');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al crear incidencia');
     }
     setIncSaving(false);
   };

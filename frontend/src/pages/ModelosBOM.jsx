@@ -142,7 +142,7 @@ export const ModelosTallasTab = ({ modeloId }) => {
         setTimeout(() => setRowState((prev) => ({ ...prev, [relId]: 'idle' })), 900);
       } catch (e2) {
         setRowState((prev) => ({ ...prev, [relId]: 'error' }));
-        toast.error(e2?.response?.data?.detail || 'Error al guardar');
+        toast.error(typeof e2?.response?.data?.detail === 'string' ? e2?.response?.data?.detail : 'Error al guardar');
       }
     }, DEBOUNCE_MS);
   };
@@ -154,7 +154,7 @@ export const ModelosTallasTab = ({ modeloId }) => {
       setRows((prev) => prev.filter((x) => x.id !== r.id));
       toast.success('Eliminado');
     } catch (e2) {
-      toast.error(e2?.response?.data?.detail || 'No se pudo borrar');
+      toast.error(typeof e2?.response?.data?.detail === 'string' ? e2?.response?.data?.detail : 'No se pudo borrar');
     }
   };
 
@@ -283,7 +283,7 @@ export const ModelosTallasTab = ({ modeloId }) => {
 
 
 // ==================== BOM TAB (mejorado) ====================
-export const ModelosBOMTab = ({ modeloId, lineaNegocioId }) => {
+export const ModelosBOMTab = ({ modeloId, lineaNegocioId, baseId }) => {
   const [cabeceras, setCabeceras] = useState([]);
   const [activeBomId, setActiveBomId] = useState(null);
   const [bomDetalle, setBomDetalle] = useState(null);
@@ -338,7 +338,18 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId }) => {
         const d = r.data;
         return Array.isArray(d) ? d : d.items || [];
       }).catch(() => []),
-      axios.get(`${API}/modelos/${modeloId}/tallas?activo=true`).then(r => r.data).catch(() => []),
+      Promise.all([
+        axios.get(`${API}/modelos/${modeloId}/tallas?activo=true`).then(r => r.data).catch(() => []),
+        baseId ? axios.get(`${API}/modelos/${baseId}/tallas?activo=true`).then(r => r.data).catch(() => []) : Promise.resolve([]),
+        axios.get(`${API}/tallas-catalogo`).then(r => r.data).catch(() => []),
+      ]).then(([modeloTallas, baseTallas, catalogoTallas]) => {
+        // 1. Tallas propias del modelo (variante)
+        if (modeloTallas.length > 0) return modeloTallas;
+        // 2. Tallas de la base
+        if (baseTallas.length > 0) return baseTallas;
+        // 3. Catálogo completo como fallback
+        return catalogoTallas.map(t => ({ talla_id: t.id, talla_nombre: t.nombre }));
+      }).catch(() => []),
       axios.get(`${API}/servicios-produccion`).then(r => r.data).catch(() => []),
     ]).then(([cabs, inv, tal, servs]) => {
       setInventario(inv || []);
@@ -366,7 +377,7 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId }) => {
       fetchBomDetalle(res.data.id);
       toast.success(`BOM v${res.data.version} creado`);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || 'Error al crear BOM');
+      toast.error(typeof e?.response?.data?.detail === 'string' ? e?.response?.data?.detail : 'Error al crear BOM');
     } finally {
       setCreando(false);
     }
@@ -383,7 +394,7 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId }) => {
       fetchBomDetalle(res.data.id);
       toast.success(`BOM v${res.data.version} duplicado`);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || 'Error al duplicar');
+      toast.error(typeof e?.response?.data?.detail === 'string' ? e?.response?.data?.detail : 'Error al duplicar');
     } finally {
       setCreando(false);
     }
@@ -399,7 +410,7 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId }) => {
       await fetchCabeceras();
       toast.success(`Estado cambiado a ${nuevoEstado}`);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || 'Error al cambiar estado');
+      toast.error(typeof e?.response?.data?.detail === 'string' ? e?.response?.data?.detail : 'Error al cambiar estado');
     } finally {
       setSavingEstado(false);
     }
@@ -423,7 +434,7 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId }) => {
         setCostoEstandar(null);
       }
     } catch (e) {
-      toast.error(e?.response?.data?.detail || 'Error al eliminar');
+      toast.error(typeof e?.response?.data?.detail === 'string' ? e?.response?.data?.detail : 'Error al eliminar');
     } finally {
       setCreando(false);
     }
@@ -441,7 +452,7 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId }) => {
       setBomDetalle(prev => prev ? { ...prev, lineas: [...(prev.lineas || []), res.data] } : prev);
       toast.success('Línea agregada');
     } catch (e) {
-      toast.error(e?.response?.data?.detail || 'Error al agregar línea');
+      toast.error(typeof e?.response?.data?.detail === 'string' ? e?.response?.data?.detail : 'Error al agregar línea');
     }
   };
 
@@ -483,6 +494,11 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId }) => {
     // Debounced save
     if (timersRef.current[lineaId]) clearTimeout(timersRef.current[lineaId]);
     timersRef.current[lineaId] = setTimeout(async () => {
+      // Si cantidad_base está en el patch, validar que sea > 0 antes de enviar
+      if ('cantidad_base' in patch) {
+        const val = parseFloat(patch.cantidad_base);
+        if (!val || val <= 0) return;
+      }
       try {
         const res = await axios.put(`${API}/bom/${activeBomId}/lineas/${lineaId}`, patch);
         // Actualizar con datos completos del server (incluye inventario_nombre, etc.)
@@ -494,7 +510,8 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId }) => {
         const costoRes = await axios.get(`${API}/bom/${activeBomId}/costo-estandar?cantidad_prendas=1`).catch(() => ({ data: null }));
         setCostoEstandar(costoRes.data);
       } catch (e) {
-        toast.error(e?.response?.data?.detail || 'Error al guardar');
+        const d = e?.response?.data?.detail;
+        toast.error(typeof d === 'string' ? d : 'Error al guardar');
       }
     }, DEBOUNCE_MS);
   };
@@ -508,7 +525,7 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId }) => {
       setCostoEstandar(costoRes.data);
       toast.success('Línea eliminada');
     } catch (e) {
-      toast.error(e?.response?.data?.detail || 'Error');
+      toast.error(typeof e?.response?.data?.detail === 'string' ? e?.response?.data?.detail : 'Error');
     }
   };
 
@@ -548,7 +565,7 @@ export const ModelosBOMTab = ({ modeloId, lineaNegocioId }) => {
       setCopiarDialogOpen(false);
       fetchBomDetalle(activeBomId);
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al copiar BOM');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al copiar BOM');
     }
   };
 

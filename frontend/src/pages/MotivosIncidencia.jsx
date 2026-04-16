@@ -113,7 +113,7 @@ export const MotivosIncidencia = () => {
       setNombre('');
       fetchMotivos();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al guardar');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al guardar');
     }
   };
 
@@ -137,7 +137,7 @@ export const MotivosIncidencia = () => {
       setDeleteConfirm(null);
       fetchMotivos();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al eliminar');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al eliminar');
     }
   };
 

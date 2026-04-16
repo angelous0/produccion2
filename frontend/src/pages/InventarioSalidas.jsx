@@ -164,7 +164,7 @@ export const InventarioSalidas = () => {
       resetForm();
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al guardar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al guardar');
     }
   });
 
@@ -175,7 +175,7 @@ export const InventarioSalidas = () => {
       toast.success('Salida eliminada');
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al eliminar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al eliminar');
     }
   };
 

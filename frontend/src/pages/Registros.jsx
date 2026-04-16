@@ -457,7 +457,7 @@ export const Registros = () => {
       setControlDialogOpen(false);
       fetchItems();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al actualizar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al actualizar');
     }
   });
 
@@ -488,7 +488,7 @@ export const Registros = () => {
       setIncidencias(res.data);
       fetchItems();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al registrar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al registrar');
     }
   });
 
@@ -530,7 +530,7 @@ export const Registros = () => {
       setParalizaciones(res.data);
       fetchItems();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al paralizar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al paralizar');
     }
   });
 

@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api")
 
 
 @router.post("/registros/{registro_id}/cerrar")
-async def cerrar_registro(registro_id: str):
+async def cerrar_registro(registro_id: str, _u=Depends(get_current_user)):
     """
     Cierra una OP (Orden de Producción).
     - Cambia estado a CERRADA
@@ -54,7 +54,7 @@ async def cerrar_registro(registro_id: str):
 
 
 @router.post("/registros/{registro_id}/anular")
-async def anular_registro(registro_id: str):
+async def anular_registro(registro_id: str, _u=Depends(get_current_user)):
     """
     Anula una OP (Orden de Producción).
     - Cambia estado a ANULADA
@@ -276,7 +276,7 @@ async def get_resumen_registro(registro_id: str):
 
 CATEGORIAS_INVENTARIO = ["Telas", "Avios", "Otros"]
 @router.post("/registros/{registro_id}/dividir")
-async def dividir_lote(registro_id: str, body: DivisionLoteRequest):
+async def dividir_lote(registro_id: str, body: DivisionLoteRequest, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         padre = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
@@ -424,7 +424,7 @@ async def get_divisiones_registro(registro_id: str):
         }
 
 @router.post("/registros/{registro_id}/reunificar")
-async def reunificar_lote(registro_id: str):
+async def reunificar_lote(registro_id: str, _u=Depends(get_current_user)):
     """Reunifica un registro hijo con su padre. Solo si el hijo no tiene movimientos propios."""
     pool = await get_pool()
     async with pool.acquire() as conn:

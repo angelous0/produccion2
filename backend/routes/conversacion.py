@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone, timedelta
 import uuid
 from helpers import row_to_dict
+from auth_utils import get_current_user
 
 router = APIRouter(prefix="/api", tags=["Conversacion"])
 
@@ -35,7 +36,7 @@ async def get_conversacion(registro_id: str):
 
 
 @router.post("/registros/{registro_id}/conversacion")
-async def create_mensaje(registro_id: str, input: MensajeCreate):
+async def create_mensaje(registro_id: str, input: MensajeCreate, _u=Depends(get_current_user)):
     from server import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -61,7 +62,7 @@ async def create_mensaje(registro_id: str, input: MensajeCreate):
 
 
 @router.delete("/conversacion/{mensaje_id}")
-async def delete_mensaje(mensaje_id: str):
+async def delete_mensaje(mensaje_id: str, _u=Depends(get_current_user)):
     from server import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -71,7 +72,7 @@ async def delete_mensaje(mensaje_id: str):
 
 
 @router.patch("/conversacion/{mensaje_id}")
-async def update_mensaje(mensaje_id: str, input: MensajeUpdate):
+async def update_mensaje(mensaje_id: str, input: MensajeUpdate, _u=Depends(get_current_user)):
     from server import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:

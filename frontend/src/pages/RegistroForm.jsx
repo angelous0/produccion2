@@ -361,6 +361,17 @@ export const RegistroForm = () => {
       if (modelo) {
         setModeloSeleccionado(modelo);
         if (!formData.pt_item_id && modelo.pt_item_id) setFormData(prev => ({ ...prev, pt_item_id: modelo.pt_item_id }));
+        // Filtrar tallas por base del modelo
+        if (modelo.base_id) {
+          axios.get(`${API}/modelos/${modelo.base_id}/tallas?activo=true`)
+            .then(r => {
+              const baseTallas = r.data || [];
+              if (baseTallas.length > 0) {
+                setTallasCatalogo(baseTallas.map(t => ({ id: t.talla_id, nombre: t.talla_nombre })));
+              }
+            })
+            .catch(() => {});
+        }
       }
     }
   }, [modelos, formData.modelo_id]);
@@ -410,6 +421,20 @@ export const RegistroForm = () => {
     const modelo = modelos.find(m => m.id === modeloId);
     setModeloSeleccionado(modelo || null);
     const lineaHeredada = modelo?.linea_negocio_id || null;
+    // Filtrar tallas por base del modelo si existe
+    if (modelo?.base_id) {
+      axios.get(`${API}/modelos/${modelo.base_id}/tallas?activo=true`)
+        .then(r => {
+          const baseTallas = r.data || [];
+          if (baseTallas.length > 0) {
+            setTallasCatalogo(baseTallas.map(t => ({ id: t.talla_id, nombre: t.talla_nombre })));
+          }
+        })
+        .catch(() => {});
+    } else {
+      // Restaurar catálogo completo si no tiene base
+      axios.get(`${API}/tallas-catalogo`).then(r => setTallasCatalogo(r.data)).catch(() => {});
+    }
     if (modelo?.pt_item_id) {
       setFormData({ ...formData, modelo_id: modeloId, pt_item_id: modelo.pt_item_id, linea_negocio_id: lineaHeredada });
     } else if (modelo) {

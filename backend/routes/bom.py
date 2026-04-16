@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from uuid import uuid4
 from db import get_pool
+from auth_utils import get_current_user
 from helpers import row_to_dict
 
 router = APIRouter(prefix="/api/bom", tags=["BOM"])
@@ -84,7 +85,7 @@ async def list_bom_cabeceras(modelo_id: str = Query(...), estado: Optional[str] 
 
 
 @router.post("")
-async def create_bom_cabecera(data: BomCabeceraCreate):
+async def create_bom_cabecera(data: BomCabeceraCreate, _u=Depends(get_current_user)):
     """Crea una nueva cabecera BOM para un modelo."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -154,7 +155,7 @@ async def get_bom_detalle(bom_id: str):
 
 
 @router.delete("/{bom_id}")
-async def delete_bom_cabecera(bom_id: str):
+async def delete_bom_cabecera(bom_id: str, _u=Depends(get_current_user)):
     """Elimina una cabecera BOM y todas sus líneas."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -168,7 +169,7 @@ async def delete_bom_cabecera(bom_id: str):
 
 
 @router.put("/{bom_id}")
-async def update_bom_cabecera(bom_id: str, data: BomCabeceraUpdate):
+async def update_bom_cabecera(bom_id: str, data: BomCabeceraUpdate, _u=Depends(get_current_user)):
     """Actualiza estado/observaciones de la cabecera BOM."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -205,7 +206,7 @@ async def update_bom_cabecera(bom_id: str, data: BomCabeceraUpdate):
 # ==================== LÍNEAS ====================
 
 @router.post("/{bom_id}/lineas")
-async def add_bom_linea(bom_id: str, data: BomLineaCreate):
+async def add_bom_linea(bom_id: str, data: BomLineaCreate, _u=Depends(get_current_user)):
     """Agrega una línea al BOM."""
     if data.cantidad_base <= 0:
         raise HTTPException(status_code=400, detail="cantidad_base debe ser mayor a 0")
@@ -265,7 +266,7 @@ async def add_bom_linea(bom_id: str, data: BomLineaCreate):
 
 
 @router.put("/{bom_id}/lineas/{linea_id}")
-async def update_bom_linea(bom_id: str, linea_id: str, data: BomLineaUpdate):
+async def update_bom_linea(bom_id: str, linea_id: str, data: BomLineaUpdate, _u=Depends(get_current_user)):
     """Actualiza una línea del BOM."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -329,7 +330,7 @@ async def update_bom_linea(bom_id: str, linea_id: str, data: BomLineaUpdate):
 
 
 @router.delete("/{bom_id}/lineas/{linea_id}")
-async def delete_bom_linea(bom_id: str, linea_id: str):
+async def delete_bom_linea(bom_id: str, linea_id: str, _u=Depends(get_current_user)):
     """Elimina o desactiva una línea del BOM."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -433,7 +434,7 @@ async def get_bom_costo_estandar(bom_id: str, cantidad_prendas: int = Query(1, g
 # ==================== DUPLICAR BOM ====================
 
 @router.post("/{bom_id}/duplicar")
-async def duplicar_bom(bom_id: str):
+async def duplicar_bom(bom_id: str, _u=Depends(get_current_user)):
     """Crea una nueva versión del BOM copiando todas las líneas activas."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -498,7 +499,7 @@ class ExplosionBomRequest(BaseModel):
 
 
 @router.post("/explosion/{orden_id}")
-async def explosion_bom_requerimiento(orden_id: str, data: ExplosionBomRequest):
+async def explosion_bom_requerimiento(orden_id: str, data: ExplosionBomRequest, _u=Depends(get_current_user)):
     """Explota el BOM de un modelo para generar el requerimiento de MP de una orden.
     Solo genera requerimiento para TELA, AVIO, EMPAQUE (no SERVICIO).
     Lógica de tallas: talla_id=null en BOM → aplica a TODAS las tallas de la orden."""

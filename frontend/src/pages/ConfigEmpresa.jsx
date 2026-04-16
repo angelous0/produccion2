@@ -63,7 +63,7 @@ export default function ConfigEmpresa() {
         toast.success('Empresa configurada correctamente (sin cambios necesarios).');
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al cambiar empresa');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al cambiar empresa');
     } finally {
       setSaving(false);
     }
@@ -79,7 +79,7 @@ export default function ConfigEmpresa() {
       const migRes = await axios.get(`${API}/configuracion/modo-migracion`);
       setModoMigracionInfo(migRes.data);
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al cambiar modo migración');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al cambiar modo migración');
     } finally {
       setSavingMigracion(false);
     }

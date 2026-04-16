@@ -353,7 +353,7 @@ export const PersonasProduccion = () => {
       setDialogOpen(false);
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al guardar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al guardar');
     }
   });
 
@@ -364,7 +364,7 @@ export const PersonasProduccion = () => {
       toast.success('Persona eliminada');
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al eliminar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al eliminar');
     }
   };
 
@@ -607,7 +607,7 @@ export const PersonasProduccion = () => {
               <p className="text-xs text-muted-foreground mb-2">
                 Selecciona los servicios e ingresa la tarifa por prenda para cada uno
               </p>
-              <div className="border rounded-lg p-3 space-y-3 max-h-[250px] overflow-y-auto">
+              <div className="border rounded-lg p-3 space-y-3 max-h-[250px] overflow-y-auto" onWheel={(e) => e.stopPropagation()}>
                 {servicios.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-2">
                     No hay servicios registrados

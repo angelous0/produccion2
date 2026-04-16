@@ -471,7 +471,7 @@ export const IncidenciaDialog = ({
             {gestionMotivos ? 'Ocultar lista' : 'Gestionar motivos'}
           </button>
           {gestionMotivos && (
-            <div className="border rounded-lg max-h-[180px] overflow-y-auto divide-y text-sm">
+            <div className="border rounded-lg max-h-[180px] overflow-y-auto divide-y text-sm" onWheel={(e) => e.stopPropagation()}>
               {motivosIncidencia.length === 0 && <p className="p-2 text-muted-foreground text-xs">Sin motivos</p>}
               {motivosIncidencia.map(m => (
                 <div key={m.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/50">
@@ -767,7 +767,7 @@ export const SalidaInventarioDialog = ({
             )}
           </div>
           {itemSelectorOpen && busquedaItem !== undefined && (
-            <div className="border rounded-lg max-h-[200px] overflow-y-auto bg-background shadow-md">
+            <div className="border rounded-lg max-h-[200px] overflow-y-auto bg-background shadow-md" onWheel={(e) => e.stopPropagation()}>
               {itemsInventario
                 .filter(item => {
                   const cat = (item.categoria || item.tipo_item || '').toLowerCase();

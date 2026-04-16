@@ -124,7 +124,7 @@ export const Backups = () => {
       setConfirmDialog({ open: false, type: null });
       fetchInfo();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al restaurar backup');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al restaurar backup');
     } finally {
       setRestoring(false);
       if (fileInputRef.current) {

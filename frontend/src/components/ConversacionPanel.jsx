@@ -130,7 +130,7 @@ export const ConversacionPanel = ({ registroId, usuario, open, onClose, onMensaj
       // Scroll al final
       setTimeout(() => { listRef.current?.scrollTo(0, listRef.current.scrollHeight); }, 100);
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al enviar mensaje');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al enviar mensaje');
     } finally { setLoading(false); }
   };
 

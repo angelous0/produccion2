@@ -188,7 +188,7 @@ export const TransferenciasLinea = () => {
       const { data } = await axios.get(`${API}/transferencias-linea/estimar-costo?${params}`);
       setEstimacion(data);
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Error al estimar costo");
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : "Error al estimar costo");
     } finally {
       setLoadingEstimacion(false);
     }
@@ -223,7 +223,7 @@ export const TransferenciasLinea = () => {
       resetForm();
       fetchTransferencias();
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Error al crear transferencia");
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : "Error al crear transferencia");
     } finally {
       setSaving(false);
     }
@@ -249,7 +249,7 @@ export const TransferenciasLinea = () => {
       setShowDetalle(null);
       fetchTransferencias();
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Error al confirmar");
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : "Error al confirmar");
     }
   };
 
@@ -260,7 +260,7 @@ export const TransferenciasLinea = () => {
       setShowDetalle(null);
       fetchTransferencias();
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Error al cancelar");
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : "Error al cancelar");
     }
   };
 

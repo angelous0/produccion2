@@ -59,7 +59,7 @@ export default function ImportRegistros() {
       const res = await axios.post(`${API}/registros/import-validate`, formData);
       setValidation(res.data);
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al validar archivo');
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al validar archivo');
     } finally {
       setValidating(false);
     }

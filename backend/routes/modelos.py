@@ -765,7 +765,7 @@ async def hard_delete_modelo_bom_linea(modelo_id: str, linea_id: str, current_us
 
 
 @router.post("/modelos")
-async def create_modelo(input: ModeloCreate):
+async def create_modelo(input: ModeloCreate, _u=Depends(get_current_user)):
     modelo = Modelo(**input.model_dump())
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -784,7 +784,7 @@ async def create_modelo(input: ModeloCreate):
     return modelo
 
 @router.put("/modelos/{modelo_id}")
-async def update_modelo(modelo_id: str, input: ModeloCreate):
+async def update_modelo(modelo_id: str, input: ModeloCreate, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.fetchrow("SELECT * FROM prod_modelos WHERE id = $1", modelo_id)
@@ -805,14 +805,14 @@ async def update_modelo(modelo_id: str, input: ModeloCreate):
         return {**row_to_dict(result), **input.model_dump()}
 
 @router.delete("/modelos/{modelo_id}")
-async def delete_modelo(modelo_id: str):
+async def delete_modelo(modelo_id: str, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM prod_modelos WHERE id = $1", modelo_id)
         return {"message": "Modelo eliminado"}
 
 @router.post("/modelos/{modelo_id}/crear-pt")
-async def crear_pt_para_modelo(modelo_id: str):
+async def crear_pt_para_modelo(modelo_id: str, _u=Depends(get_current_user)):
     """Auto-crea un Artículo PT para el modelo y lo vincula"""
     pool = await get_pool()
     async with pool.acquire() as conn:

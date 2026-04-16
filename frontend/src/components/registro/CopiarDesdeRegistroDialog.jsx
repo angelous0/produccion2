@@ -172,7 +172,7 @@ const CopiarDesdeRegistroDialog = ({
                 data-testid="input-buscar-registro-origen"
               />
             </div>
-            <div className="flex-1 overflow-y-auto border rounded-md">
+            <div className="flex-1 overflow-y-auto border rounded-md" onWheel={(e) => e.stopPropagation()}>
               {searching && (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-5 w-5 animate-spin mr-2" /> Buscando...
@@ -244,7 +244,7 @@ const CopiarDesdeRegistroDialog = ({
                   </Button>
                   <span className="text-xs text-muted-foreground">{selected.size} de {items.length} seleccionados</span>
                 </div>
-                <div className="flex-1 overflow-y-auto border rounded-md">
+                <div className="flex-1 overflow-y-auto border rounded-md" onWheel={(e) => e.stopPropagation()}>
                   <Table>
                     <TableHeader>
                       <TableRow>

@@ -68,7 +68,7 @@ export const ColoresGenerales = () => {
       setFormData({ nombre: '', orden: 0 });
       fetchItems();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al guardar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al guardar');
     }
   });
 
@@ -85,7 +85,7 @@ export const ColoresGenerales = () => {
       toast.success('Color general eliminado');
       fetchItems();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al eliminar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al eliminar');
     }
   };
 

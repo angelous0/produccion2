@@ -261,7 +261,7 @@ export const Inventario = () => {
       resetForm();
       fetchItems(false);
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al guardar');
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al guardar');
     }
   });
 
