@@ -84,7 +84,8 @@ export const MuestraDetalle = () => {
       setEstadoDialog(false);
       fetchMuestra();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al cambiar estado');
+      const d = err.response?.data?.detail;
+      toast.error(typeof d === 'string' ? d : 'Error al cambiar estado');
     } finally {
       setSaving(false);
     }

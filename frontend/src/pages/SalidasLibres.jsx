@@ -125,7 +125,8 @@ export const SalidasLibres = () => {
       setDialogOpen(false);
       fetchSalidas(page);
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al registrar');
+      const d1 = err.response?.data?.detail;
+      toast.error(typeof d1 === 'string' ? d1 : 'Error al registrar');
     }
   });
 
@@ -136,7 +137,8 @@ export const SalidasLibres = () => {
       toast.success('Salida eliminada, stock restaurado');
       fetchSalidas(page);
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al eliminar');
+      const d2 = err.response?.data?.detail;
+      toast.error(typeof d2 === 'string' ? d2 : 'Error al eliminar');
     }
   };
 

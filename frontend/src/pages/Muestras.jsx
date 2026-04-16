@@ -149,7 +149,8 @@ export const Muestras = () => {
       setDialogOpen(false);
       fetchMuestras(page);
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al crear muestra');
+      const d1 = err.response?.data?.detail;
+      toast.error(typeof d1 === 'string' ? d1 : 'Error al crear muestra');
     }
   });
 
@@ -161,7 +162,8 @@ export const Muestras = () => {
       toast.success('Muestra eliminada');
       fetchMuestras(page);
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al eliminar');
+      const d2 = err.response?.data?.detail;
+      toast.error(typeof d2 === 'string' ? d2 : 'Error al eliminar');
     }
   };
 
