@@ -65,6 +65,7 @@ export function ReporteMPValorizado({ categoria = 'todos', lineaNegocioId = 'tod
                 <TableHead>Código</TableHead>
                 <TableHead>Nombre</TableHead>
                 <TableHead>Categoría</TableHead>
+                <TableHead>Línea de Negocio</TableHead>
                 <TableHead>Unidad</TableHead>
                 <TableHead className="text-right">Stock</TableHead>
                 <TableHead className="text-right">Reservado</TableHead>
@@ -84,6 +85,7 @@ export function ReporteMPValorizado({ categoria = 'todos', lineaNegocioId = 'tod
                   <TableCell>
                     {item.categoria && <Badge variant="secondary" className="text-xs">{item.categoria}</Badge>}
                   </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{item.linea_negocio_nombre || '—'}</TableCell>
                   <TableCell>{item.unidad_medida}</TableCell>
                   <TableCell className="text-right font-mono">{formatNumber(item.stock_actual)}</TableCell>
                   <TableCell className="text-right font-mono">{formatNumber(item.total_reservado)}</TableCell>
@@ -94,7 +96,7 @@ export function ReporteMPValorizado({ categoria = 'todos', lineaNegocioId = 'tod
               ))}
               {data.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No hay items de MP</TableCell>
+                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No hay items de MP</TableCell>
                 </TableRow>
               )}
             </TableBody>

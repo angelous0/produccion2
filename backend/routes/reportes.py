@@ -61,6 +61,7 @@ async def get_mp_valorizado(
                     i.unidad_medida,
                     i.control_por_rollos,
                     i.linea_negocio_id,
+                    ln.nombre as linea_negocio_nombre,
                     COALESCE(i.stock_actual, 0) as stock_actual,
                     -- Costo promedio ponderado desde ingresos disponibles
                     COALESCE((
@@ -82,6 +83,7 @@ async def get_mp_valorizado(
                         WHERE rl.item_id = i.id AND r.estado = 'ACTIVA'
                     ), 0) as total_reservado
                 FROM prod_inventario i
+                LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = i.linea_negocio_id
                 WHERE {where}
             )
             SELECT *,
