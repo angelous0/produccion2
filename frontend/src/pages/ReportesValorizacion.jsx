@@ -160,6 +160,7 @@ export function ReporteWIP({ lineaNegocioId = 'todos' }) {
               <TableRow>
                 <TableHead>N° Corte</TableHead>
                 <TableHead>Modelo</TableHead>
+                <TableHead>Línea de Negocio</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>PT Asignado</TableHead>
                 <TableHead className="text-right">Prendas</TableHead>
@@ -173,6 +174,7 @@ export function ReporteWIP({ lineaNegocioId = 'todos' }) {
                 <TableRow key={reg.id}>
                   <TableCell className="font-mono font-semibold">{reg.n_corte}</TableCell>
                   <TableCell>{reg.modelo_nombre}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{reg.linea_negocio_nombre || '—'}</TableCell>
                   <TableCell><Badge variant="outline">{reg.estado || reg.estado_op}</Badge></TableCell>
                   <TableCell>
                     {reg.pt_codigo ? (
@@ -189,7 +191,7 @@ export function ReporteWIP({ lineaNegocioId = 'todos' }) {
               ))}
               {(data.ordenes || []).length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No hay registros en proceso</TableCell>
+                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No hay registros en proceso</TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -254,6 +256,7 @@ export function ReportePTValorizado({ categoria = 'todos', lineaNegocioId = 'tod
               <TableRow>
                 <TableHead>Código</TableHead>
                 <TableHead>Nombre</TableHead>
+                <TableHead>Línea de Negocio</TableHead>
                 <TableHead className="text-right">Stock</TableHead>
                 <TableHead className="text-right">Costo Prom.</TableHead>
                 <TableHead className="text-right">Valor Stock</TableHead>
@@ -265,6 +268,7 @@ export function ReportePTValorizado({ categoria = 'todos', lineaNegocioId = 'tod
                 <TableRow key={item.id}>
                   <TableCell className="font-mono">{item.codigo}</TableCell>
                   <TableCell>{item.nombre}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{item.linea_negocio_nombre || '—'}</TableCell>
                   <TableCell className="text-right font-mono">{formatNumber(item.stock_actual)}</TableCell>
                   <TableCell className="text-right font-mono">{formatCurrency(item.costo_promedio)}</TableCell>
                   <TableCell className="text-right font-mono font-semibold">{formatCurrency(item.valor_total)}</TableCell>
@@ -273,7 +277,7 @@ export function ReportePTValorizado({ categoria = 'todos', lineaNegocioId = 'tod
               ))}
               {data.items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No hay items PT</TableCell>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No hay items PT</TableCell>
                 </TableRow>
               )}
             </TableBody>

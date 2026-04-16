@@ -158,6 +158,7 @@ async def get_wip_valorizado(
                 pt.nombre as pt_nombre,
                 r.fecha_creacion,
                 r.linea_negocio_id,
+                ln.nombre as linea_negocio_nombre,
                 COALESCE((
                     SELECT SUM(cantidad_real) FROM prod_registro_tallas WHERE registro_id = r.id
                 ), 0) as total_prendas,
@@ -170,6 +171,7 @@ async def get_wip_valorizado(
             FROM prod_registros r
             LEFT JOIN prod_modelos m ON r.modelo_id = m.id
             LEFT JOIN prod_inventario pt ON r.pt_item_id = pt.id
+            LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = r.linea_negocio_id
             WHERE {where}
             ORDER BY r.fecha_creacion DESC
         """, *params)
@@ -246,6 +248,7 @@ async def get_pt_valorizado(
                     i.nombre,
                     i.unidad_medida,
                     i.linea_negocio_id,
+                    ln.nombre as linea_negocio_nombre,
                     COALESCE(i.stock_actual, 0) as stock_actual,
                     COALESCE((
                         SELECT SUM(ing.cantidad_disponible * ing.costo_unitario) / NULLIF(SUM(ing.cantidad_disponible), 0)
@@ -263,6 +266,7 @@ async def get_pt_valorizado(
                         WHERE r.pt_item_id = i.id
                     ) as total_cierres
                 FROM prod_inventario i
+                LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = i.linea_negocio_id
                 WHERE {where}
             )
             SELECT * FROM pt_stock
