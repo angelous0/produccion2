@@ -658,11 +658,13 @@ async def get_salidas(registro_id: str = None):
             SELECT s.*,
                 COALESCE(inv.nombre, '') as item_nombre,
                 COALESCE(inv.codigo, '') as item_codigo,
+                COALESCE(ln.nombre, '') as linea_negocio_nombre,
                 reg.n_corte as registro_n_corte,
                 rol.numero_rollo as rollo_numero,
                 tal.nombre as talla_nombre
             FROM prod_inventario_salidas s
             LEFT JOIN prod_inventario inv ON s.item_id = inv.id
+            LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = s.linea_negocio_id
             LEFT JOIN prod_registros reg ON s.registro_id = reg.id
             LEFT JOIN prod_inventario_rollos rol ON s.rollo_id = rol.id
             LEFT JOIN prod_tallas_catalogo tal ON s.talla_id = tal.id

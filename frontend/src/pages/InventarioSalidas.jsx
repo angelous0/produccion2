@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import axios from 'axios';
 import { useSaving } from '../hooks/useSaving';
 import { Button } from '../components/ui/button';
@@ -30,7 +30,7 @@ import {
 } from '../components/ui/select';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { Plus, Trash2, ArrowUpCircle, Link2, Layers, Pencil } from 'lucide-react';
+import { Plus, Trash2, ArrowUpCircle, Link2, Layers, Pencil, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
 import { SalidaRollosDialog } from '../components/SalidaRollosDialog';
@@ -43,6 +43,7 @@ export const InventarioSalidas = () => {
   const [salidas, setSalidas] = useState([]);
   const [items, setItems] = useState([]);
   const [registros, setRegistros] = useState([]);
+  const [lineasNegocio, setLineasNegocio] = useState([]);
   const [loading, setLoading] = useState(true);
   const { saving, guard } = useSaving();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -51,6 +52,8 @@ export const InventarioSalidas = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [rollosDisponibles, setRollosDisponibles] = useState([]);
   const [selectedRollo, setSelectedRollo] = useState(null);
+  const [filtroLinea, setFiltroLinea] = useState('');
+  const [busqueda, setBusqueda] = useState('');
   const [formData, setFormData] = useState({
     item_id: '',
     cantidad: 1,
@@ -61,22 +64,38 @@ export const InventarioSalidas = () => {
 
   const fetchData = async () => {
     try {
-      const [salidasRes, itemsRes, registrosRes] = await Promise.all([
+      const [salidasRes, itemsRes, registrosRes, lineasRes] = await Promise.all([
         axios.get(`${API}/inventario-salidas`),
         axios.get(`${API}/inventario?all=true`),
         axios.get(`${API}/registros?all=true`),
+        axios.get(`${API}/lineas-negocio`),
       ]);
       setSalidas(salidasRes.data);
       setItems(itemsRes.data);
-      // Handle both paginated response {items: []} and plain array
       const registrosData = registrosRes.data;
       setRegistros(Array.isArray(registrosData) ? registrosData : (registrosData.items || []));
+      setLineasNegocio(lineasRes.data || []);
     } catch (error) {
       toast.error('Error al cargar datos');
     } finally {
       setLoading(false);
     }
   };
+
+  const salidasFiltradas = useMemo(() => {
+    let lista = salidas;
+    if (filtroLinea) lista = lista.filter(s => String(s.linea_negocio_id || '') === filtroLinea);
+    if (busqueda.trim()) {
+      const q = busqueda.trim().toLowerCase();
+      lista = lista.filter(s =>
+        (s.item_nombre || '').toLowerCase().includes(q) ||
+        (s.item_codigo || '').toLowerCase().includes(q) ||
+        (s.registro_n_corte || '').toString().toLowerCase().includes(q) ||
+        (s.observaciones || '').toLowerCase().includes(q)
+      );
+    }
+    return lista;
+  }, [salidas, filtroLinea, busqueda]);
 
   useEffect(() => {
     fetchData();
@@ -181,12 +200,35 @@ export const InventarioSalidas = () => {
 
   return (
     <div className="space-y-6" data-testid="salidas-page">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Salidas de Inventario</h2>
           <p className="text-muted-foreground">Registro de salidas con método FIFO</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Buscar item, corte..."
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              className="pl-8 h-9 w-[200px] text-sm"
+            />
+          </div>
+          <Select
+            value={filtroLinea || 'todas'}
+            onValueChange={v => setFiltroLinea(v === 'todas' ? '' : v)}
+          >
+            <SelectTrigger className="w-[220px] h-9 text-sm">
+              <SelectValue placeholder="Todas las líneas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas las líneas</SelectItem>
+              {lineasNegocio.map(ln => (
+                <SelectItem key={ln.id} value={String(ln.id)}>{ln.nombre}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button variant="outline" onClick={() => setRollosDialogOpen(true)} data-testid="btn-salida-rollos">
             <Layers className="h-4 w-4 mr-2" />
             Salida de Rollos
@@ -205,8 +247,8 @@ export const InventarioSalidas = () => {
               <TableHeader>
                 <TableRow className="data-table-header">
                   <TableHead>Fecha</TableHead>
-                  <TableHead>Código</TableHead>
                   <TableHead>Item</TableHead>
+                  <TableHead>Línea de Negocio</TableHead>
                   <TableHead>Rollo</TableHead>
                   <TableHead className="text-right">Cantidad</TableHead>
                   <TableHead className="text-right">Costo FIFO</TableHead>
@@ -221,25 +263,25 @@ export const InventarioSalidas = () => {
                       Cargando...
                     </TableCell>
                   </TableRow>
-                ) : salidas.length === 0 ? (
+                ) : salidasFiltradas.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                      No hay salidas registradas
+                      {filtroLinea || busqueda ? 'Sin resultados para los filtros aplicados' : 'No hay salidas registradas'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  salidas.map((salida) => (
+                  salidasFiltradas.map((salida) => (
                     <TableRow key={salida.id} className="data-table-row" data-testid={`salida-row-${salida.id}`}>
                       <TableCell className="font-mono text-sm">
                         {formatDate(salida.fecha)}
                       </TableCell>
-                      <TableCell className="font-mono">{salida.item_codigo}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <ArrowUpCircle className="h-4 w-4 text-red-500" />
                           {salida.item_nombre}
                         </div>
                       </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{salida.linea_negocio_nombre || '—'}</TableCell>
                       <TableCell>
                         {salida.rollo_numero ? (
                           <Badge variant="outline" className="gap-1">

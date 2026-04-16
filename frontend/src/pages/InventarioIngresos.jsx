@@ -22,7 +22,7 @@ import {
 import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from '../components/ui/command';
-import { Plus, Trash2, ArrowDownCircle, Layers, Pencil, ChevronsUpDown, Check, Info, Columns3 } from 'lucide-react';
+import { Plus, Trash2, ArrowDownCircle, Layers, Pencil, ChevronsUpDown, Check, Info, Columns3, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate } from '../lib/dateUtils';
 import { NumericInput } from '../components/ui/numeric-input';
@@ -54,6 +54,7 @@ export const InventarioIngresos = () => {
   const [proveedores, setProveedores] = useState([]);
   const [lineasNegocio, setLineasNegocio] = useState([]);
   const [filtroLinea, setFiltroLinea] = useState('');
+  const [busqueda, setBusqueda] = useState('');
   // Combobox states
   const [itemPopoverOpen, setItemPopoverOpen] = useState(false);
   const [proveedorPopoverOpen, setProveedorPopoverOpen] = useState(false);
@@ -70,9 +71,19 @@ export const InventarioIngresos = () => {
 
   // Ingresos filtrados para la tabla
   const ingresosFiltrados = useMemo(() => {
-    if (!filtroLinea) return ingresos;
-    return ingresos.filter(i => String(i.linea_negocio_id || '') === filtroLinea);
-  }, [ingresos, filtroLinea]);
+    let lista = ingresos;
+    if (filtroLinea) lista = lista.filter(i => String(i.linea_negocio_id || '') === filtroLinea);
+    if (busqueda.trim()) {
+      const q = busqueda.trim().toLowerCase();
+      lista = lista.filter(i =>
+        (i.item_nombre || '').toLowerCase().includes(q) ||
+        (i.item_codigo || '').toLowerCase().includes(q) ||
+        (i.proveedor || '').toLowerCase().includes(q) ||
+        (i.numero_documento || '').toLowerCase().includes(q)
+      );
+    }
+    return lista;
+  }, [ingresos, filtroLinea, busqueda]);
 
   const fetchData = async () => {
     try {
@@ -267,6 +278,15 @@ export const InventarioIngresos = () => {
           <p className="text-muted-foreground">Registro de entradas al inventario</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Buscar item, proveedor, doc..."
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              className="pl-8 h-9 w-[220px] text-sm"
+            />
+          </div>
           <Select
             value={filtroLinea || 'todas'}
             onValueChange={v => setFiltroLinea(v === 'todas' ? '' : v)}
