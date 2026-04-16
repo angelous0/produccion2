@@ -57,10 +57,6 @@ export const ModelosTallasTab = ({ modeloId }) => {
   const [loading, setLoading] = useState(true);
   const [savingIds, setSavingIds] = useState(new Set()); // IDs del catálogo en proceso
 
-  const { sensors, handleDragEnd, isSaving, modifiers } = useSortableTable(
-    rows.filter(r => r.activo), setRows, `modelos/${modeloId}/tallas/reorder`
-  );
-
   const fetchAll = async () => {
     setLoading(true);
     try {
@@ -182,32 +178,6 @@ export const ModelosTallasTab = ({ modeloId }) => {
                 })}
               </div>
 
-              {/* Reordenar tallas activas */}
-              {activasCount > 1 && (
-                <div className="mt-4 border-t pt-3">
-                  <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-                    <GripVertical className="h-3 w-3" /> Arrastra para cambiar el orden
-                  </p>
-                  {isSaving && <p className="text-xs text-muted-foreground">Guardando orden...</p>}
-                  <SortableTableWrapper
-                    items={rows.filter(r => r.activo)}
-                    sensors={sensors}
-                    handleDragEnd={handleDragEnd}
-                    modifiers={modifiers}
-                  >
-                    <div className="flex flex-wrap gap-1.5">
-                      {rows.filter(r => r.activo).map((r) => (
-                        <SortableRow key={r.id} id={r.id} className="flex">
-                          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border bg-muted text-sm cursor-grab active:cursor-grabbing">
-                            <GripVertical className="h-3 w-3 text-muted-foreground" />
-                            {r.talla_nombre || r.talla_id}
-                          </div>
-                        </SortableRow>
-                      ))}
-                    </div>
-                  </SortableTableWrapper>
-                </div>
-              )}
             </>
           )}
         </CardContent>
