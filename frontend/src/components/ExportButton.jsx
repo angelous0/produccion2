@@ -12,27 +12,36 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 // Column definitions for known tables
 const TABLE_COLUMNS = {
   registros: [
-    { key: 'n_corte',           label: 'N Corte' },
-    { key: 'modelo_nombre',     label: 'Modelo' },
-    { key: 'marca_nombre',      label: 'Marca' },
-    { key: 'tipo_nombre',       label: 'Tipo' },
-    { key: 'entalle_nombre',    label: 'Entalle' },
-    { key: 'tela_nombre',       label: 'Tela' },
-    { key: 'hilo_nombre',       label: 'Hilo' },
-    { key: 'linea_negocio_nombre', label: 'Linea' },
-    { key: 'estado',            label: 'Estado' },
-    { key: 'curva',             label: 'Curva' },
-    { key: 'cantidad_divisiones', label: 'Prendas' },
-    { key: 'fecha_entrega_final', label: 'Fecha Entrega' },
-    { key: 'fecha_creacion',    label: 'Fecha Creacion' },
-    { key: 'urgente',           label: 'Urgente' },
-    { key: 'estado_op',         label: 'Estado OP' },
-    { key: 'responsable_actual', label: 'Responsable' },
-    { key: 'mermas_total',      label: 'Mermas' },
-    { key: 'fallados_total',    label: 'Fallados' },
-    { key: 'observaciones',     label: 'Observaciones' },
+    { key: 'n_corte',               label: 'N Corte' },
+    { key: 'modelo_nombre',         label: 'Modelo' },
+    { key: 'marca_nombre',          label: 'Marca' },
+    { key: 'tipo_nombre',           label: 'Tipo' },
+    { key: 'entalle_nombre',        label: 'Entalle' },
+    { key: 'tela_nombre',           label: 'Tela' },
+    { key: 'hilo_nombre',           label: 'Hilo' },
+    { key: 'hilo_especifico_nombre', label: 'Hilo Especifico' },
+    { key: 'linea_negocio_nombre',  label: 'Linea' },
+    { key: 'estado',                label: 'Estado' },
+    { key: 'curva',                 label: 'Curva' },
+    { key: '_total_prendas',        label: 'Prendas' },
+    { key: 'fecha_entrega_final',   label: 'Fecha Entrega' },
+    { key: 'urgente',               label: 'Urgente' },
+    { key: 'responsable_actual',    label: 'Responsable' },
   ],
 };
+
+// Preprocesar items según tabla antes de exportar
+function preprocessItems(tabla, items) {
+  if (tabla === 'registros') {
+    return items.map(item => ({
+      ...item,
+      _total_prendas: Array.isArray(item.tallas)
+        ? item.tallas.reduce((s, t) => s + (parseInt(t.cantidad) || 0), 0)
+        : (item.cantidad_divisiones || 0),
+    }));
+  }
+  return items;
+}
 
 function escapeCSV(val) {
   if (val === null || val === undefined) return '';
@@ -77,38 +86,50 @@ export const ExportButton = ({ tabla, label = "Exportar", variant = "outline", s
     try {
       // ── Client-side CSV/Excel if items provided ───────────────────────
       if (items && items.length > 0) {
+        const processedItems = preprocessItems(tabla, items);
         const columns = TABLE_COLUMNS[tabla] || Object.keys(items[0]).map(k => ({ key: k, label: k }));
 
         if (format === 'csv') {
-          const csv = generateCSV(items, columns);
+          const csv = generateCSV(processedItems, columns);
           downloadBlob(csv, tabla + '_' + date + '.csv', 'text/csv;charset=utf-8');
           toast.success(items.length + ' registros exportados a CSV');
           return;
         }
 
         if (format === 'xlsx') {
-          const csv = generateCSV(items, columns);
+          const csv = generateCSV(processedItems, columns);
           downloadBlob(csv, tabla + '_' + date + '.xlsx', 'application/vnd.ms-excel');
           toast.success(items.length + ' registros exportados a Excel (filtrados)');
           return;
         }
 
         if (format === 'pdf') {
-          // PDF: generate printable HTML and open print dialog
           const cols = columns;
-          const htmlRows = items.map(item =>
+          const titulo = tabla.charAt(0).toUpperCase() + tabla.slice(1);
+          const htmlRows = processedItems.map(item =>
             '<tr>' + cols.map(c => {
               const val = item[c.key];
               const display = val === null || val === undefined ? '' : typeof val === 'boolean' ? (val ? 'Si' : 'No') : String(val);
               return '<td style="padding:4px 8px;border:1px solid #ddd;font-size:11px">' + display + '</td>';
             }).join('') + '</tr>'
           ).join('');
-          const htmlHeaders = cols.map(c => '<th style="padding:6px 8px;background:#f3f4f6;border:1px solid #ccc;font-size:11px;text-align:left">' + c.label + '</th>').join('');
-          const html = `<!DOCTYPE html><html><head><title>${tabla}_${date}</title>
-            <style>body{font-family:Arial,sans-serif;padding:20px}h2{font-size:14px;margin-bottom:12px}table{border-collapse:collapse;width:100%}@media print{button{display:none}}</style>
+          const htmlHeaders = cols.map(c => '<th style="padding:6px 8px;background:#3b82f6;color:white;border:1px solid #2563eb;font-size:11px;text-align:left">' + c.label + '</th>').join('');
+          const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${titulo} — ${date}</title>
+            <style>
+              body{font-family:Arial,sans-serif;padding:24px;color:#111}
+              .header{display:flex;align-items:baseline;gap:12px;margin-bottom:4px}
+              h2{font-size:16px;margin:0}
+              .meta{font-size:12px;color:#666}
+              table{border-collapse:collapse;width:100%;margin-top:16px}
+              tr:nth-child(even) td{background:#f8fafc}
+              @media print{.no-print{display:none}}
+            </style>
             </head><body>
-            <h2>${tabla.charAt(0).toUpperCase()+tabla.slice(1)} — ${date} (${items.length} registros)</h2>
-            <button onclick="window.print()" style="margin-bottom:12px;padding:6px 14px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer">Imprimir / Guardar PDF</button>
+            <div class="header">
+              <h2>${titulo}</h2>
+              <span class="meta">${items.length} registros &nbsp;·&nbsp; ${date}</span>
+            </div>
+            <button class="no-print" onclick="window.print()" style="padding:6px 16px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px">Imprimir / Guardar PDF</button>
             <table><thead><tr>${htmlHeaders}</tr></thead><tbody>${htmlRows}</tbody></table>
             </body></html>`;
           const blob = new Blob([html], { type: 'text/html' });
