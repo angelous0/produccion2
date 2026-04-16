@@ -11,7 +11,7 @@ import {
 } from '../ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../ui/command';
-import { AlertTriangle, Scissors, Package, Check, ChevronsUpDown, FileDown, Lock, RotateCcw, Clock, PenLine, Plus } from 'lucide-react';
+import { AlertTriangle, Scissors, Package, Check, ChevronsUpDown, FileDown, Lock, RotateCcw, Clock, PenLine, Plus, Sparkles } from 'lucide-react';
 import { Textarea } from '../ui/textarea';
 
 // Helper: campo con selector + fallback texto libre
@@ -66,6 +66,7 @@ export const RegistroDatosCard = ({
   catalogoMarcas = [], catalogoTipos = [], catalogoTelas = [], catalogoEntalles = [],
   catalogoHilos = [], catalogoHilosEsp = [],
   setCatalogoTipos, setCatalogoEntalles, setCatalogoTelas, setCatalogoHilos,
+  onCrearPT,
 }) => {
   const handleToggleManual = () => {
     if (!modoManual) {
@@ -472,7 +473,24 @@ export const RegistroDatosCard = ({
             )}
           </div>
           <div className="space-y-2">
-            <Label>Artículo PT (Producto Terminado)</Label>
+            <div className="flex items-center justify-between">
+              <Label>Artículo PT (Producto Terminado)</Label>
+              {!formData.pt_item_id && onCrearPT && (
+                <Button type="button" size="sm" variant="ghost"
+                  className="h-6 px-2 text-[11px] text-blue-600 hover:text-blue-700 gap-1"
+                  onClick={onCrearPT} data-testid="btn-crear-pt">
+                  <Plus className="h-3 w-3" /> Crear PT
+                </Button>
+              )}
+            </div>
+            {!formData.pt_item_id && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-3 py-2">
+                <Sparkles className="h-3.5 w-3.5 text-amber-600 mt-0.5 shrink-0" />
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Sin artículo PT asignado. Se recomienda asignarlo para poder cerrar la orden de producción y registrar el stock del producto terminado.
+                </p>
+              </div>
+            )}
             {modeloSeleccionado?.pt_item_id && formData.pt_item_id === modeloSeleccionado.pt_item_id && (
               <p className="text-xs text-green-600">Auto-completado desde el modelo</p>
             )}

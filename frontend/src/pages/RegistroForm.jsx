@@ -34,7 +34,7 @@ import {
   ColoresDialog, MovimientoDialog, IncidenciaDialog,
   SugerenciaEstadoDialog, SugerenciaMovDialog, ForzarEstadoDialog,
   RetrocesoEstadoDialog, AdvertenciaCantidadDialog,
-  DivisionDialog, SalidaInventarioDialog,
+  DivisionDialog, SalidaInventarioDialog, ReabrirCierreDialog,
 } from '../components/registro';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -125,6 +125,8 @@ export const RegistroForm = () => {
   const [cierreExistente, setCierreExistente] = useState(null);
   const [ejecutandoCierre, setEjecutandoCierre] = useState(false);
   const [observacionCierre, setObservacionCierre] = useState('');
+  const [reabrirCierreOpen, setReabrirCierreOpen] = useState(false);
+  const [reabrirSaving, setReabrirSaving] = useState(false);
 
   const [analisisEstado, setAnalisisEstado] = useState(null);
   const [sugerenciaEstadoDialog, setSugerenciaEstadoDialog] = useState(null);
@@ -452,6 +454,21 @@ export const RegistroForm = () => {
     } else { setFormData({ ...formData, modelo_id: modeloId, linea_negocio_id: null }); }
   };
 
+  const handleCrearPT = async () => {
+    if (!formData.modelo_id) { toast.error('Selecciona un modelo primero'); return; }
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.post(`${API}/modelos/${formData.modelo_id}/crear-pt`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      setFormData(prev => ({ ...prev, pt_item_id: res.data.pt_item_id }));
+      const itemsRes = await axios.get(`${API}/inventario?all=true`); setItemsInventario(itemsRes.data);
+      // Update modeloSeleccionado so banner disappears
+      const modelosRes = await axios.get(`${API}/modelos?all=true`);
+      const variantes = modelosRes.data.filter(m => m.base_id);
+      setModelos(variantes); setModeloSeleccionado(variantes.find(m => m.id === formData.modelo_id) || null);
+      toast.success(`PT creado: ${res.data.pt_item_nombre}`);
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error al crear PT'); }
+  };
+
   const handleEjecutarCierre = async () => {
     if (!window.confirm('Confirmar el cierre de produccion? Los costos quedaran congelados.')) return;
     setEjecutandoCierre(true);
@@ -466,21 +483,21 @@ export const RegistroForm = () => {
     finally { setEjecutandoCierre(false); }
   };
 
-  const handleReabrirCierre = async () => {
-    const motivo = window.prompt('Motivo de la reapertura (minimo 5 caracteres):');
-    if (!motivo || motivo.trim().length < 5) {
-      if (motivo !== null) toast.error('El motivo debe tener al menos 5 caracteres');
-      return;
-    }
+  const handleReabrirCierre = () => setReabrirCierreOpen(true);
+
+  const handleConfirmarReapertura = async (motivo) => {
+    setReabrirSaving(true);
     try {
       const token = localStorage.getItem('token');
       await axios.post(`${API}/registros/${id}/reabrir-cierre`,
-        { motivo: motivo.trim() },
+        { motivo },
         { headers: { Authorization: `Bearer ${token}` } });
-      toast.success('Cierre reabierto exitosamente');
-      // Recargar datos
+      toast.success('Cierre revertido exitosamente');
+      setReabrirCierreOpen(false);
       window.location.reload();
-    } catch (err) { toast.error(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'Error al reabrir cierre'); }
+    } catch (err) {
+      toast.error(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'Error al revertir cierre');
+    } finally { setReabrirSaving(false); }
   };
 
   const descargarBalancePDF = async () => {
@@ -1020,6 +1037,7 @@ export const RegistroForm = () => {
                   catalogoHilos={catalogoHilos} catalogoHilosEsp={catalogoHilosEsp}
                   setCatalogoTipos={setCatalogoTipos} setCatalogoEntalles={setCatalogoEntalles}
                   setCatalogoTelas={setCatalogoTelas} setCatalogoHilos={setCatalogoHilos}
+                  onCrearPT={handleCrearPT}
                 />
               </>
             ) : (
@@ -1077,6 +1095,7 @@ export const RegistroForm = () => {
                     catalogoHilos={catalogoHilos} catalogoHilosEsp={catalogoHilosEsp}
                     setCatalogoTipos={setCatalogoTipos} setCatalogoEntalles={setCatalogoEntalles}
                     setCatalogoTelas={setCatalogoTelas} setCatalogoHilos={setCatalogoHilos}
+                    onCrearPT={handleCrearPT}
                   />
                 </TabsContent>
 
@@ -1255,6 +1274,14 @@ export const RegistroForm = () => {
         cantidadDestino={prendasEfectivas}
         tipo="movimientos"
         onSuccess={fetchMovimientosProduccion}
+      />
+
+      <ReabrirCierreDialog
+        open={reabrirCierreOpen}
+        onOpenChange={setReabrirCierreOpen}
+        cierreExistente={cierreExistente}
+        onConfirmar={handleConfirmarReapertura}
+        saving={reabrirSaving}
       />
 
       {/* Conversación */}

@@ -264,15 +264,23 @@ export const RegistroHeader = ({
         <div className="registro-inconsistencias-banner" data-testid="inconsistencias-banner">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-            <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">Estado y movimientos no coinciden</span>
+            <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+              {analisisEstado.inconsistencias.some(i => i.tipo === 'cerrado_sin_ultima_etapa')
+                ? 'Estado de etapa pendiente de actualizar'
+                : 'Estado y movimientos no coinciden'}
+            </span>
           </div>
           {analisisEstado.inconsistencias.map((inc, i) => (
             <p key={i} className={`text-xs ml-6 ${inc.severidad === 'error' ? 'text-red-600 font-medium' : 'text-amber-700 dark:text-amber-400'}`}>{inc.mensaje}</p>
           ))}
           {analisisEstado.estado_sugerido && analisisEstado.estado_sugerido !== formData.estado && (
             <div className="ml-6 mt-1">
-              <Button type="button" variant="outline" size="sm" className="h-6 text-[11px] border-amber-400 text-amber-700 hover:bg-amber-100" onClick={async () => { await autoGuardarEstado(analisisEstado.estado_sugerido); }} data-testid="btn-aplicar-estado-sugerido">
-                Aplicar: {analisisEstado.estado_sugerido}
+              <Button type="button" variant="outline" size="sm" className="h-6 text-[11px] border-amber-400 text-amber-700 hover:bg-amber-100"
+                onClick={async () => { await autoGuardarEstado(analisisEstado.estado_sugerido); }}
+                data-testid="btn-aplicar-estado-sugerido">
+                {analisisEstado.inconsistencias.some(i => i.tipo === 'cerrado_sin_ultima_etapa')
+                  ? `Confirmar: ${analisisEstado.estado_sugerido}`
+                  : `Aplicar: ${analisisEstado.estado_sugerido}`}
               </Button>
             </div>
           )}

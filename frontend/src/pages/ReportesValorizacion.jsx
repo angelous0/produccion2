@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { Package, DollarSign, TrendingUp, Loader2, ChevronRight, Layers, Wrench, Shirt } from 'lucide-react';
+import { Package, DollarSign, TrendingUp, Loader2, ChevronRight, ChevronDown, Layers, Wrench, Shirt, Info } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -152,9 +152,75 @@ function WIPDetalleModal({ registroId, onClose }) {
 
 // ==================== MODAL DETALLE PT ====================
 
+function CIFDetallePanel({ cif }) {
+  if (!cif || !cif.periodo) return <p className="text-xs text-muted-foreground italic">Sin detalle CIF guardado.</p>;
+  return (
+    <div className="space-y-3 pt-2">
+      {/* Cómo se calculó el prorrateo */}
+      <div className="rounded-md bg-muted/40 border px-3 py-2 text-xs space-y-1">
+        <p className="font-semibold text-muted-foreground uppercase tracking-wide text-[10px] mb-1">Prorrateo — Período {cif.periodo}</p>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-0.5">
+          <span className="text-muted-foreground">Total CIF del mes</span>
+          <span className="font-mono font-semibold">{formatCurrency(cif.total_cif_mes)}</span>
+          <span className="text-muted-foreground text-[11px] pl-2">· Gastos CIF</span>
+          <span className="font-mono text-[11px]">{formatCurrency(cif.gastos_cif)}</span>
+          <span className="text-muted-foreground text-[11px] pl-2">· Depreciación</span>
+          <span className="font-mono text-[11px]">{formatCurrency(cif.depreciacion)}</span>
+          <span className="text-muted-foreground mt-1">Prendas de este lote</span>
+          <span className="font-mono mt-1">{formatNumber(cif.prendas_lote)}</span>
+          <span className="text-muted-foreground">Total prendas del mes</span>
+          <span className="font-mono">{formatNumber(cif.total_prendas_mes)}</span>
+          <span className="text-muted-foreground">Proporción</span>
+          <span className="font-mono font-semibold text-blue-600">{cif.proporcion_pct}%</span>
+          <span className="text-muted-foreground">CIF asignado al lote</span>
+          <span className="font-mono font-bold text-amber-700">{formatCurrency(cif.cif_asignado)}</span>
+        </div>
+      </div>
+      {/* Listado de transacciones CIF del mes */}
+      {cif.detalle && cif.detalle.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Transacciones CIF del mes ({cif.detalle.length})</p>
+          <div className="rounded-md border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  <TableHead className="text-[10px]">Fecha</TableHead>
+                  <TableHead className="text-[10px]">Categoría</TableHead>
+                  <TableHead className="text-[10px]">Descripción</TableHead>
+                  <TableHead className="text-[10px]">Tipo</TableHead>
+                  <TableHead className="text-right text-[10px]">Monto</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cif.detalle.map((d, i) => (
+                  <TableRow key={i} className="text-[11px]">
+                    <TableCell className="font-mono py-1">{d.fecha ? new Date(d.fecha).toLocaleDateString('es-PE') : '—'}</TableCell>
+                    <TableCell className="py-1">{d.categoria || '—'}</TableCell>
+                    <TableCell className="py-1 max-w-[160px] truncate">{d.descripcion || '—'}</TableCell>
+                    <TableCell className="py-1">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${d.origen === 'factura' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                        {d.origen === 'factura' ? 'Factura' : 'Gasto'}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right font-mono py-1">{formatCurrency(d.monto)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+      {(!cif.detalle || cif.detalle.length === 0) && (
+        <p className="text-xs text-muted-foreground">Sin transacciones CIF registradas en este período.</p>
+      )}
+    </div>
+  );
+}
+
 function PTDetalleModal({ itemId, onClose }) {
   const [detalle, setDetalle] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [cifExpandido, setCifExpandido] = useState(null); // índice del cierre expandido
 
   useEffect(() => {
     if (!itemId) return;
@@ -252,20 +318,45 @@ function PTDetalleModal({ itemId, onClose }) {
                         <TableHead className="text-right text-xs">Prendas</TableHead>
                         <TableHead className="text-right text-xs">Costo MP</TableHead>
                         <TableHead className="text-right text-xs">Servicios</TableHead>
+                        <TableHead className="text-right text-xs">CIF</TableHead>
                         <TableHead className="text-right text-xs">Total</TableHead>
+                        <TableHead className="w-6"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {detalle.cierres.map((c, i) => (
-                        <TableRow key={i}>
-                          <TableCell className="font-mono text-xs font-semibold">{c.n_corte}</TableCell>
-                          <TableCell className="text-xs">{c.modelo_nombre}</TableCell>
-                          <TableCell className="text-xs font-mono">{c.fecha_cierre ? new Date(c.fecha_cierre).toLocaleDateString('es-PE') : '—'}</TableCell>
-                          <TableCell className="text-right font-mono text-xs">{c.total_prendas}</TableCell>
-                          <TableCell className="text-right font-mono text-xs">{formatCurrency(c.costo_mp)}</TableCell>
-                          <TableCell className="text-right font-mono text-xs">{formatCurrency(c.costo_servicios)}</TableCell>
-                          <TableCell className="text-right font-mono text-xs font-semibold">{formatCurrency(c.costo_total)}</TableCell>
-                        </TableRow>
+                        <>
+                          <TableRow key={i}
+                            className="cursor-pointer hover:bg-muted/40"
+                            onClick={() => setCifExpandido(cifExpandido === i ? null : i)}>
+                            <TableCell className="font-mono text-xs font-semibold">{c.n_corte}</TableCell>
+                            <TableCell className="text-xs">{c.modelo_nombre}</TableCell>
+                            <TableCell className="text-xs font-mono">{c.fecha_cierre ? new Date(c.fecha_cierre).toLocaleDateString('es-PE') : '—'}</TableCell>
+                            <TableCell className="text-right font-mono text-xs">{c.total_prendas}</TableCell>
+                            <TableCell className="text-right font-mono text-xs">{formatCurrency(c.costo_mp)}</TableCell>
+                            <TableCell className="text-right font-mono text-xs">{formatCurrency(c.costo_servicios)}</TableCell>
+                            <TableCell className="text-right font-mono text-xs">
+                              <span className={c.costo_cif > 0 ? 'text-amber-700 font-medium' : ''}>
+                                {formatCurrency(c.costo_cif)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-xs font-semibold">{formatCurrency(c.costo_total)}</TableCell>
+                            <TableCell className="w-6 text-muted-foreground">
+                              {cifExpandido === i ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            </TableCell>
+                          </TableRow>
+                          {cifExpandido === i && (
+                            <TableRow key={`cif-${i}`}>
+                              <TableCell colSpan={9} className="bg-amber-50/60 dark:bg-amber-950/20 px-4 py-3">
+                                <div className="flex items-center gap-1 mb-2">
+                                  <Info className="h-3.5 w-3.5 text-amber-600" />
+                                  <span className="text-xs font-semibold text-amber-700">Detalle CIF — OP {c.n_corte}</span>
+                                </div>
+                                <CIFDetallePanel cif={c.cif_detalle} />
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </>
                       ))}
                     </TableBody>
                   </Table>

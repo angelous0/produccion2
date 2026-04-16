@@ -674,8 +674,8 @@ async def reabrir_cierre(registro_id: str, data: ReaperturaInput, current_user: 
                 salidas_pt = await conn.fetchval("""
                     SELECT COUNT(*) FROM prod_inventario_salidas
                     WHERE item_id = (SELECT item_id FROM prod_inventario_ingresos WHERE id = $1)
-                      AND created_at > $2
-                """, cierre["pt_ingreso_id"], cierre.get("created_at") or cierre.get("fecha"))
+                      AND fecha >= $2
+                """, cierre["pt_ingreso_id"], cierre.get("fecha"))
                 if salidas_pt and salidas_pt > 0:
                     raise HTTPException(
                         status_code=409,
@@ -728,7 +728,7 @@ async def reabrir_cierre(registro_id: str, data: ReaperturaInput, current_user: 
             # Auditoria (dentro de transaccion - atomico)
             reg_row = await conn.fetchrow("SELECT linea_negocio_id FROM prod_registros WHERE id = $1", registro_id)
             await audit_log(conn, get_usuario(current_user), "REOPEN", "produccion", "prod_registro_cierre", registro_id,
-                datos_antes={"estado_cierre": "CERRADO", "costo_total": float(cierre['costo_total_final'] or 0)},
+                datos_antes={"estado_cierre": "CERRADO", "costo_total": float(cierre.get('costo_total') or cierre.get('costo_total_final') or 0)},
                 datos_despues={"estado_cierre": "REABIERTO", "motivo_reapertura": data.motivo.strip()},
                 linea_negocio_id=reg_row['linea_negocio_id'] if reg_row else None)
 

@@ -617,11 +617,11 @@ async def analisis_estado_registro(registro_id: str):
             raise HTTPException(status_code=404, detail="Registro no encontrado")
         
         estado_actual = registro['estado']
-        
+
         # Obtener ruta del modelo
         modelo = await conn.fetchrow("SELECT ruta_produccion_id FROM prod_modelos WHERE id = $1", registro['modelo_id']) if registro['modelo_id'] else None
         ruta_id = modelo['ruta_produccion_id'] if modelo and modelo['ruta_produccion_id'] else None
-        
+
         if not ruta_id:
             return {
                 "usa_ruta": False,
@@ -707,15 +707,29 @@ async def analisis_estado_registro(registro_id: str):
         
         # --- Inconsistencias ---
         inconsistencias = []
-        
+
+        # Última etapa visible de la ruta (representa "producto terminado")
+        etapas_visibles_sorted = [e for e in etapas_sorted if e.get('aparece_en_estado', True)]
+        ultima_etapa = etapas_visibles_sorted[-1]['nombre'] if etapas_visibles_sorted else None
+
         # 1. Estado actual no está en la ruta
         nombres_ruta = [e['nombre'] for e in etapas_sorted]
         if estado_actual not in nombres_ruta:
-            inconsistencias.append({
-                "tipo": "estado_fuera_ruta",
-                "mensaje": f"El estado '{estado_actual}' no existe en la ruta de producción.",
-                "severidad": "error"
-            })
+            # Caso especial: registro CERRADO — sugerir la última etapa de la ruta
+            if estado_actual == 'CERRADA':
+                estado_sugerido = ultima_etapa
+                if ultima_etapa and ultima_etapa != estado_actual:
+                    inconsistencias.append({
+                        "tipo": "cerrado_sin_ultima_etapa",
+                        "mensaje": f"El registro fue cerrado. Se recomienda actualizar el estado a la última etapa de la ruta: '{ultima_etapa}'.",
+                        "severidad": "warning"
+                    })
+            else:
+                inconsistencias.append({
+                    "tipo": "estado_fuera_ruta",
+                    "mensaje": f"El estado '{estado_actual}' no existe en la ruta de producción.",
+                    "severidad": "error"
+                })
         
         # 2. Estado avanzado pero etapa anterior tiene problemas
         if etapa_actual_idx is not None:

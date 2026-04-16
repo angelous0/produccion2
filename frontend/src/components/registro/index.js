@@ -8,5 +8,5 @@ export {
   ColoresDialog, MovimientoDialog, IncidenciaDialog,
   SugerenciaEstadoDialog, SugerenciaMovDialog, ForzarEstadoDialog,
   RetrocesoEstadoDialog, AdvertenciaCantidadDialog,
-  DivisionDialog, SalidaInventarioDialog,
+  DivisionDialog, SalidaInventarioDialog, ReabrirCierreDialog,
 } from './RegistroDialogs';

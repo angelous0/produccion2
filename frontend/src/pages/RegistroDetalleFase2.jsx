@@ -23,10 +23,10 @@ import {
 } from '../components/ui/select';
 import { Separator } from '../components/ui/separator';
 import { Checkbox } from '../components/ui/checkbox';
-import { 
-  Scissors, Package, BookmarkCheck, LogOut, RefreshCw, 
+import {
+  Scissors, Package, BookmarkCheck, LogOut, RefreshCw,
   AlertTriangle, CheckCircle2, Clock, Loader2, Plus, Lock, XCircle, Info, Layers,
-  DollarSign, Trash2, Edit2
+  DollarSign, Trash2, Edit2, RotateCcw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
@@ -1515,6 +1515,9 @@ export const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplet
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
   const [cierre, setCierre] = useState(null);
+  const [reabrirOpen, setReabrirOpen] = useState(false);
+  const [motivoReapertura, setMotivoReapertura] = useState('');
+  const [reabrirSaving, setReabrirSaving] = useState(false);
 
   const fetchPreview = useCallback(async () => {
     try {
@@ -1542,6 +1545,24 @@ export const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplet
   }, [registroId]);
 
   useEffect(() => { if (registroId) fetchPreview(); }, [registroId, fetchPreview]);
+
+  const handleRevertirCierre = async () => {
+    if (motivoReapertura.trim().length < 5) { toast.error('El motivo debe tener al menos 5 caracteres'); return; }
+    setReabrirSaving(true);
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(`${API}/registros/${registroId}/reabrir-cierre`,
+        { motivo: motivoReapertura.trim() },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast.success('Cierre revertido exitosamente');
+      setReabrirOpen(false);
+      setMotivoReapertura('');
+      window.location.reload();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al revertir cierre');
+    } finally { setReabrirSaving(false); }
+  };
 
   const handleCierre = async () => {
     if (!preview?.puede_cerrar) {
@@ -1571,10 +1592,18 @@ export const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplet
   if (cierre) {
     return (
       <div className="space-y-4" data-testid="cierre-completado">
-        <div className="flex items-center gap-3">
-          <CheckCircle2 className="h-6 w-6 text-green-500" />
-          <h3 className="text-lg font-semibold">Cierre Completado</h3>
-          <Badge className="bg-green-500">CERRADA</Badge>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-6 w-6 text-green-500" />
+            <h3 className="text-lg font-semibold">Cierre Completado</h3>
+            <Badge className="bg-green-500">CERRADA</Badge>
+          </div>
+          <Button type="button" variant="outline" size="sm"
+            className="text-amber-600 border-amber-300 hover:bg-amber-50 gap-1.5"
+            onClick={() => setReabrirOpen(true)}
+            data-testid="btn-revertir-cierre">
+            <RotateCcw className="h-4 w-4" /> Revertir cierre
+          </Button>
         </div>
         <Card>
           <CardContent className="pt-6">
@@ -1614,6 +1643,51 @@ export const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplet
             </div>
           </CardContent>
         </Card>
+
+        {/* Diálogo revertir cierre */}
+        <Dialog open={reabrirOpen} onOpenChange={(v) => { if (!v) { setReabrirOpen(false); setMotivoReapertura(''); } }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <RotateCcw className="h-5 w-5 text-amber-600" /> Revertir cierre de producción
+              </DialogTitle>
+              <DialogDescription>Esta acción deshace el cierre y restaura el registro a estado editable.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/20 p-3 space-y-1.5">
+                <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                  <AlertTriangle className="h-3.5 w-3.5" /> Se revertirán los siguientes cambios:
+                </p>
+                <ul className="text-xs text-amber-700 dark:text-amber-400 space-y-1 ml-4 list-disc">
+                  <li>El ingreso de <strong>{parseFloat(cierre.qty_terminada).toFixed(0)} prendas</strong> al inventario PT será eliminado</li>
+                  <li>El stock del artículo PT disminuirá en esa cantidad</li>
+                  <li>El estado del registro volverá a <strong>Producto Terminado</strong></li>
+                  <li>Podrás volver a ejecutar el cierre con datos corregidos</li>
+                </ul>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Motivo <span className="text-red-500">*</span></label>
+                <textarea
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[80px] resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                  value={motivoReapertura}
+                  onChange={(e) => setMotivoReapertura(e.target.value)}
+                  placeholder="Ej: Error en cantidad de prendas, costo de insumo incorrecto..."
+                />
+                {motivoReapertura.length > 0 && motivoReapertura.trim().length < 5 && (
+                  <p className="text-xs text-red-500">Mínimo 5 caracteres</p>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setReabrirOpen(false); setMotivoReapertura(''); }} disabled={reabrirSaving}>Cancelar</Button>
+              <Button variant="destructive" onClick={handleRevertirCierre}
+                disabled={motivoReapertura.trim().length < 5 || reabrirSaving}
+                data-testid="btn-confirmar-revertir">
+                {reabrirSaving ? 'Revirtiendo...' : <><RotateCcw className="h-4 w-4 mr-1.5" /> Revertir cierre</>}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }

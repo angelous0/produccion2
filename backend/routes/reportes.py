@@ -408,7 +408,8 @@ async def get_pt_detalle(item_id: str, current_user: dict = Depends(get_current_
         cierres_rows = await conn.fetch("""
             SELECT r.n_corte, r.fecha_creacion, c.fecha as fecha_cierre,
                    c.qty_terminada as total_prendas, c.costo_mp, c.costo_servicios,
-                   c.costo_total,
+                   COALESCE(c.costo_cif, 0) as costo_cif,
+                   c.costo_total, c.snapshot_json,
                    m.nombre as modelo_nombre
             FROM prod_registro_cierre c
             JOIN prod_registros r ON c.registro_id = r.id
@@ -417,8 +418,20 @@ async def get_pt_detalle(item_id: str, current_user: dict = Depends(get_current_
             ORDER BY c.fecha DESC
         """, item_id)
 
+        import json as _json
         fifo = [row_to_dict(r) for r in fifo_rows]
-        cierres = [row_to_dict(r) for r in cierres_rows]
+        cierres = []
+        for r in cierres_rows:
+            d = row_to_dict(r)
+            snap = {}
+            if d.get('snapshot_json'):
+                try:
+                    snap = _json.loads(d['snapshot_json']) if isinstance(d['snapshot_json'], str) else d['snapshot_json']
+                except Exception:
+                    snap = {}
+            d['cif_detalle'] = snap.get('cif_detalle', {})
+            del d['snapshot_json']
+            cierres.append(d)
 
         for f in fifo:
             f['cantidad'] = float(f.get('cantidad') or 0)
