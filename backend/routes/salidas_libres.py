@@ -119,7 +119,6 @@ async def list_salidas_libres(
         where = " AND ".join(conditions)
         total_row = await conn.fetchrow(
             f"""SELECT COUNT(*) as total FROM prod_salidas_libres sl
-                LEFT JOIN prod_inventario i ON sl.item_id = i.id
                 WHERE {where}""",
             *params,
         )
@@ -131,7 +130,7 @@ async def list_salidas_libres(
                        ln.nombre as linea_negocio_nombre
                 FROM prod_salidas_libres sl
                 LEFT JOIN prod_inventario i ON sl.item_id = i.id
-                LEFT JOIN prod_lineas_negocio ln ON sl.linea_negocio_id = ln.id
+                LEFT JOIN finanzas2.cont_linea_negocio ln ON sl.linea_negocio_id = ln.id
                 WHERE {where}
                 ORDER BY sl.created_at DESC
                 LIMIT ${idx} OFFSET ${idx+1}""",

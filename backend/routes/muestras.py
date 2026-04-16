@@ -129,7 +129,7 @@ async def list_muestras(
                        (SELECT COUNT(*) FROM prod_muestras_materiales mm WHERE mm.muestra_id = m.id) as num_materiales,
                        ln.nombre as linea_negocio_nombre
                 FROM prod_muestras m
-                LEFT JOIN prod_lineas_negocio ln ON m.linea_negocio_id = ln.id
+                LEFT JOIN finanzas2.cont_linea_negocio ln ON m.linea_negocio_id = ln.id
                 WHERE {where}
                 ORDER BY m.created_at DESC
                 LIMIT ${idx} OFFSET ${idx+1}""",
@@ -145,7 +145,7 @@ async def get_muestra(muestra_id: str, _current_user=Depends(get_current_user)):
         row = await conn.fetchrow(
             """SELECT m.*, ln.nombre as linea_negocio_nombre
                FROM prod_muestras m
-               LEFT JOIN prod_lineas_negocio ln ON m.linea_negocio_id = ln.id
+               LEFT JOIN finanzas2.cont_linea_negocio ln ON m.linea_negocio_id = ln.id
                WHERE m.id=$1""", muestra_id,
         )
         if not row:
