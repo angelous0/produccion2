@@ -50,19 +50,15 @@ const ESTADOS_BOM = {
   INACTIVO: { label: 'Inactivo', variant: 'secondary' },
 };
 
-// ==================== TALLAS TAB (sin cambios) ====================
+// ==================== TALLAS TAB ====================
 export const ModelosTallasTab = ({ modeloId }) => {
   const [catalogoTallas, setCatalogoTallas] = useState([]);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTallaIds, setSelectedTallaIds] = useState([]);
-  const [verInactivas, setVerInactivas] = useState(false);
-  const [addingTallas, setAddingTallas] = useState(false);
-  const timersRef = useRef({});
-  const [rowState, setRowState] = useState({});
+  const [savingIds, setSavingIds] = useState(new Set()); // IDs del catálogo en proceso
 
   const { sensors, handleDragEnd, isSaving, modifiers } = useSortableTable(
-    rows, setRows, `modelos/${modeloId}/tallas/reorder`
+    rows.filter(r => r.activo), setRows, `modelos/${modeloId}/tallas/reorder`
   );
 
   const fetchAll = async () => {
@@ -85,198 +81,124 @@ export const ModelosTallasTab = ({ modeloId }) => {
     if (modeloId) fetchAll();
   }, [modeloId]);
 
-  const availableTallas = useMemo(() => {
-    const used = new Set(rows.filter((r) => r.activo).map((r) => r.talla_id));
-    return (catalogoTallas || []).filter((t) => !used.has(t.id));
-  }, [catalogoTallas, rows]);
+  // Mapa rápido: talla_id → row para saber si está asignada
+  const assignedMap = useMemo(() => {
+    const m = {};
+    rows.forEach(r => { m[r.talla_id] = r; });
+    return m;
+  }, [rows]);
 
-  const visibleRows = useMemo(() => {
-    return verInactivas ? rows : rows.filter((r) => r.activo);
-  }, [rows, verInactivas]);
+  const toggleTalla = async (catalogTalla) => {
+    const existing = assignedMap[catalogTalla.id];
+    if (savingIds.has(catalogTalla.id)) return; // evitar doble clic
 
-  const addTallas = async (e) => {
-    e?.preventDefault?.();
-    if (selectedTallaIds.length === 0) { toast.error('Selecciona al menos una talla'); return; }
-    setAddingTallas(true);
-    let added = 0;
-    const errorMsgs = [];
-    for (const tallaId of selectedTallaIds) {
-      try {
-        const res = await axios.post(`${API}/modelos/${modeloId}/tallas`, {
-          talla_id: tallaId, orden: rows.length + added + 1, activo: true,
-        });
-        setRows((prev) => [...prev, res.data]);
-        added++;
-      } catch (e) {
-        const detail = e?.response?.data?.detail;
-        const msg = typeof detail === 'string' ? detail : 'Error al agregar';
-        errorMsgs.push(msg);
-      }
-    }
-    setSelectedTallaIds([]);
-    if (added > 0) toast.success(`${added} talla(s) agregada(s)`);
-    if (errorMsgs.length > 0) toast.error(errorMsgs[0] + (errorMsgs.length > 1 ? ` (+${errorMsgs.length - 1} más)` : ''));
-    setAddingTallas(false);
-  };
-
-  const toggleTallaSelection = (tallaId) => {
-    setSelectedTallaIds((prev) =>
-      prev.includes(tallaId) ? prev.filter((id) => id !== tallaId) : [...prev, tallaId]
-    );
-  };
-
-  const selectAllTallas = () => {
-    if (selectedTallaIds.length === availableTallas.length) {
-      setSelectedTallaIds([]);
-    } else {
-      setSelectedTallaIds(availableTallas.map((t) => t.id));
-    }
-  };
-
-  const scheduleAutosave = (relId, payload) => {
-    if (!relId) return;
-    if (timersRef.current[relId]) clearTimeout(timersRef.current[relId]);
-    setRowState((prev) => ({ ...prev, [relId]: 'saving' }));
-    timersRef.current[relId] = setTimeout(async () => {
-      try {
-        await axios.put(`${API}/modelos/${modeloId}/tallas/${relId}`, payload);
-        setRowState((prev) => ({ ...prev, [relId]: 'saved' }));
-        setTimeout(() => setRowState((prev) => ({ ...prev, [relId]: 'idle' })), 900);
-      } catch (e2) {
-        setRowState((prev) => ({ ...prev, [relId]: 'error' }));
-        toast.error(typeof e2?.response?.data?.detail === 'string' ? e2?.response?.data?.detail : 'Error al guardar');
-      }
-    }, DEBOUNCE_MS);
-  };
-
-  const hardDelete = async (r, e) => {
-    e?.preventDefault?.();
+    setSavingIds(prev => new Set([...prev, catalogTalla.id]));
     try {
-      await axios.delete(`${API}/modelos/${modeloId}/tallas/${r.id}/hard`);
-      setRows((prev) => prev.filter((x) => x.id !== r.id));
-      toast.success('Eliminado');
-    } catch (e2) {
-      toast.error(typeof e2?.response?.data?.detail === 'string' ? e2?.response?.data?.detail : 'No se pudo borrar');
+      if (existing) {
+        // Quitar: hard delete
+        await axios.delete(`${API}/modelos/${modeloId}/tallas/${existing.id}/hard`);
+        setRows(prev => prev.filter(r => r.talla_id !== catalogTalla.id));
+      } else {
+        // Agregar
+        const res = await axios.post(`${API}/modelos/${modeloId}/tallas`, {
+          talla_id: catalogTalla.id,
+          orden: rows.filter(r => r.activo).length + 1,
+          activo: true,
+        });
+        setRows(prev => [...prev, res.data]);
+      }
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'Error al actualizar talla');
+    } finally {
+      setSavingIds(prev => { const s = new Set(prev); s.delete(catalogTalla.id); return s; });
     }
   };
 
-  const rowStatusLabel = (id) => {
-    const s = rowState[id];
-    if (s === 'saving') return 'Guardando...';
-    if (s === 'saved') return 'Guardado';
-    if (s === 'error') return 'Error';
-    return '';
-  };
+  const activasCount = rows.filter(r => r.activo).length;
 
   return (
     <div className="space-y-4" data-testid="tab-modelo-tallas">
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <CardTitle className="text-base">Tallas del modelo</CardTitle>
-            <div className="flex items-center gap-2">
-              <Label className="text-sm">Ver inactivas</Label>
-              <Switch checked={verInactivas} onCheckedChange={setVerInactivas} data-testid="toggle-ver-inactivas-tallas" />
+            <div>
+              <CardTitle className="text-base">Tallas del modelo</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">Haz clic en una talla para activarla o desactivarla. Los cambios se guardan automáticamente.</p>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Seleccionar tallas a agregar</Label>
-            {availableTallas.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">Todas las tallas del catálogo ya están asignadas.</p>
-            ) : (
-              <>
-                <div className="flex items-center gap-3 mb-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-                    onClick={selectAllTallas}
-                    data-testid="btn-select-all-tallas"
-                  >
-                    <Checkbox
-                      checked={availableTallas.length > 0 && selectedTallaIds.length === availableTallas.length}
-                      className="pointer-events-none h-3.5 w-3.5"
-                    />
-                    {selectedTallaIds.length === availableTallas.length ? 'Deseleccionar todas' : 'Seleccionar todas'}
-                  </button>
-                  {selectedTallaIds.length > 0 && (
-                    <span className="text-xs text-muted-foreground">{selectedTallaIds.length} seleccionada(s)</span>
-                  )}
-                </div>
-                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-1.5 border rounded-md p-2.5">
-                  {availableTallas.map((t) => {
-                    const checked = selectedTallaIds.includes(t.id);
-                    return (
-                      <label
-                        key={t.id}
-                        className={`flex items-center gap-1.5 px-2 py-1.5 rounded text-sm cursor-pointer transition-colors ${checked ? 'bg-primary/10 border border-primary/30 font-medium' : 'hover:bg-muted border border-transparent text-muted-foreground'}`}
-                        data-testid={`talla-option-${t.id}`}
-                      >
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={() => toggleTallaSelection(t.id)}
-                          className="h-3.5 w-3.5"
-                        />
-                        <span>{t.nombre}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-                <Button
-                  type="button"
-                  onClick={addTallas}
-                  disabled={selectedTallaIds.length === 0 || addingTallas}
-                  className="mt-2"
-                  data-testid="btn-add-talla"
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  {addingTallas ? 'Agregando...' : `Agregar ${selectedTallaIds.length > 0 ? `(${selectedTallaIds.length})` : ''}`}
-                </Button>
-              </>
+            {activasCount > 0 && (
+              <Badge variant="secondary" className="text-sm">{activasCount} asignada{activasCount !== 1 ? 's' : ''}</Badge>
             )}
           </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">Cargando tallas...</div>
+          ) : catalogoTallas.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">No hay tallas en el catálogo.</div>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2 p-1" data-testid="tallas-grid">
+                {catalogoTallas.map((t) => {
+                  const assigned = !!assignedMap[t.id];
+                  const saving = savingIds.has(t.id);
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      disabled={saving}
+                      onClick={() => toggleTalla(t)}
+                      data-testid={`talla-chip-${t.id}`}
+                      className={`
+                        relative inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium
+                        border-2 transition-all duration-150 select-none
+                        ${saving ? 'opacity-60 cursor-wait' : 'cursor-pointer'}
+                        ${assigned
+                          ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                          : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'}
+                      `}
+                    >
+                      {assigned && !saving && <Check className="h-3.5 w-3.5 shrink-0" />}
+                      {saving && (
+                        <svg className="h-3.5 w-3.5 animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                      )}
+                      {t.nombre}
+                    </button>
+                  );
+                })}
+              </div>
 
-          <div className="overflow-auto">
-            {isSaving && <div className="text-xs text-muted-foreground pb-2">Guardando orden...</div>}
-            <SortableTableWrapper items={visibleRows} sensors={sensors} handleDragEnd={handleDragEnd} modifiers={modifiers}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[40px]"></TableHead>
-                    <TableHead>Talla</TableHead>
-                    <TableHead className="w-[120px]">Activo</TableHead>
-                    <TableHead className="w-[140px]">Estado</TableHead>
-                    <TableHead className="w-[120px]">Borrar</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow><TableCell colSpan={5} className="text-center py-8">Cargando...</TableCell></TableRow>
-                  ) : visibleRows.length === 0 ? (
-                    <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Sin tallas</TableCell></TableRow>
-                  ) : visibleRows.map((r) => (
-                    <SortableRow key={r.id} id={r.id}>
-                      <TableCell className="font-medium">{r.talla_nombre || r.talla_id}</TableCell>
-                      <TableCell>
-                        <Switch checked={Boolean(r.activo)}
-                          onCheckedChange={(checked) => {
-                            setRows((prev) => prev.map((x) => x.id === r.id ? { ...x, activo: checked } : x));
-                            scheduleAutosave(r.id, { activo: Boolean(checked) });
-                          }}
-                          data-testid={`talla-activo-${r.id}`} />
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{rowStatusLabel(r.id)}</TableCell>
-                      <TableCell>
-                        <Button type="button" size="sm" variant="outline" onClick={(e) => hardDelete(r, e)} data-testid={`talla-borrar-${r.id}`}>Borrar</Button>
-                      </TableCell>
-                    </SortableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </SortableTableWrapper>
-          </div>
-          <p className="text-xs text-muted-foreground">Arrastra las filas para reordenar.</p>
+              {/* Reordenar tallas activas */}
+              {activasCount > 1 && (
+                <div className="mt-4 border-t pt-3">
+                  <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                    <GripVertical className="h-3 w-3" /> Arrastra para cambiar el orden
+                  </p>
+                  {isSaving && <p className="text-xs text-muted-foreground">Guardando orden...</p>}
+                  <SortableTableWrapper
+                    items={rows.filter(r => r.activo)}
+                    sensors={sensors}
+                    handleDragEnd={handleDragEnd}
+                    modifiers={modifiers}
+                  >
+                    <div className="flex flex-wrap gap-1.5">
+                      {rows.filter(r => r.activo).map((r) => (
+                        <SortableRow key={r.id} id={r.id} className="flex">
+                          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border bg-muted text-sm cursor-grab active:cursor-grabbing">
+                            <GripVertical className="h-3 w-3 text-muted-foreground" />
+                            {r.talla_nombre || r.talla_id}
+                          </div>
+                        </SortableRow>
+                      ))}
+                    </div>
+                  </SortableTableWrapper>
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
