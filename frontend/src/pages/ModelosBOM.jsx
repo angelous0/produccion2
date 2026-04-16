@@ -81,16 +81,16 @@ export const ModelosTallasTab = ({ modeloId }) => {
     if (modeloId) fetchAll();
   }, [modeloId]);
 
-  // Mapa rápido: talla_id → row para saber si está asignada
+  // Solo tallas ACTIVAS se consideran asignadas
   const assignedMap = useMemo(() => {
     const m = {};
-    rows.forEach(r => { m[r.talla_id] = r; });
+    rows.filter(r => r.activo).forEach(r => { m[r.talla_id] = r; });
     return m;
   }, [rows]);
 
   const toggleTalla = async (catalogTalla) => {
-    const existing = assignedMap[catalogTalla.id];
-    if (savingIds.has(catalogTalla.id)) return; // evitar doble clic
+    const existing = assignedMap[catalogTalla.id]; // solo activas
+    if (savingIds.has(catalogTalla.id)) return;
 
     setSavingIds(prev => new Set([...prev, catalogTalla.id]));
     try {
@@ -99,17 +99,28 @@ export const ModelosTallasTab = ({ modeloId }) => {
         await axios.delete(`${API}/modelos/${modeloId}/tallas/${existing.id}/hard`);
         setRows(prev => prev.filter(r => r.talla_id !== catalogTalla.id));
       } else {
-        // Agregar
+        // Agregar (el backend hace UPSERT si había una fila inactiva)
         const res = await axios.post(`${API}/modelos/${modeloId}/tallas`, {
           talla_id: catalogTalla.id,
           orden: rows.filter(r => r.activo).length + 1,
           activo: true,
         });
-        setRows(prev => [...prev, res.data]);
+        // Reemplazar fila inactiva si existe, o añadir nueva
+        setRows(prev => {
+          const sin = prev.filter(r => r.talla_id !== catalogTalla.id);
+          return [...sin, res.data];
+        });
       }
     } catch (e) {
       const detail = e?.response?.data?.detail;
-      toast.error(typeof detail === 'string' ? detail : 'Error al actualizar talla');
+      const status = e?.response?.status;
+      if (typeof detail === 'string') {
+        toast.error(detail);
+      } else if (status) {
+        toast.error(`Error ${status} al actualizar talla`);
+      } else {
+        toast.error('No se pudo conectar con el servidor');
+      }
     } finally {
       setSavingIds(prev => { const s = new Set(prev); s.delete(catalogTalla.id); return s; });
     }
