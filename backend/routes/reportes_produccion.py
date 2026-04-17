@@ -2391,7 +2391,7 @@ async def get_costos_produccion(
                 SUM(COALESCE(mp.costo_calculado, 0)) AS costo
             FROM produccion.prod_movimientos_produccion mp
             LEFT JOIN produccion.prod_servicios_produccion sv ON sv.id = mp.servicio_id
-            WHERE mp.registro_id = ANY($1::uuid[])
+            WHERE mp.registro_id::text = ANY($1::text[])
               AND COALESCE(mp.costo_calculado, 0) > 0
             GROUP BY mp.registro_id, sv.nombre
         """, reg_ids)
@@ -2405,7 +2405,7 @@ async def get_costos_produccion(
                 SUM(COALESCE(s.costo_total, 0)) AS costo
             FROM produccion.prod_inventario_salidas s
             LEFT JOIN produccion.prod_inventario inv ON inv.id = s.item_id
-            WHERE s.registro_id = ANY($1::uuid[])
+            WHERE s.registro_id::text = ANY($1::text[])
               AND COALESCE(s.costo_total, 0) > 0
             GROUP BY s.registro_id, inv.nombre, inv.codigo
         """, reg_ids)
