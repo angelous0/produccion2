@@ -1506,25 +1506,83 @@ async def delete_ajuste(ajuste_id: str, _u=Depends(get_current_user)):
         ajuste = await conn.fetchrow("SELECT * FROM prod_inventario_ajustes WHERE id = $1", ajuste_id)
         if not ajuste:
             raise HTTPException(status_code=404, detail="Ajuste no encontrado")
-        
+
         item = await conn.fetchrow("SELECT control_por_rollos FROM prod_inventario WHERE id = $1", ajuste['item_id'])
-        
+
         incremento = -float(ajuste['cantidad']) if ajuste['tipo'] == "entrada" else float(ajuste['cantidad'])
         if ajuste['tipo'] == "entrada":
             current_item = await conn.fetchrow("SELECT stock_actual FROM prod_inventario WHERE id = $1", ajuste['item_id'])
             if current_item and float(current_item['stock_actual']) < float(ajuste['cantidad']):
                 raise HTTPException(status_code=400, detail="No se puede eliminar: dejaría el stock negativo")
-        
-        await conn.execute("DELETE FROM prod_inventario_ajustes WHERE id = $1", ajuste_id)
-        await conn.execute("UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2", incremento, ajuste['item_id'])
-        
-        # Revertir metraje del rollo si aplica
-        if item and item['control_por_rollos'] and ajuste.get('rollo_id'):
-            rollo = await conn.fetchrow("SELECT ingreso_id FROM prod_inventario_rollos WHERE id = $1", ajuste['rollo_id'])
-            if rollo:
-                if ajuste['tipo'] == "entrada":
-                    # Revertir entrada = restar metraje
-                    await conn.execute("UPDATE prod_inventario_rollos SET metraje_disponible = metraje_disponible - $1, metraje = metraje - $1 WHERE id = $2", float(ajuste['cantidad']), ajuste['rollo_id'])
+
+        async with conn.transaction():
+            # Caso especial: ajuste de reversión de modo carga inicial
+            # → eliminar en CASCADA las salidas que este ajuste revertía.
+            # Al desactivar carga inicial pasaron 2 cosas:
+            #   (a) ajuste +Q sumó stock  (b) se restauró +Q en cantidad_disponible FIFO
+            # Al eliminar el ajuste con cascada debemos deshacer (a)+(b) y además eliminar la salida.
+            # Como la salida original ya había restado stock y FIFO, el resultado neto
+            # es volver al estado previo a la carga inicial (como si la salida nunca hubiera existido).
+            if ajuste.get('subtipo') == 'ajuste_migracion':
+                salidas_revertidas = await conn.fetch(
+                    "SELECT id, cantidad, detalle_fifo FROM prod_inventario_salidas WHERE revertida_por_migracion_id = $1",
+                    ajuste_id,
+                )
+                # Deshacer la restauración de FIFO que hizo el desactivar (resta las cantidades a cada capa)
+                for sal in salidas_revertidas:
+                    detalle = sal['detalle_fifo']
+                    if isinstance(detalle, str):
+                        try:
+                            detalle = json.loads(detalle)
+                        except Exception:
+                            detalle = []
+                    for capa in (detalle or []):
+                        ingreso_id = capa.get('ingreso_id')
+                        cant = capa.get('cantidad')
+                        if ingreso_id and cant:
+                            await conn.execute(
+                                "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible - $1 WHERE id = $2",
+                                float(cant), ingreso_id,
+                            )
+                # Luego eliminar cada salida y restaurar stock + FIFO como lo hace el DELETE normal
+                await conn.execute(
+                    "UPDATE prod_inventario_salidas SET revertida_por_migracion_id = NULL WHERE revertida_por_migracion_id = $1",
+                    ajuste_id,
+                )
+                for sal in salidas_revertidas:
+                    detalle = sal['detalle_fifo']
+                    if isinstance(detalle, str):
+                        try:
+                            detalle = json.loads(detalle)
+                        except Exception:
+                            detalle = []
+                    # Restaurar capas FIFO que consumió la salida original
+                    for capa in (detalle or []):
+                        ingreso_id = capa.get('ingreso_id')
+                        cant = capa.get('cantidad')
+                        if ingreso_id and cant:
+                            await conn.execute(
+                                "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible + $1 WHERE id = $2",
+                                float(cant), ingreso_id,
+                            )
+                    # Restaurar stock_actual
+                    await conn.execute(
+                        "UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
+                        float(sal['cantidad']), ajuste['item_id'],
+                    )
+                    # Eliminar la salida
+                    await conn.execute("DELETE FROM prod_inventario_salidas WHERE id = $1", sal['id'])
+
+            await conn.execute("DELETE FROM prod_inventario_ajustes WHERE id = $1", ajuste_id)
+            await conn.execute("UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2", incremento, ajuste['item_id'])
+
+            # Revertir metraje del rollo si aplica
+            if item and item['control_por_rollos'] and ajuste.get('rollo_id'):
+                rollo = await conn.fetchrow("SELECT ingreso_id FROM prod_inventario_rollos WHERE id = $1", ajuste['rollo_id'])
+                if rollo:
+                    if ajuste['tipo'] == "entrada":
+                        # Revertir entrada = restar metraje
+                        await conn.execute("UPDATE prod_inventario_rollos SET metraje_disponible = metraje_disponible - $1, metraje = metraje - $1 WHERE id = $2", float(ajuste['cantidad']), ajuste['rollo_id'])
 
 
 # ==================== DISPONIBILIDAD Y TIPOS ====================
