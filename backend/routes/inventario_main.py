@@ -1525,7 +1525,7 @@ async def delete_ajuste(ajuste_id: str, _u=Depends(get_current_user)):
             # es volver al estado previo a la carga inicial (como si la salida nunca hubiera existido).
             if ajuste.get('subtipo') == 'ajuste_migracion':
                 salidas_revertidas = await conn.fetch(
-                    "SELECT id, cantidad, detalle_fifo FROM prod_inventario_salidas WHERE revertida_por_migracion_id = $1",
+                    "SELECT id, cantidad, detalle_fifo, registro_id, talla_id, item_id FROM prod_inventario_salidas WHERE revertida_por_migracion_id = $1",
                     ajuste_id,
                 )
                 # Deshacer la restauración de FIFO que hizo el desactivar (resta las cantidades a cada capa)
@@ -1570,6 +1570,22 @@ async def delete_ajuste(ajuste_id: str, _u=Depends(get_current_user)):
                         "UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
                         float(sal['cantidad']), ajuste['item_id'],
                     )
+                    # Decrementar cantidad_consumida en el requerimiento del registro
+                    if sal['registro_id']:
+                        if sal.get('talla_id'):
+                            await conn.execute("""
+                                UPDATE prod_registro_requerimiento_mp
+                                SET cantidad_consumida = GREATEST(cantidad_consumida - $1, 0),
+                                    updated_at = CURRENT_TIMESTAMP
+                                WHERE registro_id = $2 AND item_id = $3 AND talla_id = $4
+                            """, float(sal['cantidad']), sal['registro_id'], sal['item_id'], sal['talla_id'])
+                        else:
+                            await conn.execute("""
+                                UPDATE prod_registro_requerimiento_mp
+                                SET cantidad_consumida = GREATEST(cantidad_consumida - $1, 0),
+                                    updated_at = CURRENT_TIMESTAMP
+                                WHERE registro_id = $2 AND item_id = $3 AND talla_id IS NULL
+                            """, float(sal['cantidad']), sal['registro_id'], sal['item_id'])
                     # Eliminar la salida
                     await conn.execute("DELETE FROM prod_inventario_salidas WHERE id = $1", sal['id'])
 
