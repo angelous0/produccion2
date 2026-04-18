@@ -654,14 +654,14 @@ async def execute_import(file: UploadFile = File(...), empresa_id: int = Query(8
                         hilo_especifico_id, tallas, distribucion_colores,
                         fecha_creacion, pt_item_id, empresa_id, observaciones,
                         linea_negocio_id, fecha_entrega_final, fecha_inicio_real,
-                        modelo_manual, descuento_inventario
-                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+                        modelo_manual
+                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
                 """,
                     reg["id"], n_corte, None, "", reg["estado"], reg["urgente"],
                     None, tallas_json, "[]",
                     fecha_creacion, None, empresa_id, reg["observaciones"],
                     reg["linea_negocio_id"], fecha_entrega, fecha_inicio,
-                    modelo_manual_json, False,
+                    modelo_manual_json,
                 )
 
                 # INSERT tallas into prod_registro_tallas

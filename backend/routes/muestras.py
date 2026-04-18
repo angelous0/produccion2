@@ -39,6 +39,7 @@ class MuestraEstadoUpdate(BaseModel):
 # ─── helpers FIFO (igual que salidas libres) ──────────────────────────────────
 
 async def _calcular_costo_fifo(conn, item_id: str, cantidad: float, modo_migracion: bool):
+    """Consume FIFO siempre (el parámetro modo_migracion queda por compatibilidad)."""
     ingresos = await conn.fetch(
         """SELECT id, cantidad_disponible, costo_unitario
            FROM prod_inventario_ingresos
@@ -61,14 +62,12 @@ async def _calcular_costo_fifo(conn, item_id: str, cantidad: float, modo_migraci
             {"ingreso_id": str(ing["id"]), "cantidad": usar, "costo_unitario": cu}
         )
         pendiente -= usar
-        if not modo_migracion:
-            nueva_disp = disponible - usar
-            await conn.execute(
-                "UPDATE prod_inventario_ingresos SET cantidad_disponible=$1 WHERE id=$2",
-                nueva_disp, ing["id"],
-            )
+        await conn.execute(
+            "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible - $1 WHERE id = $2",
+            usar, ing["id"],
+        )
 
-    if pendiente > 0 and not modo_migracion:
+    if pendiente > 0:
         detalle_fifo.append(
             {"ingreso_id": None, "cantidad": pendiente, "costo_unitario": 0, "sin_stock": True}
         )
@@ -211,15 +210,14 @@ async def crear_muestra(data: MuestraCreate, current_user=Depends(get_current_us
             str(uuid.uuid4()), mid, usuario,
         )
 
-        # Procesar materiales con FIFO
+        # Procesar materiales con FIFO — descontar siempre stock y FIFO
         costo_total_muestra = 0.0
         for mat in data.materiales:
             cu, ct, detalle = await _calcular_costo_fifo(conn, mat.item_id, mat.cantidad, modo_mig)
-            if not modo_mig:
-                await conn.execute(
-                    "UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2",
-                    mat.cantidad, mat.item_id,
-                )
+            await conn.execute(
+                "UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2",
+                mat.cantidad, mat.item_id,
+            )
             costo_total_muestra += ct
             await conn.execute(
                 """INSERT INTO prod_muestras_materiales
@@ -295,18 +293,17 @@ async def eliminar_muestra(muestra_id: str, _current_user=Depends(get_current_us
             "SELECT * FROM prod_muestras_materiales WHERE muestra_id=$1", muestra_id
         )
         for mat in materiales:
-            if not mat["en_migracion"]:
-                await conn.execute(
-                    "UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
-                    mat["cantidad"], mat["item_id"],
-                )
-                detalle = parse_jsonb(mat["detalle_fifo"])
-                for d in (detalle if isinstance(detalle, list) else []):
-                    if d.get("ingreso_id"):
-                        await conn.execute(
-                            "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible + $1 WHERE id = $2",
-                            d["cantidad"], d["ingreso_id"],
-                        )
+            await conn.execute(
+                "UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
+                mat["cantidad"], mat["item_id"],
+            )
+            detalle = parse_jsonb(mat["detalle_fifo"])
+            for d in (detalle if isinstance(detalle, list) else []):
+                if d.get("ingreso_id"):
+                    await conn.execute(
+                        "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible + $1 WHERE id = $2",
+                        d["cantidad"], d["ingreso_id"],
+                    )
 
         await conn.execute("DELETE FROM prod_muestras_materiales WHERE muestra_id=$1", muestra_id)
         await conn.execute("DELETE FROM prod_muestras_historial_estado WHERE muestra_id=$1", muestra_id)

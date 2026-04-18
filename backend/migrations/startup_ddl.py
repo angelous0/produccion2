@@ -290,8 +290,14 @@ async def ensure_startup_migrations():
         await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS division_numero INT DEFAULT 0")
         # Modelo manual (ingresado a mano sin seleccionar del catálogo)
         await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS modelo_manual JSONB")
-        # Flag de descuento de inventario (false cuando se crea en modo migración)
-        await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS descuento_inventario BOOLEAN DEFAULT TRUE")
+        # Referencia idempotente: salida revertida por ajuste de migración
+        await conn.execute("ALTER TABLE prod_inventario_salidas ADD COLUMN IF NOT EXISTS revertida_por_migracion_id VARCHAR NULL")
+        # Subtipo de ajuste para identificar ajustes de reversión de migración
+        await conn.execute("ALTER TABLE prod_inventario_ajustes ADD COLUMN IF NOT EXISTS subtipo VARCHAR NULL")
+        # Costo asociado al ajuste (para que el saldo valorizado del kardex cuadre con reversiones)
+        await conn.execute("ALTER TABLE prod_inventario_ajustes ADD COLUMN IF NOT EXISTS costo_total NUMERIC DEFAULT 0")
+        # Tipo de ingreso para diferenciar stock_inicial de compras normales
+        await conn.execute("ALTER TABLE prod_inventario_ingresos ADD COLUMN IF NOT EXISTS tipo_ingreso VARCHAR NULL")
 
         # Tabla de configuración global del sistema
         await conn.execute("""
@@ -307,6 +313,49 @@ async def ensure_startup_migrations():
             INSERT INTO prod_configuracion (clave, valor) VALUES ('modo_migracion', 'false')
             ON CONFLICT (clave) DO NOTHING
         """)
+        # Tabla de períodos de modo migración (ventana temporal)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_modo_migracion_periodos (
+                id VARCHAR PRIMARY KEY,
+                empresa_id INTEGER NOT NULL,
+                activado_at TIMESTAMPTZ NOT NULL,
+                activado_by VARCHAR,
+                desactivado_at TIMESTAMPTZ NULL,
+                desactivado_by VARCHAR,
+                estado VARCHAR NOT NULL DEFAULT 'activo',
+                salidas_revertidas_count INTEGER DEFAULT 0,
+                ajustes_generados_count INTEGER DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_migracion_periodos_empresa_estado ON prod_modo_migracion_periodos(empresa_id, estado)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_migracion_periodos_activado ON prod_modo_migracion_periodos(activado_at)"
+        )
+        # Migración de datos: si la config vieja dice activo=true y no hay período registrado, crear uno retroactivo
+        try:
+            import uuid as _uuid_mig
+            config_vieja = await conn.fetchrow(
+                "SELECT valor, updated_at, updated_by FROM prod_configuracion WHERE clave = 'modo_migracion'"
+            )
+            if config_vieja and config_vieja['valor'] == 'true':
+                periodo_existente = await conn.fetchval(
+                    "SELECT id FROM prod_modo_migracion_periodos WHERE estado = 'activo' AND empresa_id = 7 LIMIT 1"
+                )
+                if not periodo_existente:
+                    activado_at = config_vieja['updated_at'] or 'now()'
+                    await conn.execute(
+                        """INSERT INTO prod_modo_migracion_periodos
+                               (id, empresa_id, activado_at, activado_by, estado)
+                           VALUES ($1, 7, $2, $3, 'activo')""",
+                        str(_uuid_mig.uuid4()),
+                        activado_at,
+                        config_vieja['updated_by'] or 'sistema',
+                    )
+        except Exception:
+            pass  # No bloquear el arranque por esto
         # Migración: extender prod_registro_cierre con campos de auditoría y congelamiento
         for alter_sql in [
             "ALTER TABLE prod_registro_cierre ADD COLUMN IF NOT EXISTS merma_qty NUMERIC DEFAULT 0",
@@ -335,6 +384,70 @@ async def ensure_startup_migrations():
             'prod_inventario_salidas', 'prod_registro_requerimiento_mp'
         ]:
             await conn.execute(f"UPDATE {tabla} SET empresa_id = 7 WHERE empresa_id != 7")
+
+
+async def ensure_clasificacion_tables():
+    """Crea tablas de clasificación de productos e índices necesarios (idempotente)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # ── 4 nuevas tablas catálogo ────────────────────────────────────────
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_generos (
+                id VARCHAR PRIMARY KEY,
+                nombre VARCHAR NOT NULL,
+                marca_ids JSONB DEFAULT '[]'::jsonb,
+                orden INT DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_cuellos (
+                id VARCHAR PRIMARY KEY,
+                nombre VARCHAR NOT NULL,
+                tipo_ids JSONB DEFAULT '[]'::jsonb,
+                orden INT DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_detalles (
+                id VARCHAR PRIMARY KEY,
+                nombre VARCHAR NOT NULL,
+                tipo_ids JSONB DEFAULT '[]'::jsonb,
+                orden INT DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # ── Nuevas columnas en prod_modelos ─────────────────────────────────
+        await conn.execute("ALTER TABLE prod_modelos ADD COLUMN IF NOT EXISTS genero_id VARCHAR NULL")
+        await conn.execute("ALTER TABLE prod_modelos ADD COLUMN IF NOT EXISTS cuello_id VARCHAR NULL")
+        await conn.execute("ALTER TABLE prod_modelos ADD COLUMN IF NOT EXISTS detalle_id VARCHAR NULL")
+        # ── Categoría en prod_colores_catalogo ──────────────────────────────
+        await conn.execute(
+            "ALTER TABLE prod_colores_catalogo ADD COLUMN IF NOT EXISTS categoria VARCHAR NOT NULL DEFAULT 'basico'"
+        )
+        # ── Lavados ─────────────────────────────────────────────────────────
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_lavados (
+                id VARCHAR PRIMARY KEY,
+                nombre VARCHAR NOT NULL,
+                categoria VARCHAR NOT NULL DEFAULT 'basico',
+                tipo_ids JSONB DEFAULT '[]'::jsonb,
+                orden INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("ALTER TABLE prod_modelos ADD COLUMN IF NOT EXISTS lavado_id VARCHAR NULL")
+        # ── Tela General ─────────────────────────────────────────────────────
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_telas_general (
+                id VARCHAR PRIMARY KEY,
+                nombre VARCHAR NOT NULL,
+                orden INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("ALTER TABLE prod_telas ADD COLUMN IF NOT EXISTS tela_general_id VARCHAR NULL")
 
 
 async def ensure_salidas_libres_tables():

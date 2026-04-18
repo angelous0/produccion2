@@ -360,24 +360,25 @@ async def get_inventario_movimientos(
         return {"items": movimientos, "total": total}
 
 @router.get("/inventario-kardex/{item_id}")
-async def get_inventario_kardex_by_path(item_id: str):
-    return await _get_kardex(item_id)
+async def get_inventario_kardex_by_path(item_id: str, excluir_migracion: bool = False):
+    return await _get_kardex(item_id, excluir_migracion=excluir_migracion)
 
 @router.get("/inventario-kardex")
-async def get_inventario_kardex(item_id: str):
-    return await _get_kardex(item_id)
+async def get_inventario_kardex(item_id: str, excluir_migracion: bool = False):
+    return await _get_kardex(item_id, excluir_migracion=excluir_migracion)
 
-async def _get_kardex(item_id: str):
+async def _get_kardex(item_id: str, excluir_migracion: bool = False):
     pool = await get_pool()
     async with pool.acquire() as conn:
         item = await conn.fetchrow("SELECT * FROM prod_inventario WHERE id = $1", item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Item no encontrado")
-        
+
         movimientos = []
-        
-        # Ingresos
-        ingresos = await conn.fetch("SELECT * FROM prod_inventario_ingresos WHERE item_id = $1", item_id)
+
+        # Ingresos (no filtrar — los ingresos normales nunca son de migración)
+        ingresos_query = "SELECT * FROM prod_inventario_ingresos WHERE item_id = $1"
+        ingresos = await conn.fetch(ingresos_query, item_id)
         for ing in ingresos:
             movimientos.append({
                 "id": ing['id'],
@@ -390,9 +391,17 @@ async def _get_kardex(item_id: str):
                 "numero_documento": ing['numero_documento'],
                 "observaciones": ing['observaciones']
             })
-        
-        # Salidas
-        salidas = await conn.fetch("SELECT * FROM prod_inventario_salidas WHERE item_id = $1", item_id)
+
+        # Salidas — si excluir_migracion, ocultar las que fueron revertidas por un período de carga inicial
+        if excluir_migracion:
+            salidas = await conn.fetch(
+                """SELECT * FROM prod_inventario_salidas
+                   WHERE item_id = $1
+                     AND revertida_por_migracion_id IS NULL""",
+                item_id
+            )
+        else:
+            salidas = await conn.fetch("SELECT * FROM prod_inventario_salidas WHERE item_id = $1", item_id)
         for sal in salidas:
             registro = None
             modelo_nombre = None
@@ -419,18 +428,22 @@ async def _get_kardex(item_id: str):
                 "modelo_nombre": modelo_nombre,
                 "rollo_id": sal.get('rollo_id'),
             })
-        
+
         # Ajustes
-        ajustes = await conn.fetch("SELECT * FROM prod_inventario_ajustes WHERE item_id = $1", item_id)
+        ajustes_query = "SELECT * FROM prod_inventario_ajustes WHERE item_id = $1"
+        if excluir_migracion:
+            ajustes_query += " AND (subtipo IS NULL OR subtipo != 'ajuste_migracion')"
+        ajustes = await conn.fetch(ajustes_query, item_id)
         for aj in ajustes:
             cantidad = float(aj['cantidad']) if aj['tipo'] == 'entrada' else -float(aj['cantidad'])
+            costo_aj = float(aj['costo_total'] or 0)
             movimientos.append({
                 "id": aj['id'],
                 "tipo": f"ajuste_{aj['tipo']}",
                 "fecha": aj['fecha'],
                 "cantidad": cantidad,
-                "costo_unitario": 0,
-                "costo_total": 0,
+                "costo_unitario": round(costo_aj / abs(cantidad), 4) if cantidad else 0,
+                "costo_total": costo_aj,
                 "motivo": aj['motivo'],
                 "observaciones": aj['observaciones']
             })
@@ -450,8 +463,10 @@ async def _get_kardex(item_id: str):
                 saldo_valor -= mov['costo_total']
             elif mov['tipo'] == 'ajuste_entrada':
                 saldo += abs(mov['cantidad'])
+                saldo_valor += mov['costo_total']
             elif mov['tipo'] == 'ajuste_salida':
                 saldo -= abs(mov['cantidad'])
+                saldo_valor -= mov['costo_total']
             mov['saldo'] = saldo
             mov['saldo_valorizado'] = round(saldo_valor, 2)
 

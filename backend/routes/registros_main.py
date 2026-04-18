@@ -28,125 +28,186 @@ async def get_filtros_modelo(
     tela_id: str = "",
 ):
     """Devuelve opciones disponibles para cada filtro, en cascada.
-    Si seleccionas marca, solo muestra tipos/entalles/telas que existen en modelos con esa marca, etc."""
+    Incluye valores de modelos normales Y de registros manuales (modelo_manual JSONB)."""
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Construir WHERE según selecciones actuales
-        conditions = []
-        params = []
-        idx = 1
-
         marcas_list = [x.strip() for x in marca_id.split(",") if x.strip()] if marca_id else []
         tipos_list = [x.strip() for x in tipo_id.split(",") if x.strip()] if tipo_id else []
         entalles_list = [x.strip() for x in entalle_id.split(",") if x.strip()] if entalle_id else []
         telas_list = [x.strip() for x in tela_id.split(",") if x.strip()] if tela_id else []
 
-        def add_filter(field, values):
-            nonlocal idx
-            if values:
-                ph = ", ".join(f"${idx + i}" for i in range(len(values)))
-                conditions.append(f"{field} IN ({ph})")
-                params.extend(values)
-                idx += len(values)
+        # Separar IDs reales de valores de texto (prefijo "text:")
+        def split_ids(lst):
+            real = [x for x in lst if not x.startswith('text:')]
+            text = [x[5:] for x in lst if x.startswith('text:')]
+            return real, text
 
-        # Para cada categoría, calcular opciones disponibles filtrando por las OTRAS selecciones
-        # Marcas: filtrar por tipo + entalle + tela
-        conds_marca = []
-        p_marca = []
-        ix = 1
-        if tipos_list:
-            ph = ", ".join(f"${ix + i}" for i in range(len(tipos_list)))
-            conds_marca.append(f"m.tipo_id IN ({ph})")
-            p_marca.extend(tipos_list); ix += len(tipos_list)
-        if entalles_list:
-            ph = ", ".join(f"${ix + i}" for i in range(len(entalles_list)))
-            conds_marca.append(f"m.entalle_id IN ({ph})")
-            p_marca.extend(entalles_list); ix += len(entalles_list)
-        if telas_list:
-            ph = ", ".join(f"${ix + i}" for i in range(len(telas_list)))
-            conds_marca.append(f"m.tela_id IN ({ph})")
-            p_marca.extend(telas_list); ix += len(telas_list)
-        w_marca = " AND ".join(conds_marca) if conds_marca else "TRUE"
+        marcas_real, marcas_text = split_ids(marcas_list)
+        tipos_real, tipos_text = split_ids(tipos_list)
+        entalles_real, entalles_text = split_ids(entalles_list)
+        telas_real, telas_text = split_ids(telas_list)
+
+        def build_modelo_cond(conds, params, ix, marca_r, tipo_r, ent_r, tela_r):
+            """Genera condiciones WHERE para prod_modelos con cascada (solo IDs)."""
+            if marca_r:
+                ph = ", ".join(f"${ix + i}" for i in range(len(marca_r)))
+                conds.append(f"m.marca_id IN ({ph})")
+                params.extend(marca_r); ix += len(marca_r)
+            if tipo_r:
+                ph = ", ".join(f"${ix + i}" for i in range(len(tipo_r)))
+                conds.append(f"m.tipo_id IN ({ph})")
+                params.extend(tipo_r); ix += len(tipo_r)
+            if ent_r:
+                ph = ", ".join(f"${ix + i}" for i in range(len(ent_r)))
+                conds.append(f"m.entalle_id IN ({ph})")
+                params.extend(ent_r); ix += len(ent_r)
+            if tela_r:
+                ph = ", ".join(f"${ix + i}" for i in range(len(tela_r)))
+                conds.append(f"m.tela_id IN ({ph})")
+                params.extend(tela_r); ix += len(tela_r)
+            return ix
+
+        def build_manual_cond(conds, params, ix, marca_r, marca_t, tipo_r, tipo_t, ent_r, ent_t, tela_r, tela_t):
+            """Genera condiciones WHERE para prod_registros.modelo_manual con cascada."""
+            if marca_r or marca_t:
+                sub = []
+                if marca_r:
+                    ph = ", ".join(f"${ix + i}" for i in range(len(marca_r)))
+                    sub.append(f"r.modelo_manual->>'marca_id' IN ({ph})")
+                    params.extend(marca_r); ix += len(marca_r)
+                if marca_t:
+                    ph = ", ".join(f"${ix + i}" for i in range(len(marca_t)))
+                    sub.append(f"r.modelo_manual->>'marca_texto' IN ({ph})")
+                    params.extend(marca_t); ix += len(marca_t)
+                conds.append(f"({' OR '.join(sub)})")
+            if tipo_r or tipo_t:
+                sub = []
+                if tipo_r:
+                    ph = ", ".join(f"${ix + i}" for i in range(len(tipo_r)))
+                    sub.append(f"r.modelo_manual->>'tipo_id' IN ({ph})")
+                    params.extend(tipo_r); ix += len(tipo_r)
+                if tipo_t:
+                    ph = ", ".join(f"${ix + i}" for i in range(len(tipo_t)))
+                    sub.append(f"r.modelo_manual->>'tipo_texto' IN ({ph})")
+                    params.extend(tipo_t); ix += len(tipo_t)
+                conds.append(f"({' OR '.join(sub)})")
+            if ent_r or ent_t:
+                sub = []
+                if ent_r:
+                    ph = ", ".join(f"${ix + i}" for i in range(len(ent_r)))
+                    sub.append(f"r.modelo_manual->>'entalle_id' IN ({ph})")
+                    params.extend(ent_r); ix += len(ent_r)
+                if ent_t:
+                    ph = ", ".join(f"${ix + i}" for i in range(len(ent_t)))
+                    sub.append(f"r.modelo_manual->>'entalle_texto' IN ({ph})")
+                    params.extend(ent_t); ix += len(ent_t)
+                conds.append(f"({' OR '.join(sub)})")
+            if tela_r or tela_t:
+                sub = []
+                if tela_r:
+                    ph = ", ".join(f"${ix + i}" for i in range(len(tela_r)))
+                    sub.append(f"r.modelo_manual->>'tela_id' IN ({ph})")
+                    params.extend(tela_r); ix += len(tela_r)
+                if tela_t:
+                    ph = ", ".join(f"${ix + i}" for i in range(len(tela_t)))
+                    sub.append(f"r.modelo_manual->>'tela_texto' IN ({ph})")
+                    params.extend(tela_t); ix += len(tela_t)
+                conds.append(f"({' OR '.join(sub)})")
+            return ix
+
+        # ── MARCAS: filtrar por tipo + entalle + tela ─────────────────────────
+        conds_m = []; p_m = []; ix = 1
+        ix = build_modelo_cond(conds_m, p_m, ix, [], tipos_real, entalles_real, telas_real)
+        w_m = " AND ".join(conds_m) if conds_m else "TRUE"
+        conds_mm = ["r.modelo_id IS NULL", "r.modelo_manual IS NOT NULL"]; p_mm = []; ix_mm = 1
+        ix_mm = build_manual_cond(conds_mm, p_mm, ix_mm, [], [], tipos_real, tipos_text, entalles_real, entalles_text, telas_real, telas_text)
+        w_mm = " AND ".join(conds_mm)
         marcas_rows = await conn.fetch(f"""
-            SELECT DISTINCT ma.id, ma.nombre FROM prod_modelos m
-            JOIN prod_marcas ma ON m.marca_id = ma.id
-            WHERE {w_marca} ORDER BY ma.nombre
-        """, *p_marca)
+            SELECT id::text, nombre FROM (
+                SELECT DISTINCT ma.id, ma.nombre FROM prod_modelos m
+                JOIN prod_marcas ma ON m.marca_id = ma.id WHERE {w_m}
+                UNION
+                SELECT DISTINCT ma.id, ma.nombre FROM prod_registros r
+                JOIN prod_marcas ma ON (r.modelo_manual->>'marca_id') = ma.id::text WHERE {w_mm}
+                UNION
+                SELECT DISTINCT 'text:' || (r.modelo_manual->>'marca_texto'), (r.modelo_manual->>'marca_texto')
+                FROM prod_registros r WHERE r.modelo_id IS NULL AND r.modelo_manual IS NOT NULL
+                  AND (r.modelo_manual->>'marca_id') IS NULL
+                  AND (r.modelo_manual->>'marca_texto') IS NOT NULL AND (r.modelo_manual->>'marca_texto') != ''
+            ) t ORDER BY nombre
+        """, *p_m, *p_mm)
 
-        # Tipos: filtrar por marca + entalle + tela
-        conds_tipo = []
-        p_tipo = []
-        ix = 1
-        if marcas_list:
-            ph = ", ".join(f"${ix + i}" for i in range(len(marcas_list)))
-            conds_tipo.append(f"m.marca_id IN ({ph})")
-            p_tipo.extend(marcas_list); ix += len(marcas_list)
-        if entalles_list:
-            ph = ", ".join(f"${ix + i}" for i in range(len(entalles_list)))
-            conds_tipo.append(f"m.entalle_id IN ({ph})")
-            p_tipo.extend(entalles_list); ix += len(entalles_list)
-        if telas_list:
-            ph = ", ".join(f"${ix + i}" for i in range(len(telas_list)))
-            conds_tipo.append(f"m.tela_id IN ({ph})")
-            p_tipo.extend(telas_list); ix += len(telas_list)
-        w_tipo = " AND ".join(conds_tipo) if conds_tipo else "TRUE"
+        # ── TIPOS: filtrar por marca + entalle + tela ─────────────────────────
+        conds_m = []; p_m = []; ix = 1
+        ix = build_modelo_cond(conds_m, p_m, ix, marcas_real, [], entalles_real, telas_real)
+        w_m = " AND ".join(conds_m) if conds_m else "TRUE"
+        conds_mm = ["r.modelo_id IS NULL", "r.modelo_manual IS NOT NULL"]; p_mm = []; ix_mm = 1
+        ix_mm = build_manual_cond(conds_mm, p_mm, ix_mm, marcas_real, marcas_text, [], [], entalles_real, entalles_text, telas_real, telas_text)
+        w_mm = " AND ".join(conds_mm)
         tipos_rows = await conn.fetch(f"""
-            SELECT DISTINCT t.id, t.nombre FROM prod_modelos m
-            JOIN prod_tipos t ON m.tipo_id = t.id
-            WHERE {w_tipo} ORDER BY t.nombre
-        """, *p_tipo)
+            SELECT id::text, nombre FROM (
+                SELECT DISTINCT t.id, t.nombre FROM prod_modelos m
+                JOIN prod_tipos t ON m.tipo_id = t.id WHERE {w_m}
+                UNION
+                SELECT DISTINCT t.id, t.nombre FROM prod_registros r
+                JOIN prod_tipos t ON (r.modelo_manual->>'tipo_id') = t.id::text WHERE {w_mm}
+                UNION
+                SELECT DISTINCT 'text:' || (r.modelo_manual->>'tipo_texto'), (r.modelo_manual->>'tipo_texto')
+                FROM prod_registros r WHERE r.modelo_id IS NULL AND r.modelo_manual IS NOT NULL
+                  AND (r.modelo_manual->>'tipo_id') IS NULL
+                  AND (r.modelo_manual->>'tipo_texto') IS NOT NULL AND (r.modelo_manual->>'tipo_texto') != ''
+            ) t ORDER BY nombre
+        """, *p_m, *p_mm)
 
-        # Entalles: filtrar por marca + tipo + tela
-        conds_ent = []
-        p_ent = []
-        ix = 1
-        if marcas_list:
-            ph = ", ".join(f"${ix + i}" for i in range(len(marcas_list)))
-            conds_ent.append(f"m.marca_id IN ({ph})")
-            p_ent.extend(marcas_list); ix += len(marcas_list)
-        if tipos_list:
-            ph = ", ".join(f"${ix + i}" for i in range(len(tipos_list)))
-            conds_ent.append(f"m.tipo_id IN ({ph})")
-            p_ent.extend(tipos_list); ix += len(tipos_list)
-        if telas_list:
-            ph = ", ".join(f"${ix + i}" for i in range(len(telas_list)))
-            conds_ent.append(f"m.tela_id IN ({ph})")
-            p_ent.extend(telas_list); ix += len(telas_list)
-        w_ent = " AND ".join(conds_ent) if conds_ent else "TRUE"
+        # ── ENTALLES: filtrar por marca + tipo + tela ─────────────────────────
+        conds_m = []; p_m = []; ix = 1
+        ix = build_modelo_cond(conds_m, p_m, ix, marcas_real, tipos_real, [], telas_real)
+        w_m = " AND ".join(conds_m) if conds_m else "TRUE"
+        conds_mm = ["r.modelo_id IS NULL", "r.modelo_manual IS NOT NULL"]; p_mm = []; ix_mm = 1
+        ix_mm = build_manual_cond(conds_mm, p_mm, ix_mm, marcas_real, marcas_text, tipos_real, tipos_text, [], [], telas_real, telas_text)
+        w_mm = " AND ".join(conds_mm)
         entalles_rows = await conn.fetch(f"""
-            SELECT DISTINCT e.id, e.nombre FROM prod_modelos m
-            JOIN prod_entalles e ON m.entalle_id = e.id
-            WHERE {w_ent} ORDER BY e.nombre
-        """, *p_ent)
+            SELECT id::text, nombre FROM (
+                SELECT DISTINCT e.id, e.nombre FROM prod_modelos m
+                JOIN prod_entalles e ON m.entalle_id = e.id WHERE {w_m}
+                UNION
+                SELECT DISTINCT e.id, e.nombre FROM prod_registros r
+                JOIN prod_entalles e ON (r.modelo_manual->>'entalle_id') = e.id::text WHERE {w_mm}
+                UNION
+                SELECT DISTINCT 'text:' || (r.modelo_manual->>'entalle_texto'), (r.modelo_manual->>'entalle_texto')
+                FROM prod_registros r WHERE r.modelo_id IS NULL AND r.modelo_manual IS NOT NULL
+                  AND (r.modelo_manual->>'entalle_id') IS NULL
+                  AND (r.modelo_manual->>'entalle_texto') IS NOT NULL AND (r.modelo_manual->>'entalle_texto') != ''
+            ) t ORDER BY nombre
+        """, *p_m, *p_mm)
 
-        # Telas: filtrar por marca + tipo + entalle
-        conds_tela = []
-        p_tela = []
-        ix = 1
-        if marcas_list:
-            ph = ", ".join(f"${ix + i}" for i in range(len(marcas_list)))
-            conds_tela.append(f"m.marca_id IN ({ph})")
-            p_tela.extend(marcas_list); ix += len(marcas_list)
-        if tipos_list:
-            ph = ", ".join(f"${ix + i}" for i in range(len(tipos_list)))
-            conds_tela.append(f"m.tipo_id IN ({ph})")
-            p_tela.extend(tipos_list); ix += len(tipos_list)
-        if entalles_list:
-            ph = ", ".join(f"${ix + i}" for i in range(len(entalles_list)))
-            conds_tela.append(f"m.entalle_id IN ({ph})")
-            p_tela.extend(entalles_list); ix += len(entalles_list)
-        w_tela = " AND ".join(conds_tela) if conds_tela else "TRUE"
+        # ── TELAS: filtrar por marca + tipo + entalle ─────────────────────────
+        conds_m = []; p_m = []; ix = 1
+        ix = build_modelo_cond(conds_m, p_m, ix, marcas_real, tipos_real, entalles_real, [])
+        w_m = " AND ".join(conds_m) if conds_m else "TRUE"
+        conds_mm = ["r.modelo_id IS NULL", "r.modelo_manual IS NOT NULL"]; p_mm = []; ix_mm = 1
+        ix_mm = build_manual_cond(conds_mm, p_mm, ix_mm, marcas_real, marcas_text, tipos_real, tipos_text, entalles_real, entalles_text, [], [])
+        w_mm = " AND ".join(conds_mm)
         telas_rows = await conn.fetch(f"""
-            SELECT DISTINCT te.id, te.nombre FROM prod_modelos m
-            JOIN prod_telas te ON m.tela_id = te.id
-            WHERE {w_tela} ORDER BY te.nombre
-        """, *p_tela)
+            SELECT id::text, nombre FROM (
+                SELECT DISTINCT te.id, te.nombre FROM prod_modelos m
+                JOIN prod_telas te ON m.tela_id = te.id WHERE {w_m}
+                UNION
+                SELECT DISTINCT te.id, te.nombre FROM prod_registros r
+                JOIN prod_telas te ON (r.modelo_manual->>'tela_id') = te.id::text WHERE {w_mm}
+                UNION
+                SELECT DISTINCT 'text:' || (r.modelo_manual->>'tela_texto'), (r.modelo_manual->>'tela_texto')
+                FROM prod_registros r WHERE r.modelo_id IS NULL AND r.modelo_manual IS NOT NULL
+                  AND (r.modelo_manual->>'tela_id') IS NULL
+                  AND (r.modelo_manual->>'tela_texto') IS NOT NULL AND (r.modelo_manual->>'tela_texto') != ''
+            ) t ORDER BY nombre
+        """, *p_m, *p_mm)
 
         return {
-            "marcas": [{"id": str(r['id']), "nombre": r['nombre']} for r in marcas_rows],
-            "tipos": [{"id": str(r['id']), "nombre": r['nombre']} for r in tipos_rows],
-            "entalles": [{"id": str(r['id']), "nombre": r['nombre']} for r in entalles_rows],
-            "telas": [{"id": str(r['id']), "nombre": r['nombre']} for r in telas_rows],
+            "marcas": [{"id": r['id'], "nombre": r['nombre']} for r in marcas_rows],
+            "tipos": [{"id": r['id'], "nombre": r['nombre']} for r in tipos_rows],
+            "entalles": [{"id": r['id'], "nombre": r['nombre']} for r in entalles_rows],
+            "telas": [{"id": r['id'], "nombre": r['nombre']} for r in telas_rows],
         }
 
 @router.get("/registros")
@@ -202,37 +263,44 @@ async def get_registros(
             params.append(int(linea_negocio_id))
             param_idx += 1
 
+        def add_modelo_manual_filter(field_modelo, field_manual_id, field_manual_texto, raw_ids):
+            """Filtra por campo de modelo normal O por campo en modelo_manual (id o texto libre)."""
+            nonlocal param_idx
+            real_ids = [x for x in raw_ids if not x.startswith('text:')]
+            text_vals = [x[5:] for x in raw_ids if x.startswith('text:')]
+            subconds = []
+            if real_ids:
+                ph = ", ".join(f"${param_idx + i}" for i in range(len(real_ids)))
+                subconds.append(f"({field_modelo} IN ({ph}) OR r.modelo_manual->>'{field_manual_id}' IN ({ph}))")
+                params.extend(real_ids)
+                param_idx += len(real_ids)
+            if text_vals:
+                ph = ", ".join(f"${param_idx + i}" for i in range(len(text_vals)))
+                subconds.append(f"r.modelo_manual->>'{field_manual_texto}' IN ({ph})")
+                params.extend(text_vals)
+                param_idx += len(text_vals)
+            if subconds:
+                conditions.append(f"({' OR '.join(subconds)})")
+
         if marca_id:
             ids = [x.strip() for x in marca_id.split(",") if x.strip()]
             if ids:
-                placeholders = ", ".join(f"${param_idx + i}" for i in range(len(ids)))
-                conditions.append(f"m.marca_id IN ({placeholders})")
-                params.extend(ids)
-                param_idx += len(ids)
+                add_modelo_manual_filter('m.marca_id', 'marca_id', 'marca_texto', ids)
 
         if tipo_id:
             ids = [x.strip() for x in tipo_id.split(",") if x.strip()]
             if ids:
-                placeholders = ", ".join(f"${param_idx + i}" for i in range(len(ids)))
-                conditions.append(f"m.tipo_id IN ({placeholders})")
-                params.extend(ids)
-                param_idx += len(ids)
+                add_modelo_manual_filter('m.tipo_id', 'tipo_id', 'tipo_texto', ids)
 
         if entalle_id:
             ids = [x.strip() for x in entalle_id.split(",") if x.strip()]
             if ids:
-                placeholders = ", ".join(f"${param_idx + i}" for i in range(len(ids)))
-                conditions.append(f"m.entalle_id IN ({placeholders})")
-                params.extend(ids)
-                param_idx += len(ids)
+                add_modelo_manual_filter('m.entalle_id', 'entalle_id', 'entalle_texto', ids)
 
         if tela_id:
             ids = [x.strip() for x in tela_id.split(",") if x.strip()]
             if ids:
-                placeholders = ", ".join(f"${param_idx + i}" for i in range(len(ids)))
-                conditions.append(f"m.tela_id IN ({placeholders})")
-                params.extend(ids)
-                param_idx += len(ids)
+                add_modelo_manual_filter('m.tela_id', 'tela_id', 'tela_texto', ids)
 
         where_clause = " AND ".join(conditions) if conditions else "TRUE"
 
@@ -245,8 +313,8 @@ async def get_registros(
                 t.nombre as tipo_nombre,
                 e.nombre as entalle_nombre,
                 te.nombre as tela_nombre,
-                h.nombre as hilo_nombre,
-                he.nombre as hilo_especifico_nombre,
+                COALESCE(h.nombre, mh.nombre, r.modelo_manual->>'hilo_texto') as hilo_nombre,
+                COALESCE(he.nombre, mhe.nombre, r.modelo_manual->>'hilo_especifico_texto') as hilo_especifico_nombre,
                 rp.n_corte as padre_n_corte,
                 ln.nombre as linea_negocio_nombre,
                 GREATEST(
@@ -260,7 +328,8 @@ async def get_registros(
                 (SELECT COUNT(*) FROM prod_registros rh WHERE rh.dividido_desde_registro_id = r.id) as cantidad_divisiones,
                 (SELECT COALESCE(SUM(cantidad),0) FROM prod_mermas pm WHERE pm.registro_id = r.id) as mermas_total,
                 (SELECT COALESCE(SUM(cantidad_detectada),0) FROM prod_fallados pf WHERE pf.registro_id = r.id) as fallados_total,
-                (SELECT COUNT(*) FROM prod_registro_arreglos pa WHERE pa.registro_id = r.id AND pa.estado IN ('EN_ARREGLO','PARCIAL','VENCIDO') AND pa.fecha_limite < CURRENT_DATE) as arreglos_vencidos
+                (SELECT COUNT(*) FROM prod_registro_arreglos pa WHERE pa.registro_id = r.id AND pa.estado IN ('EN_ARREGLO','PARCIAL','VENCIDO') AND pa.fecha_limite < CURRENT_DATE) as arreglos_vencidos,
+                (SELECT COALESCE(SUM(rt.cantidad_real), 0) FROM prod_registro_tallas rt WHERE rt.registro_id = r.id) as total_prendas
             FROM prod_registros r
             LEFT JOIN prod_modelos m ON r.modelo_id = m.id
             LEFT JOIN prod_marcas ma ON m.marca_id = ma.id
@@ -268,7 +337,9 @@ async def get_registros(
             LEFT JOIN prod_entalles e ON m.entalle_id = e.id
             LEFT JOIN prod_telas te ON m.tela_id = te.id
             LEFT JOIN prod_hilos h ON m.hilo_id = h.id
+            LEFT JOIN prod_hilos mh ON (r.modelo_manual->>'hilo_id') = mh.id
             LEFT JOIN prod_hilos_especificos he ON COALESCE(r.hilo_especifico_id, m.hilo_especifico_id) = he.id
+            LEFT JOIN prod_hilos_especificos mhe ON (r.modelo_manual->>'hilo_especifico_id') = mhe.id
             LEFT JOIN prod_registros rp ON r.dividido_desde_registro_id = rp.id
             LEFT JOIN finanzas2.cont_linea_negocio ln ON r.linea_negocio_id = ln.id
             WHERE {where_clause}
@@ -338,6 +409,38 @@ async def get_registros_estados():
         rows = await conn.fetch("SELECT DISTINCT estado FROM prod_registros WHERE estado IS NOT NULL AND estado != '' ORDER BY estado")
         return [r['estado'] for r in rows]
 
+@router.get("/registros/{registro_id}/navegacion")
+async def get_registro_navegacion(registro_id: str):
+    """Devuelve el registro anterior y siguiente al actual (ordenado por fecha_creacion DESC)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        current = await conn.fetchrow(
+            "SELECT fecha_creacion FROM prod_registros WHERE id = $1", registro_id
+        )
+        if not current:
+            raise HTTPException(status_code=404, detail="Registro no encontrado")
+
+        fecha = current['fecha_creacion']
+
+        anterior = await conn.fetchrow(
+            """SELECT id, n_corte FROM prod_registros
+               WHERE fecha_creacion > $1
+               ORDER BY fecha_creacion ASC LIMIT 1""",
+            fecha
+        )
+        siguiente = await conn.fetchrow(
+            """SELECT id, n_corte FROM prod_registros
+               WHERE fecha_creacion < $1
+               ORDER BY fecha_creacion DESC LIMIT 1""",
+            fecha
+        )
+
+        return {
+            "anterior": {"id": anterior["id"], "n_corte": anterior["n_corte"]} if anterior else None,
+            "siguiente": {"id": siguiente["id"], "n_corte": siguiente["n_corte"]} if siguiente else None,
+        }
+
+
 @router.get("/registros/{registro_id}")
 async def get_registro(registro_id: str):
     pool = await get_pool()
@@ -350,8 +453,8 @@ async def get_registro(registro_id: str):
                 t.nombre as tipo_nombre,
                 e.nombre as entalle_nombre,
                 te.nombre as tela_nombre,
-                h.nombre as hilo_nombre,
-                he.nombre as hilo_especifico_nombre,
+                COALESCE(h.nombre, mh.nombre, r.modelo_manual->>'hilo_texto') as hilo_nombre,
+                COALESCE(he.nombre, mhe.nombre, r.modelo_manual->>'hilo_especifico_texto') as hilo_especifico_nombre,
                 pt.nombre as pt_item_nombre,
                 pt.codigo as pt_item_codigo,
                 ln.nombre as linea_negocio_nombre
@@ -362,7 +465,9 @@ async def get_registro(registro_id: str):
             LEFT JOIN prod_entalles e ON m.entalle_id = e.id
             LEFT JOIN prod_telas te ON m.tela_id = te.id
             LEFT JOIN prod_hilos h ON m.hilo_id = h.id
+            LEFT JOIN prod_hilos mh ON (r.modelo_manual->>'hilo_id') = mh.id
             LEFT JOIN prod_hilos_especificos he ON COALESCE(r.hilo_especifico_id, m.hilo_especifico_id) = he.id
+            LEFT JOIN prod_hilos_especificos mhe ON (r.modelo_manual->>'hilo_especifico_id') = mhe.id
             LEFT JOIN prod_inventario pt ON r.pt_item_id = pt.id
             LEFT JOIN finanzas2.cont_linea_negocio ln ON r.linea_negocio_id = ln.id
             WHERE r.id = $1
@@ -440,18 +545,13 @@ async def create_registro(input: RegistroCreate, current_user: dict = Depends(ge
         if not fecha_ir:
             fecha_ir = registro.fecha_creacion.date() if hasattr(registro.fecha_creacion, 'date') else registro.fecha_creacion
         modelo_manual_json = json.dumps(registro.modelo_manual.model_dump()) if registro.modelo_manual else None
-        # Verificar modo migración → si activo, no descontar inventario
-        modo_mig_row = await conn.fetchval(
-            "SELECT valor FROM prod_configuracion WHERE clave = 'modo_migracion'"
-        )
-        descuento_inventario = not (modo_mig_row == 'true')
         await conn.execute(
-            """INSERT INTO prod_registros (id, n_corte, modelo_id, curva, estado, urgente, hilo_especifico_id, tallas, distribucion_colores, fecha_creacion, pt_item_id, empresa_id, observaciones, linea_negocio_id, fecha_entrega_final, fecha_inicio_real, modelo_manual, descuento_inventario)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)""",
+            """INSERT INTO prod_registros (id, n_corte, modelo_id, curva, estado, urgente, hilo_especifico_id, tallas, distribucion_colores, fecha_creacion, pt_item_id, empresa_id, observaciones, linea_negocio_id, fecha_entrega_final, fecha_inicio_real, modelo_manual)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)""",
             registro.id, registro.n_corte, registro.modelo_id, registro.curva, registro.estado, registro.urgente,
             registro.hilo_especifico_id, tallas_json, dist_json, registro.fecha_creacion.replace(tzinfo=None),
             registro.pt_item_id, registro.empresa_id, registro.observaciones, registro.linea_negocio_id, fecha_ef, fecha_ir,
-            modelo_manual_json, descuento_inventario
+            modelo_manual_json,
         )
         cant_total = sum(t.cantidad for t in registro.tallas) if registro.tallas else 0
         await audit_log_safe(conn, get_usuario(current_user), "CREATE", "produccion", "prod_registros", registro.id,

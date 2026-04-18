@@ -42,6 +42,7 @@ const CopiarDesdeRegistroDialog = ({
   const [loadingItems, setLoadingItems] = useState(false);
   const [copying, setCopying] = useState(false);
   const [cantidadOrigen, setCantidadOrigen] = useState(0);
+  const [cantidadesEdit, setCantidadesEdit] = useState({});  // {id: string} cantidades editables por línea
 
   // Reset on close
   useEffect(() => {
@@ -51,6 +52,7 @@ const CopiarDesdeRegistroDialog = ({
       setRegistroOrigen(null);
       setItems([]);
       setSelected(new Set());
+      setCantidadesEdit({});
     }
   }, [open]);
 
@@ -93,7 +95,14 @@ const CopiarDesdeRegistroDialog = ({
         setItems(lineas);
         setSelected(new Set(lineas.map(l => l.id)));
         // Cantidad origen: total prendas del registro
-        setCantidadOrigen(registro.total_prendas || registro.cantidad || 0);
+        const cantOrigen = registro.total_prendas || registro.cantidad || 0;
+        setCantidadOrigen(cantOrigen);
+        // Inicializar cantidades editables con el total de prendas del destino
+        const initCants = {};
+        lineas.forEach(l => {
+          initCants[l.id] = parseFloat(cantidadDestino).toFixed(1);
+        });
+        setCantidadesEdit(initCants);
       }
     } catch {
       toast.error('Error cargando datos del registro origen');
@@ -120,6 +129,15 @@ const CopiarDesdeRegistroDialog = ({
 
   const confirmarCopia = async () => {
     if (selected.size === 0) return toast.error('Selecciona al menos un item');
+
+    let idsAEnviar = [...selected];
+    if (tipo === 'materiales') {
+      idsAEnviar = idsAEnviar.filter(id => parseFloat(cantidadesEdit[id] ?? 0) > 0);
+      if (idsAEnviar.length === 0) {
+        return toast.error('Ingresa una cantidad mayor a 0 en al menos un material');
+      }
+    }
+
     setCopying(true);
     try {
       const endpoint = tipo === 'movimientos'
@@ -127,8 +145,16 @@ const CopiarDesdeRegistroDialog = ({
         : `${API}/registros/${registroDestinoId}/copiar-materiales`;
 
       const payload = tipo === 'movimientos'
-        ? { registro_origen_id: registroOrigen.id, movimiento_ids: [...selected], cantidad_origen: cantidadOrigen, cantidad_destino: cantidadDestino }
-        : { registro_origen_id: registroOrigen.id, linea_ids: [...selected], cantidad_origen: cantidadOrigen, cantidad_destino: cantidadDestino };
+        ? { registro_origen_id: registroOrigen.id, movimiento_ids: idsAEnviar, cantidad_origen: cantidadOrigen, cantidad_destino: cantidadDestino }
+        : {
+            registro_origen_id: registroOrigen.id,
+            linea_ids: idsAEnviar,
+            cantidad_origen: cantidadOrigen,
+            cantidad_destino: cantidadDestino,
+            cantidades_custom: Object.fromEntries(
+              idsAEnviar.map(id => [id, parseFloat(cantidadesEdit[id] ?? 0)])
+            ),
+          };
 
       const res = await axios.post(endpoint, payload);
       toast.success(`${res.data.message}. Revisa y ajusta las cantidades si es necesario.`);
@@ -140,8 +166,6 @@ const CopiarDesdeRegistroDialog = ({
       setCopying(false);
     }
   };
-
-  const ratio = cantidadOrigen > 0 && cantidadDestino > 0 ? cantidadDestino / cantidadOrigen : 1;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -223,7 +247,6 @@ const CopiarDesdeRegistroDialog = ({
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 <span>Origen: <span className="font-medium">{cantidadOrigen} prendas</span></span>
                 <span>Destino: <span className="font-medium">{cantidadDestino} prendas</span></span>
-                {ratio !== 1 && <Badge variant="outline" className="text-[10px]">Factor: ×{ratio.toFixed(2)}</Badge>}
               </div>
             </div>
 
@@ -261,8 +284,8 @@ const CopiarDesdeRegistroDialog = ({
                           <>
                             <TableHead>Item</TableHead>
                             <TableHead>Talla</TableHead>
-                            <TableHead className="text-right">Requerido</TableHead>
-                            <TableHead className="text-right">Ajustado</TableHead>
+                            <TableHead className="text-right">Original</TableHead>
+                            <TableHead className="text-right">Cantidad a copiar</TableHead>
                           </>
                         )}
                       </TableRow>
@@ -288,22 +311,33 @@ const CopiarDesdeRegistroDialog = ({
                           );
                         }
                         // materiales
-                        const ajustado = (parseFloat(item.cantidad_requerida) * ratio).toFixed(1);
                         return (
                           <TableRow key={item.id} className={checked ? '' : 'opacity-40'}
-                            onClick={() => toggleItem(item.id)} data-testid={`copy-item-${item.id}`}>
-                            <TableCell>
+                            data-testid={`copy-item-${item.id}`}>
+                            <TableCell onClick={() => toggleItem(item.id)} className="cursor-pointer">
                               <Checkbox checked={checked} onCheckedChange={() => toggleItem(item.id)} />
                             </TableCell>
-                            <TableCell>
+                            <TableCell onClick={() => toggleItem(item.id)} className="cursor-pointer">
                               <span className="text-sm font-medium">{item.item_nombre}</span>
                               <span className="block text-xs text-muted-foreground font-mono">{item.item_codigo}</span>
                             </TableCell>
-                            <TableCell>
+                            <TableCell onClick={() => toggleItem(item.id)} className="cursor-pointer">
                               {item.talla_nombre ? <Badge variant="outline" className="text-xs">{item.talla_nombre}</Badge> : <span className="text-xs text-muted-foreground">General</span>}
                             </TableCell>
-                            <TableCell className="text-right font-mono text-sm">{parseFloat(item.cantidad_requerida).toFixed(1)}</TableCell>
-                            <TableCell className="text-right font-mono text-sm text-blue-600">{ajustado}</TableCell>
+                            <TableCell className="text-right font-mono text-sm text-muted-foreground" onClick={() => toggleItem(item.id)}>
+                              {parseFloat(item.cantidad_requerida).toFixed(1)}
+                            </TableCell>
+                            <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.1"
+                                className="h-7 w-24 text-right font-mono text-sm ml-auto"
+                                value={cantidadesEdit[item.id] ?? ''}
+                                onChange={(e) => setCantidadesEdit(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                disabled={!checked}
+                              />
+                            </TableCell>
                           </TableRow>
                         );
                       })}
@@ -317,13 +351,18 @@ const CopiarDesdeRegistroDialog = ({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          {registroOrigen && items.length > 0 && (
-            <Button type="button" onClick={confirmarCopia} disabled={copying || selected.size === 0}>
-              {copying && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
-              <Copy className="h-3.5 w-3.5 mr-1" />
-              Copiar {selected.size} {tipo}
-            </Button>
-          )}
+          {registroOrigen && items.length > 0 && (() => {
+            const countEfectivo = tipo === 'materiales'
+              ? [...selected].filter(id => parseFloat(cantidadesEdit[id] ?? 0) > 0).length
+              : selected.size;
+            return (
+              <Button type="button" onClick={confirmarCopia} disabled={copying || countEfectivo === 0}>
+                {copying && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+                <Copy className="h-3.5 w-3.5 mr-1" />
+                Copiar {countEfectivo} {tipo}
+              </Button>
+            );
+          })()}
         </DialogFooter>
       </DialogContent>
     </Dialog>

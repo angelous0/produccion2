@@ -166,7 +166,12 @@ async def get_alertas_stock(
     pool = await get_pool()
     async with pool.acquire() as conn:
         ignorar_filter = "" if incluir_ignorados == "true" else "AND COALESCE(i.ignorar_alerta_stock, false) = false"
-        
+
+        modo_mig = await conn.fetchval(
+            "SELECT valor FROM prod_configuracion WHERE clave = 'modo_migracion'"
+        )
+        en_migracion = modo_mig == 'true'
+
         rows = await conn.fetch(f"""
             SELECT i.id, i.codigo, i.nombre, i.categoria, i.unidad_medida,
                    i.stock_actual, i.stock_minimo, i.tipo_item,
@@ -195,6 +200,9 @@ async def get_alertas_stock(
             stock_ref = stock_disponible if modo == "disponible" else stock_actual
             
             if stock_ref <= stock_minimo:
+                # Durante migración, stock negativo es temporal — no alertar
+                if en_migracion and stock_actual < 0:
+                    continue
                 d['stock_actual'] = stock_actual
                 d['total_reservado'] = total_reservado
                 d['stock_disponible'] = stock_disponible
@@ -578,12 +586,35 @@ async def create_item_inventario(input: ItemInventarioCreate, _u=Depends(get_cur
         if existing:
             raise HTTPException(status_code=400, detail="El código ya existe")
         item = ItemInventario(**input.model_dump())
+        item.stock_actual = 0  # Siempre empieza en 0; el stock_inicial genera un ingreso formal
         await conn.execute(
             """INSERT INTO prod_inventario (id, codigo, nombre, descripcion, categoria, unidad_medida, stock_minimo, stock_actual, control_por_rollos, linea_negocio_id, created_at)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)""",
             item.id, item.codigo, item.nombre, item.descripcion, item.categoria, item.unidad_medida,
-            item.stock_minimo, item.stock_actual, item.control_por_rollos, item.linea_negocio_id, item.created_at.replace(tzinfo=None)
+            item.stock_minimo, 0, item.control_por_rollos, item.linea_negocio_id, item.created_at.replace(tzinfo=None)
         )
+        # Si viene stock_inicial > 0, generar ingreso formal de tipo 'stock_inicial'
+        if input.stock_inicial and input.stock_inicial > 0:
+            ingreso_id = str(uuid.uuid4())
+            costo_u = input.costo_unitario_inicial or 0
+            await conn.execute(
+                """INSERT INTO prod_inventario_ingresos
+                       (id, item_id, cantidad, cantidad_disponible, costo_unitario, proveedor,
+                        numero_documento, observaciones, tipo_ingreso, fecha, empresa_id, linea_negocio_id)
+                   VALUES ($1,$2,$3,$4,$5,'','','Stock inicial cargado al crear el item','stock_inicial',$6,$7,$8)""",
+                ingreso_id, item.id, input.stock_inicial, input.stock_inicial, costo_u,
+                item.created_at.replace(tzinfo=None), 7, item.linea_negocio_id,
+            )
+            await conn.execute(
+                "UPDATE prod_inventario SET stock_actual = $1 WHERE id = $2",
+                input.stock_inicial, item.id,
+            )
+            if costo_u > 0:
+                await conn.execute(
+                    "UPDATE prod_inventario SET costo_promedio = $1 WHERE id = $2",
+                    costo_u, item.id,
+                )
+            item.stock_actual = input.stock_inicial
         return item
 
 @router.put("/inventario/{item_id}")
@@ -938,28 +969,19 @@ async def create_salida(input: SalidaInventarioCreate, current_user: dict = Depe
                 raise HTTPException(status_code=400, detail="Este item no usa control por rollos, rollo_id debe ser vacío")
 
         # Validar registro si se proporciona
-        registro_sin_descuento = False
         if input.registro_id:
             reg = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", input.registro_id)
             if not reg:
                 raise HTTPException(status_code=404, detail="Registro no encontrado")
 
             validar_registro_activo(reg, contexto='crear salidas')
-            # Si el registro fue creado en modo migración, no descontar inventario
-            if reg.get('descuento_inventario') is False:
-                registro_sin_descuento = True
 
-        # También verificar configuración global de modo migración
-        if not registro_sin_descuento:
+        # Validar stock suficiente (salvo modo migración global activo)
+        if not control_por_rollos:
             modo_mig = await conn.fetchval(
                 "SELECT valor FROM prod_configuracion WHERE clave = 'modo_migracion'"
             )
-            if modo_mig == 'true':
-                registro_sin_descuento = True
-
-        # Validar stock suficiente (solo si se va a descontar)
-        if not registro_sin_descuento and not control_por_rollos:
-            if float(item['stock_actual']) < input.cantidad:
+            if modo_mig != 'true' and float(item['stock_actual']) < input.cantidad:
                 raise HTTPException(status_code=400, detail=f"Stock insuficiente. Disponible: {item['stock_actual']}")
 
             # Buscar requerimiento (informativo, no bloquea la salida)
@@ -979,31 +1001,7 @@ async def create_salida(input: SalidaInventarioCreate, current_user: dict = Depe
         costo_total = 0.0
         detalle_fifo = []
 
-        if registro_sin_descuento:
-            # Modo migración: calcular costo FIFO pero NO descontar stock
-            if input.rollo_id:
-                rollo = await conn.fetchrow("SELECT * FROM prod_inventario_rollos WHERE id = $1", input.rollo_id)
-                ingreso = await conn.fetchrow("SELECT costo_unitario FROM prod_inventario_ingresos WHERE id = $1", rollo['ingreso_id'])
-                costo_unitario = float(ingreso['costo_unitario']) if ingreso else 0
-                costo_total = input.cantidad * costo_unitario
-                detalle_fifo = [{"rollo_id": input.rollo_id, "cantidad": input.cantidad, "costo_unitario": costo_unitario, "migracion": True}]
-            else:
-                ingresos = await conn.fetch(
-                    "SELECT * FROM prod_inventario_ingresos WHERE item_id = $1 AND cantidad_disponible > 0 ORDER BY fecha ASC", input.item_id
-                )
-                cantidad_restante = input.cantidad
-                for ing in ingresos:
-                    if cantidad_restante <= 0:
-                        break
-                    disponible = float(ing['cantidad_disponible'])
-                    consumir = min(disponible, cantidad_restante)
-                    costo_unitario = float(ing['costo_unitario'])
-                    costo_total += consumir * costo_unitario
-                    detalle_fifo.append({"ingreso_id": str(ing['id']), "cantidad": consumir, "costo_unitario": costo_unitario, "migracion": True})
-                    cantidad_restante -= consumir
-                if not detalle_fifo:
-                    detalle_fifo = [{"migracion": True, "cantidad": input.cantidad, "costo_unitario": 0}]
-        elif input.rollo_id:
+        if input.rollo_id:
             # Ya validamos el rollo arriba, lo obtenemos de nuevo para el ingreso
             rollo = await conn.fetchrow("SELECT * FROM prod_inventario_rollos WHERE id = $1", input.rollo_id)
             ingreso = await conn.fetchrow("SELECT costo_unitario FROM prod_inventario_ingresos WHERE id = $1", rollo['ingreso_id'])
@@ -1053,8 +1051,7 @@ async def create_salida(input: SalidaInventarioCreate, current_user: dict = Depe
             salida.rollo_id, salida.costo_total, json.dumps(salida.detalle_fifo), salida.fecha.replace(tzinfo=None),
             empresa_id, linea_negocio_id
         )
-        if not registro_sin_descuento:
-            await conn.execute("UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2", input.cantidad, input.item_id)
+        await conn.execute("UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2", input.cantidad, input.item_id)
 
         # === FASE 2: Actualizar cantidad_consumida en requerimiento ===
         if input.registro_id:
@@ -1190,9 +1187,12 @@ async def create_salida_extra(input: SalidaExtraCreate, _u=Depends(get_current_u
         else:
             if input.rollo_id:
                 raise HTTPException(status_code=400, detail="Este item no usa control por rollos")
-            if float(item['stock_actual']) < input.cantidad:
+            modo_mig = await conn.fetchval(
+                "SELECT valor FROM prod_configuracion WHERE clave = 'modo_migracion'"
+            )
+            if modo_mig != 'true' and float(item['stock_actual']) < input.cantidad:
                 raise HTTPException(status_code=400, detail=f"Stock insuficiente. Disponible: {item['stock_actual']}")
-        
+
         # Validar registro
         if input.registro_id:
             reg = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", input.registro_id)
@@ -1304,9 +1304,24 @@ async def update_salida(salida_id: str, input: SalidaUpdateData, _u=Depends(get_
 async def delete_salida(salida_id: str, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # Bloquear eliminación de salidas mientras el modo carga inicial esté activo
+        modo_mig = await conn.fetchval(
+            "SELECT valor FROM prod_configuracion WHERE clave = 'modo_migracion'"
+        )
+        if modo_mig == 'true':
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede eliminar salidas mientras el modo carga inicial esté activo. Desactívalo primero.",
+            )
         salida = await conn.fetchrow("SELECT * FROM prod_inventario_salidas WHERE id = $1", salida_id)
         if not salida:
             raise HTTPException(status_code=404, detail="Salida no encontrada")
+        # Bloquear eliminación de salidas ya revertidas por un período de migración cerrado
+        if salida.get('revertida_por_migracion_id'):
+            raise HTTPException(
+                status_code=400,
+                detail="Esta salida ya fue revertida por un período de carga inicial y no puede eliminarse.",
+            )
         detalle_fifo = parse_jsonb(salida['detalle_fifo'])
         for detalle in detalle_fifo:
             if detalle.get('rollo_id'):

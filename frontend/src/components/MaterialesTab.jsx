@@ -259,6 +259,14 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId, lin
   const [manualObs, setManualObs] = useState('');
   const [manualGuardando, setManualGuardando] = useState(false);
 
+  // Modo migración
+  const [modoMigracion, setModoMigracion] = useState(false);
+  useEffect(() => {
+    axios.get(`${API}/configuracion/modo-migracion`)
+      .then(r => setModoMigracion(r.data?.activo === true))
+      .catch(() => {});
+  }, []);
+
   // BOM selector
   const [boms, setBoms] = useState([]);
   const [selectedBomId, setSelectedBomId] = useState(null);
@@ -499,7 +507,7 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId, lin
         cantidad: parseFloat(manualCantidad),
         observaciones: manualObs,
       });
-      toast.success('Material agregado manualmente');
+      toast.success('Material agregado y stock descontado');
       setManualOpen(false);
       fetchData();
     } catch (err) {
@@ -958,10 +966,34 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId, lin
               ) : null;
             })()}
             <div>
-              <Label className="text-xs">Cantidad requerida</Label>
+              <Label className="text-xs">Cantidad</Label>
               <NumericInput min={0} step={1} value={manualCantidad} onChange={(e) => setManualCantidad(e.target.value)}
                 className="h-9" placeholder="0" data-testid="input-manual-cantidad" />
+              <p className="text-xs text-muted-foreground mt-1">Esta cantidad se descontará del stock automáticamente</p>
             </div>
+            {(() => {
+              const sel = inventarioFiltrado.find(i => i.id === manualItem);
+              const cant = parseFloat(manualCantidad) || 0;
+              if (!modoMigracion || !sel || cant <= 0) return null;
+              const stockActual = parseFloat(sel.stock_actual || 0);
+              if (cant <= stockActual) return null;
+              return (
+                <div className="p-3 bg-yellow-50 border border-yellow-300 rounded">
+                  <div className="flex items-start gap-2 text-sm text-yellow-800">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <strong>Stock quedará negativo temporalmente</strong>
+                      <p className="text-xs mt-1">
+                        Stock actual: {stockActual.toFixed(1)} · Se descontarán: {cant.toFixed(1)} · Quedará: {(stockActual - cant).toFixed(1)}
+                      </p>
+                      <p className="text-xs mt-1 text-yellow-700">
+                        Esto es normal durante la carga inicial. Se regularizará al desactivar el modo carga inicial.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
             <div>
               <Label className="text-xs">Observación (opcional)</Label>
               <Input value={manualObs} onChange={(e) => setManualObs(e.target.value)}
@@ -972,7 +1004,7 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId, lin
             <Button type="button" variant="outline" size="sm" onClick={() => setManualOpen(false)}>Cancelar</Button>
             <Button type="button" size="sm" onClick={guardarManual} disabled={manualGuardando || !manualItem || !manualCantidad}>
               {manualGuardando && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
-              Agregar
+              Agregar y dar salida
             </Button>
           </DialogFooter>
         </DialogContent>

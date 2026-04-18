@@ -29,8 +29,8 @@ class SalidaLibreCreate(BaseModel):
 
 async def _calcular_costo_fifo(conn, item_id: str, cantidad: float, modo_migracion: bool):
     """
-    Calcula costo FIFO para la cantidad solicitada.
-    Si modo_migracion=True, calcula el costo pero NO descuenta stock.
+    Calcula costo FIFO y descuenta capas siempre.
+    El parámetro modo_migracion queda por compatibilidad de firma.
     Devuelve (costo_unitario, costo_total, detalle_fifo).
     """
     ingresos = await conn.fetch(
@@ -55,14 +55,12 @@ async def _calcular_costo_fifo(conn, item_id: str, cantidad: float, modo_migraci
             {"ingreso_id": str(ing["id"]), "cantidad": usar, "costo_unitario": cu}
         )
         pendiente -= usar
-        if not modo_migracion:
-            nueva_disp = disponible - usar
-            await conn.execute(
-                "UPDATE prod_inventario_ingresos SET cantidad_disponible=$1 WHERE id=$2",
-                nueva_disp, ing["id"],
-            )
+        await conn.execute(
+            "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible - $1 WHERE id = $2",
+            usar, ing["id"],
+        )
 
-    if pendiente > 0 and not modo_migracion:
+    if pendiente > 0:
         # Si no alcanzó stock, igual registramos con costo 0 para lo restante
         detalle_fifo.append(
             {"ingreso_id": None, "cantidad": pendiente, "costo_unitario": 0, "sin_stock": True}
@@ -168,12 +166,11 @@ async def crear_salida_libre(
             conn, data.item_id, data.cantidad, modo_mig
         )
 
-        # Descontar stock del item (solo si no modo migración)
-        if not modo_mig:
-            await conn.execute(
-                "UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2",
-                data.cantidad, data.item_id,
-            )
+        # Descontar stock siempre (en migración puede quedar negativo)
+        await conn.execute(
+            "UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2",
+            data.cantidad, data.item_id,
+        )
 
         import json
         sid = str(uuid.uuid4())
@@ -223,24 +220,22 @@ async def eliminar_salida_libre(
         if not salida:
             raise HTTPException(404, "Salida no encontrada")
 
-        # Restaurar stock si no fue en modo migración
-        if not salida["en_migracion"]:
-            await conn.execute(
-                "UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
-                salida["cantidad"], salida["item_id"],
-            )
-            # Restaurar ingresos FIFO
-            import json
-            detalle = salida["detalle_fifo"]
-            if isinstance(detalle, str):
-                detalle = json.loads(detalle)
-            if isinstance(detalle, list):
-                for d in detalle:
-                    if d.get("ingreso_id"):
-                        await conn.execute(
-                            "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible + $1 WHERE id = $2",
-                            d["cantidad"], d["ingreso_id"],
-                        )
+        # Restaurar stock y capas FIFO siempre
+        await conn.execute(
+            "UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
+            salida["cantidad"], salida["item_id"],
+        )
+        import json
+        detalle = salida["detalle_fifo"]
+        if isinstance(detalle, str):
+            detalle = json.loads(detalle)
+        if isinstance(detalle, list):
+            for d in detalle:
+                if d.get("ingreso_id"):
+                    await conn.execute(
+                        "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible + $1 WHERE id = $2",
+                        d["cantidad"], d["ingreso_id"],
+                    )
 
         await conn.execute("DELETE FROM prod_salidas_libres WHERE id=$1", salida_id)
 

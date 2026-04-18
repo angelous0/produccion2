@@ -75,6 +75,11 @@ import {
   AlertTriangle,
   FlaskConical,
   Receipt,
+  UserCircle2,
+  CircleDot,
+  StickerIcon,
+  WashingMachine,
+  Layers3,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -145,14 +150,19 @@ const reportesItems = [
 
 const catalogosItems = [
   { to: '/marcas', icon: Tag, label: 'Marcas' },
+  { to: '/generos', icon: UserCircle2, label: 'Géneros' },
   { to: '/tipos', icon: Layers, label: 'Tipos' },
   { to: '/entalles', icon: Shirt, label: 'Entalles' },
   { to: '/telas', icon: Palette, label: 'Telas' },
+  { to: '/telas-general', icon: Layers3, label: 'Telas Generales' },
   { to: '/hilos', icon: Scissors, label: 'Hilos' },
   { to: '/hilos-especificos', icon: Sparkles, label: 'Hilos Específicos' },
   { to: '/tallas-catalogo', icon: Ruler, label: 'Tallas' },
   { to: '/colores-catalogo', icon: Droplets, label: 'Colores' },
   { to: '/colores-generales', icon: Palette, label: 'Colores Generales' },
+  { to: '/cuellos', icon: CircleDot, label: 'Cuellos' },
+  { to: '/detalles', icon: StickerIcon, label: 'Detalles' },
+  { to: '/lavados', icon: WashingMachine, label: 'Lavados' },
   { to: '/bases', icon: Layers, label: 'Bases' },
   { to: '/modelos', icon: Box, label: 'Modelos' },
 ];
@@ -539,11 +549,11 @@ export const Layout = () => {
         </div>
       </header>
 
-      {/* ── Banner Modo Migración ── */}
+      {/* ── Banner Modo Carga Inicial ── */}
       {modoMigracion && (
         <div className="bg-yellow-400 dark:bg-yellow-600 text-yellow-900 dark:text-yellow-100 text-center text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-2 flex-shrink-0 z-40">
           <AlertTriangle className="h-3.5 w-3.5" />
-          MODO MIGRACIÓN ACTIVO — Los registros creados no descontarán inventario
+          MODO CARGA INICIAL ACTIVO — Las salidas de inventario que ocurran se revertirán al desactivar
           <AlertTriangle className="h-3.5 w-3.5" />
         </div>
       )}

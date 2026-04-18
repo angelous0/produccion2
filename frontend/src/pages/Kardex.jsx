@@ -36,6 +36,7 @@ export const Kardex = () => {
   const [loading, setLoading] = useState(false);
   const [loadingItems, setLoadingItems] = useState(true);
   const [itemPopoverOpen, setItemPopoverOpen] = useState(false);
+  const [excluirMigracion, setExcluirMigracion] = useState(false);
 
   const fetchItems = async () => {
     try {
@@ -49,15 +50,16 @@ export const Kardex = () => {
     }
   };
 
-  const fetchKardex = async (itemId) => {
+  const fetchKardex = async (itemId, excluir = excluirMigracion) => {
     if (!itemId) {
       setKardexData(null);
       return;
     }
-    
+
     setLoading(true);
     try {
-      const response = await axios.get(`${API}/inventario-kardex/${itemId}`);
+      const params = excluir ? '?excluir_migracion=true' : '';
+      const response = await axios.get(`${API}/inventario-kardex/${itemId}${params}`);
       setKardexData(response.data);
     } catch (error) {
       toast.error('Error al cargar kardex');
@@ -91,9 +93,9 @@ export const Kardex = () => {
 
   useEffect(() => {
     if (selectedItemId) {
-      fetchKardex(selectedItemId);
+      fetchKardex(selectedItemId, excluirMigracion);
     }
-  }, [selectedItemId]);
+  }, [selectedItemId, excluirMigracion]);
 
   const getTipoIcon = (tipo) => {
     if (tipo === 'ingreso' || tipo === 'ajuste_entrada') {
@@ -157,7 +159,8 @@ export const Kardex = () => {
           <CardTitle className="text-base">Seleccionar Item</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="max-w-lg">
+          <div className="flex flex-wrap items-end gap-4">
+          <div className="flex-1 min-w-[280px] max-w-lg">
             <Label className="mb-2 block">Item de Inventario</Label>
             <Popover open={itemPopoverOpen} onOpenChange={setItemPopoverOpen}>
               <PopoverTrigger asChild>
@@ -208,6 +211,19 @@ export const Kardex = () => {
                 </Command>
               </PopoverContent>
             </Popover>
+          </div>
+          <div className="flex items-center gap-2 pb-0.5">
+            <input
+              type="checkbox"
+              id="excluir-migracion"
+              checked={excluirMigracion}
+              onChange={(e) => setExcluirMigracion(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 accent-primary cursor-pointer"
+            />
+            <label htmlFor="excluir-migracion" className="text-sm cursor-pointer select-none">
+              Ocultar movimientos de carga inicial
+            </label>
+          </div>
           </div>
         </CardContent>
       </Card>
@@ -364,7 +380,7 @@ export const Kardex = () => {
                             )}
                           </TableCell>
                           <TableCell className="text-right font-mono font-bold bg-muted/30">
-                            {mov.saldo}
+                            <span className={parseFloat(mov.saldo) < 0 ? 'text-red-500' : ''}>{mov.saldo}</span>
                           </TableCell>
                           <TableCell className="text-right font-mono">
                             {mov.costo_unitario > 0 ? formatCurrency(mov.costo_unitario) : '-'}

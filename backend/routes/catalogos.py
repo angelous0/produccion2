@@ -11,6 +11,9 @@ from models import (
     HiloEspecificoCreate, HiloEspecifico,
     RutaProduccionCreate, RutaProduccion,
     ServicioCreate, Servicio, PersonaCreate, Persona,
+    GeneroCreate, Genero, TelaGeneralCreate, TelaGeneral,
+    CuelloCreate, Cuello, DetalleCreate, Detalle,
+    LavadoCreate, Lavado,
 )
 from pydantic import BaseModel
 from typing import List
@@ -165,6 +168,52 @@ async def delete_entalle(entalle_id: str, _u=Depends(get_current_user)):
 
 # ==================== ENDPOINTS TELA ====================
 
+# ==================== ENDPOINTS TELAS GENERALES ====================
+
+@router.get("/telas-general")
+async def get_telas_general():
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT * FROM prod_telas_general ORDER BY orden ASC, created_at DESC")
+        return [row_to_dict(r) for r in rows]
+
+@router.post("/telas-general")
+async def create_tela_general(input: TelaGeneralCreate, _u=Depends(get_current_user)):
+    tela_general = TelaGeneral(**input.model_dump())
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        if tela_general.orden == 0:
+            max_orden = await conn.fetchval("SELECT COALESCE(MAX(orden), 0) FROM prod_telas_general")
+            tela_general.orden = max_orden + 1
+        await conn.execute(
+            "INSERT INTO prod_telas_general (id, nombre, orden, created_at) VALUES ($1, $2, $3, $4)",
+            tela_general.id, tela_general.nombre, tela_general.orden, tela_general.created_at.replace(tzinfo=None)
+        )
+    return tela_general
+
+@router.put("/telas-general/{tg_id}")
+async def update_tela_general(tg_id: str, input: TelaGeneralCreate, _u=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.fetchrow("SELECT * FROM prod_telas_general WHERE id = $1", tg_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="Tela General no encontrada")
+        await conn.execute("UPDATE prod_telas_general SET nombre = $1, orden = $2 WHERE id = $3",
+                           input.nombre, input.orden, tg_id)
+        return {**row_to_dict(result), "nombre": input.nombre, "orden": input.orden}
+
+@router.delete("/telas-general/{tg_id}")
+async def delete_tela_general(tg_id: str, _u=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        in_use = await conn.fetchval("SELECT 1 FROM prod_telas WHERE tela_general_id = $1 LIMIT 1", tg_id)
+        if in_use:
+            raise HTTPException(status_code=400, detail="No se puede eliminar: hay telas que usan este agrupador")
+        await conn.execute("DELETE FROM prod_telas_general WHERE id = $1", tg_id)
+        return {"message": "Tela General eliminada"}
+
+# ==================== ENDPOINTS TELA ====================
+
 @router.get("/telas")
 async def get_telas(entalle_id: str = None):
     pool = await get_pool()
@@ -188,9 +237,10 @@ async def create_tela(input: TelaCreate, _u=Depends(get_current_user)):
         if tela.orden == 0:
             max_orden = await conn.fetchval("SELECT COALESCE(MAX(orden), 0) FROM prod_telas")
             tela.orden = max_orden + 1
+        tela_general_id = tela.tela_general_id or None
         await conn.execute(
-            "INSERT INTO prod_telas (id, nombre, entalle_ids, orden, created_at) VALUES ($1, $2, $3, $4, $5)",
-            tela.id, tela.nombre, json.dumps(tela.entalle_ids), tela.orden, tela.created_at.replace(tzinfo=None)
+            "INSERT INTO prod_telas (id, nombre, entalle_ids, tela_general_id, orden, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+            tela.id, tela.nombre, json.dumps(tela.entalle_ids), tela_general_id, tela.orden, tela.created_at.replace(tzinfo=None)
         )
     return tela
 
@@ -201,9 +251,13 @@ async def update_tela(tela_id: str, input: TelaCreate, _u=Depends(get_current_us
         result = await conn.fetchrow("SELECT * FROM prod_telas WHERE id = $1", tela_id)
         if not result:
             raise HTTPException(status_code=404, detail="Tela no encontrada")
-        await conn.execute("UPDATE prod_telas SET nombre = $1, entalle_ids = $2, orden = $3 WHERE id = $4",
-                          input.nombre, json.dumps(input.entalle_ids), input.orden, tela_id)
-        return {**row_to_dict(result), "nombre": input.nombre, "entalle_ids": input.entalle_ids, "orden": input.orden}
+        tela_general_id = input.tela_general_id or None
+        await conn.execute(
+            "UPDATE prod_telas SET nombre = $1, entalle_ids = $2, tela_general_id = $3, orden = $4 WHERE id = $5",
+            input.nombre, json.dumps(input.entalle_ids), tela_general_id, input.orden, tela_id
+        )
+        return {**row_to_dict(result), "nombre": input.nombre, "entalle_ids": input.entalle_ids,
+                "tela_general_id": tela_general_id, "orden": input.orden}
 
 @router.delete("/telas/{tela_id}")
 async def delete_tela(tela_id: str, _u=Depends(get_current_user)):
@@ -379,8 +433,8 @@ async def create_color_catalogo(input: ColorCreate, _u=Depends(get_current_user)
             max_orden = await conn.fetchval("SELECT COALESCE(MAX(orden), 0) FROM prod_colores_catalogo")
             color.orden = max_orden + 1
         await conn.execute(
-            "INSERT INTO prod_colores_catalogo (id, nombre, codigo_hex, color_general_id, orden, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
-            color.id, color.nombre, color.codigo_hex, color.color_general_id, color.orden, color.created_at.replace(tzinfo=None)
+            "INSERT INTO prod_colores_catalogo (id, nombre, codigo_hex, color_general_id, categoria, orden, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            color.id, color.nombre, color.codigo_hex, color.color_general_id, color.categoria, color.orden, color.created_at.replace(tzinfo=None)
         )
     return color
 
@@ -391,9 +445,11 @@ async def update_color_catalogo(color_id: str, input: ColorCreate, _u=Depends(ge
         result = await conn.fetchrow("SELECT * FROM prod_colores_catalogo WHERE id = $1", color_id)
         if not result:
             raise HTTPException(status_code=404, detail="Color no encontrado")
-        await conn.execute("UPDATE prod_colores_catalogo SET nombre = $1, codigo_hex = $2, color_general_id = $3, orden = $4 WHERE id = $5",
-                          input.nombre, input.codigo_hex, input.color_general_id, input.orden, color_id)
-        return {**row_to_dict(result), "nombre": input.nombre, "codigo_hex": input.codigo_hex, "color_general_id": input.color_general_id, "orden": input.orden}
+        await conn.execute(
+            "UPDATE prod_colores_catalogo SET nombre = $1, codigo_hex = $2, color_general_id = $3, categoria = $4, orden = $5 WHERE id = $6",
+            input.nombre, input.codigo_hex, input.color_general_id, input.categoria, input.orden, color_id)
+        return {**row_to_dict(result), "nombre": input.nombre, "codigo_hex": input.codigo_hex,
+                "color_general_id": input.color_general_id, "categoria": input.categoria, "orden": input.orden}
 
 @router.delete("/colores-catalogo/{color_id}")
 async def delete_color_catalogo(color_id: str, _u=Depends(get_current_user)):
@@ -470,7 +526,12 @@ async def reorder_items(tabla: str, request: ReorderRequest, _u=Depends(get_curr
         "tallas-catalogo": "prod_tallas_catalogo",
         "colores-generales": "prod_colores_generales",
         "colores-catalogo": "prod_colores_catalogo",
-        "hilos-especificos": "prod_hilos_especificos"
+        "hilos-especificos": "prod_hilos_especificos",
+        "generos": "prod_generos",
+        "telas-general": "prod_telas_general",
+        "cuellos": "prod_cuellos",
+        "detalles": "prod_detalles",
+        "lavados": "prod_lavados",
     }
     
     if tabla not in tablas_permitidas:
@@ -825,34 +886,503 @@ async def cambiar_empresa_activa(
 
 @router.get("/configuracion/modo-migracion")
 async def get_modo_migracion(current_user: dict = Depends(get_current_user)):
+    empresa_id = current_user.get("empresa_id") or 7
     pool = await get_pool()
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT valor, updated_at, updated_by FROM prod_configuracion WHERE clave = 'modo_migracion'"
+        periodo = await conn.fetchrow(
+            """SELECT id, activado_at, activado_by
+               FROM prod_modo_migracion_periodos
+               WHERE empresa_id = $1 AND estado = 'activo'
+               ORDER BY activado_at DESC LIMIT 1""",
+            empresa_id,
         )
-        if not row:
-            return {"activo": False}
+        if not periodo:
+            return {"activo": False, "activado_at": None, "activado_by": None}
         return {
-            "activo": row["valor"] == "true",
-            "updated_at": row["updated_at"].isoformat() + "Z" if row["updated_at"] else None,
-            "updated_by": row["updated_by"],
+            "activo": True,
+            "periodo_id": periodo["id"],
+            "activado_at": periodo["activado_at"].isoformat() if periodo["activado_at"] else None,
+            "activado_by": periodo["activado_by"],
         }
 
 
+# ==================== ENDPOINTS GÉNEROS ====================
+
+@router.get("/generos")
+async def get_generos(marca_id: str = None):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        if marca_id:
+            rows = await conn.fetch("SELECT * FROM prod_generos WHERE marca_ids ? $1 ORDER BY orden ASC, created_at DESC", marca_id)
+        else:
+            rows = await conn.fetch("SELECT * FROM prod_generos ORDER BY orden ASC, created_at DESC")
+        result = []
+        for r in rows:
+            d = row_to_dict(r)
+            d['marca_ids'] = parse_jsonb(d.get('marca_ids'))
+            result.append(d)
+        return result
+
+@router.post("/generos")
+async def create_genero(input: GeneroCreate, _u=Depends(get_current_user)):
+    genero = Genero(**input.model_dump())
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        if genero.orden == 0:
+            max_orden = await conn.fetchval("SELECT COALESCE(MAX(orden), 0) FROM prod_generos")
+            genero.orden = max_orden + 1
+        await conn.execute(
+            "INSERT INTO prod_generos (id, nombre, marca_ids, orden, created_at) VALUES ($1, $2, $3, $4, $5)",
+            genero.id, genero.nombre, json.dumps(genero.marca_ids), genero.orden, genero.created_at.replace(tzinfo=None)
+        )
+    return genero
+
+@router.put("/generos/{genero_id}")
+async def update_genero(genero_id: str, input: GeneroCreate, _u=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.fetchrow("SELECT * FROM prod_generos WHERE id = $1", genero_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="Género no encontrado")
+        await conn.execute("UPDATE prod_generos SET nombre = $1, marca_ids = $2, orden = $3 WHERE id = $4",
+                           input.nombre, json.dumps(input.marca_ids), input.orden, genero_id)
+        return {**row_to_dict(result), "nombre": input.nombre, "marca_ids": input.marca_ids, "orden": input.orden}
+
+@router.delete("/generos/{genero_id}")
+async def delete_genero(genero_id: str, _u=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        in_use = await conn.fetchval("SELECT 1 FROM prod_modelos WHERE genero_id = $1 LIMIT 1", genero_id)
+        if in_use:
+            raise HTTPException(status_code=400, detail="No se puede eliminar: hay modelos que usan este género")
+        await conn.execute("DELETE FROM prod_generos WHERE id = $1", genero_id)
+        return {"message": "Género eliminado"}
+
+# ==================== ENDPOINTS CUELLOS ====================
+
+@router.get("/cuellos")
+async def get_cuellos(tipo_id: str = None):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        if tipo_id:
+            rows = await conn.fetch("SELECT * FROM prod_cuellos WHERE tipo_ids ? $1 ORDER BY orden ASC, created_at DESC", tipo_id)
+        else:
+            rows = await conn.fetch("SELECT * FROM prod_cuellos ORDER BY orden ASC, created_at DESC")
+        result = []
+        for r in rows:
+            d = row_to_dict(r)
+            d['tipo_ids'] = parse_jsonb(d.get('tipo_ids'))
+            result.append(d)
+        return result
+
+@router.post("/cuellos")
+async def create_cuello(input: CuelloCreate, _u=Depends(get_current_user)):
+    cuello = Cuello(**input.model_dump())
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        if cuello.orden == 0:
+            max_orden = await conn.fetchval("SELECT COALESCE(MAX(orden), 0) FROM prod_cuellos")
+            cuello.orden = max_orden + 1
+        await conn.execute(
+            "INSERT INTO prod_cuellos (id, nombre, tipo_ids, orden, created_at) VALUES ($1, $2, $3, $4, $5)",
+            cuello.id, cuello.nombre, json.dumps(cuello.tipo_ids), cuello.orden, cuello.created_at.replace(tzinfo=None)
+        )
+    return cuello
+
+@router.put("/cuellos/{cuello_id}")
+async def update_cuello(cuello_id: str, input: CuelloCreate, _u=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.fetchrow("SELECT * FROM prod_cuellos WHERE id = $1", cuello_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="Cuello no encontrado")
+        await conn.execute("UPDATE prod_cuellos SET nombre = $1, tipo_ids = $2, orden = $3 WHERE id = $4",
+                           input.nombre, json.dumps(input.tipo_ids), input.orden, cuello_id)
+        return {**row_to_dict(result), "nombre": input.nombre, "tipo_ids": input.tipo_ids, "orden": input.orden}
+
+@router.delete("/cuellos/{cuello_id}")
+async def delete_cuello(cuello_id: str, _u=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        in_use = await conn.fetchval("SELECT 1 FROM prod_modelos WHERE cuello_id = $1 LIMIT 1", cuello_id)
+        if in_use:
+            raise HTTPException(status_code=400, detail="No se puede eliminar: hay modelos que usan este cuello")
+        await conn.execute("DELETE FROM prod_cuellos WHERE id = $1", cuello_id)
+        return {"message": "Cuello eliminado"}
+
+# ==================== ENDPOINTS DETALLES ====================
+
+@router.get("/detalles")
+async def get_detalles(tipo_id: str = None):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        if tipo_id:
+            rows = await conn.fetch("SELECT * FROM prod_detalles WHERE tipo_ids ? $1 ORDER BY orden ASC, created_at DESC", tipo_id)
+        else:
+            rows = await conn.fetch("SELECT * FROM prod_detalles ORDER BY orden ASC, created_at DESC")
+        result = []
+        for r in rows:
+            d = row_to_dict(r)
+            d['tipo_ids'] = parse_jsonb(d.get('tipo_ids'))
+            result.append(d)
+        return result
+
+@router.post("/detalles")
+async def create_detalle(input: DetalleCreate, _u=Depends(get_current_user)):
+    detalle = Detalle(**input.model_dump())
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        if detalle.orden == 0:
+            max_orden = await conn.fetchval("SELECT COALESCE(MAX(orden), 0) FROM prod_detalles")
+            detalle.orden = max_orden + 1
+        await conn.execute(
+            "INSERT INTO prod_detalles (id, nombre, tipo_ids, orden, created_at) VALUES ($1, $2, $3, $4, $5)",
+            detalle.id, detalle.nombre, json.dumps(detalle.tipo_ids), detalle.orden, detalle.created_at.replace(tzinfo=None)
+        )
+    return detalle
+
+@router.put("/detalles/{detalle_id}")
+async def update_detalle(detalle_id: str, input: DetalleCreate, _u=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.fetchrow("SELECT * FROM prod_detalles WHERE id = $1", detalle_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="Detalle no encontrado")
+        await conn.execute("UPDATE prod_detalles SET nombre = $1, tipo_ids = $2, orden = $3 WHERE id = $4",
+                           input.nombre, json.dumps(input.tipo_ids), input.orden, detalle_id)
+        return {**row_to_dict(result), "nombre": input.nombre, "tipo_ids": input.tipo_ids, "orden": input.orden}
+
+@router.delete("/detalles/{detalle_id}")
+async def delete_detalle(detalle_id: str, _u=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        in_use = await conn.fetchval("SELECT 1 FROM prod_modelos WHERE detalle_id = $1 LIMIT 1", detalle_id)
+        if in_use:
+            raise HTTPException(status_code=400, detail="No se puede eliminar: hay modelos que usan este detalle")
+        await conn.execute("DELETE FROM prod_detalles WHERE id = $1", detalle_id)
+        return {"message": "Detalle eliminado"}
+
+# ==================== ENDPOINTS LAVADOS ====================
+
+@router.get("/lavados")
+async def get_lavados(tipo_id: str = None):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        if tipo_id:
+            rows = await conn.fetch("SELECT * FROM prod_lavados WHERE tipo_ids ? $1 ORDER BY orden ASC, created_at DESC", tipo_id)
+        else:
+            rows = await conn.fetch("SELECT * FROM prod_lavados ORDER BY orden ASC, created_at DESC")
+        result = []
+        for r in rows:
+            d = row_to_dict(r)
+            d['tipo_ids'] = parse_jsonb(d.get('tipo_ids'))
+            result.append(d)
+        return result
+
+@router.post("/lavados")
+async def create_lavado(input: LavadoCreate, _u=Depends(get_current_user)):
+    lavado = Lavado(**input.model_dump())
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        if lavado.orden == 0:
+            max_orden = await conn.fetchval("SELECT COALESCE(MAX(orden), 0) FROM prod_lavados")
+            lavado.orden = max_orden + 1
+        await conn.execute(
+            "INSERT INTO prod_lavados (id, nombre, categoria, tipo_ids, orden, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+            lavado.id, lavado.nombre, lavado.categoria, json.dumps(lavado.tipo_ids), lavado.orden, lavado.created_at.replace(tzinfo=None)
+        )
+    return lavado
+
+@router.put("/lavados/{lavado_id}")
+async def update_lavado(lavado_id: str, input: LavadoCreate, _u=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.fetchrow("SELECT * FROM prod_lavados WHERE id = $1", lavado_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="Lavado no encontrado")
+        await conn.execute(
+            "UPDATE prod_lavados SET nombre = $1, categoria = $2, tipo_ids = $3, orden = $4 WHERE id = $5",
+            input.nombre, input.categoria, json.dumps(input.tipo_ids), input.orden, lavado_id
+        )
+        return {**row_to_dict(result), "nombre": input.nombre, "categoria": input.categoria, "tipo_ids": input.tipo_ids, "orden": input.orden}
+
+@router.delete("/lavados/{lavado_id}")
+async def delete_lavado(lavado_id: str, _u=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        in_use = await conn.fetchval("SELECT 1 FROM prod_modelos WHERE lavado_id = $1 LIMIT 1", lavado_id)
+        if in_use:
+            raise HTTPException(status_code=400, detail="No se puede eliminar: hay modelos que usan este lavado")
+        await conn.execute("DELETE FROM prod_lavados WHERE id = $1", lavado_id)
+        return {"message": "Lavado eliminado"}
+
 @router.put("/configuracion/modo-migracion")
 async def set_modo_migracion(payload: dict, current_user: dict = Depends(get_current_user)):
-    # Solo admin
     if current_user.get("rol") != "admin":
         raise HTTPException(status_code=403, detail="Solo administradores pueden cambiar el modo migración")
     activo = payload.get("activo", False)
-    valor = "true" if activo else "false"
+    if not activo:
+        raise HTTPException(
+            status_code=400,
+            detail="Para desactivar usa POST /configuracion/modo-migracion/desactivar",
+        )
+    empresa_id = current_user.get("empresa_id") or 7
     usuario = current_user.get("username", current_user.get("nombre_completo", ""))
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # Verificar que no haya período activo ya
+        ya_activo = await conn.fetchval(
+            "SELECT id FROM prod_modo_migracion_periodos WHERE empresa_id = $1 AND estado = 'activo' LIMIT 1",
+            empresa_id,
+        )
+        if ya_activo:
+            raise HTTPException(status_code=400, detail="Ya hay un período de migración activo")
+        import uuid as _uuid_mig
+        periodo_id = str(_uuid_mig.uuid4())
+        await conn.execute(
+            """INSERT INTO prod_modo_migracion_periodos
+                   (id, empresa_id, activado_at, activado_by, estado)
+               VALUES ($1, $2, CURRENT_TIMESTAMP, $3, 'activo')""",
+            periodo_id, empresa_id, usuario,
+        )
+        # Mantener config legacy para compatibilidad
         await conn.execute(
             """INSERT INTO prod_configuracion (clave, valor, updated_at, updated_by)
-               VALUES ('modo_migracion', $1, CURRENT_TIMESTAMP, $2)
-               ON CONFLICT (clave) DO UPDATE SET valor = $1, updated_at = CURRENT_TIMESTAMP, updated_by = $2""",
-            valor, usuario,
+               VALUES ('modo_migracion', 'true', CURRENT_TIMESTAMP, $1)
+               ON CONFLICT (clave) DO UPDATE SET valor='true', updated_at=CURRENT_TIMESTAMP, updated_by=$1""",
+            usuario,
         )
-    return {"activo": activo, "message": f"Modo migración {'activado' if activo else 'desactivado'}"}
+    return {"activo": True, "periodo_id": periodo_id, "message": "Modo migración activado"}
+
+@router.get("/configuracion/modo-migracion/preview-desactivacion")
+async def preview_desactivacion_migracion(current_user: dict = Depends(get_current_user)):
+    """Preview de salidas que serían revertidas al desactivar (agrupadas por item)."""
+    if current_user.get("rol") != "admin":
+        raise HTTPException(status_code=403, detail="Solo administradores")
+    empresa_id = current_user.get("empresa_id") or 7
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        periodo = await conn.fetchrow(
+            """SELECT id, activado_at FROM prod_modo_migracion_periodos
+               WHERE empresa_id = $1 AND estado = 'activo'
+               ORDER BY activado_at DESC LIMIT 1""",
+            empresa_id,
+        )
+        if not periodo:
+            raise HTTPException(status_code=400, detail="No hay período de migración activo")
+        activado_at = periodo["activado_at"]
+        if activado_at is not None and activado_at.tzinfo is not None:
+            activado_at = activado_at.replace(tzinfo=None)
+        rows = await conn.fetch(
+            """
+            SELECT
+                s.item_id,
+                i.codigo,
+                i.nombre,
+                SUM(s.cantidad)               AS cantidad_total,
+                COUNT(*)                      AS salidas_count,
+                COUNT(DISTINCT s.registro_id) AS registros_count
+            FROM prod_inventario_salidas s
+            JOIN prod_inventario i ON i.id = s.item_id
+            WHERE s.fecha >= $1
+              AND COALESCE(s.empresa_id, 7) = $2
+              AND s.revertida_por_migracion_id IS NULL
+            GROUP BY s.item_id, i.codigo, i.nombre
+            ORDER BY i.nombre
+            """,
+            activado_at, empresa_id,
+        )
+        items = [dict(r) for r in rows]
+        total_salidas = sum(int(r["salidas_count"]) for r in items)
+        return {
+            "periodo_id": periodo["id"],
+            "periodo_activo_desde": activado_at.isoformat() if activado_at else None,
+            "total_items_afectados": len(items),
+            "total_salidas": total_salidas,
+            "items": items,
+        }
+
+@router.post("/configuracion/modo-migracion/desactivar")
+async def desactivar_modo_migracion(current_user: dict = Depends(get_current_user)):
+    """
+    Desactiva el modo migración (ventana temporal):
+    - Revierte TODAS las salidas ocurridas desde activado_at del período activo
+    - Crea un ajuste de ingreso por item (agrupado) en prod_inventario_ajustes
+    - Marca las salidas con revertida_por_migracion_id (idempotencia)
+    - Cierra el período en prod_modo_migracion_periodos
+    """
+    if current_user.get("rol") != "admin":
+        raise HTTPException(status_code=403, detail="Solo administradores pueden desactivar el modo migración")
+    import uuid as _uuid
+    empresa_id = current_user.get("empresa_id") or 7
+    usuario = current_user.get("username", current_user.get("nombre_completo", ""))
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        periodo = await conn.fetchrow(
+            """SELECT id, activado_at FROM prod_modo_migracion_periodos
+               WHERE empresa_id = $1 AND estado = 'activo'
+               ORDER BY activado_at DESC LIMIT 1""",
+            empresa_id,
+        )
+        if not periodo:
+            raise HTTPException(status_code=400, detail="No hay período de migración activo")
+        activado_at = periodo["activado_at"]
+        if activado_at is not None and activado_at.tzinfo is not None:
+            activado_at = activado_at.replace(tzinfo=None)
+        periodo_id = periodo["id"]
+
+        async with conn.transaction():
+            # Agrupar salidas pendientes por item_id
+            grupos = await conn.fetch(
+                """
+                SELECT s.item_id, SUM(s.cantidad) AS total_cantidad,
+                       SUM(COALESCE(s.costo_total, 0)) AS total_costo,
+                       COUNT(*) AS salidas_count
+                FROM prod_inventario_salidas s
+                JOIN prod_inventario i ON i.id = s.item_id
+                WHERE s.fecha >= $1
+                  AND COALESCE(s.empresa_id, 7) = $2
+                  AND s.revertida_por_migracion_id IS NULL
+                GROUP BY s.item_id
+                """,
+                activado_at, empresa_id,
+            )
+
+            ajustes_creados = 0
+            salidas_revertidas = 0
+            for grupo in grupos:
+                item_id = grupo["item_id"]
+                total_qty = float(grupo["total_cantidad"])
+                total_costo = float(grupo["total_costo"] or 0)
+                n_salidas = int(grupo["salidas_count"])
+                ajuste_id = str(_uuid.uuid4())
+
+                # Crear un ajuste de ingreso agrupado por item con costo = suma de costos revertidos
+                await conn.execute(
+                    """
+                    INSERT INTO prod_inventario_ajustes
+                        (id, item_id, tipo, subtipo, cantidad, costo_total, motivo, observaciones, fecha)
+                    VALUES ($1, $2, 'entrada', 'ajuste_migracion', $3, $4,
+                            'Reversión automática al desactivar modo carga inicial',
+                            $5, CURRENT_TIMESTAMP)
+                    """,
+                    ajuste_id, item_id, total_qty, total_costo,
+                    f"Período {periodo_id}: {n_salidas} salidas revertidas desde {activado_at.strftime('%Y-%m-%d %H:%M')}",
+                )
+                # Restaurar stock
+                await conn.execute(
+                    "UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
+                    total_qty, item_id,
+                )
+                # Restaurar capas FIFO: leer detalle_fifo de cada salida del período
+                # y devolver cantidad_disponible al ingreso correspondiente
+                salidas_item = await conn.fetch(
+                    """SELECT detalle_fifo FROM prod_inventario_salidas
+                       WHERE item_id = $1
+                         AND fecha >= $2
+                         AND revertida_por_migracion_id IS NULL""",
+                    item_id, activado_at,
+                )
+                for sal in salidas_item:
+                    detalle = sal["detalle_fifo"]
+                    if not detalle:
+                        continue
+                    if isinstance(detalle, str):
+                        try:
+                            detalle = json.loads(detalle)
+                        except Exception:
+                            continue
+                    for capa in detalle:
+                        ingreso_id = capa.get("ingreso_id")
+                        cant = capa.get("cantidad")
+                        if ingreso_id and cant:
+                            await conn.execute(
+                                "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible + $1 WHERE id = $2",
+                                float(cant), ingreso_id,
+                            )
+                # Marcar todas las salidas del período para este item
+                await conn.execute(
+                    """UPDATE prod_inventario_salidas
+                       SET revertida_por_migracion_id = $1
+                       WHERE item_id = $2
+                         AND fecha >= $3
+                         AND revertida_por_migracion_id IS NULL""",
+                    ajuste_id, item_id, activado_at,
+                )
+                ajustes_creados += 1
+                salidas_revertidas += n_salidas
+
+            # ─── Revertir también salidas_libres y muestras creadas durante el período ───
+            # Salidas libres
+            libres = await conn.fetch(
+                """SELECT id, item_id, cantidad, detalle_fifo
+                   FROM prod_salidas_libres
+                   WHERE created_at >= $1 AND en_migracion = TRUE""",
+                activado_at,
+            )
+            for sl in libres:
+                await conn.execute(
+                    "UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
+                    float(sl["cantidad"]), sl["item_id"],
+                )
+                detalle = sl["detalle_fifo"]
+                if isinstance(detalle, str):
+                    try: detalle = json.loads(detalle)
+                    except Exception: detalle = []
+                for capa in (detalle if isinstance(detalle, list) else []):
+                    if capa.get("ingreso_id") and capa.get("cantidad"):
+                        await conn.execute(
+                            "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible + $1 WHERE id = $2",
+                            float(capa["cantidad"]), capa["ingreso_id"],
+                        )
+                await conn.execute("DELETE FROM prod_salidas_libres WHERE id = $1", sl["id"])
+
+            # Materiales de muestras
+            mmats = await conn.fetch(
+                """SELECT mm.id, mm.item_id, mm.cantidad, mm.detalle_fifo
+                   FROM prod_muestras_materiales mm
+                   WHERE mm.created_at >= $1 AND mm.en_migracion = TRUE""",
+                activado_at,
+            )
+            for mm in mmats:
+                await conn.execute(
+                    "UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
+                    float(mm["cantidad"]), mm["item_id"],
+                )
+                detalle = mm["detalle_fifo"]
+                if isinstance(detalle, str):
+                    try: detalle = json.loads(detalle)
+                    except Exception: detalle = []
+                for capa in (detalle if isinstance(detalle, list) else []):
+                    if capa.get("ingreso_id") and capa.get("cantidad"):
+                        await conn.execute(
+                            "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible + $1 WHERE id = $2",
+                            float(capa["cantidad"]), capa["ingreso_id"],
+                        )
+                await conn.execute("DELETE FROM prod_muestras_materiales WHERE id = $1", mm["id"])
+
+            # Cerrar el período
+            await conn.execute(
+                """UPDATE prod_modo_migracion_periodos
+                   SET estado = 'desactivado',
+                       desactivado_at = CURRENT_TIMESTAMP,
+                       desactivado_by = $1,
+                       salidas_revertidas_count = $2,
+                       ajustes_generados_count = $3
+                   WHERE id = $4""",
+                usuario, salidas_revertidas, ajustes_creados, periodo_id,
+            )
+            # Actualizar config legacy
+            await conn.execute(
+                """UPDATE prod_configuracion
+                   SET valor = 'false', updated_at = CURRENT_TIMESTAMP, updated_by = $1
+                   WHERE clave = 'modo_migracion'""",
+                usuario,
+            )
+
+    return {
+        "activo": False,
+        "ajustes_creados": ajustes_creados,
+        "salidas_revertidas": salidas_revertidas,
+        "message": f"Modo carga inicial desactivado. {ajustes_creados} ajustes creados, {salidas_revertidas} salidas revertidas.",
+    }
