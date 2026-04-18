@@ -222,7 +222,7 @@ export const Inventario = () => {
     setFormData({
       codigo: '', nombre: '', descripcion: '', categoria: 'Otros',
       unidad_medida: 'unidad', stock_minimo: 0, control_por_rollos: false,
-      linea_negocio_id: '',
+      linea_negocio_id: '', stock_inicial: 0, costo_unitario_inicial: 0,
     });
     setEditingItem(null);
   };
@@ -293,13 +293,15 @@ export const Inventario = () => {
   };
 
   const getStockStatus = (item) => {
-    if (item.stock_actual <= 0) return 'destructive';
+    if (item.stock_actual < 0) return 'negative';
+    if (item.stock_actual === 0) return 'destructive';
     if (item.stock_actual <= item.stock_minimo) return 'warning';
     return 'success';
   };
 
   const getStockLabel = (item) => {
-    if (item.stock_actual <= 0) return 'Sin stock';
+    if (item.stock_actual < 0) return 'Negativo';
+    if (item.stock_actual === 0) return 'Sin stock';
     if (item.stock_actual <= item.stock_minimo) return 'Stock bajo';
     return 'OK';
   };
@@ -489,7 +491,9 @@ export const Inventario = () => {
                           </>
                         ) : (
                           <>
-                            <TableCell className="text-right font-mono font-semibold">{item.stock_actual}</TableCell>
+                            <TableCell className="text-right font-mono font-semibold">
+                              <span className={item.stock_actual < 0 ? 'text-red-500' : ''}>{item.stock_actual}</span>
+                            </TableCell>
                             <TableCell className="text-right font-mono hidden sm:table-cell">
                               {item.total_reservado > 0 ? (
                                 <span className="text-orange-500 font-medium">{item.total_reservado}</span>
@@ -519,10 +523,19 @@ export const Inventario = () => {
                             <Badge className="bg-amber-500">Servicio</Badge>
                           ) : (
                             <Badge
-                              variant={getStockStatus(item) === 'success' ? 'default' : getStockStatus(item)}
-                              className={getStockStatus(item) === 'success' ? 'bg-green-600' : getStockStatus(item) === 'warning' ? 'bg-yellow-500' : ''}
+                              variant={
+                                getStockStatus(item) === 'success' ? 'default'
+                                : getStockStatus(item) === 'negative' ? 'destructive'
+                                : getStockStatus(item)
+                              }
+                              className={
+                                getStockStatus(item) === 'success' ? 'bg-green-600'
+                                : getStockStatus(item) === 'warning' ? 'bg-yellow-500'
+                                : ''
+                              }
                             >
-                              {item.stock_actual <= item.stock_minimo && item.stock_actual > 0 && (
+                              {item.stock_actual < 0 && <AlertTriangle className="h-3 w-3 mr-1" />}
+                              {item.stock_actual > 0 && item.stock_actual <= item.stock_minimo && (
                                 <AlertTriangle className="h-3 w-3 mr-1" />
                               )}
                               {getStockLabel(item)}
@@ -625,6 +638,23 @@ export const Inventario = () => {
                       <NumericInput id="stock_minimo" min="0" value={formData.stock_minimo} onChange={(e) => setFormData({ ...formData, stock_minimo: e.target.value })} placeholder="0" className="font-mono" data-testid="input-stock-minimo" />
                     </div>
                   </div>
+                  {!editingItem && (
+                    <div className="rounded-md border border-dashed border-muted-foreground/30 p-3 space-y-3 bg-muted/20">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Stock Inicial (opcional)</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="stock_inicial">Stock Inicial</Label>
+                          <NumericInput id="stock_inicial" min="0" value={formData.stock_inicial} onChange={(e) => setFormData({ ...formData, stock_inicial: e.target.value })} placeholder="0" className="font-mono" />
+                          <p className="text-xs text-muted-foreground">Se creará un ingreso automático por esta cantidad</p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="costo_unitario_inicial">Costo Unitario</Label>
+                          <NumericInput id="costo_unitario_inicial" min="0" step="0.01" value={formData.costo_unitario_inicial} onChange={(e) => setFormData({ ...formData, costo_unitario_inicial: e.target.value })} placeholder="0.00" className="font-mono" />
+                          <p className="text-xs text-muted-foreground">Costo de compra inicial</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label>Descripcion</Label>
                     <Textarea id="descripcion" value={formData.descripcion} onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })} placeholder="Descripcion del item..." rows={2} data-testid="input-descripcion" />

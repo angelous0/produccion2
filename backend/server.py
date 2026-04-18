@@ -42,7 +42,7 @@ from routes.muestras import router as muestras_router
 from migrations.startup_ddl import (
     ensure_bom_tables, ensure_fase2_tables,
     ensure_startup_migrations, ensure_startup_indices,
-    ensure_salidas_libres_tables,
+    ensure_salidas_libres_tables, ensure_clasificacion_tables,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -105,6 +105,7 @@ async def startup():
     await init_audit_tables()
     await init_distribucion_pt_tables()
     await ensure_salidas_libres_tables()
+    await ensure_clasificacion_tables()
     # Índices de performance
     await ensure_startup_indices()
 

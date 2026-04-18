@@ -1,5 +1,5 @@
 """Pydantic models shared across all routers."""
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional
 from datetime import datetime, timezone
 import uuid
@@ -75,6 +75,7 @@ class Entalle(EntalleBase):
 class TelaBase(BaseModel):
     nombre: str
     entalle_ids: List[str] = []
+    tela_general_id: Optional[str] = None
     orden: int = 0
 
 class TelaCreate(TelaBase):
@@ -94,6 +95,78 @@ class HiloCreate(HiloBase):
     pass
 
 class Hilo(HiloBase):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class GeneroBase(BaseModel):
+    nombre: str
+    marca_ids: List[str] = []
+    orden: int = 0
+
+class GeneroCreate(GeneroBase):
+    pass
+
+class Genero(GeneroBase):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class TelaGeneralBase(BaseModel):
+    nombre: str
+    orden: int = 0
+
+class TelaGeneralCreate(TelaGeneralBase):
+    pass
+
+class TelaGeneral(TelaGeneralBase):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class CuelloBase(BaseModel):
+    nombre: str
+    tipo_ids: List[str] = []
+    orden: int = 0
+
+class CuelloCreate(CuelloBase):
+    pass
+
+class Cuello(CuelloBase):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class DetalleBase(BaseModel):
+    nombre: str
+    tipo_ids: List[str] = []
+    orden: int = 0
+
+class DetalleCreate(DetalleBase):
+    pass
+
+class Detalle(DetalleBase):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class LavadoBase(BaseModel):
+    nombre: str
+    categoria: str = "basico"
+    tipo_ids: List[str] = []
+    orden: int = 0
+
+    @field_validator("categoria")
+    @classmethod
+    def validate_categoria(cls, v: str) -> str:
+        if v not in ("basico", "moda"):
+            raise ValueError("categoria debe ser 'basico' o 'moda'")
+        return v
+
+class LavadoCreate(LavadoBase):
+    pass
+
+class Lavado(LavadoBase):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -126,6 +199,7 @@ class ColorBase(BaseModel):
     nombre: str
     codigo_hex: str = ""
     color_general_id: Optional[str] = None
+    categoria: str = "basico"
     orden: int = 0
 
 class ColorCreate(ColorBase):
@@ -229,6 +303,10 @@ class ModeloBase(BaseModel):
     hilo_especifico_id: Optional[str] = None
     muestra_modelo_id: Optional[str] = None
     muestra_base_id: Optional[str] = None
+    genero_id: Optional[str] = None
+    cuello_id: Optional[str] = None
+    detalle_id: Optional[str] = None
+    lavado_id: Optional[str] = None
 
 class ModeloCreate(ModeloBase):
     pass
@@ -341,6 +419,7 @@ class RegistroBase(BaseModel):
     fecha_entrega_final: Optional[str] = None
     fecha_inicio_real: Optional[str] = None
     linea_negocio_id: Optional[int] = None
+    es_migracion: bool = False
 
 class RegistroCreate(RegistroBase):
     tallas: List[TallaCantidadItem] = []
@@ -454,7 +533,8 @@ class ItemInventarioBase(BaseModel):
     linea_negocio_id: Optional[int] = None
 
 class ItemInventarioCreate(ItemInventarioBase):
-    pass
+    stock_inicial: float = 0
+    costo_unitario_inicial: float = 0
 
 class ItemInventario(ItemInventarioBase):
     model_config = ConfigDict(extra="ignore")

@@ -39,6 +39,7 @@ export const Modelos = ({ modo: modoProp }) => {
     nombre: '', marca_id: '', tipo_id: '', entalle_id: '',
     tela_id: '', hilo_id: '', ruta_produccion_id: '', servicios_ids: [], pt_item_id: '',
     linea_negocio_id: '', base_id: '', hilo_especifico_id: '', muestra_modelo_id: '', muestra_base_id: '',
+    genero_id: '', cuello_id: '', detalle_id: '', lavado_id: '',
   });
 
   // Datos para los selects del dialog
@@ -53,6 +54,10 @@ export const Modelos = ({ modo: modoProp }) => {
   const [itemsPT, setItemsPT] = useState([]);
   const [lineasNegocio, setLineasNegocio] = useState([]);
   const [bases, setBases] = useState([]);
+  const [generos, setGeneros] = useState([]);
+  const [cuellos, setCuellos] = useState([]);
+  const [detalles, setDetalles] = useState([]);
+  const [lavados, setLavados] = useState([]);
   const [muestrasModelos, setMuestrasModelos] = useState([]);
   const [muestrasBases, setMuestrasBases] = useState([]);
 
@@ -130,14 +135,18 @@ export const Modelos = ({ modo: modoProp }) => {
   };
   // Cascade handlers: al cambiar un padre, limpiar hijos y recargar opciones filtradas
   const handleMarcaChange = (marcaId) => {
-    setFormData(prev => ({ ...prev, marca_id: marcaId, tipo_id: '', entalle_id: '', tela_id: '' }));
+    setFormData(prev => ({ ...prev, marca_id: marcaId, tipo_id: '', entalle_id: '', tela_id: '', genero_id: '', cuello_id: '', detalle_id: '', lavado_id: '' }));
     fetchTiposByMarca(marcaId);
+    fetchGenerosByMarca(marcaId);
     setEntalles([]);
     setTelas([]);
   };
   const handleTipoChange = (tipoId) => {
-    setFormData(prev => ({ ...prev, tipo_id: tipoId, entalle_id: '', tela_id: '' }));
+    setFormData(prev => ({ ...prev, tipo_id: tipoId, entalle_id: '', tela_id: '', cuello_id: '', detalle_id: '', lavado_id: '' }));
     fetchEntallesByTipo(tipoId);
+    fetchCuellosByTipo(tipoId);
+    fetchDetallesByTipo(tipoId);
+    fetchLavadosByTipo(tipoId);
     setTelas([]);
   };
   const handleEntalleChange = (entalleId) => {
@@ -154,13 +163,44 @@ export const Modelos = ({ modo: modoProp }) => {
       fetchTiposByMarca(item.marca_id),
       fetchEntallesByTipo(item.tipo_id),
       fetchTelasByEntalle(item.entalle_id),
+      item.marca_id ? fetchGenerosByMarca(item.marca_id) : Promise.resolve(),
+      item.tipo_id ? fetchCuellosByTipo(item.tipo_id) : Promise.resolve(),
+      item.tipo_id ? fetchDetallesByTipo(item.tipo_id) : Promise.resolve(),
+      item.tipo_id ? fetchLavadosByTipo(item.tipo_id) : Promise.resolve(),
     ]);
+  };
+
+  // Cascade loaders for new classification fields
+  const fetchGenerosByMarca = async (marcaId) => {
+    try {
+      const res = await axios.get(`${API}/generos${marcaId ? `?marca_id=${marcaId}` : ''}`);
+      setGeneros(res.data);
+    } catch { setGeneros([]); }
+  };
+  const fetchCuellosByTipo = async (tipoId) => {
+    try {
+      const res = await axios.get(`${API}/cuellos${tipoId ? `?tipo_id=${tipoId}` : ''}`);
+      setCuellos(res.data);
+    } catch { setCuellos([]); }
+  };
+  const fetchDetallesByTipo = async (tipoId) => {
+    try {
+      const res = await axios.get(`${API}/detalles${tipoId ? `?tipo_id=${tipoId}` : ''}`);
+      setDetalles(res.data);
+    } catch { setDetalles([]); }
+  };
+  const fetchLavadosByTipo = async (tipoId) => {
+    try {
+      const res = await axios.get(`${API}/lavados${tipoId ? `?tipo_id=${tipoId}` : ''}`);
+      setLavados(res.data);
+    } catch { setLavados([]); }
   };
 
   const fetchRelatedData = async () => {
     if (relatedLoaded.current) return;
     try {
-      const [marcasRes, hilosRes, heRes, rutasRes, srvRes, ptRes, lnRes, basesRes, muestrasRes, muestrasBasesRes] = await Promise.all([
+      const [marcasRes, hilosRes, heRes, rutasRes, srvRes, ptRes, lnRes, basesRes, muestrasRes, muestrasBasesRes,
+             generosRes, cuelloRes, detalleRes, lavadoRes] = await Promise.all([
         axios.get(`${API}/marcas`),
         axios.get(`${API}/hilos`),
         axios.get(`${API}/hilos-especificos`),
@@ -171,6 +211,10 @@ export const Modelos = ({ modo: modoProp }) => {
         axios.get(`${API}/modelos?all=true`),
         axios.get(`${API}/muestras-modelos`),
         axios.get(`${API}/muestras-bases`),
+        axios.get(`${API}/generos`),
+        axios.get(`${API}/cuellos`),
+        axios.get(`${API}/detalles`),
+        axios.get(`${API}/lavados`),
       ]);
       setMarcas(marcasRes.data);
       setHilos(hilosRes.data);
@@ -184,6 +228,10 @@ export const Modelos = ({ modo: modoProp }) => {
       setMuestrasModelos(mData);
       const mbData = Array.isArray(muestrasBasesRes.data) ? muestrasBasesRes.data : [];
       setMuestrasBases(mbData);
+      setGeneros(generosRes.data);
+      setCuellos(cuelloRes.data);
+      setDetalles(detalleRes.data);
+      setLavados(lavadoRes.data);
       relatedLoaded.current = true;
     } catch (error) {
       toast.error('Error al cargar datos relacionados');
@@ -269,6 +317,7 @@ export const Modelos = ({ modo: modoProp }) => {
       nombre: '', marca_id: '', tipo_id: '', entalle_id: '',
       tela_id: '', hilo_id: '', ruta_produccion_id: '', servicios_ids: [], pt_item_id: '',
       linea_negocio_id: '', base_id: '', hilo_especifico_id: '', muestra_modelo_id: '', muestra_base_id: '',
+      genero_id: '', cuello_id: '', detalle_id: '', lavado_id: '',
     });
     setModoVariante(false);
   };
@@ -286,6 +335,10 @@ export const Modelos = ({ modo: modoProp }) => {
       hilo_especifico_id: item.hilo_especifico_id || '',
       muestra_modelo_id: item.muestra_modelo_id || '',
       muestra_base_id: item.muestra_base_id || '',
+      genero_id: item.genero_id || '',
+      cuello_id: item.cuello_id || '',
+      detalle_id: item.detalle_id || '',
+      lavado_id: item.lavado_id || '',
     });
     await fetchRelatedData();
     // Cargar opciones cascada filtradas para los valores existentes
@@ -845,6 +898,59 @@ export const Modelos = ({ modo: modoProp }) => {
                           searchPlaceholder="Buscar hilo..."
                           testId="select-hilo"
                         />
+                      </div>
+                    </div>
+                    {/* Clasificación de producto */}
+                    <div className="border-t pt-4">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Clasificación</p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Género</Label>
+                          <SearchableSelect
+                            value={formData.genero_id}
+                            onValueChange={(v) => setFormData({ ...formData, genero_id: v })}
+                            options={generos}
+                            placeholder="Seleccionar género..."
+                            searchPlaceholder="Buscar género..."
+                            testId="select-genero"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Cuello</Label>
+                          <SearchableSelect
+                            value={formData.cuello_id}
+                            onValueChange={(v) => setFormData({ ...formData, cuello_id: v })}
+                            options={cuellos}
+                            placeholder={formData.tipo_id ? 'Seleccionar cuello...' : 'Primero selecciona tipo'}
+                            searchPlaceholder="Buscar cuello..."
+                            disabled={!formData.tipo_id}
+                            testId="select-cuello"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Detalle</Label>
+                          <SearchableSelect
+                            value={formData.detalle_id}
+                            onValueChange={(v) => setFormData({ ...formData, detalle_id: v })}
+                            options={detalles}
+                            placeholder={formData.tipo_id ? 'Seleccionar detalle...' : 'Primero selecciona tipo'}
+                            searchPlaceholder="Buscar detalle..."
+                            disabled={!formData.tipo_id}
+                            testId="select-detalle"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Lavado</Label>
+                          <SearchableSelect
+                            value={formData.lavado_id}
+                            onValueChange={(v) => setFormData({ ...formData, lavado_id: v })}
+                            options={lavados}
+                            placeholder={formData.tipo_id ? 'Seleccionar lavado...' : 'Primero selecciona tipo'}
+                            searchPlaceholder="Buscar lavado..."
+                            disabled={!formData.tipo_id}
+                            testId="select-lavado"
+                          />
+                        </div>
                       </div>
                     </div>
                   </>

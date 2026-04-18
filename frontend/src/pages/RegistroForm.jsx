@@ -62,6 +62,7 @@ export const RegistroForm = () => {
   const [convOpen, setConvOpen] = useState(false);
   const [convRefreshKey, setConvRefreshKey] = useState(0);
   const { saving, guard } = useSaving();
+  const [navegacion, setNavegacion] = useState({ anterior: null, siguiente: null });
 
   const [formData, setFormData] = useState({
     n_corte: '', modelo_id: '', modelo_manual: null, curva: '', estado: 'Para Corte', urgente: false,
@@ -298,6 +299,10 @@ export const RegistroForm = () => {
         if (!registro.pt_item_id && modelo?.pt_item_id) setFormData(prev => ({ ...prev, pt_item_id: modelo.pt_item_id }));
       }
       try { await fetchEstadosDisponibles(id); } catch {}
+    try {
+      const navRes = await axios.get(`${API}/registros/${id}/navegacion`);
+      setNavegacion(navRes.data);
+    } catch {}
     } catch { toast.error('Error al cargar registro'); navigate('/registros'); }
     finally { setLoadingData(false); }
   };
@@ -715,7 +720,7 @@ export const RegistroForm = () => {
 
   const handleSaveMovimiento = guard(async () => {
     if (!movimientoFormData.servicio_id || !movimientoFormData.persona_id) { toast.error('Selecciona servicio y persona'); return; }
-    if (movimientoFormData.fecha_inicio && movimientoFormData.fecha_fin && movimientoFormData.fecha_fin <= movimientoFormData.fecha_inicio) { toast.error('La fecha fin debe ser mayor que la fecha inicio'); return; }
+    if (movimientoFormData.fecha_inicio && movimientoFormData.fecha_fin && movimientoFormData.fecha_fin < movimientoFormData.fecha_inicio) { toast.error('La fecha fin debe ser mayor o igual que la fecha inicio'); return; }
     if (movimientoFormData.fecha_inicio && movimientoFormData.fecha_esperada_movimiento && movimientoFormData.fecha_esperada_movimiento <= movimientoFormData.fecha_inicio) { toast.error('La fecha esperada debe ser mayor que la fecha inicio'); return; }
     try {
       const payload = { ...movimientoFormData, registro_id: id, detalle_costos: detalleCostosMovimiento.length > 0 ? detalleCostosMovimiento : null };
@@ -784,18 +789,18 @@ export const RegistroForm = () => {
         payload.modelo_id = null;
         payload.modelo_manual = {
           marca_id: modeloManualForm.marca_modo === 'select' ? modeloManualForm.marca_id || null : null,
-          marca_texto: modeloManualForm.marca_modo === 'text' ? modeloManualForm.marca_texto : (catalogoMarcas.find(m => m.id === modeloManualForm.marca_id)?.nombre || null),
+          marca_texto: modeloManualForm.marca_modo === 'text' ? modeloManualForm.marca_texto : (catalogoMarcas.find(m => m.id === modeloManualForm.marca_id)?.nombre || modeloManualForm.marca_texto || null),
           tipo_id: modeloManualForm.tipo_modo === 'select' ? modeloManualForm.tipo_id || null : null,
-          tipo_texto: modeloManualForm.tipo_modo === 'text' ? modeloManualForm.tipo_texto : (catalogoTipos.find(t => t.id === modeloManualForm.tipo_id)?.nombre || null),
+          tipo_texto: modeloManualForm.tipo_modo === 'text' ? modeloManualForm.tipo_texto : (catalogoTipos.find(t => t.id === modeloManualForm.tipo_id)?.nombre || modeloManualForm.tipo_texto || null),
           tela_id: modeloManualForm.tela_modo === 'select' ? modeloManualForm.tela_id || null : null,
-          tela_texto: modeloManualForm.tela_modo === 'text' ? modeloManualForm.tela_texto : (catalogoTelas.find(t => t.id === modeloManualForm.tela_id)?.nombre || null),
+          tela_texto: modeloManualForm.tela_modo === 'text' ? modeloManualForm.tela_texto : (catalogoTelas.find(t => t.id === modeloManualForm.tela_id)?.nombre || modeloManualForm.tela_texto || null),
           entalle_id: modeloManualForm.entalle_modo === 'select' ? modeloManualForm.entalle_id || null : null,
-          entalle_texto: modeloManualForm.entalle_modo === 'text' ? modeloManualForm.entalle_texto : (catalogoEntalles.find(e => e.id === modeloManualForm.entalle_id)?.nombre || null),
+          entalle_texto: modeloManualForm.entalle_modo === 'text' ? modeloManualForm.entalle_texto : (catalogoEntalles.find(e => e.id === modeloManualForm.entalle_id)?.nombre || modeloManualForm.entalle_texto || null),
           nombre_modelo: modeloManualForm.nombre_modelo || null,
           hilo_id: modeloManualForm.hilo_modo === 'select' ? modeloManualForm.hilo_id || null : null,
-          hilo_texto: modeloManualForm.hilo_modo === 'text' ? modeloManualForm.hilo_texto : (catalogoHilos.find(h => h.id === modeloManualForm.hilo_id)?.nombre || null),
+          hilo_texto: modeloManualForm.hilo_modo === 'text' ? modeloManualForm.hilo_texto : (catalogoHilos.find(h => h.id === modeloManualForm.hilo_id)?.nombre || modeloManualForm.hilo_texto || null),
           hilo_especifico_id: modeloManualForm.hilo_especifico_modo === 'select' ? modeloManualForm.hilo_especifico_id || null : null,
-          hilo_especifico_texto: modeloManualForm.hilo_especifico_modo === 'text' ? modeloManualForm.hilo_especifico_texto : (catalogoHilosEsp.find(h => h.id === modeloManualForm.hilo_especifico_id)?.nombre || null),
+          hilo_especifico_texto: modeloManualForm.hilo_especifico_modo === 'text' ? modeloManualForm.hilo_especifico_texto : (catalogoHilosEsp.find(h => h.id === modeloManualForm.hilo_especifico_id)?.nombre || modeloManualForm.hilo_especifico_texto || null),
         };
       } else {
         payload.modelo_manual = null;
@@ -935,7 +940,7 @@ export const RegistroForm = () => {
         setForzarEstadoDialog={setForzarEstadoDialog} setSugerenciaMovDialog={setSugerenciaMovDialog}
         setRetrocesoDialog={setRetrocesoDialog} setAdvertenciaCantidadDialog={setAdvertenciaCantidadDialog}
         handleSubmit={handleSubmit} permisos={perms} setConvOpen={setConvOpen} convRefreshKey={convRefreshKey}
-        cameFromRegistro={cameFromRegistro}
+        cameFromRegistro={cameFromRegistro} navegacion={navegacion}
       />
 
       {/* Banner incidencias abiertas (no paralizado) */}
@@ -1124,7 +1129,7 @@ export const RegistroForm = () => {
                 {/* TAB MATERIALES */}
                 <TabsContent value="materiales" className="space-y-4 mt-0" onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}>
                   <Card><CardContent className="pt-4">
-                    <MaterialesTab registroId={id} totalPrendas={1} modeloId={formData.modelo_id} lineaNegocioId={formData.linea_negocio_id}
+                    <MaterialesTab registroId={id} totalPrendas={prendasEfectivas} modeloId={formData.modelo_id} lineaNegocioId={formData.linea_negocio_id}
                       lineasNegocio={lineasNegocio} permisos={permsInventario}
                     />
                   </CardContent></Card>

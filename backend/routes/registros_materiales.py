@@ -1,5 +1,7 @@
 """Router for registros: requerimiento MP (BOM explosion), reservas, disponibilidad."""
 import uuid
+import json
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from db import get_pool
 from auth_utils import get_current_user
@@ -149,7 +151,7 @@ async def generar_requerimiento_mp(registro_id: str, bom_id: str = Query(None), 
 
 @router.post("/registros/{registro_id}/requerimiento-manual")
 async def agregar_requerimiento_manual(registro_id: str, body: dict, _u=Depends(get_current_user)):
-    """Agrega una línea de requerimiento de forma manual (sin BOM)."""
+    """Agrega una línea de requerimiento MANUAL y genera la salida de inventario en la misma transacción."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         registro = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
@@ -163,41 +165,121 @@ async def agregar_requerimiento_manual(registro_id: str, body: dict, _u=Depends(
         if not item_id or not cantidad or float(cantidad) <= 0:
             raise HTTPException(status_code=400, detail="item_id y cantidad (>0) son requeridos")
 
-        # Verificar que el item exista
-        item = await conn.fetchrow("SELECT id, nombre, unidad_medida FROM prod_inventario WHERE id = $1", item_id)
+        item = await conn.fetchrow(
+            "SELECT id, nombre, unidad_medida, stock_actual, costo_promedio, empresa_id, linea_negocio_id FROM prod_inventario WHERE id = $1",
+            item_id
+        )
         if not item:
             raise HTTPException(status_code=404, detail="Item de inventario no encontrado")
 
         cantidad = float(cantidad)
-        empresa_id = registro.get('empresa_id') or 7
+        stock_actual = float(item['stock_actual'] or 0)
 
-        # Verificar si ya existe una línea manual para este item (sin talla)
-        existing = await conn.fetchrow("""
-            SELECT * FROM prod_registro_requerimiento_mp
-            WHERE registro_id = $1 AND item_id = $2 AND talla_id IS NULL AND origen = 'MANUAL'
-        """, registro_id, item_id)
-
-        if existing:
-            # Sumar a la cantidad existente
-            nueva_cantidad = float(existing['cantidad_requerida']) + cantidad
-            nuevo_estado = calcular_estado_requerimiento(
-                nueva_cantidad, float(existing['cantidad_reservada']), float(existing['cantidad_consumida'])
+        # Validar stock suficiente (omitir si modo migración activo)
+        modo_mig = await conn.fetchval(
+            "SELECT valor FROM prod_configuracion WHERE clave = 'modo_migracion'"
+        )
+        en_migracion = modo_mig == 'true'
+        if not en_migracion and stock_actual < cantidad:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Stock insuficiente. Disponible: {stock_actual}, solicitado: {cantidad}"
             )
+
+        empresa_id = registro.get('empresa_id') or item.get('empresa_id') or 7
+        linea_negocio_id = registro.get('linea_negocio_id') or item.get('linea_negocio_id')
+
+        # Pre-calcular capas FIFO a consumir (sin modificar nada todavía)
+        ingresos = await conn.fetch(
+            "SELECT id, cantidad_disponible, costo_unitario FROM prod_inventario_ingresos WHERE item_id = $1 AND cantidad_disponible > 0 ORDER BY fecha ASC",
+            item_id
+        )
+        capas_a_consumir = []  # (ingreso_id, consumir, costo_unitario)
+        costo_total = 0.0
+        detalle_fifo = []
+        cantidad_restante = cantidad
+        for ing in ingresos:
+            if cantidad_restante <= 0:
+                break
+            disponible = float(ing['cantidad_disponible'])
+            consumir = min(disponible, cantidad_restante)
+            costo_u = float(ing['costo_unitario'])
+            costo_total += consumir * costo_u
+            detalle_fifo.append({"ingreso_id": str(ing['id']), "cantidad": consumir, "costo_unitario": costo_u})
+            capas_a_consumir.append((str(ing['id']), consumir))
+            cantidad_restante -= consumir
+
+        if not detalle_fifo:
+            # Sin capas FIFO disponibles — usar costo_promedio del item
+            costo_u = float(item['costo_promedio'] or 0)
+            costo_total = cantidad * costo_u
+            detalle_fifo = [{"cantidad": cantidad, "costo_unitario": costo_u}]
+
+        async with conn.transaction():
+            # ── 1. Verificar si ya existe línea manual para este item ──────────
+            existing = await conn.fetchrow("""
+                SELECT * FROM prod_registro_requerimiento_mp
+                WHERE registro_id = $1 AND item_id = $2 AND talla_id IS NULL AND origen = 'MANUAL'
+            """, registro_id, item_id)
+
+            if existing:
+                nueva_cantidad_req = float(existing['cantidad_requerida']) + cantidad
+                nueva_cantidad_cons = float(existing['cantidad_consumida']) + cantidad
+                await conn.execute("""
+                    UPDATE prod_registro_requerimiento_mp
+                    SET cantidad_requerida = $1,
+                        cantidad_consumida  = $2,
+                        estado              = 'COMPLETO',
+                        observaciones       = $3,
+                        updated_at          = CURRENT_TIMESTAMP
+                    WHERE id = $4
+                """, nueva_cantidad_req, nueva_cantidad_cons,
+                    observaciones or existing.get('observaciones'), existing['id'])
+                linea_id = existing['id']
+            else:
+                # ── 2. INSERT línea requerimiento: directamente COMPLETO ───────
+                linea_id = str(uuid.uuid4())
+                await conn.execute("""
+                    INSERT INTO prod_registro_requerimiento_mp
+                    (id, registro_id, item_id, talla_id, cantidad_requerida, cantidad_reservada,
+                     cantidad_consumida, estado, empresa_id, origen, observaciones)
+                    VALUES ($1, $2, $3, NULL, $4, 0, $4, 'COMPLETO', $5, 'MANUAL', $6)
+                """, linea_id, registro_id, item_id, cantidad, empresa_id, observaciones)
+
+            # ── 3. INSERT salida de inventario ───────────────────────────────
+            salida_id = str(uuid.uuid4())
+            fecha_salida = datetime.now(timezone.utc).replace(tzinfo=None)
             await conn.execute("""
-                UPDATE prod_registro_requerimiento_mp
-                SET cantidad_requerida = $1, estado = $2, observaciones = $3, updated_at = CURRENT_TIMESTAMP
-                WHERE id = $4
-            """, nueva_cantidad, nuevo_estado, observaciones or existing.get('observaciones'), existing['id'])
-            return {"message": "Línea manual actualizada", "id": existing['id'], "cantidad_requerida": nueva_cantidad}
+                INSERT INTO prod_inventario_salidas
+                (id, item_id, cantidad, registro_id, talla_id, observaciones,
+                 costo_total, detalle_fifo, fecha, empresa_id, linea_negocio_id)
+                VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9, $10)
+            """,
+                salida_id, item_id, cantidad, registro_id,
+                observaciones or 'Salida manual directa desde registro',
+                costo_total, json.dumps(detalle_fifo),
+                fecha_salida, empresa_id, linea_negocio_id
+            )
 
-        new_id = str(uuid.uuid4())
-        await conn.execute("""
-            INSERT INTO prod_registro_requerimiento_mp
-            (id, registro_id, item_id, talla_id, cantidad_requerida, cantidad_reservada, cantidad_consumida, estado, empresa_id, origen, observaciones)
-            VALUES ($1, $2, $3, NULL, $4, 0, 0, 'PENDIENTE', $5, 'MANUAL', $6)
-        """, new_id, registro_id, item_id, cantidad, empresa_id, observaciones)
+            # ── 4. Descontar capas FIFO (dentro de la transacción) ───────────
+            for ingreso_id, consumir in capas_a_consumir:
+                await conn.execute(
+                    "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible - $1 WHERE id = $2",
+                    consumir, ingreso_id
+                )
 
-        return {"message": "Material agregado manualmente", "id": new_id, "cantidad_requerida": cantidad}
+            # ── 5. Descontar stock ───────────────────────────────────────────
+            await conn.execute(
+                "UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2",
+                cantidad, item_id
+            )
+
+        return {
+            "message": "Material agregado y stock descontado",
+            "id": linea_id,
+            "cantidad_requerida": cantidad,
+            "salida_id": salida_id,
+        }
 
 
 @router.post("/registros/{registro_id}/copiar-materiales")
@@ -208,6 +290,7 @@ async def copiar_materiales(registro_id: str, body: dict, _u=Depends(get_current
     linea_ids = body.get("linea_ids", [])
     cantidad_destino = float(body.get("cantidad_destino", 0))
     cantidad_origen = float(body.get("cantidad_origen", 0))
+    cantidades_custom = body.get("cantidades_custom", {})  # {linea_id: cantidad}
 
     if not registro_origen_id or not linea_ids:
         raise HTTPException(status_code=400, detail="registro_origen_id y linea_ids son requeridos")
@@ -235,7 +318,10 @@ async def copiar_materiales(registro_id: str, body: dict, _u=Depends(get_current
         for linea in lineas:
             item_id = linea['item_id']
             talla_id = linea['talla_id']
-            cantidad_requerida = round(float(linea['cantidad_requerida']) * ratio, 4)
+            if str(linea['id']) in cantidades_custom:
+                cantidad_requerida = round(float(cantidades_custom[str(linea['id'])]), 4)
+            else:
+                cantidad_requerida = round(float(linea['cantidad_requerida']) * ratio, 4)
 
             # Verificar si ya existe
             if talla_id:

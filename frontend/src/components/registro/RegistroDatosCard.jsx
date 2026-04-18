@@ -93,7 +93,14 @@ export const RegistroDatosCard = ({
     tipo:    (id) => setCatalogoTipos && axios.get(`${API}/tipos${id ? `?marca_id=${id}` : ''}`).then(r => setCatalogoTipos(r.data)).catch(() => {}),
     entalle: (id) => setCatalogoEntalles && axios.get(`${API}/entalles${id ? `?tipo_id=${id}` : ''}`).then(r => setCatalogoEntalles(r.data)).catch(() => {}),
     tela:    (id) => setCatalogoTelas && axios.get(`${API}/telas${id ? `?entalle_id=${id}` : ''}`).then(r => setCatalogoTelas(r.data)).catch(() => {}),
-    hilo:    (id) => setCatalogoHilos && axios.get(`${API}/hilos${id ? `?tela_id=${id}` : ''}`).then(r => setCatalogoHilos(r.data)).catch(() => {}),
+    hilo:    (id) => setCatalogoHilos && axios.get(`${API}/hilos${id ? `?tela_id=${id}` : ''}`)
+      .then(r => {
+        // Si el filtro por tela no devuelve hilos, cargar todos para no dejar el selector vacío
+        if (r.data.length === 0 && id) {
+          return axios.get(`${API}/hilos`).then(r2 => setCatalogoHilos(r2.data)).catch(() => {});
+        }
+        setCatalogoHilos(r.data);
+      }).catch(() => {}),
   };
   const cascadeChildren = {
     marca:   ['tipo', 'entalle', 'tela', 'hilo', 'hilo_especifico'],

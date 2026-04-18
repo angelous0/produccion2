@@ -38,6 +38,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '../components/ui/popover';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import { SortableRow, useSortableTable, SortableTableWrapper } from '../components/SortableTable';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -45,11 +52,12 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export const Telas = () => {
   const [items, setItems] = useState([]);
   const [entalles, setEntalles] = useState([]);
+  const [telasGenerales, setTelasGenerales] = useState([]);
   const [loading, setLoading] = useState(true);
   const { saving, guard } = useSaving();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [formData, setFormData] = useState({ nombre: '', entalle_ids: [], orden: 0 });
+  const [formData, setFormData] = useState({ nombre: '', entalle_ids: [], tela_general_id: '', orden: 0 });
   const [popoverOpen, setPopoverOpen] = useState(false);
 
   const { sensors, handleDragEnd, isSaving, modifiers } = useSortableTable(items, setItems, 'telas');
@@ -74,9 +82,19 @@ export const Telas = () => {
     }
   };
 
+  const fetchTelasGenerales = async () => {
+    try {
+      const response = await axios.get(`${API}/telas-general`);
+      setTelasGenerales(response.data);
+    } catch (error) {
+      console.error('Error fetching telas generales:', error);
+    }
+  };
+
   useEffect(() => {
     fetchItems();
     fetchEntalles();
+    fetchTelasGenerales();
   }, []);
 
   const handleSubmit = guard(async (e) => {
@@ -91,7 +109,7 @@ export const Telas = () => {
       }
       setDialogOpen(false);
       setEditingItem(null);
-      setFormData({ nombre: '', entalle_ids: [], orden: 0 });
+      setFormData({ nombre: '', entalle_ids: [], tela_general_id: '', orden: 0 });
       fetchItems();
     } catch (error) {
       toast.error('Error al guardar tela');
@@ -100,7 +118,12 @@ export const Telas = () => {
 
   const handleEdit = (item) => {
     setEditingItem(item);
-    setFormData({ nombre: item.nombre, entalle_ids: item.entalle_ids || [], orden: item.orden || 0 });
+    setFormData({
+      nombre: item.nombre,
+      entalle_ids: item.entalle_ids || [],
+      tela_general_id: item.tela_general_id || '',
+      orden: item.orden || 0,
+    });
     setDialogOpen(true);
   };
 
@@ -117,7 +140,7 @@ export const Telas = () => {
 
   const handleNew = () => {
     setEditingItem(null);
-    setFormData({ nombre: '', entalle_ids: [], orden: 0 });
+    setFormData({ nombre: '', entalle_ids: [], tela_general_id: '', orden: 0 });
     setDialogOpen(true);
   };
 
@@ -153,6 +176,7 @@ export const Telas = () => {
               <TableRow className="data-table-header">
                 <TableHead className="w-[40px]"></TableHead>
                 <TableHead>Nombre</TableHead>
+                <TableHead>Tela General</TableHead>
                 <TableHead>Entalles</TableHead>
                 <TableHead className="w-[100px]">Acciones</TableHead>
               </TableRow>
@@ -160,13 +184,13 @@ export const Telas = () => {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8">
+                  <TableCell colSpan={5} className="text-center py-8">
                     Cargando...
                   </TableCell>
                 </TableRow>
               ) : items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     No hay telas registradas
                   </TableCell>
                 </TableRow>
@@ -177,34 +201,43 @@ export const Telas = () => {
                   handleDragEnd={handleDragEnd}
                   modifiers={modifiers}
                 >
-                  {items.map((item) => (
-                    <SortableRow key={item.id} id={item.id}>
-                      <TableCell className="font-medium">{item.nombre}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {(item.entalle_ids || []).map(entalleId => {
-                            const entalle = entalles.find(e => e.id === entalleId);
-                            return entalle ? (
-                              <Badge key={entalleId} variant="secondary" className="text-xs">{entalle.nombre}</Badge>
-                            ) : null;
-                          })}
-                          {(!item.entalle_ids || item.entalle_ids.length === 0) && (
-                            <span className="text-muted-foreground text-sm">Sin entalles</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(item)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </SortableRow>
-                  ))}
+                  {items.map((item) => {
+                    const tg = telasGenerales.find(g => g.id === item.tela_general_id);
+                    return (
+                      <SortableRow key={item.id} id={item.id}>
+                        <TableCell className="font-medium">{item.nombre}</TableCell>
+                        <TableCell>
+                          {tg
+                            ? <Badge variant="outline" className="text-xs">{tg.nombre}</Badge>
+                            : <span className="text-muted-foreground text-sm">—</span>
+                          }
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {(item.entalle_ids || []).map(entalleId => {
+                              const entalle = entalles.find(e => e.id === entalleId);
+                              return entalle ? (
+                                <Badge key={entalleId} variant="secondary" className="text-xs">{entalle.nombre}</Badge>
+                              ) : null;
+                            })}
+                            {(!item.entalle_ids || item.entalle_ids.length === 0) && (
+                              <span className="text-muted-foreground text-sm">Sin entalles</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button variant="ghost" size="icon" onClick={() => handleEdit(item)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </SortableRow>
+                    );
+                  })}
                 </SortableTableWrapper>
               )}
             </TableBody>
@@ -231,6 +264,22 @@ export const Telas = () => {
                   placeholder="Nombre de la tela"
                   required
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Tela General</Label>
+                <Select
+                  value={formData.tela_general_id || ''}
+                  onValueChange={(v) => setFormData({ ...formData, tela_general_id: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar agrupador..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {telasGenerales.map((tg) => (
+                      <SelectItem key={tg.id} value={tg.id}>{tg.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Entalles disponibles</Label>

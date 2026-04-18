@@ -790,11 +790,19 @@ async def create_modelo(input: ModeloCreate, _u=Depends(get_current_user)):
         hilo_especifico_id = modelo.hilo_especifico_id or None
         muestra_modelo_id = modelo.muestra_modelo_id or None
         muestra_base_id = modelo.muestra_base_id or None
+        genero_id = modelo.genero_id or None
+        cuello_id = modelo.cuello_id or None
+        detalle_id = modelo.detalle_id or None
+        lavado_id = modelo.lavado_id or None
         await conn.execute(
-            """INSERT INTO prod_modelos (id, nombre, marca_id, tipo_id, entalle_id, tela_id, hilo_id, 
-               ruta_produccion_id, servicios_ids, pt_item_id, linea_negocio_id, base_id, hilo_especifico_id, muestra_modelo_id, muestra_base_id, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)""",
+            """INSERT INTO prod_modelos (id, nombre, marca_id, tipo_id, entalle_id, tela_id, hilo_id,
+               ruta_produccion_id, servicios_ids, pt_item_id, linea_negocio_id, base_id, hilo_especifico_id,
+               muestra_modelo_id, muestra_base_id, genero_id, cuello_id, detalle_id, lavado_id, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)""",
             modelo.id, modelo.nombre, modelo.marca_id, modelo.tipo_id, modelo.entalle_id, modelo.tela_id,
-            modelo.hilo_id, modelo.ruta_produccion_id, servicios_json, pt_item_id, modelo.linea_negocio_id, base_id, hilo_especifico_id, muestra_modelo_id, muestra_base_id, modelo.created_at.replace(tzinfo=None)
+            modelo.hilo_id, modelo.ruta_produccion_id, servicios_json, pt_item_id, modelo.linea_negocio_id,
+            base_id, hilo_especifico_id, muestra_modelo_id, muestra_base_id,
+            genero_id, cuello_id, detalle_id, lavado_id, modelo.created_at.replace(tzinfo=None)
         )
     return modelo
 
@@ -811,11 +819,20 @@ async def update_modelo(modelo_id: str, input: ModeloCreate, _u=Depends(get_curr
         hilo_especifico_id = input.hilo_especifico_id or None
         muestra_modelo_id = input.muestra_modelo_id or None
         muestra_base_id = input.muestra_base_id or None
+        genero_id = input.genero_id or None
+        cuello_id = input.cuello_id or None
+        detalle_id = input.detalle_id or None
+        lavado_id = input.lavado_id or None
         await conn.execute(
             """UPDATE prod_modelos SET nombre=$1, marca_id=$2, tipo_id=$3, entalle_id=$4, tela_id=$5, hilo_id=$6,
-               ruta_produccion_id=$7, servicios_ids=$8, pt_item_id=$9, linea_negocio_id=$10, base_id=$12, hilo_especifico_id=$13, muestra_modelo_id=$14, muestra_base_id=$15 WHERE id=$11""",
+               ruta_produccion_id=$7, servicios_ids=$8, pt_item_id=$9, linea_negocio_id=$10,
+               base_id=$12, hilo_especifico_id=$13, muestra_modelo_id=$14, muestra_base_id=$15,
+               genero_id=$16, cuello_id=$17, detalle_id=$18, lavado_id=$19
+               WHERE id=$11""",
             input.nombre, input.marca_id, input.tipo_id, input.entalle_id, input.tela_id, input.hilo_id,
-            input.ruta_produccion_id, servicios_json, pt_item_id, input.linea_negocio_id, modelo_id, base_id, hilo_especifico_id, muestra_modelo_id, muestra_base_id
+            input.ruta_produccion_id, servicios_json, pt_item_id, input.linea_negocio_id, modelo_id,
+            base_id, hilo_especifico_id, muestra_modelo_id, muestra_base_id,
+            genero_id, cuello_id, detalle_id, lavado_id
         )
         return {**row_to_dict(result), **input.model_dump()}
 

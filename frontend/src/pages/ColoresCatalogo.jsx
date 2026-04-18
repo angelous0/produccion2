@@ -36,7 +36,7 @@ export const ColoresCatalogo = () => {
   const { saving, guard } = useSaving();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [formData, setFormData] = useState({ nombre: '', color_general_id: '', orden: 0 });
+  const [formData, setFormData] = useState({ nombre: '', color_general_id: '', categoria: 'basico', orden: 0 });
 
   const { sensors, handleDragEnd, isSaving, modifiers } = useSortableTable(items, setItems, 'colores-catalogo');
 
@@ -70,9 +70,9 @@ export const ColoresCatalogo = () => {
     try {
       const payload = {
         nombre: formData.nombre,
-        // codigo_hex se mantiene en DB pero no se usa desde UI
         codigo_hex: '',
         color_general_id: formData.color_general_id || null,
+        categoria: formData.categoria || 'basico',
         orden: formData.orden,
       };
       if (editingItem) {
@@ -84,7 +84,7 @@ export const ColoresCatalogo = () => {
       }
       setDialogOpen(false);
       setEditingItem(null);
-      setFormData({ nombre: '', color_general_id: '', orden: 0 });
+      setFormData({ nombre: '', color_general_id: '', categoria: 'basico', orden: 0 });
       fetchItems();
     } catch (error) {
       toast.error('Error al guardar color');
@@ -93,10 +93,11 @@ export const ColoresCatalogo = () => {
 
   const handleEdit = (item) => {
     setEditingItem(item);
-    setFormData({ 
-      nombre: item.nombre, 
+    setFormData({
+      nombre: item.nombre,
       color_general_id: item.color_general_id || '',
-      orden: item.orden || 0
+      categoria: item.categoria || 'basico',
+      orden: item.orden || 0,
     });
     setDialogOpen(true);
   };
@@ -114,7 +115,7 @@ export const ColoresCatalogo = () => {
 
   const handleNew = () => {
     setEditingItem(null);
-    setFormData({ nombre: '', color_general_id: '', orden: 0 });
+    setFormData({ nombre: '', color_general_id: '', categoria: 'basico', orden: 0 });
     setDialogOpen(true);
   };
 
@@ -142,19 +143,20 @@ export const ColoresCatalogo = () => {
                 <TableHead className="w-[40px]"></TableHead>
                 <TableHead>Nombre</TableHead>
                 <TableHead>Color General</TableHead>
+                <TableHead>Categoría</TableHead>
                 <TableHead className="w-[100px]">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8">
+                  <TableCell colSpan={5} className="text-center py-8">
                     Cargando...
                   </TableCell>
                 </TableRow>
               ) : items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     No hay colores registrados
                   </TableCell>
                 </TableRow>
@@ -169,6 +171,15 @@ export const ColoresCatalogo = () => {
                     <SortableRow key={item.id} id={item.id}>
                       <TableCell className="font-medium">{item.nombre}</TableCell>
                       <TableCell className="text-muted-foreground">{item.color_general_nombre || '-'}</TableCell>
+                      <TableCell>
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          item.categoria === 'moda'
+                            ? 'bg-violet-100 text-violet-700'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {item.categoria === 'moda' ? 'Moda' : 'Básico'}
+                        </span>
+                      </TableCell>
                       <TableCell>
                         <div className="flex gap-2">
                           <Button
@@ -218,6 +229,24 @@ export const ColoresCatalogo = () => {
                   required
                   data-testid="input-nombre-color"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Categoría</Label>
+                <div className="flex gap-4">
+                  {['basico', 'moda'].map((cat) => (
+                    <label key={cat} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="categoria"
+                        value={cat}
+                        checked={formData.categoria === cat}
+                        onChange={() => setFormData({ ...formData, categoria: cat })}
+                        className="accent-primary"
+                      />
+                      <span className="text-sm capitalize">{cat === 'basico' ? 'Básico' : 'Moda'}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Color General</Label>

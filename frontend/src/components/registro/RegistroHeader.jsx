@@ -6,7 +6,7 @@ import {
 } from '../ui/select';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, AlertTriangle, Play, CheckCircle2, MessageCircle, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Save, AlertTriangle, Play, CheckCircle2, MessageCircle, FileSpreadsheet } from 'lucide-react';
 
 // Mini-componente de stats de mensajes para el header
 const HeaderMensajes = ({ registroId, API, onOpen, refreshKey }) => {
@@ -48,7 +48,7 @@ export const RegistroHeader = ({
   autoGuardarEstado, setForzarEstadoDialog, setSugerenciaMovDialog,
   setRetrocesoDialog, setAdvertenciaCantidadDialog,
   handleSubmit, permisos, setConvOpen, convRefreshKey,
-  cameFromRegistro,
+  cameFromRegistro, navegacion,
 }) => {
 
   const canChangeStates = permisos?.canAction?.('cambiar_estados') !== false;
@@ -99,6 +99,32 @@ export const RegistroHeader = ({
           <Button variant="ghost" size="icon" className="registro-btn-back" onClick={() => navigate('/registros')} data-testid="btn-volver">
             <ArrowLeft className="h-5 w-5" />
           </Button>
+        )}
+        {isEditing && (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              disabled={!navegacion?.anterior}
+              onClick={() => navegacion?.anterior && navigate(`/registros/editar/${navegacion.anterior.id}`)}
+              title={navegacion?.anterior ? `Ir a Corte ${navegacion.anterior.n_corte}` : 'No hay registro anterior'}
+              data-testid="btn-nav-anterior"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              disabled={!navegacion?.siguiente}
+              onClick={() => navegacion?.siguiente && navigate(`/registros/editar/${navegacion.siguiente.id}`)}
+              title={navegacion?.siguiente ? `Ir a Corte ${navegacion.siguiente.n_corte}` : 'No hay registro siguiente'}
+              data-testid="btn-nav-siguiente"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
