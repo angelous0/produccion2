@@ -30,6 +30,7 @@ import {
 } from '../components/ui/select';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
+import { Checkbox } from '../components/ui/checkbox';
 import { Plus, Trash2, ArrowUpCircle, Link2, Layers, Pencil, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
@@ -54,6 +55,8 @@ export const InventarioSalidas = () => {
   const [selectedRollo, setSelectedRollo] = useState(null);
   const [filtroLinea, setFiltroLinea] = useState('');
   const [busqueda, setBusqueda] = useState('');
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [formData, setFormData] = useState({
     item_id: '',
     cantidad: 1,
@@ -198,6 +201,46 @@ export const InventarioSalidas = () => {
     }
   };
 
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === salidasFiltradas.length && salidasFiltradas.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(salidasFiltradas.map(s => s.id)));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`¿Eliminar ${selectedIds.size} salida(s)? Se restaurará el stock de cada una.`)) return;
+    setBulkDeleting(true);
+    const ids = [...selectedIds];
+    let ok = 0, fail = 0;
+    const errores = [];
+    for (const id of ids) {
+      try {
+        await axios.delete(`${API}/inventario-salidas/${id}`);
+        ok++;
+      } catch (error) {
+        fail++;
+        const msg = typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error';
+        errores.push(msg);
+      }
+    }
+    setBulkDeleting(false);
+    setSelectedIds(new Set());
+    if (ok > 0) toast.success(`${ok} salida(s) eliminada(s)`);
+    if (fail > 0) toast.error(`${fail} fallaron${errores[0] ? `: ${errores[0]}` : ''}`);
+    fetchData();
+  };
+
   return (
     <div className="space-y-6" data-testid="salidas-page">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -229,6 +272,17 @@ export const InventarioSalidas = () => {
               ))}
             </SelectContent>
           </Select>
+          {selectedIds.size > 0 && (
+            <Button
+              variant="destructive"
+              onClick={handleDeleteSelected}
+              disabled={bulkDeleting}
+              data-testid="btn-eliminar-seleccionadas"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Eliminar {selectedIds.size} seleccionada{selectedIds.size !== 1 ? 's' : ''}
+            </Button>
+          )}
           <Button variant="outline" onClick={() => setRollosDialogOpen(true)} data-testid="btn-salida-rollos">
             <Layers className="h-4 w-4 mr-2" />
             Salida de Rollos
@@ -246,6 +300,14 @@ export const InventarioSalidas = () => {
             <Table>
               <TableHeader>
                 <TableRow className="data-table-header">
+                  <TableHead className="w-[40px]">
+                    <Checkbox
+                      checked={salidasFiltradas.length > 0 && selectedIds.size === salidasFiltradas.length}
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Seleccionar todas"
+                      data-testid="checkbox-seleccionar-todas"
+                    />
+                  </TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Item</TableHead>
                   <TableHead>Línea de Negocio</TableHead>
@@ -259,19 +321,27 @@ export const InventarioSalidas = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">
+                    <TableCell colSpan={9} className="text-center py-8">
                       Cargando...
                     </TableCell>
                   </TableRow>
                 ) : salidasFiltradas.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                       {filtroLinea || busqueda ? 'Sin resultados para los filtros aplicados' : 'No hay salidas registradas'}
                     </TableCell>
                   </TableRow>
                 ) : (
                   salidasFiltradas.map((salida) => (
                     <TableRow key={salida.id} className="data-table-row" data-testid={`salida-row-${salida.id}`}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.has(salida.id)}
+                          onCheckedChange={() => toggleSelect(salida.id)}
+                          aria-label={`Seleccionar salida ${salida.id}`}
+                          data-testid={`checkbox-salida-${salida.id}`}
+                        />
+                      </TableCell>
                       <TableCell className="font-mono text-sm">
                         {formatDate(salida.fecha)}
                       </TableCell>
