@@ -1510,7 +1510,9 @@ async def delete_ajuste(ajuste_id: str, _u=Depends(get_current_user)):
         item = await conn.fetchrow("SELECT control_por_rollos FROM prod_inventario WHERE id = $1", ajuste['item_id'])
 
         incremento = -float(ajuste['cantidad']) if ajuste['tipo'] == "entrada" else float(ajuste['cantidad'])
-        if ajuste['tipo'] == "entrada":
+        # Validar stock negativo solo si NO es cascade de ajuste_migracion
+        # (ese cascade elimina las salidas y restaura stock, compensando el decremento)
+        if ajuste['tipo'] == "entrada" and ajuste.get('subtipo') != 'ajuste_migracion':
             current_item = await conn.fetchrow("SELECT stock_actual FROM prod_inventario WHERE id = $1", ajuste['item_id'])
             if current_item and float(current_item['stock_actual']) < float(ajuste['cantidad']):
                 raise HTTPException(status_code=400, detail="No se puede eliminar: dejaría el stock negativo")
