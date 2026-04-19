@@ -91,6 +91,19 @@ async def _match_entalle(conn, nombre: str, empresa_id: int, entalles_cache: lis
     return None
 
 
+def _build_order_by(sort_by: str, sort_dir: str) -> str:
+    """Genera ORDER BY seguro (whitelist) — valores ya validados por regex del endpoint."""
+    direction = 'DESC' if sort_dir == 'desc' else 'ASC'
+    if sort_by == 'stock':
+        return f"p.odoo_stock_actual {direction} NULLS LAST, p.odoo_nombre ASC"
+    if sort_by == 'nombre':
+        return f"p.odoo_nombre {direction}"
+    if sort_by == 'estado':
+        return f"p.estado {direction}, p.odoo_nombre ASC"
+    # default
+    return "p.estado ASC, p.odoo_nombre ASC"
+
+
 def _recalcular_estado(vals: dict, tipo_nombre: Optional[str]) -> tuple:
     """Devuelve (estado, campos_pendientes) según los FKs actuales.
 
@@ -318,6 +331,8 @@ async def list_productos(
     tipo_id: Optional[str] = None,
     tela_general_id: Optional[str] = None,
     q: Optional[str] = None,
+    sort_by: Optional[str] = Query('default', pattern='^(default|stock|nombre|estado)$'),
+    sort_dir: Optional[str] = Query('asc', pattern='^(asc|desc)$'),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=500),
     current_user: dict = Depends(get_current_user),
@@ -374,7 +389,7 @@ async def list_productos(
             LEFT JOIN prod_lavados l  ON p.lavado_id = l.id
             LEFT JOIN prod_colores_generales cc ON p.categoria_color_id = cc.id
             WHERE {where}
-            ORDER BY p.estado, p.odoo_nombre
+            ORDER BY {_build_order_by(sort_by, sort_dir)}
             LIMIT {limit} OFFSET {offset}
         """, *params)
         items = [row_to_dict(r) for r in rows]

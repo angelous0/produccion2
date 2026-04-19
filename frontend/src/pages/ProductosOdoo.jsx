@@ -9,7 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '../components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Package, RefreshCw, Search, Pencil, Loader2, Ban, CheckCircle2 } from 'lucide-react';
+import { Package, RefreshCw, Search, Pencil, Loader2, Ban, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { toast } from 'sonner';
 import ProductoOdooModal from '../components/ProductoOdooModal';
 
@@ -34,6 +34,8 @@ const ProductosOdoo = () => {
   const [filtroMarca, setFiltroMarca] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
   const [filtroTelaGeneral, setFiltroTelaGeneral] = useState('');
+  const [sortBy, setSortBy] = useState('default');
+  const [sortDir, setSortDir] = useState('asc');
   const [marcas, setMarcas] = useState([]);
   const [tipos, setTipos] = useState([]);
   const [telasGenerales, setTelasGenerales] = useState([]);
@@ -61,6 +63,10 @@ const ProductosOdoo = () => {
       if (filtroMarca) params.append('marca_id', filtroMarca);
       if (filtroTipo) params.append('tipo_id', filtroTipo);
       if (filtroTelaGeneral) params.append('tela_general_id', filtroTelaGeneral);
+      if (sortBy !== 'default') {
+        params.append('sort_by', sortBy);
+        params.append('sort_dir', sortDir);
+      }
       const res = await axios.get(`${API}/odoo-enriq?${params.toString()}`);
       setItems(res.data.items || []);
       setTotal(res.data.total || 0);
@@ -69,7 +75,7 @@ const ProductosOdoo = () => {
     } finally {
       setLoading(false);
     }
-  }, [tab, page, q, filtroMarca, filtroTipo, filtroTelaGeneral]);
+  }, [tab, page, q, filtroMarca, filtroTipo, filtroTelaGeneral, sortBy, sortDir]);
 
   useEffect(() => {
     (async () => {
@@ -108,6 +114,19 @@ const ProductosOdoo = () => {
     } finally {
       setSyncing(false);
     }
+  };
+
+  const toggleSort = (col) => {
+    if (sortBy === col) {
+      // mismo col: alterna dirección; si ya está en desc, vuelve a default
+      if (sortDir === 'asc') setSortDir('desc');
+      else { setSortBy('default'); setSortDir('asc'); }
+    } else {
+      setSortBy(col);
+      // Stock y fechas por defecto desc (mayor primero); resto asc
+      setSortDir(col === 'stock' ? 'desc' : 'asc');
+    }
+    setPage(1);
   };
 
   const handleEdit = (item) => setEditing(item);
@@ -206,14 +225,20 @@ const ProductosOdoo = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[100px]">SKU</TableHead>
-                  <TableHead>Producto</TableHead>
+                  <TableHead>
+                    <SortHeader label="Producto" col="nombre" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
+                  </TableHead>
                   <TableHead>Marca</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Tela</TableHead>
                   <TableHead>Entalle</TableHead>
                   <TableHead>Género</TableHead>
-                  <TableHead className="text-right">Stock</TableHead>
-                  <TableHead>Estado</TableHead>
+                  <TableHead className="text-right">
+                    <SortHeader label="Stock" col="stock" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} align="right" />
+                  </TableHead>
+                  <TableHead>
+                    <SortHeader label="Estado" col="estado" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
+                  </TableHead>
                   <TableHead className="w-[80px]">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -282,6 +307,22 @@ const ProductosOdoo = () => {
         />
       )}
     </div>
+  );
+};
+
+const SortHeader = ({ label, col, sortBy, sortDir, onClick, align = 'left' }) => {
+  const active = sortBy === col;
+  const Icon = !active ? ArrowUpDown : sortDir === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(col)}
+      className={`inline-flex items-center gap-1 hover:text-primary transition-colors font-medium ${align === 'right' ? 'ml-auto' : ''} ${active ? 'text-primary' : ''}`}
+      data-testid={`sort-${col}`}
+    >
+      <span>{label}</span>
+      <Icon className="h-3 w-3" />
+    </button>
   );
 };
 
