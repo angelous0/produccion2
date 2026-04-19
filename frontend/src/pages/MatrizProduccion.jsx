@@ -642,22 +642,40 @@ export const MatrizProduccion = () => {
                         onMouseDown={e => startResize(e, '__hilo')}
                       />
                     </th>
-                    {effectiveCols.map(col => (
-                      <th
-                        key={col}
-                        className="text-center p-2.5 font-medium border-r whitespace-nowrap relative"
-                        style={{ width: getColWidth(col), minWidth: getColWidth(col), maxWidth: getColWidth(col) }}
-                      >
-                        <div>{col}</div>
-                        {mergedCols[col]?.length > 0 && (
-                          <div className="text-[9px] text-muted-foreground font-normal">+{mergedCols[col].join(', ')}</div>
-                        )}
-                        <div
-                          className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
-                          onMouseDown={e => startResize(e, col)}
-                        />
-                      </th>
-                    ))}
+                    {effectiveCols.map(col => {
+                      const w = getColWidth(col);
+                      // Auto-ajuste del tamaño de letra según ancho
+                      const fontSize = w < 60 ? '9px' : w < 80 ? '10px' : w < 100 ? '11px' : '12px';
+                      return (
+                        <th
+                          key={col}
+                          className="text-center p-1.5 font-medium border-r relative align-middle"
+                          style={{ width: w, minWidth: w, maxWidth: w }}
+                        >
+                          <div
+                            className="leading-tight break-words"
+                            style={{
+                              fontSize,
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                              wordBreak: 'break-word',
+                            }}
+                            title={col}
+                          >
+                            {col}
+                          </div>
+                          {mergedCols[col]?.length > 0 && (
+                            <div className="text-[9px] text-muted-foreground font-normal truncate" title={mergedCols[col].join(', ')}>+{mergedCols[col].join(', ')}</div>
+                          )}
+                          <div
+                            className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
+                            onMouseDown={e => startResize(e, col)}
+                          />
+                        </th>
+                      );
+                    })}
                     <th
                       className="text-center p-2.5 font-semibold bg-muted/40 relative"
                       style={{ width: getColWidth('__total'), minWidth: getColWidth('__total'), maxWidth: getColWidth('__total') }}
