@@ -798,18 +798,18 @@ async def matriz_produccion(
                 r.curva,
                 r.fecha_creacion,
                 r.distribucion_colores as dist_colores_raw,
-                COALESCE(ma.id,'')   as marca_id,
-                COALESCE(ma.nombre,'Sin marca')  as marca,
-                COALESCE(tp.id,'')   as tipo_id_val,
-                COALESCE(tp.nombre,'Sin tipo')   as tipo,
-                COALESCE(en.id,'')   as entalle_id_val,
-                COALESCE(en.nombre,'Sin entalle') as entalle,
-                COALESCE(te.id,'')   as tela_id_val,
-                COALESCE(te.nombre,'Sin tela')   as tela,
-                COALESCE(hi.id,'')   as hilo_id_val,
-                COALESCE(hi.nombre,'Sin hilo')   as hilo,
-                COALESCE(he.nombre,'')   as hilo_especifico,
-                m.nombre  as modelo_nombre,
+                COALESCE(ma.id, mma.id, '')   as marca_id,
+                COALESCE(ma.nombre, mma.nombre, r.modelo_manual->>'marca_texto', 'Sin marca')  as marca,
+                COALESCE(tp.id, mtp.id, '')   as tipo_id_val,
+                COALESCE(tp.nombre, mtp.nombre, r.modelo_manual->>'tipo_texto', 'Sin tipo')   as tipo,
+                COALESCE(en.id, men.id, '')   as entalle_id_val,
+                COALESCE(en.nombre, men.nombre, r.modelo_manual->>'entalle_texto', 'Sin entalle') as entalle,
+                COALESCE(te.id, mte.id, '')   as tela_id_val,
+                COALESCE(te.nombre, mte.nombre, r.modelo_manual->>'tela_texto', 'Sin tela')   as tela,
+                COALESCE(hi.id, mhi.id, '')   as hilo_id_val,
+                COALESCE(hi.nombre, mhi.nombre, r.modelo_manual->>'hilo_texto', 'Sin hilo')   as hilo,
+                COALESCE(he.nombre, mhe.nombre, r.modelo_manual->>'hilo_especifico_texto', '')   as hilo_especifico,
+                COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo')  as modelo_nombre,
                 rp.nombre as ruta_nombre,
                 COALESCE(rt_sum.prendas, 0) as prendas_tabla,
                 COALESCE(CURRENT_DATE - mov_first.primera_fecha, 0) as dias_proceso,
@@ -826,6 +826,12 @@ async def matriz_produccion(
             LEFT JOIN prod_telas te   ON m.tela_id = te.id
             LEFT JOIN prod_hilos hi   ON m.hilo_id = hi.id
             LEFT JOIN prod_hilos_especificos he ON he.id = COALESCE(m.hilo_especifico_id, r.hilo_especifico_id)
+            LEFT JOIN prod_marcas mma ON (r.modelo_manual->>'marca_id') = mma.id
+            LEFT JOIN prod_tipos mtp  ON (r.modelo_manual->>'tipo_id') = mtp.id
+            LEFT JOIN prod_entalles men ON (r.modelo_manual->>'entalle_id') = men.id
+            LEFT JOIN prod_telas mte  ON (r.modelo_manual->>'tela_id') = mte.id
+            LEFT JOIN prod_hilos mhi  ON (r.modelo_manual->>'hilo_id') = mhi.id
+            LEFT JOIN prod_hilos_especificos mhe ON (r.modelo_manual->>'hilo_especifico_id') = mhe.id
             LEFT JOIN prod_rutas_produccion rp ON m.ruta_produccion_id = rp.id
             LEFT JOIN LATERAL (
                 SELECT COALESCE(SUM(rt.cantidad_real), 0) as prendas
@@ -851,7 +857,13 @@ async def matriz_produccion(
                 WHERE mp2.registro_id = r.id
             ) mov_agg ON true
             WHERE {where_sql}
-            ORDER BY ma.nombre, tp.nombre, en.nombre, te.nombre, hi.nombre, r.n_corte
+            ORDER BY
+                COALESCE(ma.nombre, mma.nombre, r.modelo_manual->>'marca_texto'),
+                COALESCE(tp.nombre, mtp.nombre, r.modelo_manual->>'tipo_texto'),
+                COALESCE(en.nombre, men.nombre, r.modelo_manual->>'entalle_texto'),
+                COALESCE(te.nombre, mte.nombre, r.modelo_manual->>'tela_texto'),
+                COALESCE(hi.nombre, mhi.nombre, r.modelo_manual->>'hilo_texto'),
+                r.n_corte
         """, *params)
 
         # ── 3. Calcular prendas con fallback ──────────────────────
