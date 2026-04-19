@@ -664,10 +664,15 @@ async def get_variantes(template_id: int, current_user: dict = Depends(get_curre
     empresa_id = current_user.get("empresa_id") or 7
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # Excluimos variantes sin color (residuos históricos de Odoo que no
+        # se pueden mapear y confunden al usuario). Solo tenemos SELECT sobre
+        # el schema odoo, por eso filtramos acá en lugar de DELETE.
         variantes = await conn.fetch("""
             SELECT product_product_id AS product_id, talla, color
             FROM odoo.v_product_variant_flat
             WHERE product_tmpl_id = $1
+              AND color IS NOT NULL
+              AND TRIM(color) <> ''
         """, template_id)
 
         if not variantes:
@@ -738,14 +743,7 @@ async def get_variantes(template_id: int, current_user: dict = Depends(get_curre
 
         colores_out = []
         mapeados_count = 0
-        fantasma_placeholder = '— sin color —'
         for color_odoo, g in grupos.items():
-            # Filtrar grupos fantasma: sin color asignado en Odoo + sin stock + sin ventas
-            # (variantes residuales que quedaron en la DB Odoo y no aportan nada)
-            if color_odoo == fantasma_placeholder and g['stock_total'] == 0 and g['unidades_vendidas'] == 0:
-                g.pop('_mset', None)
-                continue
-
             mset = g.pop('_mset')
             if None in mset and len(mset) > 1:
                 estado = 'parcial'
