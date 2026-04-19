@@ -299,6 +299,45 @@ async def ensure_startup_migrations():
         # Tipo de ingreso para diferenciar stock_inicial de compras normales
         await conn.execute("ALTER TABLE prod_inventario_ingresos ADD COLUMN IF NOT EXISTS tipo_ingreso VARCHAR NULL")
 
+        # ─── Integración Odoo: tabla puente de enriquecimiento ──────────────
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_odoo_productos_enriq (
+                id VARCHAR PRIMARY KEY,
+                odoo_template_id INTEGER NOT NULL,
+                empresa_id INTEGER NOT NULL DEFAULT 7,
+                odoo_nombre VARCHAR,
+                odoo_default_code VARCHAR,
+                odoo_marca_texto VARCHAR,
+                odoo_tipo_texto VARCHAR,
+                odoo_active BOOLEAN DEFAULT TRUE,
+                odoo_stock_actual NUMERIC DEFAULT 0,
+                marca_id VARCHAR,
+                tipo_id VARCHAR,
+                tela_general_id VARCHAR,
+                tela_id VARCHAR,
+                entalle_id VARCHAR,
+                genero_id VARCHAR,
+                cuello_id VARCHAR,
+                detalle_id VARCHAR,
+                lavado_id VARCHAR,
+                categoria_color_id VARCHAR,
+                estado VARCHAR NOT NULL DEFAULT 'pendiente',
+                excluido_motivo VARCHAR,
+                campos_pendientes JSONB DEFAULT '[]'::jsonb,
+                notas TEXT,
+                classified_by VARCHAR,
+                classified_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                last_sync TIMESTAMPTZ,
+                CONSTRAINT uq_odoo_template_empresa UNIQUE (odoo_template_id, empresa_id)
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_odoo_enriq_estado ON prod_odoo_productos_enriq(empresa_id, estado)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_odoo_enriq_marca ON prod_odoo_productos_enriq(marca_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_odoo_enriq_tipo ON prod_odoo_productos_enriq(tipo_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_odoo_enriq_template ON prod_odoo_productos_enriq(odoo_template_id)")
+
         # Tabla de configuración global del sistema
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS prod_configuracion (

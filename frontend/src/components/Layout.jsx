@@ -117,6 +117,10 @@ const operacionesItems = [
   { to: '/muestras', icon: FlaskConical, label: 'Muestras' },
 ];
 
+const odooItems = [
+  { to: '/productos-odoo', icon: Package, label: 'Productos Odoo' },
+];
+
 const inventarioItems = [
   { to: '/inventario', icon: Package, label: 'Inventario' },
   { to: '/inventario/ingresos', icon: ArrowDownCircle, label: 'Ingresos' },
@@ -688,6 +692,17 @@ export const Layout = () => {
               collapsed={sidebarCollapsed}
               onItemClick={closeMobileSidebar}
               dotColor="bg-gray-400"
+            />
+
+            {/* ── Odoo — cerrado por defecto ── */}
+            <NavGroup
+              label="Odoo"
+              storageKey="odoo"
+              defaultOpen={false}
+              items={filterItems(odooItems)}
+              collapsed={sidebarCollapsed}
+              onItemClick={closeMobileSidebar}
+              dotColor="bg-indigo-500"
             />
 
             {/* ── Maestros — cerrado por defecto ── */}

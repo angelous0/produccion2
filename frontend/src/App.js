@@ -23,6 +23,7 @@ const Usuarios = lazy(() => import("./pages/Usuarios").then(m => ({ default: m.U
 const HistorialActividad = lazy(() => import("./pages/HistorialActividad").then(m => ({ default: m.HistorialActividad })));
 const Backups = lazy(() => import("./pages/Backups").then(m => ({ default: m.Backups })));
 const ConfigEmpresa = lazy(() => import("./pages/ConfigEmpresa"));
+const ProductosOdoo = lazy(() => import("./pages/ProductosOdoo"));
 const Marcas = lazy(() => import("./pages/Marcas").then(m => ({ default: m.Marcas })));
 const Tipos = lazy(() => import("./pages/Tipos").then(m => ({ default: m.Tipos })));
 const Entalles = lazy(() => import("./pages/Entalles").then(m => ({ default: m.Entalles })));
@@ -174,6 +175,7 @@ function AppRoutes() {
         <Route path="inventario/salidas-libres" element={<LazyWrap><SalidasLibres /></LazyWrap>} />
         <Route path="muestras" element={<LazyWrap><Muestras /></LazyWrap>} />
         <Route path="muestras/:id" element={<LazyWrap><MuestraDetalle /></LazyWrap>} />
+        <Route path="productos-odoo" element={<LazyWrap><ProductosOdoo /></LazyWrap>} />
         <Route path="maestros/servicios" element={<LazyWrap><ServiciosProduccion /></LazyWrap>} />
         <Route path="maestros/personas" element={<LazyWrap><PersonasProduccion /></LazyWrap>} />
         <Route path="maestros/rutas" element={<LazyWrap><RutasProduccion /></LazyWrap>} />

@@ -642,3 +642,55 @@ class ReorderRequest(BaseModel):
 class DivisionLoteRequest(BaseModel):
     tallas_hijo: list
     estado_hijo: Optional[str] = None
+
+
+# ==================== ODOO ENRIQUECIMIENTO ====================
+class OdooProductoEnriq(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    odoo_template_id: int
+    empresa_id: int = 7
+
+    odoo_nombre: Optional[str] = None
+    odoo_default_code: Optional[str] = None
+    odoo_marca_texto: Optional[str] = None
+    odoo_tipo_texto: Optional[str] = None
+    odoo_active: bool = True
+    odoo_stock_actual: float = 0
+
+    marca_id: Optional[str] = None
+    tipo_id: Optional[str] = None
+    tela_general_id: Optional[str] = None
+    tela_id: Optional[str] = None
+    entalle_id: Optional[str] = None
+    genero_id: Optional[str] = None
+    cuello_id: Optional[str] = None
+    detalle_id: Optional[str] = None
+    lavado_id: Optional[str] = None
+    categoria_color_id: Optional[str] = None
+
+    estado: str = 'pendiente'
+    excluido_motivo: Optional[str] = None
+    campos_pendientes: List[str] = []
+    notas: Optional[str] = None
+
+    classified_by: Optional[str] = None
+    classified_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    last_sync: Optional[datetime] = None
+
+
+class OdooProductoClasificarInput(BaseModel):
+    marca_id: Optional[str] = None
+    tipo_id: Optional[str] = None
+    tela_general_id: Optional[str] = None
+    tela_id: Optional[str] = None
+    entalle_id: Optional[str] = None
+    genero_id: Optional[str] = None
+    cuello_id: Optional[str] = None
+    detalle_id: Optional[str] = None
+    lavado_id: Optional[str] = None
+    categoria_color_id: Optional[str] = None
+    notas: Optional[str] = None
+    excluir: Optional[bool] = False
