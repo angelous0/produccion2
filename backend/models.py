@@ -670,6 +670,7 @@ class OdooProductoEnriq(BaseModel):
     cuello_id: Optional[str] = None
     detalle_id: Optional[str] = None
     lavado_id: Optional[str] = None
+    hilo_id: Optional[str] = None
     categoria_color_id: Optional[str] = None
 
     estado: str = 'pendiente'
@@ -702,6 +703,7 @@ class OdooProductoClasificarInput(BaseModel):
     cuello_id: Optional[str] = None
     detalle_id: Optional[str] = None
     lavado_id: Optional[str] = None
+    hilo_id: Optional[str] = None
     categoria_color_id: Optional[str] = None
     notas: Optional[str] = None
     excluir: Optional[bool] = False

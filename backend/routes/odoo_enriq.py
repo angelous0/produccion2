@@ -112,6 +112,17 @@ async def _match_tela(conn, tela_texto: str, entalle_id: Optional[str], empresa_
     )
 
 
+async def _match_hilo(conn, hilo_texto: str, empresa_id: int) -> Optional[str]:
+    """Match exacto case-insensitive contra prod_hilos.nombre (hilo general)."""
+    if not hilo_texto:
+        return None
+    return await conn.fetchval(
+        """SELECT id FROM prod_hilos
+           WHERE LOWER(TRIM(nombre)) = LOWER(TRIM($1)) LIMIT 1""",
+        hilo_texto.strip(),
+    )
+
+
 def _build_order_by(sort_by: str, sort_dir: str) -> str:
     """Genera ORDER BY seguro (whitelist) — valores ya validados por regex del endpoint."""
     direction = 'DESC' if sort_dir == 'desc' else 'ASC'
@@ -213,6 +224,7 @@ async def sync_odoo_productos(current_user: dict = Depends(get_current_user)):
             tela_general_id = await _match_tela_general(conn, tipo_texto, empresa_id)
             entalle_id = await _match_entalle(conn, nombre, empresa_id, entalles_cache, entalle_texto)
             tela_id = await _match_tela(conn, tela_texto, entalle_id, empresa_id)
+            hilo_id = await _match_hilo(conn, hilo_texto, empresa_id)
 
             # Determinar estado y exclusión
             tipo_norm = (tipo_texto or '').strip().lower()
@@ -278,16 +290,17 @@ async def sync_odoo_productos(current_user: dict = Depends(get_current_user)):
                             tela_general_id = $11,
                             tela_id = $12,
                             entalle_id = $13,
-                            estado = $14,
-                            excluido_motivo = $15,
-                            campos_pendientes = $16::jsonb,
+                            hilo_id = $14,
+                            estado = $15,
+                            excluido_motivo = $16,
+                            campos_pendientes = $17::jsonb,
                             last_sync = NOW(),
                             updated_at = NOW()
-                        WHERE id = $17
+                        WHERE id = $18
                     """, nombre, marca_texto, tipo_texto,
                          entalle_texto, tela_texto, hilo_texto,
                          active, stock,
-                         marca_id, tipo_id, tela_general_id, tela_id, entalle_id,
+                         marca_id, tipo_id, tela_general_id, tela_id, entalle_id, hilo_id,
                          estado, excluido_motivo, json.dumps(campos_pendientes),
                          existente['id'])
                 actualizados += 1
@@ -299,14 +312,14 @@ async def sync_odoo_productos(current_user: dict = Depends(get_current_user)):
                         odoo_nombre, odoo_marca_texto, odoo_tipo_texto,
                         odoo_entalle_texto, odoo_tela_texto, odoo_hilo_texto,
                         odoo_active, odoo_stock_actual,
-                        marca_id, tipo_id, tela_general_id, tela_id, entalle_id,
+                        marca_id, tipo_id, tela_general_id, tela_id, entalle_id, hilo_id,
                         estado, excluido_motivo, campos_pendientes, last_sync
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, NOW())
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20::jsonb, NOW())
                 """, new_id, template_id, empresa_id,
                      nombre, marca_texto, tipo_texto,
                      entalle_texto, tela_texto, hilo_texto,
                      active, stock,
-                     marca_id, tipo_id, tela_general_id, tela_id, entalle_id,
+                     marca_id, tipo_id, tela_general_id, tela_id, entalle_id, hilo_id,
                      estado, excluido_motivo, json.dumps(campos_pendientes))
                 nuevos += 1
 
@@ -417,6 +430,7 @@ async def list_productos(
                    c.nombre  AS cuello_nombre,
                    d.nombre  AS detalle_nombre,
                    l.nombre  AS lavado_nombre,
+                   h.nombre  AS hilo_nombre,
                    cc.nombre AS categoria_color_nombre
             FROM prod_odoo_productos_enriq p
             LEFT JOIN prod_marcas ma ON p.marca_id = ma.id
@@ -428,6 +442,7 @@ async def list_productos(
             LEFT JOIN prod_cuellos c  ON p.cuello_id = c.id
             LEFT JOIN prod_detalles d ON p.detalle_id = d.id
             LEFT JOIN prod_lavados l  ON p.lavado_id = l.id
+            LEFT JOIN prod_hilos h    ON p.hilo_id = h.id
             LEFT JOIN prod_colores_generales cc ON p.categoria_color_id = cc.id
             WHERE {where}
             ORDER BY {_build_order_by(sort_by, sort_dir)}
@@ -452,6 +467,7 @@ async def get_producto(enriq_id: str, current_user: dict = Depends(get_current_u
                    c.nombre  AS cuello_nombre,
                    d.nombre  AS detalle_nombre,
                    l.nombre  AS lavado_nombre,
+                   h.nombre  AS hilo_nombre,
                    cc.nombre AS categoria_color_nombre
             FROM prod_odoo_productos_enriq p
             LEFT JOIN prod_marcas ma ON p.marca_id = ma.id
@@ -463,6 +479,7 @@ async def get_producto(enriq_id: str, current_user: dict = Depends(get_current_u
             LEFT JOIN prod_cuellos c  ON p.cuello_id = c.id
             LEFT JOIN prod_detalles d ON p.detalle_id = d.id
             LEFT JOIN prod_lavados l  ON p.lavado_id = l.id
+            LEFT JOIN prod_hilos h    ON p.hilo_id = h.id
             LEFT JOIN prod_colores_generales cc ON p.categoria_color_id = cc.id
             WHERE p.id = $1
         """, enriq_id)
@@ -528,18 +545,19 @@ async def clasificar_producto(
                 cuello_id = $7,
                 detalle_id = $8,
                 lavado_id = $9,
-                categoria_color_id = $10,
-                notas = $11,
-                estado = $12,
+                hilo_id = $10,
+                categoria_color_id = $11,
+                notas = $12,
+                estado = $13,
                 excluido_motivo = NULL,
-                campos_pendientes = $13::jsonb,
-                classified_by = $14,
+                campos_pendientes = $14::jsonb,
+                classified_by = $15,
                 classified_at = NOW(),
                 updated_at = NOW()
-            WHERE id = $15
+            WHERE id = $16
         """, body.marca_id, body.tipo_id, body.tela_general_id, body.tela_id,
              body.entalle_id, body.genero_id, body.cuello_id, body.detalle_id,
-             body.lavado_id, body.categoria_color_id, body.notas,
+             body.lavado_id, body.hilo_id, body.categoria_color_id, body.notas,
              nuevo_estado, json.dumps(pendientes),
              current_user.get('username'), enriq_id)
         return {"message": "Producto clasificado", "estado": nuevo_estado, "campos_pendientes": pendientes}

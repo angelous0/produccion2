@@ -31,6 +31,7 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
     cuello_id: producto.cuello_id || '',
     detalle_id: producto.detalle_id || '',
     lavado_id: producto.lavado_id || '',
+    hilo_id: producto.hilo_id || '',
     categoria_color_id: producto.categoria_color_id || '',
     notas: producto.notas || '',
     costo_manual: producto.costo_manual != null ? String(producto.costo_manual) : '',
@@ -41,7 +42,7 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
 
   const {
     marcas, tipos, entalles, telas, telasGenerales,
-    generos, cuellos, detalles, lavados, categoriasColor,
+    generos, cuellos, detalles, lavados, hilos, categoriasColor,
     mostrarCuello, mostrarLavado, esIdValido,
   } = useCascadaClasificacion({
     marca_id: form.marca_id,
@@ -194,7 +195,8 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
           {mostrarLavado && (
             <SelectField label="Lavado" requerido value={form.lavado_id} onChange={v => setField('lavado_id', v)} options={lavados} />
           )}
-          <SelectField label="Categoría Color" hint={producto.odoo_hilo_texto} value={form.categoria_color_id} onChange={v => setField('categoria_color_id', v)} options={categoriasColor} />
+          <SelectField label="Hilo" hint={producto.odoo_hilo_texto} value={form.hilo_id} onChange={v => setField('hilo_id', v)} options={hilos} />
+          <SelectField label="Categoría Color" value={form.categoria_color_id} onChange={v => setField('categoria_color_id', v)} options={categoriasColor} />
         </div>
 
         {/* Costo manual — editable para productos antiguos sin costo en Odoo */}

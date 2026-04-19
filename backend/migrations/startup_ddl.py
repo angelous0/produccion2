@@ -345,6 +345,9 @@ async def ensure_startup_migrations():
         await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS odoo_entalle_texto VARCHAR DEFAULT NULL")
         await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS odoo_tela_texto VARCHAR DEFAULT NULL")
         await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS odoo_hilo_texto VARCHAR DEFAULT NULL")
+        # FK a prod_hilos (hilo general) — asignable con auto-match
+        await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS hilo_id VARCHAR DEFAULT NULL")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_odoo_enriq_hilo ON prod_odoo_productos_enriq(hilo_id)")
 
         # Tabla de configuración global del sistema
         await conn.execute("""

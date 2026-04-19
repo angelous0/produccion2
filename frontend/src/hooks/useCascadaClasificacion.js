@@ -29,20 +29,23 @@ export function useCascadaClasificacion({ marca_id, tipo_id, entalle_id, tela_ge
   const [cuellos, setCuellos] = useState([]);
   const [detalles, setDetalles] = useState([]);
   const [lavados, setLavados] = useState([]);
+  const [hilos, setHilos] = useState([]);
   const [categoriasColor, setCategoriasColor] = useState([]);
 
-  // Marca + tela_general + color_general se cargan solo una vez (no dependen de nada)
+  // Marca + tela_general + color_general + hilos se cargan solo una vez
   useEffect(() => {
     (async () => {
       try {
-        const [m, tg, cc] = await Promise.all([
+        const [m, tg, cc, h] = await Promise.all([
           axios.get(`${API}/marcas`),
           axios.get(`${API}/telas-general`),
           axios.get(`${API}/colores-generales`),
+          axios.get(`${API}/hilos`),
         ]);
         setMarcas(m.data || []);
         setTelasGenerales(tg.data || []);
         setCategoriasColor(cc.data || []);
+        setHilos(h.data || []);
       } catch {}
     })();
   }, []);
@@ -151,6 +154,7 @@ export function useCascadaClasificacion({ marca_id, tipo_id, entalle_id, tela_ge
     cuellos,
     detalles,
     lavados,
+    hilos,
     categoriasColor,
     mostrarCuello,
     mostrarLavado,
