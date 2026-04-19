@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from db import get_pool
 from helpers import row_to_dict
 from auth_utils import get_current_user
-from models import OdooProductoClasificarInput
+from models import OdooProductoClasificarInput, OdooProductoCostoInput
 
 router = APIRouter(prefix="/api/odoo-enriq")
 
@@ -554,3 +554,40 @@ async def incluir_producto(enriq_id: str, current_user: dict = Depends(get_curre
             WHERE id = $3
         """, nuevo_estado, json.dumps(pendientes), enriq_id)
         return {"message": "Producto incluido", "estado": nuevo_estado, "campos_pendientes": pendientes}
+
+
+# ─── Costo manual ────────────────────────────────────────────────────
+
+@router.patch("/{enriq_id}/costo")
+async def actualizar_costo(
+    enriq_id: str,
+    body: OdooProductoCostoInput,
+    current_user: dict = Depends(get_current_user),
+):
+    """Actualiza el costo manual de un producto Odoo.
+
+    Usado para productos antiguos que no tienen costo en Odoo.
+    Los productos creados desde el módulo Producción traen costo automático.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        existe = await conn.fetchval(
+            "SELECT id FROM prod_odoo_productos_enriq WHERE id = $1", enriq_id
+        )
+        if not existe:
+            raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+        costo = body.costo_manual
+        if costo is not None and costo < 0:
+            raise HTTPException(status_code=400, detail="El costo no puede ser negativo")
+
+        await conn.execute("""
+            UPDATE prod_odoo_productos_enriq SET
+                costo_manual = $1,
+                costo_updated_at = NOW(),
+                costo_updated_by = $2,
+                updated_at = NOW()
+            WHERE id = $3
+        """, costo, current_user.get('username'), enriq_id)
+
+        return {"ok": True, "costo_manual": costo}

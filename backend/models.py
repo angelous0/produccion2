@@ -674,11 +674,19 @@ class OdooProductoEnriq(BaseModel):
     campos_pendientes: List[str] = []
     notas: Optional[str] = None
 
+    costo_manual: Optional[float] = None
+    costo_updated_at: Optional[datetime] = None
+    costo_updated_by: Optional[str] = None
+
     classified_by: Optional[str] = None
     classified_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     last_sync: Optional[datetime] = None
+
+
+class OdooProductoCostoInput(BaseModel):
+    costo_manual: Optional[float] = None
 
 
 class OdooProductoClasificarInput(BaseModel):

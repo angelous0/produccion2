@@ -236,6 +236,7 @@ const ProductosOdoo = () => {
                   <TableHead className="text-right">
                     <SortHeader label="Stock" col="stock" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} align="right" />
                   </TableHead>
+                  <TableHead className="text-right w-[110px]">Costo</TableHead>
                   <TableHead>
                     <SortHeader label="Estado" col="estado" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
                   </TableHead>
@@ -244,9 +245,9 @@ const ProductosOdoo = () => {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={10} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin inline-block mr-2" />Cargando…</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin inline-block mr-2" />Cargando…</TableCell></TableRow>
                 ) : items.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Sin productos</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Sin productos</TableCell></TableRow>
                 ) : items.map(it => (
                   <TableRow key={it.id} data-testid={`producto-row-${it.id}`}>
                     <TableCell className="font-mono text-xs">{it.odoo_default_code || `#${it.odoo_template_id}`}</TableCell>
@@ -269,6 +270,13 @@ const ProductosOdoo = () => {
                     <TableCell className="text-xs">{it.entalle_nombre || <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell className="text-xs">{it.genero_nombre || <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell className="text-right font-mono text-xs">{parseFloat(it.odoo_stock_actual || 0).toLocaleString('es-PE', { maximumFractionDigits: 0 })}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">
+                      {it.costo_manual != null ? (
+                        <span className="text-emerald-700 dark:text-emerald-400">S/ {parseFloat(it.costo_manual).toFixed(2)}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge className={`${ESTADO_COLORS[it.estado] || ''} capitalize`}>
                         {it.estado}

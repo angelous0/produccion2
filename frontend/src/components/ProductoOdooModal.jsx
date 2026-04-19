@@ -3,9 +3,10 @@ import axios from 'axios';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
+import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from './ui/dialog';
-import { Ban, Save, Loader2, Package } from 'lucide-react';
+import { Ban, Save, Loader2, Package, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
 import useCascadaClasificacion from '../hooks/useCascadaClasificacion';
 
@@ -32,7 +33,11 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
     lavado_id: producto.lavado_id || '',
     categoria_color_id: producto.categoria_color_id || '',
     notas: producto.notas || '',
+    costo_manual: producto.costo_manual != null ? String(producto.costo_manual) : '',
   });
+
+  // Guardamos el valor original para saber si cambió (evita PATCH innecesario)
+  const costoOriginal = producto.costo_manual != null ? parseFloat(producto.costo_manual) : null;
 
   const {
     marcas, tipos, entalles, telas, telasGenerales,
@@ -91,9 +96,28 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
     if (saving) return;
     setSaving(true);
     try {
-      const body = { ...form };
+      // Separar el costo del resto del form (va a un endpoint distinto)
+      const { costo_manual, ...clasifForm } = form;
+      const body = { ...clasifForm };
       Object.keys(body).forEach(k => { if (body[k] === '') body[k] = null; });
       const res = await axios.patch(`${API}/odoo-enriq/${producto.id}/clasificar`, body);
+
+      // Si el costo cambió, llamar al endpoint específico
+      const costoNuevo = costo_manual === '' || costo_manual == null
+        ? null
+        : parseFloat(costo_manual);
+      const costoCambio = (costoOriginal ?? null) !== (costoNuevo ?? null);
+      if (costoCambio) {
+        if (costoNuevo != null && (isNaN(costoNuevo) || costoNuevo < 0)) {
+          toast.error('Costo inválido');
+          setSaving(false);
+          return;
+        }
+        await axios.patch(`${API}/odoo-enriq/${producto.id}/costo`, {
+          costo_manual: costoNuevo,
+        });
+      }
+
       const estado = res.data?.estado;
       const pendientes = res.data?.campos_pendientes || [];
       if (estado === 'completo') toast.success('Producto clasificado — Completo');
@@ -166,6 +190,33 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
             <SelectField label="Lavado" requerido value={form.lavado_id} onChange={v => setField('lavado_id', v)} options={lavados} />
           )}
           <SelectField label="Categoría Color" value={form.categoria_color_id} onChange={v => setField('categoria_color_id', v)} options={categoriasColor} />
+        </div>
+
+        {/* Costo manual — editable para productos antiguos sin costo en Odoo */}
+        <div className="pt-4 mt-2 border-t">
+          <Label className="text-xs flex items-center gap-1.5">
+            <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+            Costo manual (S/)
+          </Label>
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            inputMode="decimal"
+            placeholder="0.00"
+            value={form.costo_manual ?? ''}
+            onChange={(e) => setForm(prev => ({ ...prev, costo_manual: e.target.value }))}
+            className="h-9 text-sm mt-1 font-mono"
+          />
+          <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug">
+            Se usa para calcular margen en reportes de Ventas. Los productos creados desde el módulo Producción traen el costo automático.
+            {producto.costo_updated_at && (
+              <span className="block mt-0.5">
+                Última actualización: {new Date(producto.costo_updated_at).toLocaleDateString('es-PE')}
+                {producto.costo_updated_by && ` por ${producto.costo_updated_by}`}
+              </span>
+            )}
+          </p>
         </div>
 
         <div className="pt-2">

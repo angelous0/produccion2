@@ -337,6 +337,10 @@ async def ensure_startup_migrations():
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_odoo_enriq_marca ON prod_odoo_productos_enriq(marca_id)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_odoo_enriq_tipo ON prod_odoo_productos_enriq(tipo_id)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_odoo_enriq_template ON prod_odoo_productos_enriq(odoo_template_id)")
+        # Costo manual para productos Odoo antiguos (los nuevos traen costo auto)
+        await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS costo_manual NUMERIC DEFAULT NULL")
+        await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS costo_updated_at TIMESTAMPTZ DEFAULT NULL")
+        await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS costo_updated_by VARCHAR DEFAULT NULL")
 
         # Tabla de configuración global del sistema
         await conn.execute("""
