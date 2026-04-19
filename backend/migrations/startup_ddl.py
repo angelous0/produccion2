@@ -349,6 +349,26 @@ async def ensure_startup_migrations():
         await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS hilo_id VARCHAR DEFAULT NULL")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_odoo_enriq_hilo ON prod_odoo_productos_enriq(hilo_id)")
 
+        # ─── Mapeo de colores por variante (product_id de Odoo) ────────────
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_odoo_color_mapping (
+                id VARCHAR PRIMARY KEY,
+                empresa_id INTEGER NOT NULL DEFAULT 7,
+                odoo_product_id INTEGER NOT NULL,
+                odoo_template_id INTEGER NOT NULL,
+                color_odoo_original VARCHAR NOT NULL,
+                talla_odoo VARCHAR,
+                color_id VARCHAR NOT NULL,
+                mapped_by VARCHAR,
+                mapped_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                CONSTRAINT uq_odoo_product_color_map UNIQUE (empresa_id, odoo_product_id)
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_color_mapping_template ON prod_odoo_color_mapping(odoo_template_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_color_mapping_color ON prod_odoo_color_mapping(color_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_color_mapping_original ON prod_odoo_color_mapping(color_odoo_original)")
+
         # Tabla de configuración global del sistema
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS prod_configuracion (

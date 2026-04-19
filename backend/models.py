@@ -693,6 +693,23 @@ class OdooProductoCostoInput(BaseModel):
     costo_manual: Optional[float] = None
 
 
+class ColorMappingInput(BaseModel):
+    template_id: int
+    color_odoo_original: str
+    color_id: str
+    product_ids: List[int]
+
+
+class ColorMappingDeleteInput(BaseModel):
+    template_id: int
+    product_ids: List[int]
+
+
+class ColorCrearRapidoInput(BaseModel):
+    nombre: str
+    color_general_id: Optional[str] = None
+
+
 class OdooProductoClasificarInput(BaseModel):
     marca_id: Optional[str] = None
     tipo_id: Optional[str] = None

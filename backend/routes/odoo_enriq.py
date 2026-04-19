@@ -20,7 +20,10 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from db import get_pool
 from helpers import row_to_dict
 from auth_utils import get_current_user
-from models import OdooProductoClasificarInput, OdooProductoCostoInput
+from models import (
+    OdooProductoClasificarInput, OdooProductoCostoInput,
+    ColorMappingInput, ColorMappingDeleteInput, ColorCrearRapidoInput,
+)
 
 router = APIRouter(prefix="/api/odoo-enriq")
 
@@ -650,3 +653,224 @@ async def actualizar_costo(
         """, costo, current_user.get('username'), enriq_id)
 
         return {"ok": True, "costo_manual": costo}
+
+
+# ─── Mapeo de colores por variante (product_id) ──────────────────────
+
+@router.get("/{template_id}/variantes")
+async def get_variantes(template_id: int, current_user: dict = Depends(get_current_user)):
+    """Devuelve las variantes de un template agrupadas por color Odoo,
+    con stock / ventas / tallas / estado de mapeo."""
+    empresa_id = current_user.get("empresa_id") or 7
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        variantes = await conn.fetch("""
+            SELECT product_product_id AS product_id, talla, color
+            FROM odoo.v_product_variant_flat
+            WHERE product_tmpl_id = $1
+        """, template_id)
+
+        if not variantes:
+            return {"template_id": template_id, "total_variantes": 0, "total_colores_odoo": 0,
+                    "colores_mapeados": 0, "stock_total": 0, "colores": []}
+
+        product_ids = [v['product_id'] for v in variantes]
+
+        stock_rows = await conn.fetch("""
+            SELECT product_id, COALESCE(SUM(qty - COALESCE(reserved_qty, 0)), 0) AS stock
+            FROM odoo.stock_quant
+            WHERE product_id = ANY($1::int[])
+            GROUP BY product_id
+        """, product_ids)
+        stock_map = {int(r['product_id']): float(r['stock']) for r in stock_rows}
+
+        ventas_rows = await conn.fetch("""
+            SELECT product_id, COALESCE(SUM(qty), 0) AS unidades,
+                   COUNT(DISTINCT order_id) AS tickets
+            FROM odoo.v_pos_line_full
+            WHERE product_id = ANY($1::int[])
+              AND COALESCE(is_cancelled, false) = false
+            GROUP BY product_id
+        """, product_ids)
+        ventas_map = {int(r['product_id']): (float(r['unidades']), int(r['tickets'])) for r in ventas_rows}
+
+        mapeos_rows = await conn.fetch("""
+            SELECT m.odoo_product_id, m.color_id,
+                   c.nombre AS color_nombre,
+                   cg.id    AS color_general_id,
+                   cg.nombre AS color_general_nombre
+            FROM prod_odoo_color_mapping m
+            LEFT JOIN prod_colores_catalogo c ON c.id = m.color_id
+            LEFT JOIN prod_colores_generales cg ON cg.id = c.color_general_id
+            WHERE m.empresa_id = $1 AND m.odoo_product_id = ANY($2::int[])
+        """, empresa_id, product_ids)
+        mapeos_map = {
+            int(r['odoo_product_id']): {
+                'color_id': r['color_id'], 'color_nombre': r['color_nombre'],
+                'color_general_id': r['color_general_id'],
+                'color_general_nombre': r['color_general_nombre'],
+            }
+            for r in mapeos_rows
+        }
+
+        grupos = {}
+        for v in variantes:
+            color_odoo = (v['color'] or '— sin color —')
+            pid = int(v['product_id'])
+            talla = v['talla']
+            st = stock_map.get(pid, 0)
+            vu, vt = ventas_map.get(pid, (0, 0))
+            mapeo = mapeos_map.get(pid)
+
+            g = grupos.setdefault(color_odoo, {
+                'color_odoo': color_odoo,
+                'stock_total': 0, 'unidades_vendidas': 0, 'tickets_total': 0,
+                'product_ids': [], '_mset': set(),
+            })
+            g['stock_total'] += st
+            g['unidades_vendidas'] += vu
+            g['tickets_total'] += vt
+            g['product_ids'].append({
+                'product_id': pid, 'talla': talla, 'stock': st,
+                'unidades_vendidas': vu, 'tickets': vt, 'mapeo': mapeo,
+            })
+            g['_mset'].add(mapeo['color_id'] if mapeo else None)
+
+        colores_out = []
+        mapeados_count = 0
+        for color_odoo, g in grupos.items():
+            mset = g.pop('_mset')
+            if None in mset and len(mset) > 1:
+                estado = 'parcial'
+            elif None in mset:
+                estado = 'pendiente'
+            elif len(mset) == 1:
+                estado = 'mapeado'
+                mapeados_count += 1
+            else:
+                estado = 'parcial'
+
+            color_rep = None
+            if estado == 'mapeado':
+                color_rep = next((p['mapeo'] for p in g['product_ids'] if p['mapeo']), None)
+            g['mapeo_estado'] = estado
+            g['color_id_mapeado'] = color_rep['color_id'] if color_rep else None
+            g['color_nombre_mapeado'] = color_rep['color_nombre'] if color_rep else None
+            g['color_general_nombre'] = color_rep['color_general_nombre'] if color_rep else None
+            g['product_ids'].sort(key=lambda p: (p['talla'] or 'zz'))
+            colores_out.append(g)
+
+        estado_order = {'pendiente': 0, 'parcial': 1, 'mapeado': 2}
+        colores_out.sort(key=lambda c: (estado_order.get(c['mapeo_estado'], 99), -c['stock_total']))
+
+        return {
+            'template_id': template_id,
+            'total_variantes': len(variantes),
+            'total_colores_odoo': len(grupos),
+            'colores_mapeados': mapeados_count,
+            'stock_total': sum(g['stock_total'] for g in colores_out),
+            'colores': colores_out,
+        }
+
+
+@router.post("/color-mapping")
+async def crear_color_mapping(body: ColorMappingInput, current_user: dict = Depends(get_current_user)):
+    """Mapea N product_id al mismo color_id (UPSERT por (empresa_id, odoo_product_id))."""
+    empresa_id = current_user.get("empresa_id") or 7
+    if not body.product_ids:
+        raise HTTPException(status_code=400, detail="product_ids vacío")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        color_nombre = await conn.fetchval(
+            "SELECT nombre FROM prod_colores_catalogo WHERE id = $1", body.color_id
+        )
+        if not color_nombre:
+            raise HTTPException(status_code=404, detail="Color no encontrado en prod_colores_catalogo")
+
+        tallas_rows = await conn.fetch("""
+            SELECT product_product_id AS product_id, talla
+            FROM odoo.v_product_variant_flat
+            WHERE product_product_id = ANY($1::int[])
+        """, body.product_ids)
+        talla_map = {int(r['product_id']): r['talla'] for r in tallas_rows}
+
+        usuario = current_user.get('username')
+        n = 0
+        for pid in body.product_ids:
+            await conn.execute("""
+                INSERT INTO prod_odoo_color_mapping
+                    (id, empresa_id, odoo_product_id, odoo_template_id,
+                     color_odoo_original, talla_odoo, color_id, mapped_by)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                ON CONFLICT (empresa_id, odoo_product_id) DO UPDATE SET
+                    color_id = EXCLUDED.color_id,
+                    color_odoo_original = EXCLUDED.color_odoo_original,
+                    talla_odoo = EXCLUDED.talla_odoo,
+                    odoo_template_id = EXCLUDED.odoo_template_id,
+                    mapped_by = EXCLUDED.mapped_by,
+                    updated_at = NOW()
+            """,
+                str(uuid.uuid4()), empresa_id, pid, body.template_id,
+                body.color_odoo_original, talla_map.get(int(pid)),
+                body.color_id, usuario)
+            n += 1
+        return {"ok": True, "mapeados": n, "color_nombre": color_nombre}
+
+
+@router.delete("/color-mapping")
+async def eliminar_color_mapping(body: ColorMappingDeleteInput, current_user: dict = Depends(get_current_user)):
+    """Elimina todos los mapeos de los product_id indicados."""
+    empresa_id = current_user.get("empresa_id") or 7
+    if not body.product_ids:
+        raise HTTPException(status_code=400, detail="product_ids vacío")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute("""
+            DELETE FROM prod_odoo_color_mapping
+            WHERE empresa_id = $1 AND odoo_template_id = $2
+              AND odoo_product_id = ANY($3::int[])
+        """, empresa_id, body.template_id, body.product_ids)
+        n = int(result.split()[-1]) if result else 0
+        return {"ok": True, "eliminados": n}
+
+
+@router.post("/colores/crear")
+async def crear_color_rapido(body: ColorCrearRapidoInput, current_user: dict = Depends(get_current_user)):
+    """Crea un color en prod_colores_catalogo y devuelve el registro
+    (o el existente si hay duplicado por nombre). Idempotente."""
+    nombre = (body.nombre or '').strip()
+    if not nombre:
+        raise HTTPException(status_code=400, detail="Nombre requerido")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        dup = await conn.fetchval(
+            "SELECT id FROM prod_colores_catalogo WHERE LOWER(TRIM(nombre)) = LOWER(TRIM($1)) LIMIT 1",
+            nombre,
+        )
+        if dup:
+            row = await conn.fetchrow("""
+                SELECT c.id, c.nombre, c.color_general_id, cg.nombre AS color_general_nombre
+                FROM prod_colores_catalogo c
+                LEFT JOIN prod_colores_generales cg ON cg.id = c.color_general_id
+                WHERE c.id = $1
+            """, dup)
+            return {'id': row['id'], 'nombre': row['nombre'],
+                    'color_general_id': row['color_general_id'],
+                    'color_general_nombre': row['color_general_nombre'],
+                    'existing': True}
+
+        new_id = "col_" + uuid.uuid4().hex[:12]
+        await conn.execute("""
+            INSERT INTO prod_colores_catalogo (id, nombre, color_general_id)
+            VALUES ($1, $2, $3)
+        """, new_id, nombre, body.color_general_id)
+
+        cg_nombre = None
+        if body.color_general_id:
+            cg_nombre = await conn.fetchval(
+                "SELECT nombre FROM prod_colores_generales WHERE id = $1", body.color_general_id
+            )
+        return {'id': new_id, 'nombre': nombre,
+                'color_general_id': body.color_general_id,
+                'color_general_nombre': cg_nombre,
+                'existing': False}

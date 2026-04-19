@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Ban, Save, Loader2, Package, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
 import useCascadaClasificacion from '../hooks/useCascadaClasificacion';
+import VariantesColorMapper from './VariantesColorMapper';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -235,6 +236,11 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
             rows={2}
           />
         </div>
+
+        {/* Mapeo de colores por variante (product_id) — sección independiente */}
+        {producto?.odoo_template_id && (
+          <VariantesColorMapper templateId={producto.odoo_template_id} />
+        )}
 
         <DialogFooter className="flex justify-between flex-row">
           <Button variant="destructive" onClick={handleExclude} disabled={excluding || saving}>
