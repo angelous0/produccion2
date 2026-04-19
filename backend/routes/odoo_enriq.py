@@ -92,11 +92,18 @@ async def _match_entalle(conn, nombre: str, empresa_id: int, entalles_cache: lis
 
 
 def _recalcular_estado(vals: dict, tipo_nombre: Optional[str]) -> tuple:
-    """Devuelve (estado, campos_pendientes) según los FKs actuales."""
-    # Excluido tiene prioridad: si ya viene excluido, se mantiene
+    """Devuelve (estado, campos_pendientes) según los FKs actuales.
+
+    Reglas de requeridos:
+      - Siempre: marca_id, tipo_id, genero_id
+      - Solo si tipo == 'Polo': cuello_id
+      - Solo si tipo in ('Pantalon', 'Short'): lavado_id
+    """
     required = ['marca_id', 'tipo_id', 'genero_id']
     if tipo_nombre == 'Polo':
         required.append('cuello_id')
+    if tipo_nombre in ('Pantalon', 'Short'):
+        required.append('lavado_id')
     pendientes = [k for k in required if not vals.get(k)]
     if not pendientes:
         return ('completo', [])

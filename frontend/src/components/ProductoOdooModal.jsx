@@ -1,40 +1,25 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from './ui/dialog';
-import { Badge } from './ui/badge';
 import { Ban, Save, Loader2, Package } from 'lucide-react';
 import { toast } from 'sonner';
+import useCascadaClasificacion from '../hooks/useCascadaClasificacion';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 /**
  * Modal para clasificar un producto de Odoo con los catálogos de producción.
- * Carga catálogos al montar y maneja cascadas:
- *  - tela_general_id → filtra telas
- *  - tipo == 'Polo' → requiere cuello
- *  - tipo in Pantalon/Short → muestra lavado
+ * Usa useCascadaClasificacion: al cambiar un padre, se refiltra el hijo y se
+ * limpia el valor seleccionado si queda inválido.
  */
 const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
   const [saving, setSaving] = useState(false);
   const [excluding, setExcluding] = useState(false);
 
-  // Catálogos
-  const [marcas, setMarcas] = useState([]);
-  const [tipos, setTipos] = useState([]);
-  const [telasGenerales, setTelasGenerales] = useState([]);
-  const [telas, setTelas] = useState([]);
-  const [entalles, setEntalles] = useState([]);
-  const [generos, setGeneros] = useState([]);
-  const [cuellos, setCuellos] = useState([]);
-  const [detalles, setDetalles] = useState([]);
-  const [lavados, setLavados] = useState([]);
-  const [coloresGenerales, setColoresGenerales] = useState([]);
-
-  // Form state
   const [form, setForm] = useState({
     marca_id: producto.marca_id || '',
     tipo_id: producto.tipo_id || '',
@@ -49,66 +34,64 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
     notas: producto.notas || '',
   });
 
-  // Cargar catálogos
+  const {
+    marcas, tipos, entalles, telas, telasGenerales,
+    generos, cuellos, detalles, lavados, categoriasColor,
+    mostrarCuello, mostrarLavado, esIdValido,
+  } = useCascadaClasificacion({
+    marca_id: form.marca_id,
+    tipo_id: form.tipo_id,
+    entalle_id: form.entalle_id,
+    tela_general_id: form.tela_general_id,
+  });
+
+  // ── Limpieza automática de valores inválidos cuando cambia el padre ──
+  // Si el valor actual ya no está en la lista filtrada, lo reseteo.
   useEffect(() => {
-    (async () => {
-      try {
-        const [m, t, tg, te, e, g, c, d, l, cg] = await Promise.all([
-          axios.get(`${API}/marcas`),
-          axios.get(`${API}/tipos`),
-          axios.get(`${API}/telas-general`),
-          axios.get(`${API}/telas`),
-          axios.get(`${API}/entalles`),
-          axios.get(`${API}/generos`),
-          axios.get(`${API}/cuellos`),
-          axios.get(`${API}/detalles`),
-          axios.get(`${API}/lavados`),
-          axios.get(`${API}/colores-generales`),
-        ]);
-        setMarcas(m.data || []);
-        setTipos(t.data || []);
-        setTelasGenerales(tg.data || []);
-        setTelas(te.data || []);
-        setEntalles(e.data || []);
-        setGeneros(g.data || []);
-        setCuellos(c.data || []);
-        setDetalles(d.data || []);
-        setLavados(l.data || []);
-        setColoresGenerales(cg.data || []);
-      } catch {
-        toast.error('Error al cargar catálogos');
+    setForm(prev => {
+      const updates = {};
+      if (prev.tipo_id && tipos.length && !esIdValido(prev.tipo_id, tipos)) updates.tipo_id = '';
+      if (prev.genero_id && generos.length && !esIdValido(prev.genero_id, generos)) updates.genero_id = '';
+      return Object.keys(updates).length ? { ...prev, ...updates } : prev;
+    });
+  }, [tipos, generos, esIdValido]);
+
+  useEffect(() => {
+    setForm(prev => {
+      const updates = {};
+      if (prev.entalle_id && entalles.length && !esIdValido(prev.entalle_id, entalles)) updates.entalle_id = '';
+      if (prev.cuello_id && cuellos.length && !esIdValido(prev.cuello_id, cuellos)) updates.cuello_id = '';
+      if (prev.detalle_id && detalles.length && !esIdValido(prev.detalle_id, detalles)) updates.detalle_id = '';
+      if (prev.lavado_id && lavados.length && !esIdValido(prev.lavado_id, lavados)) updates.lavado_id = '';
+      return Object.keys(updates).length ? { ...prev, ...updates } : prev;
+    });
+  }, [entalles, cuellos, detalles, lavados, esIdValido]);
+
+  useEffect(() => {
+    setForm(prev => {
+      if (prev.tela_id && telas.length && !esIdValido(prev.tela_id, telas)) {
+        return { ...prev, tela_id: '' };
       }
-    })();
-  }, []);
+      return prev;
+    });
+  }, [telas, esIdValido]);
 
-  // Cascadas
-  const tipoSeleccionado = useMemo(() => tipos.find(t => t.id === form.tipo_id), [tipos, form.tipo_id]);
-  const esPolo = tipoSeleccionado?.nombre === 'Polo';
-  const esPantalonOShort = tipoSeleccionado?.nombre === 'Pantalon' || tipoSeleccionado?.nombre === 'Short';
+  // Ocultar cuello/lavado → limpiar su valor
+  useEffect(() => {
+    if (!mostrarCuello && form.cuello_id) setForm(prev => ({ ...prev, cuello_id: '' }));
+  }, [mostrarCuello]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const telasFiltradas = useMemo(() => {
-    if (!form.tela_general_id) return telas;
-    return telas.filter(t => String(t.tela_general_id) === String(form.tela_general_id));
-  }, [telas, form.tela_general_id]);
+  useEffect(() => {
+    if (!mostrarLavado && form.lavado_id) setForm(prev => ({ ...prev, lavado_id: '' }));
+  }, [mostrarLavado]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setField = (k, v) => setForm(prev => ({ ...prev, [k]: v === '_none' ? '' : v }));
-
-  // Si cambia tela_general, limpiar tela seleccionada si no pertenece
-  useEffect(() => {
-    if (form.tela_id && form.tela_general_id) {
-      const t = telas.find(x => x.id === form.tela_id);
-      if (t && String(t.tela_general_id) !== String(form.tela_general_id)) {
-        setForm(prev => ({ ...prev, tela_id: '' }));
-      }
-    }
-  }, [form.tela_general_id, form.tela_id, telas]);
 
   const handleSave = async () => {
     if (saving) return;
     setSaving(true);
     try {
       const body = { ...form };
-      // strings vacíos → null
       Object.keys(body).forEach(k => { if (body[k] === '') body[k] = null; });
       const res = await axios.patch(`${API}/odoo-enriq/${producto.id}/clasificar`, body);
       const estado = res.data?.estado;
@@ -149,7 +132,7 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
             Clasificar producto: {producto.odoo_nombre}
           </DialogTitle>
           <DialogDescription>
-            Asigna los catálogos de producción a este producto Odoo. Los campos con <span className="text-destructive">*</span> son requeridos para quedar en estado Completo.
+            Asigna los catálogos de producción a este producto Odoo. Los campos con <span className="text-destructive">*</span> son requeridos para estado Completo.
           </DialogDescription>
         </DialogHeader>
 
@@ -170,19 +153,19 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
         {/* Clasificación */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
           <SelectField label="Marca" requerido value={form.marca_id} onChange={v => setField('marca_id', v)} options={marcas} />
-          <SelectField label="Tipo" requerido value={form.tipo_id} onChange={v => setField('tipo_id', v)} options={tipos} />
+          <SelectField label="Tipo" requerido value={form.tipo_id} onChange={v => setField('tipo_id', v)} options={tipos} disabled={!form.marca_id} placeholder={!form.marca_id ? 'Primero elige marca' : 'Seleccionar'} />
           <SelectField label="Tela General" value={form.tela_general_id} onChange={v => setField('tela_general_id', v)} options={telasGenerales} />
-          <SelectField label="Tela" value={form.tela_id} onChange={v => setField('tela_id', v)} options={telasFiltradas} disabled={!form.tela_general_id} placeholder={!form.tela_general_id ? 'Primero elige tela general' : 'Seleccionar'} />
-          <SelectField label="Entalle" value={form.entalle_id} onChange={v => setField('entalle_id', v)} options={entalles} />
-          <SelectField label="Género" requerido value={form.genero_id} onChange={v => setField('genero_id', v)} options={generos} />
-          {esPolo && (
+          <SelectField label="Entalle" value={form.entalle_id} onChange={v => setField('entalle_id', v)} options={entalles} disabled={!form.tipo_id} placeholder={!form.tipo_id ? 'Primero elige tipo' : 'Seleccionar'} />
+          <SelectField label="Tela" value={form.tela_id} onChange={v => setField('tela_id', v)} options={telas} disabled={!form.entalle_id && !form.tela_general_id} placeholder={!form.entalle_id && !form.tela_general_id ? 'Primero elige entalle o tela general' : 'Seleccionar'} />
+          <SelectField label="Género" requerido value={form.genero_id} onChange={v => setField('genero_id', v)} options={generos} disabled={!form.marca_id} placeholder={!form.marca_id ? 'Primero elige marca' : 'Seleccionar'} />
+          {mostrarCuello && (
             <SelectField label="Cuello" requerido value={form.cuello_id} onChange={v => setField('cuello_id', v)} options={cuellos} />
           )}
-          <SelectField label="Detalle" value={form.detalle_id} onChange={v => setField('detalle_id', v)} options={detalles} />
-          {esPantalonOShort && (
-            <SelectField label="Lavado" value={form.lavado_id} onChange={v => setField('lavado_id', v)} options={lavados} />
+          <SelectField label="Detalle" value={form.detalle_id} onChange={v => setField('detalle_id', v)} options={detalles} disabled={!form.tipo_id} placeholder={!form.tipo_id ? 'Primero elige tipo' : 'Seleccionar'} />
+          {mostrarLavado && (
+            <SelectField label="Lavado" requerido value={form.lavado_id} onChange={v => setField('lavado_id', v)} options={lavados} />
           )}
-          <SelectField label="Categoría Color" value={form.categoria_color_id} onChange={v => setField('categoria_color_id', v)} options={coloresGenerales} />
+          <SelectField label="Categoría Color" value={form.categoria_color_id} onChange={v => setField('categoria_color_id', v)} options={categoriasColor} />
         </div>
 
         <div className="pt-2">
