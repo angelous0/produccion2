@@ -655,6 +655,9 @@ class OdooProductoEnriq(BaseModel):
     odoo_default_code: Optional[str] = None
     odoo_marca_texto: Optional[str] = None
     odoo_tipo_texto: Optional[str] = None
+    odoo_entalle_texto: Optional[str] = None
+    odoo_tela_texto: Optional[str] = None
+    odoo_hilo_texto: Optional[str] = None
     odoo_active: bool = True
     odoo_stock_actual: float = 0
 

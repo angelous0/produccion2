@@ -163,11 +163,16 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
         {/* Info Odoo */}
         <div className="bg-muted/40 rounded-md p-3 space-y-1 text-sm">
           <div className="flex justify-between"><span className="text-muted-foreground">Template ID:</span> <span className="font-mono">#{producto.odoo_template_id}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Marca (Odoo):</span> <span className="font-medium">{producto.odoo_marca_texto || '—'}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Tipo (Odoo):</span> <span className="font-medium">{producto.odoo_tipo_texto || '—'}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Stock actual:</span> <span className="font-mono">{parseFloat(producto.odoo_stock_actual || 0).toLocaleString('es-PE')}</span></div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs pt-1">
+            <InfoRow label="Marca" value={producto.odoo_marca_texto} />
+            <InfoRow label="Tipo" value={producto.odoo_tipo_texto} />
+            <InfoRow label="Entalle" value={producto.odoo_entalle_texto} />
+            <InfoRow label="Tela" value={producto.odoo_tela_texto} />
+            <InfoRow label="Hilo" value={producto.odoo_hilo_texto} />
+            <InfoRow label="Stock" value={parseFloat(producto.odoo_stock_actual || 0).toLocaleString('es-PE')} mono />
+          </div>
           {producto.classified_by && (
-            <div className="flex justify-between text-xs pt-1 border-t">
+            <div className="flex justify-between text-xs pt-2 mt-1 border-t">
               <span className="text-muted-foreground">Última clasificación:</span>
               <span>{producto.classified_by} · {producto.classified_at && new Date(producto.classified_at).toLocaleString('es-PE')}</span>
             </div>
@@ -176,11 +181,11 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
 
         {/* Clasificación */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-          <SelectField label="Marca" requerido value={form.marca_id} onChange={v => setField('marca_id', v)} options={marcas} />
-          <SelectField label="Tipo" requerido value={form.tipo_id} onChange={v => setField('tipo_id', v)} options={tipos} disabled={!form.marca_id} placeholder={!form.marca_id ? 'Primero elige marca' : 'Seleccionar'} />
+          <SelectField label="Marca" requerido hint={producto.odoo_marca_texto} value={form.marca_id} onChange={v => setField('marca_id', v)} options={marcas} />
+          <SelectField label="Tipo" requerido hint={producto.odoo_tipo_texto} value={form.tipo_id} onChange={v => setField('tipo_id', v)} options={tipos} disabled={!form.marca_id} placeholder={!form.marca_id ? 'Primero elige marca' : 'Seleccionar'} />
           <SelectField label="Tela General" value={form.tela_general_id} onChange={v => setField('tela_general_id', v)} options={telasGenerales} />
-          <SelectField label="Entalle" value={form.entalle_id} onChange={v => setField('entalle_id', v)} options={entalles} disabled={!form.tipo_id} placeholder={!form.tipo_id ? 'Primero elige tipo' : 'Seleccionar'} />
-          <SelectField label="Tela" value={form.tela_id} onChange={v => setField('tela_id', v)} options={telas} disabled={!form.entalle_id && !form.tela_general_id} placeholder={!form.entalle_id && !form.tela_general_id ? 'Primero elige entalle o tela general' : 'Seleccionar'} />
+          <SelectField label="Entalle" hint={producto.odoo_entalle_texto} value={form.entalle_id} onChange={v => setField('entalle_id', v)} options={entalles} disabled={!form.tipo_id} placeholder={!form.tipo_id ? 'Primero elige tipo' : 'Seleccionar'} />
+          <SelectField label="Tela" hint={producto.odoo_tela_texto} value={form.tela_id} onChange={v => setField('tela_id', v)} options={telas} disabled={!form.entalle_id && !form.tela_general_id} placeholder={!form.entalle_id && !form.tela_general_id ? 'Primero elige entalle o tela general' : 'Seleccionar'} />
           <SelectField label="Género" requerido value={form.genero_id} onChange={v => setField('genero_id', v)} options={generos} disabled={!form.marca_id} placeholder={!form.marca_id ? 'Primero elige marca' : 'Seleccionar'} />
           {mostrarCuello && (
             <SelectField label="Cuello" requerido value={form.cuello_id} onChange={v => setField('cuello_id', v)} options={cuellos} />
@@ -189,7 +194,7 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
           {mostrarLavado && (
             <SelectField label="Lavado" requerido value={form.lavado_id} onChange={v => setField('lavado_id', v)} options={lavados} />
           )}
-          <SelectField label="Categoría Color" value={form.categoria_color_id} onChange={v => setField('categoria_color_id', v)} options={categoriasColor} />
+          <SelectField label="Categoría Color" hint={producto.odoo_hilo_texto} value={form.categoria_color_id} onChange={v => setField('categoria_color_id', v)} options={categoriasColor} />
         </div>
 
         {/* Costo manual — editable para productos antiguos sin costo en Odoo */}
@@ -246,11 +251,30 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
   );
 };
 
-const SelectField = ({ label, requerido, value, onChange, options = [], disabled, placeholder = 'Seleccionar' }) => (
+const InfoRow = ({ label, value, mono }) => (
+  <div className="flex justify-between gap-2">
+    <span className="text-muted-foreground">{label}:</span>
+    <span className={`${mono ? 'font-mono' : 'font-medium'} truncate`} title={value || '—'}>
+      {value || <span className="text-muted-foreground italic">—</span>}
+    </span>
+  </div>
+);
+
+const SelectField = ({ label, requerido, hint, value, onChange, options = [], disabled, placeholder = 'Seleccionar' }) => (
   <div className="space-y-1">
-    <Label className="text-xs">
-      {label} {requerido && <span className="text-destructive">*</span>}
-    </Label>
+    <div className="flex items-baseline justify-between gap-2">
+      <Label className="text-xs">
+        {label} {requerido && <span className="text-destructive">*</span>}
+      </Label>
+      {hint && (
+        <span
+          className="text-[10px] text-muted-foreground italic truncate max-w-[60%]"
+          title={`Dato de Odoo: ${hint}`}
+        >
+          Odoo: <span className="font-medium text-blue-600 dark:text-blue-400">{hint}</span>
+        </span>
+      )}
+    </div>
     <Select value={value || '_none'} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger className="h-9 text-sm"><SelectValue placeholder={placeholder} /></SelectTrigger>
       <SelectContent>

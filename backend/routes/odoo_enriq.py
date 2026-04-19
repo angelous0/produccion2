@@ -80,15 +80,36 @@ async def _match_tela_general(conn, tipo_texto: str, empresa_id: int) -> Optiona
     return None
 
 
-async def _match_entalle(conn, nombre: str, empresa_id: int, entalles_cache: list) -> Optional[str]:
-    if not nombre:
-        return None
-    upper = nombre.upper()
-    # entalles_cache ya ordenado por LENGTH DESC para preferir matches más largos
-    for ent in entalles_cache:
-        if ent['nombre'].upper() in upper:
-            return ent['id']
+async def _match_entalle(conn, nombre: str, empresa_id: int, entalles_cache: list,
+                          entalle_texto: Optional[str] = None) -> Optional[str]:
+    """Match de entalle: primero exacto contra el campo 'entalle' de Odoo,
+    luego fallback a keyword dentro del nombre del producto."""
+    # 1. Match exacto contra campo entalle de Odoo (más confiable)
+    if entalle_texto:
+        target = entalle_texto.strip().lower()
+        for ent in entalles_cache:
+            if ent['nombre'].strip().lower() == target:
+                return ent['id']
+    # 2. Fallback: buscar nombre de entalle dentro del nombre del producto
+    if nombre:
+        upper = nombre.upper()
+        for ent in entalles_cache:
+            if ent['nombre'].upper() in upper:
+                return ent['id']
     return None
+
+
+async def _match_tela(conn, tela_texto: str, entalle_id: Optional[str], empresa_id: int) -> Optional[str]:
+    """Match exacto case-insensitive contra prod_telas.nombre, filtrando por entalle si existe."""
+    if not tela_texto:
+        return None
+    target = tela_texto.strip().lower()
+    # Intentar match directo (ignorando filtro de entalle)
+    return await conn.fetchval(
+        """SELECT id FROM prod_telas
+           WHERE LOWER(TRIM(nombre)) = $1 LIMIT 1""",
+        target,
+    )
 
 
 def _build_order_by(sort_by: str, sort_dir: str) -> str:
@@ -145,13 +166,16 @@ async def sync_odoo_productos(current_user: dict = Depends(get_current_user)):
                 pt.name    AS nombre,
                 pt.marca   AS marca_texto,
                 pt.tipo    AS tipo_texto,
+                pt.entalle AS entalle_texto,
+                pt.tela    AS tela_texto,
+                pt.hilo    AS hilo_texto,
                 pt.active,
                 COALESCE(SUM(s.available_qty), 0) AS stock
             FROM odoo.product_template pt
             LEFT JOIN odoo.product_product pp ON pp.product_tmpl_id = pt.odoo_id
             LEFT JOIN odoo.v_stock_by_product s ON s.product_id = pp.odoo_id
             WHERE pt.active = TRUE
-            GROUP BY pt.odoo_id, pt.name, pt.marca, pt.tipo, pt.active
+            GROUP BY pt.odoo_id, pt.name, pt.marca, pt.tipo, pt.entalle, pt.tela, pt.hilo, pt.active
             HAVING COALESCE(SUM(s.available_qty), 0) > 0
         """)
 
@@ -169,6 +193,9 @@ async def sync_odoo_productos(current_user: dict = Depends(get_current_user)):
             nombre = p['nombre']
             marca_texto = p['marca_texto']
             tipo_texto = p['tipo_texto']
+            entalle_texto = p['entalle_texto']
+            tela_texto = p['tela_texto']
+            hilo_texto = p['hilo_texto']
             active = p['active']
             stock = float(p['stock'] or 0)
 
@@ -184,7 +211,8 @@ async def sync_odoo_productos(current_user: dict = Depends(get_current_user)):
             marca_id = await _match_marca(conn, marca_texto, empresa_id)
             tipo_id = await _match_tipo(conn, tipo_texto, empresa_id)
             tela_general_id = await _match_tela_general(conn, tipo_texto, empresa_id)
-            entalle_id = await _match_entalle(conn, nombre, empresa_id, entalles_cache)
+            entalle_id = await _match_entalle(conn, nombre, empresa_id, entalles_cache, entalle_texto)
+            tela_id = await _match_tela(conn, tela_texto, entalle_id, empresa_id)
 
             # Determinar estado y exclusión
             tipo_norm = (tipo_texto or '').strip().lower()
@@ -222,12 +250,17 @@ async def sync_odoo_productos(current_user: dict = Depends(get_current_user)):
                             odoo_nombre = $1,
                             odoo_marca_texto = $2,
                             odoo_tipo_texto = $3,
-                            odoo_active = $4,
-                            odoo_stock_actual = $5,
+                            odoo_entalle_texto = $4,
+                            odoo_tela_texto = $5,
+                            odoo_hilo_texto = $6,
+                            odoo_active = $7,
+                            odoo_stock_actual = $8,
                             last_sync = NOW(),
                             updated_at = NOW()
-                        WHERE id = $6
-                    """, nombre, marca_texto, tipo_texto, active, stock, existente['id'])
+                        WHERE id = $9
+                    """, nombre, marca_texto, tipo_texto,
+                         entalle_texto, tela_texto, hilo_texto,
+                         active, stock, existente['id'])
                 else:
                     # Actualizar todo (FKs auto-matched + snapshot)
                     await conn.execute("""
@@ -235,20 +268,26 @@ async def sync_odoo_productos(current_user: dict = Depends(get_current_user)):
                             odoo_nombre = $1,
                             odoo_marca_texto = $2,
                             odoo_tipo_texto = $3,
-                            odoo_active = $4,
-                            odoo_stock_actual = $5,
-                            marca_id = $6,
-                            tipo_id = $7,
-                            tela_general_id = $8,
-                            entalle_id = $9,
-                            estado = $10,
-                            excluido_motivo = $11,
-                            campos_pendientes = $12::jsonb,
+                            odoo_entalle_texto = $4,
+                            odoo_tela_texto = $5,
+                            odoo_hilo_texto = $6,
+                            odoo_active = $7,
+                            odoo_stock_actual = $8,
+                            marca_id = $9,
+                            tipo_id = $10,
+                            tela_general_id = $11,
+                            tela_id = $12,
+                            entalle_id = $13,
+                            estado = $14,
+                            excluido_motivo = $15,
+                            campos_pendientes = $16::jsonb,
                             last_sync = NOW(),
                             updated_at = NOW()
-                        WHERE id = $13
-                    """, nombre, marca_texto, tipo_texto, active, stock,
-                         marca_id, tipo_id, tela_general_id, entalle_id,
+                        WHERE id = $17
+                    """, nombre, marca_texto, tipo_texto,
+                         entalle_texto, tela_texto, hilo_texto,
+                         active, stock,
+                         marca_id, tipo_id, tela_general_id, tela_id, entalle_id,
                          estado, excluido_motivo, json.dumps(campos_pendientes),
                          existente['id'])
                 actualizados += 1
@@ -258,14 +297,16 @@ async def sync_odoo_productos(current_user: dict = Depends(get_current_user)):
                     INSERT INTO prod_odoo_productos_enriq (
                         id, odoo_template_id, empresa_id,
                         odoo_nombre, odoo_marca_texto, odoo_tipo_texto,
+                        odoo_entalle_texto, odoo_tela_texto, odoo_hilo_texto,
                         odoo_active, odoo_stock_actual,
-                        marca_id, tipo_id, tela_general_id, entalle_id,
+                        marca_id, tipo_id, tela_general_id, tela_id, entalle_id,
                         estado, excluido_motivo, campos_pendientes, last_sync
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, NOW())
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, NOW())
                 """, new_id, template_id, empresa_id,
                      nombre, marca_texto, tipo_texto,
+                     entalle_texto, tela_texto, hilo_texto,
                      active, stock,
-                     marca_id, tipo_id, tela_general_id, entalle_id,
+                     marca_id, tipo_id, tela_general_id, tela_id, entalle_id,
                      estado, excluido_motivo, json.dumps(campos_pendientes))
                 nuevos += 1
 

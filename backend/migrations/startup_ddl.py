@@ -341,6 +341,10 @@ async def ensure_startup_migrations():
         await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS costo_manual NUMERIC DEFAULT NULL")
         await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS costo_updated_at TIMESTAMPTZ DEFAULT NULL")
         await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS costo_updated_by VARCHAR DEFAULT NULL")
+        # Snapshot de campos adicionales desde Odoo (pistas para clasificación)
+        await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS odoo_entalle_texto VARCHAR DEFAULT NULL")
+        await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS odoo_tela_texto VARCHAR DEFAULT NULL")
+        await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS odoo_hilo_texto VARCHAR DEFAULT NULL")
 
         # Tabla de configuración global del sistema
         await conn.execute("""
