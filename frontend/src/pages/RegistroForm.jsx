@@ -312,10 +312,10 @@ export const RegistroForm = () => {
   const [tabsLoaded, setTabsLoaded] = useState({ general: false, produccion: false, incidencias: false });
 
   // Stats calculados
+  const prendasOriginales = tallasSeleccionadas.reduce((sum, t) => sum + (t.cantidad || 0), 0);
   const prendasEfectivas = (() => {
-    const cantOriginal = tallasSeleccionadas.reduce((sum, t) => sum + (t.cantidad || 0), 0);
     const ultimoMov = movimientosProduccion.length > 0 ? movimientosProduccion[movimientosProduccion.length - 1] : null;
-    return ultimoMov ? (ultimoMov.cantidad_recibida ?? ultimoMov.cantidad ?? cantOriginal) : cantOriginal;
+    return ultimoMov ? (ultimoMov.cantidad_recibida ?? ultimoMov.cantidad ?? prendasOriginales) : prendasOriginales;
   })();
 
   const incidenciasAbiertas = incidencias.filter(i => i.estado === 'ABIERTA').length;
@@ -1129,7 +1129,7 @@ export const RegistroForm = () => {
                 {/* TAB MATERIALES */}
                 <TabsContent value="materiales" className="space-y-4 mt-0" onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}>
                   <Card><CardContent className="pt-4">
-                    <MaterialesTab registroId={id} totalPrendas={prendasEfectivas} modeloId={formData.modelo_id} lineaNegocioId={formData.linea_negocio_id}
+                    <MaterialesTab registroId={id} totalPrendas={prendasEfectivas} totalPrendasOriginales={prendasOriginales} modeloId={formData.modelo_id} lineaNegocioId={formData.linea_negocio_id}
                       lineasNegocio={lineasNegocio} permisos={permsInventario}
                     />
                   </CardContent></Card>

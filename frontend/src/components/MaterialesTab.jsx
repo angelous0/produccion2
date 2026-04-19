@@ -221,7 +221,7 @@ const RollosModal = ({ open, linea, rollosCantidades, setRollosCantidades, onClo
   );
 };
 
-const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId, lineasNegocio = [] }) => {
+const MaterialesTab = ({ registroId, totalPrendas, totalPrendasOriginales, modeloId, lineaNegocioId, lineasNegocio = [] }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [generando, setGenerando] = useState(false);
@@ -1030,7 +1030,7 @@ const MaterialesTab = ({ registroId, totalPrendas, modeloId, lineaNegocioId, lin
         open={copiarOpen}
         onOpenChange={setCopiarOpen}
         registroDestinoId={registroId}
-        cantidadDestino={totalPrendas}
+        cantidadDestino={totalPrendasOriginales ?? totalPrendas}
         tipo="materiales"
         onSuccess={fetchData}
       />
