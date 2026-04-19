@@ -738,7 +738,14 @@ async def get_variantes(template_id: int, current_user: dict = Depends(get_curre
 
         colores_out = []
         mapeados_count = 0
+        fantasma_placeholder = '— sin color —'
         for color_odoo, g in grupos.items():
+            # Filtrar grupos fantasma: sin color asignado en Odoo + sin stock + sin ventas
+            # (variantes residuales que quedaron en la DB Odoo y no aportan nada)
+            if color_odoo == fantasma_placeholder and g['stock_total'] == 0 and g['unidades_vendidas'] == 0:
+                g.pop('_mset', None)
+                continue
+
             mset = g.pop('_mset')
             if None in mset and len(mset) > 1:
                 estado = 'parcial'
@@ -765,8 +772,8 @@ async def get_variantes(template_id: int, current_user: dict = Depends(get_curre
 
         return {
             'template_id': template_id,
-            'total_variantes': len(variantes),
-            'total_colores_odoo': len(grupos),
+            'total_variantes': sum(len(g['product_ids']) for g in colores_out),
+            'total_colores_odoo': len(colores_out),
             'colores_mapeados': mapeados_count,
             'stock_total': sum(g['stock_total'] for g in colores_out),
             'colores': colores_out,
