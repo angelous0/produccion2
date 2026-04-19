@@ -267,7 +267,7 @@ export const Kardex = () => {
                   <TrendingUp className="h-6 w-6 text-green-600" />
                   <div>
                     <p className="text-sm text-muted-foreground">Total Entradas</p>
-                    <p className="text-xl font-bold text-green-600">+{totales.entradas}</p>
+                    <p className="text-xl font-bold text-green-600">+{totales.entradas.toLocaleString('es-PE', { maximumFractionDigits: 2 })}</p>
                   </div>
                 </div>
               </CardContent>
@@ -278,7 +278,7 @@ export const Kardex = () => {
                   <TrendingDown className="h-6 w-6 text-red-500" />
                   <div>
                     <p className="text-sm text-muted-foreground">Total Salidas</p>
-                    <p className="text-xl font-bold text-red-500">-{totales.salidas}</p>
+                    <p className="text-xl font-bold text-red-500">-{totales.salidas.toLocaleString('es-PE', { maximumFractionDigits: 2 })}</p>
                   </div>
                 </div>
               </CardContent>

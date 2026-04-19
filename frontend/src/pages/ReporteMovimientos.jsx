@@ -237,7 +237,7 @@ export const ReporteMovimientos = () => {
               <ArrowDownCircle className="h-8 w-8 text-green-600" />
               <div>
                 <p className="text-sm text-muted-foreground">Total Entradas</p>
-                <p className="text-2xl font-bold text-green-600">+{totales.entradas}</p>
+                <p className="text-2xl font-bold text-green-600">+{totales.entradas.toLocaleString('es-PE', { maximumFractionDigits: 2 })}</p>
               </div>
             </div>
           </CardContent>
@@ -248,7 +248,7 @@ export const ReporteMovimientos = () => {
               <ArrowUpCircle className="h-8 w-8 text-red-500" />
               <div>
                 <p className="text-sm text-muted-foreground">Total Salidas</p>
-                <p className="text-2xl font-bold text-red-500">-{totales.salidas}</p>
+                <p className="text-2xl font-bold text-red-500">-{totales.salidas.toLocaleString('es-PE', { maximumFractionDigits: 2 })}</p>
               </div>
             </div>
           </CardContent>
