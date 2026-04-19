@@ -21,6 +21,9 @@ import { formatDate } from '../lib/dateUtils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const STORAGE_KEY = 'matriz-produccion-prefs';
+const COL_WIDTHS_KEY = 'matriz-produccion-col-widths';
+const DEFAULT_COL_WIDTHS = { __item: 280, __hilo: 90, __total: 80 };
+const MIN_COL_WIDTH = 50;
 function isOverdue(val) {
   if (!val) return false;
   try { return new Date(val) < new Date(); } catch { return false; }
@@ -256,6 +259,42 @@ export const MatrizProduccion = () => {
   const [visibleCols, setVisibleCols] = useState(null);
   const [colOrder, setColOrder] = useState(null);
   const [mergedCols, setMergedCols] = useState({}); // { targetCol: [absorbed1, absorbed2] }
+
+  // ── Anchos de columna redimensionables (persistidos) ───────────
+  const [colWidths, setColWidths] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(COL_WIDTHS_KEY));
+      return { ...DEFAULT_COL_WIDTHS, ...(saved || {}) };
+    } catch { return { ...DEFAULT_COL_WIDTHS }; }
+  });
+
+  const getColWidth = (key) => colWidths[key] || (key === '__item' ? 280 : key === '__hilo' ? 90 : key === '__total' ? 80 : 70);
+
+  const startResize = (e, key) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = getColWidth(key);
+    const onMove = (ev) => {
+      const delta = ev.clientX - startX;
+      const newW = Math.max(MIN_COL_WIDTH, startW + delta);
+      setColWidths(prev => ({ ...prev, [key]: newW }));
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setColWidths(prev => {
+        try { localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify(prev)); } catch {}
+        return prev;
+      });
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
 
   // Fusión UI state
   const [mergeMode, setMergeMode] = useState(false);
@@ -582,17 +621,53 @@ export const MatrizProduccion = () => {
               <table className="w-full text-xs border-collapse" data-testid="matriz-table">
                 <thead>
                   <tr className="bg-muted/60">
-                    <th className="text-left p-2.5 font-semibold sticky left-0 bg-muted/60 z-10 min-w-[280px] border-r">Item</th>
-                    <th className="text-left p-2.5 font-semibold sticky left-[280px] bg-muted/60 z-10 min-w-[90px] border-r">Hilo</th>
+                    <th
+                      className="text-left p-2.5 font-semibold sticky left-0 bg-muted/60 z-10 border-r relative"
+                      style={{ width: getColWidth('__item'), minWidth: getColWidth('__item'), maxWidth: getColWidth('__item') }}
+                    >
+                      Item
+                      <div
+                        className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
+                        onMouseDown={e => startResize(e, '__item')}
+                        title="Arrastra para redimensionar"
+                      />
+                    </th>
+                    <th
+                      className="text-left p-2.5 font-semibold sticky bg-muted/60 z-10 border-r relative"
+                      style={{ left: getColWidth('__item'), width: getColWidth('__hilo'), minWidth: getColWidth('__hilo'), maxWidth: getColWidth('__hilo') }}
+                    >
+                      Hilo
+                      <div
+                        className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
+                        onMouseDown={e => startResize(e, '__hilo')}
+                      />
+                    </th>
                     {effectiveCols.map(col => (
-                      <th key={col} className="text-center p-2.5 font-medium min-w-[70px] border-r whitespace-nowrap">
+                      <th
+                        key={col}
+                        className="text-center p-2.5 font-medium border-r whitespace-nowrap relative"
+                        style={{ width: getColWidth(col), minWidth: getColWidth(col), maxWidth: getColWidth(col) }}
+                      >
                         <div>{col}</div>
                         {mergedCols[col]?.length > 0 && (
                           <div className="text-[9px] text-muted-foreground font-normal">+{mergedCols[col].join(', ')}</div>
                         )}
+                        <div
+                          className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
+                          onMouseDown={e => startResize(e, col)}
+                        />
                       </th>
                     ))}
-                    <th className="text-center p-2.5 font-semibold min-w-[80px] bg-muted/40">Total</th>
+                    <th
+                      className="text-center p-2.5 font-semibold bg-muted/40 relative"
+                      style={{ width: getColWidth('__total'), minWidth: getColWidth('__total'), maxWidth: getColWidth('__total') }}
+                    >
+                      Total
+                      <div
+                        className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
+                        onMouseDown={e => startResize(e, '__total')}
+                      />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -600,7 +675,10 @@ export const MatrizProduccion = () => {
                     const key = `${fila.marca}-${fila.tipo}-${fila.entalle}-${fila.tela}-${fila.hilo}`;
                     return (
                       <tr key={key} className="border-b hover:bg-muted/20 transition-colors" data-testid={`fila-${idx}`}>
-                        <td className="p-2.5 sticky left-0 bg-background z-10 border-r">
+                        <td
+                          className="p-2.5 sticky left-0 bg-background z-10 border-r"
+                          style={{ width: getColWidth('__item'), minWidth: getColWidth('__item'), maxWidth: getColWidth('__item') }}
+                        >
                           <button
                             className="flex items-center gap-1.5 text-left w-full group hover:text-primary transition-colors"
                             onClick={() => openModal(fila, null)}
@@ -610,11 +688,20 @@ export const MatrizProduccion = () => {
                             <span className="font-medium truncate">{fila.item}</span>
                           </button>
                         </td>
-                        <td className="p-2.5 sticky left-[280px] bg-background z-10 border-r text-muted-foreground">{fila.hilo}</td>
+                        <td
+                          className="p-2.5 sticky bg-background z-10 border-r text-muted-foreground truncate"
+                          style={{ left: getColWidth('__item'), width: getColWidth('__hilo'), minWidth: getColWidth('__hilo'), maxWidth: getColWidth('__hilo') }}
+                        >
+                          {fila.hilo}
+                        </td>
                         {effectiveCols.map(col => {
                           const val = cellVal(fila.celdas, col);
                           return (
-                            <td key={col} className="text-center p-2.5 border-r">
+                            <td
+                              key={col}
+                              className="text-center p-2.5 border-r"
+                              style={{ width: getColWidth(col), minWidth: getColWidth(col), maxWidth: getColWidth(col) }}
+                            >
                               {val > 0 ? (
                                 <button
                                   className="font-mono font-medium hover:text-primary hover:underline transition-colors cursor-pointer"
@@ -629,7 +716,10 @@ export const MatrizProduccion = () => {
                             </td>
                           );
                         })}
-                        <td className="text-center p-2.5 font-mono font-bold bg-muted/20">
+                        <td
+                          className="text-center p-2.5 font-mono font-bold bg-muted/20"
+                          style={{ width: getColWidth('__total'), minWidth: getColWidth('__total'), maxWidth: getColWidth('__total') }}
+                        >
                           <button
                             className="hover:text-primary hover:underline transition-colors cursor-pointer"
                             onClick={() => openModal(fila, null)}
@@ -644,16 +734,29 @@ export const MatrizProduccion = () => {
                 </tbody>
                 <tfoot>
                   <tr className="bg-muted/40 font-semibold border-t-2">
-                    <td className="p-2.5 sticky left-0 bg-muted/40 z-10 border-r" colSpan={2}>TOTALES</td>
+                    <td
+                      className="p-2.5 sticky left-0 bg-muted/40 z-10 border-r"
+                      colSpan={2}
+                      style={{ minWidth: getColWidth('__item') + getColWidth('__hilo') }}
+                    >
+                      TOTALES
+                    </td>
                     {effectiveCols.map(col => {
                       const val = colTotal(col);
                       return (
-                        <td key={col} className={`text-center p-2.5 font-mono border-r ${val > 0 ? '' : 'text-muted-foreground/40'}`}>
+                        <td
+                          key={col}
+                          className={`text-center p-2.5 font-mono border-r ${val > 0 ? '' : 'text-muted-foreground/40'}`}
+                          style={{ width: getColWidth(col), minWidth: getColWidth(col), maxWidth: getColWidth(col) }}
+                        >
                           {val > 0 ? val.toLocaleString() : '-'}
                         </td>
                       );
                     })}
-                    <td className="text-center p-2.5 font-mono font-bold bg-muted/30">
+                    <td
+                      className="text-center p-2.5 font-mono font-bold bg-muted/30"
+                      style={{ width: getColWidth('__total'), minWidth: getColWidth('__total'), maxWidth: getColWidth('__total') }}
+                    >
                       {totalVal(data.total_general).toLocaleString()}
                     </td>
                   </tr>
