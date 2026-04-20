@@ -363,7 +363,7 @@ export const ReporteTiemposMuertos = () => {
   return (
     <div className="space-y-4" data-testid="reporte-tiempos-muertos">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between sm:flex-wrap gap-3">
         <div>
           <h2 className="text-xl font-bold tracking-tight">Tiempos Muertos</h2>
           <p className="text-sm text-muted-foreground">Lotes parados sin avanzar al siguiente servicio</p>
@@ -374,13 +374,13 @@ export const ReporteTiemposMuertos = () => {
             <button type="button" onClick={() => setFiltro('todos')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${filtro === 'todos' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}>Todos</button>
           </div>
           <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={!filtered.length} data-testid="btn-exportar-excel-tm">
-            <Download className="h-3.5 w-3.5 mr-1" /> Excel
+            <Download className="h-3.5 w-3.5 sm:mr-1" /> <span className="hidden sm:inline">Excel</span>
           </Button>
           <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={!filtered.length} data-testid="btn-exportar-pdf-tm">
-            <Download className="h-3.5 w-3.5 mr-1" /> PDF
+            <Download className="h-3.5 w-3.5 sm:mr-1" /> <span className="hidden sm:inline">PDF</span>
           </Button>
           <Button variant="outline" size="sm" onClick={fetchData} data-testid="btn-refresh-tm">
-            <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} /> Actualizar
+            <RefreshCw className={`h-3.5 w-3.5 sm:mr-1 ${loading ? 'animate-spin' : ''}`} /> <span className="hidden sm:inline">Actualizar</span>
           </Button>
         </div>
       </div>
@@ -395,34 +395,36 @@ export const ReporteTiemposMuertos = () => {
       </div>
 
       {/* Búsqueda + filtro por estado */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative max-w-xs flex-1 min-w-[200px]">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:flex-wrap">
+        <div className="relative w-full sm:max-w-xs sm:flex-1 sm:min-w-[200px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
-            placeholder="Buscar corte, modelo, servicio, estado..."
+            placeholder="Buscar corte, modelo, servicio..."
             value={busqueda}
             onChange={e => setBusqueda(e.target.value)}
             className="h-8 pl-8 text-xs"
             data-testid="busqueda-tm"
           />
         </div>
-        <Select value={filtroEstado} onValueChange={setFiltroEstado}>
-          <SelectTrigger className="h-8 w-[200px] text-xs" data-testid="filtro-estado-tm">
-            <SelectValue placeholder="Todos los estados" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all">Todos los estados</SelectItem>
-            {estadosDisponibles.map(e => (
-              <SelectItem key={e} value={e}>{e}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {filtroEstado !== '__all' && (
-          <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setFiltroEstado('__all')}>
-            Limpiar
-          </Button>
-        )}
-        <div className="text-xs text-muted-foreground ml-auto">
+        <div className="flex items-center gap-2">
+          <Select value={filtroEstado} onValueChange={setFiltroEstado}>
+            <SelectTrigger className="h-8 flex-1 sm:w-[200px] sm:flex-none text-xs" data-testid="filtro-estado-tm">
+              <SelectValue placeholder="Todos los estados" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">Todos los estados</SelectItem>
+              {estadosDisponibles.map(e => (
+                <SelectItem key={e} value={e}>{e}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {filtroEstado !== '__all' && (
+            <Button variant="ghost" size="sm" className="h-8 text-xs shrink-0" onClick={() => setFiltroEstado('__all')}>
+              Limpiar
+            </Button>
+          )}
+        </div>
+        <div className="text-xs text-muted-foreground sm:ml-auto">
           {filtered.length} de {data?.items?.length || 0}
         </div>
       </div>

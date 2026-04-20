@@ -476,16 +476,16 @@ export const Layout = () => {
             {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
 
-          <div className="flex items-center gap-3">
-            <div className="logo-badge">
+          <div className="flex items-center gap-2 md:gap-3 min-w-0">
+            <div className="logo-badge flex-shrink-0">
               <Scissors className="h-5 w-5" />
             </div>
-            <div>
-              <h1 className="text-lg font-bold tracking-tight leading-tight">Producción</h1>
+            <div className="min-w-0">
+              <h1 className="text-base md:text-lg font-bold tracking-tight leading-tight truncate">Producción</h1>
             </div>
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-1 md:gap-2">
             <GlobalSearch />
             <NotificacionesBell />
 
@@ -555,10 +555,11 @@ export const Layout = () => {
 
       {/* ── Banner Modo Carga Inicial ── */}
       {modoMigracion && (
-        <div className="bg-yellow-400 dark:bg-yellow-600 text-yellow-900 dark:text-yellow-100 text-center text-xs font-semibold py-1.5 px-4 flex items-center justify-center gap-2 flex-shrink-0 z-40">
-          <AlertTriangle className="h-3.5 w-3.5" />
-          MODO CARGA INICIAL ACTIVO — Las salidas de inventario que ocurran se revertirán al desactivar
-          <AlertTriangle className="h-3.5 w-3.5" />
+        <div className="bg-yellow-400 dark:bg-yellow-600 text-yellow-900 dark:text-yellow-100 text-center text-[10px] md:text-xs font-semibold py-1.5 px-3 md:px-4 flex items-center justify-center gap-1.5 md:gap-2 flex-shrink-0 z-40 leading-tight">
+          <AlertTriangle className="h-3 w-3 md:h-3.5 md:w-3.5 flex-shrink-0" />
+          <span className="md:hidden">MODO CARGA INICIAL</span>
+          <span className="hidden md:inline">MODO CARGA INICIAL ACTIVO — Las salidas de inventario que ocurran se revertirán al desactivar</span>
+          <AlertTriangle className="h-3 w-3 md:h-3.5 md:w-3.5 flex-shrink-0" />
         </div>
       )}
 
@@ -626,10 +627,10 @@ export const Layout = () => {
 
         {/* ── Sidebar ── */}
         <aside className={`
-          fixed inset-y-0 left-0 z-40 transform sidebar-bg border-r pt-16 transition-all duration-300 ease-in-out
+          fixed inset-y-0 left-0 z-40 transform bg-background sidebar-bg border-r pt-16 transition-all duration-300 ease-in-out
           md:translate-x-0 md:relative md:pt-0 md:flex-shrink-0
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-          ${sidebarCollapsed ? 'md:w-16' : 'md:w-60'} w-64
+          ${sidebarOpen ? 'translate-x-0 shadow-2xl md:shadow-none' : '-translate-x-full'}
+          ${sidebarCollapsed ? 'md:w-16' : 'md:w-60'} w-[85vw] max-w-[280px]
         `}>
 
           {/* Botón colapsar desktop */}

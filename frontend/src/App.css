@@ -283,8 +283,15 @@ span[class*="rounded-md"][class*="text-xs"][class*="px-"] {
 }
 
 /* ── Sidebar background ── */
+/* Opaco siempre: en móvil el sidebar flota sobre el contenido y necesita base sólida.
+   En desktop sigue combinando visualmente con el layout. */
 .sidebar-bg {
-    background-color: hsl(var(--muted) / 0.35);
+    background-color: hsl(var(--background));
+}
+@media (min-width: 768px) {
+    .sidebar-bg {
+        background-color: hsl(var(--muted) / 0.35);
+    }
 }
 .dark .sidebar-bg {
     background-color: hsl(var(--card));
