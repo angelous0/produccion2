@@ -563,6 +563,14 @@ export const Layout = () => {
         </div>
       )}
 
+      {/* ── Banner Solo Lectura ── */}
+      {user?.rol === 'lectura' && (
+        <div className="bg-slate-700 dark:bg-slate-800 text-white text-center text-[10px] md:text-xs font-semibold py-1.5 px-3 md:px-4 flex items-center justify-center gap-1.5 md:gap-2 flex-shrink-0 leading-tight">
+          <Shield className="h-3 w-3 md:h-3.5 md:w-3.5 flex-shrink-0" />
+          <span>MODO SOLO LECTURA — Puedes ver todo, pero no modificar datos</span>
+        </div>
+      )}
+
       {/* ── Dialog Contraseña ── */}
       <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
         <DialogContent>

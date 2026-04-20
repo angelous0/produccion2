@@ -1,10 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 import asyncpg
 import os
 from pathlib import Path
+from jose import jwt, JWTError
+from db import get_pool
 
 
 # Import all routers
@@ -139,6 +141,72 @@ else:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+
+# ==================== READ-ONLY ROLE ENFORCEMENT ====================
+# Defensa en profundidad: bloquea toda mutación (POST/PUT/PATCH/DELETE) para usuarios
+# con rol 'lectura', incluso si el frontend permitiera enviar la request.
+# Se valida contra el JWT: decodifica, busca el usuario en BD, revisa el rol.
+#
+# Whitelist de paths que sí se permiten (mutaciones propias de la cuenta):
+#   - /api/auth/*  → login, cambio de contraseña, refresh
+_JWT_SECRET = os.environ.get('JWT_SECRET_KEY')
+_JWT_ALG = "HS256"
+_READ_ONLY_WRITE_WHITELIST_PREFIXES = (
+    "/api/auth/",  # login, change-password, refresh
+)
+_MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+@app.middleware("http")
+async def block_writes_for_readonly(request: Request, call_next):
+    # Solo interceptar métodos mutantes
+    if request.method not in _MUTATING_METHODS:
+        return await call_next(request)
+
+    path = request.url.path
+    # Whitelisted paths pasan directo
+    if any(path.startswith(p) for p in _READ_ONLY_WRITE_WHITELIST_PREFIXES):
+        return await call_next(request)
+
+    # Solo aplicar a rutas /api/*
+    if not path.startswith("/api/"):
+        return await call_next(request)
+
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        # Sin token → las dependencias de autenticación del endpoint se encargan
+        return await call_next(request)
+
+    token = auth_header.split(None, 1)[1].strip()
+    if not _JWT_SECRET:
+        return await call_next(request)
+    try:
+        payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALG])
+        user_id = payload.get("sub")
+        if not user_id:
+            return await call_next(request)
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT rol, activo FROM prod_usuarios WHERE id = $1", user_id
+            )
+        if row and row["activo"] and row["rol"] == "lectura":
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": "Acceso de solo lectura: tu usuario no puede modificar datos."
+                },
+            )
+    except JWTError:
+        # Token inválido → que el endpoint responda 401 como siempre
+        pass
+    except Exception:
+        # Fallo de BD u otro — no bloqueamos, dejamos que la ruta maneje
+        pass
+
+    return await call_next(request)
+
 
 app.include_router(inventario_main_router)
 app.include_router(catalogos_router)

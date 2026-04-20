@@ -48,6 +48,7 @@ function fixNaiveDatesDeep(obj) {
 }
 
 let installed = false;
+let lastReadOnlyToast = 0;
 
 export function installUtcFix() {
   if (installed) return;
@@ -59,7 +60,25 @@ export function installUtcFix() {
       }
       return response;
     },
-    (error) => Promise.reject(error),
+    (error) => {
+      // Detectar 403 del middleware de solo lectura y mostrar toast amigable
+      // (throttled para no spam si el usuario clickea varias veces).
+      try {
+        const status = error?.response?.status;
+        const detail = error?.response?.data?.detail || '';
+        if (status === 403 && detail.toLowerCase().includes('solo lectura')) {
+          const now = Date.now();
+          if (now - lastReadOnlyToast > 3000) {
+            lastReadOnlyToast = now;
+            // Import dinámico para evitar dependencia circular en build
+            import('sonner').then(({ toast }) => {
+              toast.error('Tu usuario es de solo lectura. No puedes modificar datos.', { duration: 3500 });
+            }).catch(() => {});
+          }
+        }
+      } catch { /* ignore */ }
+      return Promise.reject(error);
+    },
   );
 }
 
