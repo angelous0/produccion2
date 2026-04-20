@@ -184,7 +184,7 @@ async def create_movimiento(input: MovimientoCreate, current_user: dict = Depend
             movimiento.cantidad_enviada, movimiento.cantidad_recibida, diferencia, costo_calculado,
             tarifa, fecha_inicio, fecha_fin, fecha_esperada, input.responsable_movimiento or None,
             movimiento.observaciones, input.avance_porcentaje,
-            datetime.now() if input.avance_porcentaje is not None else None,
+            datetime.now(timezone.utc).replace(tzinfo=None) if input.avance_porcentaje is not None else None,
             movimiento.created_at.replace(tzinfo=None), detalle_costos_json
         )
         
@@ -195,7 +195,7 @@ async def create_movimiento(input: MovimientoCreate, current_user: dict = Depend
                 """INSERT INTO prod_mermas (id, registro_id, movimiento_id, servicio_id, persona_id, cantidad, motivo, fecha)
                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)""",
                 merma_id, input.registro_id, movimiento.id, input.servicio_id, input.persona_id,
-                diferencia, "Diferencia automática", datetime.now()
+                diferencia, "Diferencia automática", datetime.now(timezone.utc).replace(tzinfo=None)
             )
         
         servicio_row = await conn.fetchrow("SELECT nombre FROM prod_servicios_produccion WHERE id = $1", input.servicio_id)
@@ -285,7 +285,7 @@ async def update_movimiento(movimiento_id: str, input: MovimientoCreate, _u=Depe
                 """INSERT INTO prod_mermas (id, registro_id, movimiento_id, servicio_id, persona_id, cantidad, motivo, fecha)
                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)""",
                 merma_id, input.registro_id, movimiento_id, input.servicio_id, input.persona_id,
-                diferencia, "Diferencia automática", datetime.now()
+                diferencia, "Diferencia automática", datetime.now(timezone.utc).replace(tzinfo=None)
             )
         
         return {**row_to_dict(result), **input.model_dump(), "diferencia": diferencia, "costo_calculado": costo_calculado, "tarifa_aplicada": tarifa}
@@ -386,7 +386,7 @@ async def copiar_movimientos(registro_id: str, body: dict, current_user: dict = 
                 mov['responsable_movimiento'],
                 f"Copiado desde Corte #{origen['n_corte']}",
                 mov['avance_porcentaje'],
-                datetime.now() if mov['avance_porcentaje'] is not None else None,
+                datetime.now(timezone.utc).replace(tzinfo=None) if mov['avance_porcentaje'] is not None else None,
                 datetime.now(timezone.utc).replace(tzinfo=None), detalle_json)
             creados += 1
 
@@ -554,7 +554,7 @@ async def create_guia_from_movimiento(movimiento_id: str, _u=Depends(get_current
             # Actualizar guía existente
             await conn.execute(
                 """UPDATE prod_guias_remision SET servicio_id=$1, persona_id=$2, cantidad=$3, fecha=$4 WHERE id=$5""",
-                mov['servicio_id'], mov['persona_id'], mov['cantidad_enviada'], datetime.now(), guia_existente['id']
+                mov['servicio_id'], mov['persona_id'], mov['cantidad_enviada'], datetime.now(timezone.utc).replace(tzinfo=None), guia_existente['id']
             )
             updated = await conn.fetchrow("SELECT * FROM prod_guias_remision WHERE id = $1", guia_existente['id'])
             updated_dict = row_to_dict(updated)
@@ -588,7 +588,7 @@ async def create_guia_from_movimiento(movimiento_id: str, _u=Depends(get_current
             """INSERT INTO prod_guias_remision (id, numero_guia, movimiento_id, registro_id, servicio_id, persona_id, cantidad, observaciones, fecha)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)""",
             guia_id, numero_guia, movimiento_id, mov['registro_id'], mov['servicio_id'],
-            mov['persona_id'], mov['cantidad_enviada'], "", datetime.now()
+            mov['persona_id'], mov['cantidad_enviada'], "", datetime.now(timezone.utc).replace(tzinfo=None)
         )
         guia = await conn.fetchrow("SELECT * FROM prod_guias_remision WHERE id = $1", guia_id)
         guia_dict = row_to_dict(guia)

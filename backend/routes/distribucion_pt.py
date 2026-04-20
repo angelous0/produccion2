@@ -206,7 +206,7 @@ async def guardar_distribucion_pt(
                     (registro_id, tipo_salida, product_template_id_odoo, cantidad, created_at, created_by)
                     VALUES ($1, $2, $3, $4, $5, $6)
                 """, registro_id, tipo, prod_id, cantidad,
-                   datetime.now(), current_user.get('username'))
+                   datetime.now(timezone.utc).replace(tzinfo=None), current_user.get('username'))
 
         return {"ok": True, "total_distribuido": total_distribuido, "total_producido": total_producido}
 
@@ -294,7 +294,7 @@ async def vincular_ajuste_odoo(
             (registro_id, stock_inventory_odoo_id, created_at, created_by)
             VALUES ($1, $2, $3, $4)
         """, registro_id, data.stock_inventory_odoo_id,
-           datetime.now(), current_user.get('username'))
+           datetime.now(timezone.utc).replace(tzinfo=None), current_user.get('username'))
 
         return {"ok": True, "ajuste_nombre": ajuste['name']}
 

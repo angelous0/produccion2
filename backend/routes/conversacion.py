@@ -55,7 +55,7 @@ async def create_mensaje(registro_id: str, input: MensajeCreate, _u=Depends(get_
             """INSERT INTO prod_conversacion (id, registro_id, mensaje_padre_id, autor, mensaje, estado, fijado, created_at)
                VALUES ($1, $2, $3, $4, $5, $6, FALSE, $7)""",
             msg_id, registro_id, input.mensaje_padre_id, input.autor.strip(), input.mensaje.strip(), estado,
-            datetime.now(TZ_LIMA).replace(tzinfo=None)
+            datetime.now(timezone.utc).replace(tzinfo=None)
         )
         row = await conn.fetchrow("SELECT * FROM prod_conversacion WHERE id = $1", msg_id)
         return row_to_dict(row)

@@ -7,7 +7,7 @@ Importación masiva de registros de producción desde Excel.
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import uuid, json, io, re
 
 router = APIRouter(prefix="/api")
@@ -643,7 +643,7 @@ async def execute_import(file: UploadFile = File(...), empresa_id: int = Query(8
                 tallas_json = json.dumps([{"talla_id": t["talla_id"], "talla_nombre": t["talla_nombre"], "cantidad": t["cantidad"]} for t in tallas_list]) if tallas_list else "[]"
 
                 modelo_manual_json = json.dumps(reg["modelo_manual"])
-                fecha_creacion = datetime.now()
+                fecha_creacion = datetime.now(timezone.utc).replace(tzinfo=None)
                 fecha_inicio = reg["fecha_inicio"]
                 fecha_entrega = reg["fecha_entrega"]
 
@@ -695,8 +695,8 @@ async def execute_import(file: UploadFile = File(...), empresa_id: int = Query(8
                         costo, mov["tarifa"],
                         mov["fecha_inicio"], mov["fecha_fin"], None,
                         None, mov["observaciones"],
-                        avance, datetime.now() if avance else None,
-                        datetime.now(), None,
+                        avance, datetime.now(timezone.utc).replace(tzinfo=None) if avance else None,
+                        datetime.now(timezone.utc).replace(tzinfo=None), None,
                     )
                     movimientos_creados += 1
 

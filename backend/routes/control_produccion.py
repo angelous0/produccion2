@@ -133,7 +133,7 @@ async def create_incidencia(input: IncidenciaCreate, _u=Depends(get_current_user
     pool = await get_pool()
     async with pool.acquire() as conn:
         inc_id = str(uuid.uuid4())
-        now = datetime.now(TZ_LIMA).replace(tzinfo=None)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         paralizacion_id = None
 
         # Get motivo nombre
@@ -193,7 +193,7 @@ async def update_incidencia(incidencia_id: str, input: IncidenciaUpdate, _u=Depe
         if not row:
             raise HTTPException(status_code=404, detail="Incidencia no encontrada")
 
-        now = datetime.now(TZ_LIMA).replace(tzinfo=None)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         await conn.execute(
             "UPDATE prod_incidencia SET estado = $1, updated_at = $2, comentario_resolucion = $3 WHERE id = $4",
             input.estado, now, input.comentario_resolucion, incidencia_id
@@ -278,7 +278,7 @@ async def levantar_paralizacion(paralizacion_id: str, _u=Depends(get_current_use
             raise HTTPException(status_code=404, detail="Paralización no encontrada")
         if not row['activa']:
             raise HTTPException(status_code=400, detail="Ya fue levantada")
-        now = datetime.now(TZ_LIMA).replace(tzinfo=None)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         await conn.execute(
             "UPDATE prod_paralizacion SET activa = FALSE, fecha_fin = $1, updated_at = $1 WHERE id = $2",
             now, paralizacion_id

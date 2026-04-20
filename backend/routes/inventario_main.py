@@ -737,7 +737,7 @@ async def create_ingreso(input: IngresoInventarioCreate, current_user: dict = De
                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)""",
                     rollo_id, input.item_id, ingreso.id, rollo_data.get('numero_rollo', ''), rollo_data.get('metraje', 0),
                     rollo_data.get('metraje', 0), rollo_data.get('ancho', 0), rollo_data.get('tono', ''),
-                    rollo_data.get('observaciones', ''), True, datetime.now(), input.empresa_id
+                    rollo_data.get('observaciones', ''), True, datetime.now(timezone.utc).replace(tzinfo=None), input.empresa_id
                 )
         
         # Actualizar stock
@@ -865,7 +865,7 @@ async def update_ingreso(ingreso_id: str, input: IngresoUpdateData, _u=Depends(g
                            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)""",
                         rollo_id, ingreso['item_id'], ingreso_id,
                         rollo_data.get('numero_rollo', ''), metraje, metraje,
-                        ancho, rollo_data.get('tono', ''), '', True, datetime.now(), ingreso['empresa_id']
+                        ancho, rollo_data.get('tono', ''), '', True, datetime.now(timezone.utc).replace(tzinfo=None), ingreso['empresa_id']
                     )
 
             # Actualizar cantidad del ingreso y stock

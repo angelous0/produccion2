@@ -684,7 +684,7 @@ async def reabrir_cierre(registro_id: str, data: ReaperturaInput, current_user: 
                     )
 
             usuario = current_user.get("username", current_user.get("nombre", "sistema"))
-            ahora = datetime.now()
+            ahora = datetime.now(timezone.utc).replace(tzinfo=None)
 
             # Revertir ingreso PT (devolver stock y borrar ingreso)
             if cierre.get("pt_ingreso_id"):
