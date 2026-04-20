@@ -20,9 +20,26 @@ export const RegistroMovimientosCard = ({
   const canEditMov = permisos?.canAction?.('editar_movimientos') !== false;
   const canCheckService = (servicioId) => permisos?.canService?.(servicioId) !== false;
 
-  const lastIdx = movimientosProduccion.length - 1;
-  const cantidadEfectiva = lastIdx >= 0
-    ? (movimientosProduccion[lastIdx].cantidad_recibida ?? movimientosProduccion[lastIdx].cantidad ?? '—')
+  // "Activo" = movimiento más reciente/actual por FECHAS REALES del servicio,
+  // no por orden de inserción en BD. Prioridad:
+  //  1. Movimiento en progreso (fecha_inicio sin fecha_fin)
+  //  2. El más reciente por fecha_fin
+  //  3. El más reciente por fecha_inicio
+  //  4. Si ninguna fecha, el primero del arreglo (backend retorna DESC por created_at)
+  const activeIdx = (() => {
+    if (movimientosProduccion.length === 0) return -1;
+    const inProgress = movimientosProduccion.findIndex(m => m.fecha_inicio && !m.fecha_fin);
+    if (inProgress !== -1) return inProgress;
+    let bestIdx = 0;
+    let bestDate = '';
+    movimientosProduccion.forEach((m, idx) => {
+      const d = m.fecha_fin || m.fecha_inicio || '';
+      if (d && d > bestDate) { bestDate = d; bestIdx = idx; }
+    });
+    return bestIdx;
+  })();
+  const cantidadEfectiva = activeIdx >= 0
+    ? (movimientosProduccion[activeIdx].cantidad_recibida ?? movimientosProduccion[activeIdx].cantidad ?? '—')
     : '—';
 
   return (
@@ -74,7 +91,7 @@ export const RegistroMovimientosCard = ({
                 const enviada = mov.cantidad_enviada || mov.cantidad || 0;
                 const recibida = mov.cantidad_recibida || mov.cantidad || 0;
                 const diferencia = enviada - recibida;
-                const isLast = idx === lastIdx;
+                const isLast = idx === activeIdx;
                 return (
                   <div key={mov.id} className={`registro-mov-mobile-card ${isLast ? 'registro-mov-activo' : ''} ${diferencia > 0 && !isLast ? 'registro-mov-merma' : ''}`} data-testid={`movimiento-card-${mov.id}`}>
                     <div className="flex items-center justify-between">
@@ -154,7 +171,7 @@ export const RegistroMovimientosCard = ({
                     const enviada = mov.cantidad_enviada || mov.cantidad || 0;
                     const recibida = mov.cantidad_recibida || mov.cantidad || 0;
                     const diferencia = enviada - recibida;
-                    const isLast = idx === lastIdx;
+                    const isLast = idx === activeIdx;
                     return (
                       <TableRow
                         key={mov.id}

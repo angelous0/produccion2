@@ -317,9 +317,22 @@ export const RegistroForm = () => {
 
   // Stats calculados
   const prendasOriginales = tallasSeleccionadas.reduce((sum, t) => sum + (t.cantidad || 0), 0);
+  // "Último movimiento" = el más reciente por FECHAS, no por orden de array
+  // (el backend retorna DESC por created_at, que puede no coincidir con la
+  // cronología real si se insertaron movimientos retroactivamente).
   const prendasEfectivas = (() => {
-    const ultimoMov = movimientosProduccion.length > 0 ? movimientosProduccion[movimientosProduccion.length - 1] : null;
-    return ultimoMov ? (ultimoMov.cantidad_recibida ?? ultimoMov.cantidad ?? prendasOriginales) : prendasOriginales;
+    if (!movimientosProduccion || movimientosProduccion.length === 0) return prendasOriginales;
+    const inProgress = movimientosProduccion.find(m => m.fecha_inicio && !m.fecha_fin);
+    let ultimoMov = inProgress;
+    if (!ultimoMov) {
+      let bestDate = '';
+      for (const m of movimientosProduccion) {
+        const d = m.fecha_fin || m.fecha_inicio || '';
+        if (d && d > bestDate) { bestDate = d; ultimoMov = m; }
+      }
+    }
+    if (!ultimoMov) ultimoMov = movimientosProduccion[0];
+    return ultimoMov.cantidad_recibida ?? ultimoMov.cantidad ?? prendasOriginales;
   })();
 
   const incidenciasAbiertas = incidencias.filter(i => i.estado === 'ABIERTA').length;
@@ -651,10 +664,20 @@ export const RegistroForm = () => {
     return 0;
   };
 
-  // Cantidad efectiva = ultima cantidad_recibida (refleja mermas) o cantidad original si no hay movimientos
+  // Cantidad efectiva = ultima cantidad_recibida (refleja mermas) del movimiento
+  // MÁS RECIENTE por fechas reales — no por orden de inserción en BD.
   const calcularCantidadEfectiva = () => {
     if (movimientosProduccion && movimientosProduccion.length > 0) {
-      const ultimo = movimientosProduccion[movimientosProduccion.length - 1];
+      const inProgress = movimientosProduccion.find(m => m.fecha_inicio && !m.fecha_fin);
+      let ultimo = inProgress;
+      if (!ultimo) {
+        let bestDate = '';
+        for (const m of movimientosProduccion) {
+          const d = m.fecha_fin || m.fecha_inicio || '';
+          if (d && d > bestDate) { bestDate = d; ultimo = m; }
+        }
+      }
+      if (!ultimo) ultimo = movimientosProduccion[0];
       const recibida = ultimo.cantidad_recibida ?? ultimo.cantidad ?? 0;
       if (recibida > 0) return recibida;
     }
