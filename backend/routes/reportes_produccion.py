@@ -174,8 +174,8 @@ async def produccion_en_proceso(
         query = """
             SELECT r.id, r.n_corte, r.estado, r.estado_op, r.urgente,
                    r.fecha_creacion, r.fecha_entrega_final,
-                   m.nombre as modelo_nombre,
-                   ma.nombre as marca_nombre,
+                   COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') as modelo_nombre,
+                   COALESCE(ma.nombre, r.modelo_manual->>'marca_texto') as marca_nombre,
                    rp.nombre as ruta_nombre,
                    COALESCE((SELECT SUM(rt.cantidad_real) FROM prod_registro_tallas rt WHERE rt.registro_id = r.id),0) as total_prendas,
                    (CURRENT_DATE - r.fecha_creacion::date) as dias_proceso,
@@ -196,8 +196,16 @@ async def produccion_en_proceso(
             params.append(estado)
             query += f" AND r.estado = ${len(params)}"
         if modelo_id:
+            # Puede ser un UUID del catálogo o el NOMBRE de un modelo manual.
+            # Filtra en ambos: matchea si es r.modelo_id exacto O si el nombre
+            # (catálogo o modelo_manual) coincide.
             params.append(modelo_id)
-            query += f" AND r.modelo_id = ${len(params)}"
+            idx = len(params)
+            query += (
+                f" AND (r.modelo_id = ${idx}"
+                f"      OR m.nombre = ${idx}"
+                f"      OR r.modelo_manual->>'nombre_modelo' = ${idx})"
+            )
         if ruta_id:
             params.append(ruta_id)
             query += f" AND m.ruta_produccion_id = ${len(params)}"
@@ -661,7 +669,27 @@ async def get_filtros_reportes(
     async with pool.acquire() as conn:
         servicios = await conn.fetch("SELECT id, nombre FROM prod_servicios_produccion ORDER BY orden ASC, nombre")
         rutas = await conn.fetch("SELECT id, nombre FROM prod_rutas_produccion ORDER BY nombre")
-        modelos = await conn.fetch("SELECT id, nombre FROM prod_modelos ORDER BY nombre")
+        # Modelos que realmente aparecen en registros activos:
+        # mezcla catálogo (prod_modelos) + manuales (modelo_manual->>'nombre_modelo')
+        # Se usa el NOMBRE como identificador para que el filtro matchee a ambos.
+        modelos = await conn.fetch("""
+            SELECT DISTINCT nombre
+            FROM (
+                SELECT m.nombre
+                FROM prod_registros r
+                JOIN prod_modelos m ON m.id = r.modelo_id
+                WHERE r.estado_op IN ('ABIERTA','EN_PROCESO')
+                UNION
+                SELECT r.modelo_manual->>'nombre_modelo' AS nombre
+                FROM prod_registros r
+                WHERE r.estado_op IN ('ABIERTA','EN_PROCESO')
+                  AND r.modelo_manual IS NOT NULL
+                  AND r.modelo_manual->>'nombre_modelo' IS NOT NULL
+                  AND r.modelo_manual->>'nombre_modelo' <> ''
+            ) t
+            WHERE nombre IS NOT NULL AND nombre <> ''
+            ORDER BY nombre
+        """)
         estados = await conn.fetch("""
             SELECT DISTINCT estado FROM prod_registros WHERE estado_op IN ('ABIERTA','EN_PROCESO') ORDER BY estado
         """)
@@ -669,7 +697,8 @@ async def get_filtros_reportes(
         return {
             "servicios": [{"id": r["id"], "nombre": r["nombre"]} for r in servicios],
             "rutas": [{"id": r["id"], "nombre": r["nombre"]} for r in rutas],
-            "modelos": [{"id": r["id"], "nombre": r["nombre"]} for r in modelos],
+            # id = nombre para que el filtro envíe el nombre como valor
+            "modelos": [{"id": r["nombre"], "nombre": r["nombre"]} for r in modelos],
             "estados": [r["estado"] for r in estados],
         }
 

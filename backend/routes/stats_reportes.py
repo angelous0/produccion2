@@ -1494,16 +1494,29 @@ async def reporte_paralizados(
             if solo_activas == "true" and not activa:
                 continue
 
-            # Calcular días
+            # Calcular días — fi y ff pueden ser datetime, date o str (row_to_dict los pasa a ISO).
+            def _to_date(x):
+                if x is None:
+                    return None
+                if hasattr(x, 'date'):  # datetime
+                    return x.date()
+                if isinstance(x, str):
+                    try:
+                        # Quita sufijo Z si existe y toma solo la parte de fecha
+                        return datetime.fromisoformat(x.replace('Z', '').split('T')[0]).date()
+                    except Exception:
+                        return None
+                return x  # ya es date
+
             fi = d.get("fecha_inicio")
             ff = d.get("fecha_fin")
-            if fi:
-                fi_date = fi.date() if hasattr(fi, 'date') else fi
+            fi_date = _to_date(fi)
+            ff_date = _to_date(ff)
+            if fi_date:
                 if activa:
                     dias = (hoy - fi_date).days
                 else:
-                    ff_date = ff.date() if ff and hasattr(ff, 'date') else (ff or hoy)
-                    dias = (ff_date - fi_date).days
+                    dias = ((ff_date or hoy) - fi_date).days
             else:
                 dias = 0
 
