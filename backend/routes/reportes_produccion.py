@@ -1536,14 +1536,20 @@ async def reporte_tiempos_muertos(
                 ORDER BY m.registro_id, m.fecha_fin DESC, m.created_at DESC
             ),
             tiene_siguiente AS (
+                -- Un "siguiente iniciado" se determina por fechas REALES del servicio
+                -- (fecha_inicio), NO por created_at (que es cuándo se cargó la fila en BD).
+                -- Esto evita falsos positivos cuando se cargan movimientos históricos
+                -- fuera de orden cronológico.
                 SELECT ut.registro_id,
-                       bool_or(m2.fecha_inicio IS NOT NULL) as siguiente_iniciado
+                       EXISTS (
+                           SELECT 1
+                           FROM produccion.prod_movimientos_produccion m2
+                           WHERE m2.registro_id = ut.registro_id
+                             AND m2.id != ut.movimiento_id
+                             AND m2.fecha_inicio IS NOT NULL
+                             AND m2.fecha_inicio > ut.fecha_fin
+                       ) as siguiente_iniciado
                 FROM ultimo_terminado ut
-                LEFT JOIN produccion.prod_movimientos_produccion m2
-                    ON m2.registro_id = ut.registro_id
-                    AND m2.created_at > ut.mov_created
-                    AND m2.id != ut.movimiento_id
-                GROUP BY ut.registro_id
             )
             SELECT
                 ut.registro_id,
