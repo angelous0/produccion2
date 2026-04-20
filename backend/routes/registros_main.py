@@ -233,7 +233,12 @@ async def get_registros(
         param_idx = 1
 
         if search:
-            conditions.append(f"(r.n_corte ILIKE ${param_idx} OR m.nombre ILIKE ${param_idx})")
+            # Busca en: n_corte, nombre de modelo catálogo y nombre de modelo manual (JSONB)
+            conditions.append(
+                f"(r.n_corte ILIKE ${param_idx} "
+                f"OR m.nombre ILIKE ${param_idx} "
+                f"OR r.modelo_manual->>'nombre_modelo' ILIKE ${param_idx})"
+            )
             params.append(f"%{search}%")
             param_idx += 1
 
