@@ -5,7 +5,7 @@ export { RegistroMovimientosCard } from './RegistroMovimientosCard';
 export { RegistroIncidenciasCard } from './RegistroIncidenciasCard';
 export { RegistroPanelLateral } from './RegistroPanelLateral';
 export {
-  ColoresDialog, MovimientoDialog, IncidenciaDialog,
+  ColoresDialog, MovimientoDialog, IncidenciaDialog, ResolverIncidenciaDialog,
   SugerenciaEstadoDialog, SugerenciaMovDialog, ForzarEstadoDialog,
   RetrocesoEstadoDialog, AdvertenciaCantidadDialog,
   DivisionDialog, SalidaInventarioDialog, ReabrirCierreDialog,
