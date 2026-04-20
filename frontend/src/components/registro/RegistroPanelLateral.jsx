@@ -62,12 +62,10 @@ export const RegistroPanelLateral = ({
               <span className="registro-panel-modelo-val">{modeloSeleccionado.tela_nombre || '—'}</span>
               <span className="registro-panel-stat-label">Hilo</span>
               <span className="registro-panel-modelo-val">{modeloSeleccionado.hilo_nombre || '—'}</span>
-              {formData.curva && (
-                <>
-                  <span className="registro-panel-stat-label">Curva</span>
-                  <span className="registro-panel-modelo-val">{formData.curva}</span>
-                </>
-              )}
+              <span className="registro-panel-stat-label">Hilo Esp.</span>
+              <span className="registro-panel-modelo-val">{modeloSeleccionado.hilo_especifico_nombre || '—'}</span>
+              <span className="registro-panel-stat-label">Curva</span>
+              <span className="registro-panel-modelo-val">{formData.curva || '—'}</span>
             </div>
           </div>
         )}
@@ -87,12 +85,12 @@ export const RegistroPanelLateral = ({
               <span className="registro-panel-modelo-val">{formData.modelo_manual.entalle_texto || '—'}</span>
               <span className="registro-panel-stat-label">Tela</span>
               <span className="registro-panel-modelo-val">{formData.modelo_manual.tela_texto || '—'}</span>
-              {formData.modelo_manual.hilo && (
-                <>
-                  <span className="registro-panel-stat-label">Hilo</span>
-                  <span className="registro-panel-modelo-val">{formData.modelo_manual.hilo}</span>
-                </>
-              )}
+              <span className="registro-panel-stat-label">Hilo</span>
+              <span className="registro-panel-modelo-val">{formData.modelo_manual.hilo_texto || formData.modelo_manual.hilo || '—'}</span>
+              <span className="registro-panel-stat-label">Hilo Esp.</span>
+              <span className="registro-panel-modelo-val">{formData.modelo_manual.hilo_especifico_texto || formData.modelo_manual.hilo_especifico || '—'}</span>
+              <span className="registro-panel-stat-label">Curva</span>
+              <span className="registro-panel-modelo-val">{formData.curva || '—'}</span>
             </div>
           </div>
         )}
