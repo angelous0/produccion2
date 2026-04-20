@@ -88,20 +88,20 @@ export const RegistroHeader = ({
       className={`registro-header-card ${isParalizado ? 'registro-header-paralizado' : ''}`}
       data-testid="header-operativo"
     >
-      {/* Fila 1: Navegación + Identidad + Guardar */}
-      <div className="flex items-center gap-4">
+      {/* Fila 1: Navegación + Identidad + Guardar (responsive) */}
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0">
         {cameFromRegistro ? (
-          <Button variant="ghost" size="sm" className="registro-btn-back gap-1.5" onClick={() => navigate(-1)} data-testid="btn-volver">
+          <Button variant="ghost" size="sm" className="registro-btn-back gap-1.5 shrink-0" onClick={() => navigate(-1)} data-testid="btn-volver">
             <ArrowLeft className="h-4 w-4" />
-            <span className="text-xs">Corte {cameFromRegistro}</span>
+            <span className="text-xs hidden sm:inline">Corte {cameFromRegistro}</span>
           </Button>
         ) : (
-          <Button variant="ghost" size="icon" className="registro-btn-back" onClick={() => navigate('/registros')} data-testid="btn-volver">
+          <Button variant="ghost" size="icon" className="registro-btn-back shrink-0" onClick={() => navigate('/registros')} data-testid="btn-volver">
             <ArrowLeft className="h-5 w-5" />
           </Button>
         )}
         {isEditing && (
-          <div className="flex items-center gap-1">
+          <div className="hidden sm:flex items-center gap-1 shrink-0">
             <Button
               variant="outline"
               size="icon"
@@ -127,18 +127,21 @@ export const RegistroHeader = ({
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h2 className="registro-title">Corte {formData.n_corte || '—'}</h2>
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <h2 className="registro-title truncate">Corte {formData.n_corte || '—'}</h2>
             {modeloSeleccionado && (
-              <span className="registro-subtitle">· {modeloSeleccionado.nombre}</span>
+              <span className="registro-subtitle truncate hidden sm:inline">· {modeloSeleccionado.nombre}</span>
             )}
             {formData.urgente && (
-              <Badge variant="destructive" className="registro-badge-urgente">URGENTE</Badge>
+              <Badge variant="destructive" className="registro-badge-urgente">URG</Badge>
             )}
             {isParalizado && (
-              <Badge className="bg-red-600 text-white registro-badge-urgente">PARALIZADO</Badge>
+              <Badge className="bg-red-600 text-white registro-badge-urgente">PARAL.</Badge>
             )}
           </div>
+          {modeloSeleccionado && (
+            <p className="registro-subtitle truncate sm:hidden" style={{ marginTop: 2 }}>{modeloSeleccionado.nombre}</p>
+          )}
           {!isEditing && <p className="registro-subtitle" style={{ marginTop: 2 }}>Crear un nuevo registro de producción</p>}
         </div>
         {isEditing && id && (
@@ -149,7 +152,7 @@ export const RegistroHeader = ({
             type="button"
             size="sm"
             variant="ghost"
-            className="text-xs h-8 px-2 text-muted-foreground hover:text-foreground"
+            className="text-xs h-8 px-2 text-muted-foreground hover:text-foreground hidden sm:flex shrink-0"
             onClick={async () => {
               try {
                 const res = await axios.get(`${API}/registros/${id}/export-template`, { responseType: 'blob' });
@@ -173,13 +176,41 @@ export const RegistroHeader = ({
           size="sm"
           disabled={loading || isParalizado}
           onClick={async () => { await handleSubmit(null, true); }}
-          className={`registro-btn-save-quick ${isParalizado ? 'opacity-50' : ''}`}
+          className={`registro-btn-save-quick shrink-0 ${isParalizado ? 'opacity-50' : ''}`}
           data-testid="btn-guardar-rapido"
         >
-          <Save className="h-4 w-4 mr-1.5" />
-          {loading ? 'Guardando...' : 'Guardar'}
+          <Save className="h-4 w-4 sm:mr-1.5" />
+          <span className="hidden sm:inline">{loading ? 'Guardando...' : 'Guardar'}</span>
         </Button>
       </div>
+
+      {/* Fila móvil: flechas nav anterior/siguiente */}
+      {isEditing && (
+        <div className="flex sm:hidden items-center justify-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 flex-1 text-[11px]"
+            disabled={!navegacion?.anterior}
+            onClick={() => navegacion?.anterior && navigate(`/registros/editar/${navegacion.anterior.id}`)}
+            data-testid="btn-nav-anterior-mobile"
+          >
+            <ChevronLeft className="h-3.5 w-3.5 mr-1" />
+            {navegacion?.anterior ? `Corte ${navegacion.anterior.n_corte}` : 'Anterior'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 flex-1 text-[11px]"
+            disabled={!navegacion?.siguiente}
+            onClick={() => navegacion?.siguiente && navigate(`/registros/editar/${navegacion.siguiente.id}`)}
+            data-testid="btn-nav-siguiente-mobile"
+          >
+            {navegacion?.siguiente ? `Corte ${navegacion.siguiente.n_corte}` : 'Siguiente'}
+            <ChevronRight className="h-3.5 w-3.5 ml-1" />
+          </Button>
+        </div>
+      )}
 
       {/* Fila 2: Estado + Ruta (solo edición) */}
       {isEditing && (

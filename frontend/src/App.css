@@ -1261,12 +1261,25 @@ main::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 
 }
 
 @media (max-width: 767px) {
+  /* En móvil NO sticky y z-index bajo para no tapar el sidebar.
+     El backdrop-filter se quita para evitar crear stacking context problemático. */
   .registro-header-card {
+    position: static !important;
+    z-index: 1 !important;
     margin-left: -16px !important;
     margin-right: -16px !important;
     margin-top: -16px !important;
-    padding: 10px 16px 8px !important;
+    padding: 10px 12px 8px !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: hsl(var(--background)) !important;
+    gap: 6px !important;
   }
+  /* Título más pequeño en móvil para evitar wrap */
+  .registro-title { font-size: 16px !important; }
+  .registro-subtitle { font-size: 11px !important; }
+  /* Botón back compacto */
+  .registro-btn-back { width: 32px !important; height: 32px !important; }
 }
 
 /* Stats grid sticky debajo del header (header ~115px) */
@@ -1287,11 +1300,16 @@ main::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 
 
 @media (max-width: 767px) {
   .registro-stats-grid {
-    top: 100px !important;
+    position: static !important;
+    top: auto !important;
+    z-index: 1 !important;
     margin-left: -16px !important;
     margin-right: -16px !important;
-    padding-left: 16px !important;
-    padding-right: 16px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    padding-top: 6px !important;
+    padding-bottom: 8px !important;
+    box-shadow: none !important;
   }
 }
 
