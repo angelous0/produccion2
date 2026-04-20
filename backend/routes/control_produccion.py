@@ -47,13 +47,22 @@ class MotivoCreate(BaseModel):
 
 
 def _parse_fecha(fecha_str: Optional[str]) -> datetime:
-    """Parsea un ISO datetime (del frontend) a datetime naive UTC.
-    El frontend envía hora Lima local; convertimos a UTC antes de guardar."""
+    """Parsea una fecha/datetime (del frontend) a datetime naive UTC.
+    El frontend envía hora Lima local; convertimos a UTC antes de guardar.
+    Si viene solo fecha (YYYY-MM-DD), se combina con la HORA ACTUAL Lima
+    — así la fecha queda fija pero el momento exacto es razonable."""
     if not fecha_str:
         return datetime.now(timezone.utc).replace(tzinfo=None)
     try:
-        # Acepta 'YYYY-MM-DDTHH:MM' (sin tz), 'YYYY-MM-DDTHH:MM:SS' y con 'Z' al final
         s = fecha_str.strip()
+        # Solo fecha (sin T): combinar con hora actual Lima
+        if 'T' not in s and len(s) == 10:  # YYYY-MM-DD
+            now_lima = datetime.now(TZ_LIMA)
+            d = datetime.fromisoformat(s).date()
+            # Combinar fecha elegida + hora actual Lima
+            naive = datetime.combine(d, now_lima.time().replace(microsecond=0))
+            return naive.replace(tzinfo=TZ_LIMA).astimezone(timezone.utc).replace(tzinfo=None)
+        # ISO datetime
         if s.endswith('Z'):
             dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
         elif '+' in s[10:] or '-' in s[10:]:

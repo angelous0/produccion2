@@ -123,7 +123,7 @@ export default function IncidenciaAvances({ incidenciaId, canWrite = true }) {
                 {isEditing ? (
                   <div className="space-y-1.5">
                     <Input
-                      type="datetime-local"
+                      type="date"
                       value={editForm.fecha}
                       onChange={(e) => setEditForm(prev => ({ ...prev, fecha: e.target.value }))}
                       className="h-7 text-xs"
@@ -173,7 +173,7 @@ export default function IncidenciaAvances({ incidenciaId, canWrite = true }) {
       {adding && (
         <div className="bg-background rounded-md border px-2 py-1.5 space-y-1.5">
           <Input
-            type="datetime-local"
+            type="date"
             value={nuevaFecha}
             onChange={(e) => setNuevaFecha(e.target.value)}
             placeholder="Fecha (ahora por defecto)"
@@ -202,22 +202,19 @@ export default function IncidenciaAvances({ incidenciaId, canWrite = true }) {
 }
 
 /**
- * Convierte un ISO datetime UTC (o con Z) a string 'YYYY-MM-DDTHH:MM'
- * en hora de Lima, compatible con <input type="datetime-local">.
+ * Convierte un ISO datetime UTC (o con Z) a string 'YYYY-MM-DD'
+ * en hora de Lima, compatible con <input type="date">.
  */
 function toDatetimeLocalLima(isoStr) {
   if (!isoStr) return '';
   try {
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return '';
-    // Formatear en hora Lima usando toLocaleString y luego reconstruir
-    const parts = d.toLocaleString('en-CA', {
+    // Solo fecha (en-CA devuelve YYYY-MM-DD)
+    return d.toLocaleDateString('en-CA', {
       timeZone: 'America/Lima',
       year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', hour12: false,
-    }); // "2026-04-20, 14:20"
-    const [date, time] = parts.split(', ');
-    return `${date}T${time}`;
+    });
   } catch {
     return '';
   }

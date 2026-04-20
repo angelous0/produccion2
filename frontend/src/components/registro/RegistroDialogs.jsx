@@ -507,14 +507,14 @@ export const IncidenciaDialog = ({
           )}
         </div>
         <div className="space-y-2">
-          <Label>Fecha y hora</Label>
+          <Label>Fecha</Label>
           <Input
-            type="datetime-local"
+            type="date"
             value={incidenciaForm.fecha_hora || ''}
             onChange={(e) => setIncidenciaForm(prev => ({ ...prev, fecha_hora: e.target.value }))}
             data-testid="input-fecha-incidencia"
           />
-          <p className="text-[10px] text-muted-foreground">Hora de Lima. Déjalo vacío para usar la hora actual.</p>
+          <p className="text-[10px] text-muted-foreground">Déjalo vacío para usar la fecha actual.</p>
         </div>
         <div className="space-y-2">
           <Label>Comentario</Label>
@@ -555,12 +555,12 @@ export const ResolverIncidenciaDialog = ({ open, onOpenChange, form, setForm, on
         <div className="space-y-2">
           <Label>Fecha de resolución</Label>
           <Input
-            type="datetime-local"
+            type="date"
             value={form?.fecha_resolucion || ''}
             onChange={(e) => setForm(prev => ({ ...prev, fecha_resolucion: e.target.value }))}
             data-testid="input-fecha-resolucion"
           />
-          <p className="text-[10px] text-muted-foreground">Hora de Lima. Déjalo vacío para usar la hora actual.</p>
+          <p className="text-[10px] text-muted-foreground">Déjalo vacío para usar la fecha actual.</p>
         </div>
         <div className="space-y-2">
           <Label>Comentario de resolución</Label>

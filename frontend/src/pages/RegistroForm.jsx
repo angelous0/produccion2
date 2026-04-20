@@ -851,17 +851,14 @@ export const RegistroForm = () => {
   const handleEditarIncidencia = (inc) => {
     setIncidenciaMode('edit');
     setEditingIncidenciaId(inc.id);
-    // Convertir fecha UTC a datetime-local en hora Lima
+    // Convertir fecha UTC a YYYY-MM-DD en hora Lima
     let fechaLocal = '';
     if (inc.fecha_hora) {
       try {
         const d = new Date(inc.fecha_hora);
-        const parts = d.toLocaleString('en-CA', {
+        fechaLocal = d.toLocaleDateString('en-CA', {
           timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit',
-          hour: '2-digit', minute: '2-digit', hour12: false,
         });
-        const [date, time] = parts.split(', ');
-        fechaLocal = `${date}T${time}`;
       } catch { /* ignore */ }
     }
     setIncidenciaForm({
