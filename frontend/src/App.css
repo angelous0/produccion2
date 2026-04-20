@@ -1438,3 +1438,102 @@ main::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 
   .registro-stat-card { padding: 10px 12px !important; }
   .registro-stat-numero { font-size: 22px !important; }
 }
+
+/* =========================================================================
+   MODO SOLO LECTURA (rol=lectura) — se activa con html.readonly-mode
+   Bloquea interacciones de escritura en toda la app sin romper la navegación.
+   ========================================================================= */
+
+/* Inputs, textareas, selects: se ven pero no reaccionan al click */
+html.readonly-mode input:not([type="checkbox"]):not([type="radio"]):not([type="search"]),
+html.readonly-mode textarea,
+html.readonly-mode select,
+html.readonly-mode [role="combobox"],
+html.readonly-mode button[role="combobox"] {
+  pointer-events: none !important;
+  opacity: 0.65 !important;
+  cursor: not-allowed !important;
+  user-select: text !important;  /* aún permite seleccionar texto para copiar */
+}
+html.readonly-mode input[type="checkbox"],
+html.readonly-mode input[type="radio"] {
+  pointer-events: none !important;
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+/* Pipeline de estados clickable — lo hacemos no clickable */
+html.readonly-mode .registro-etapa-clickable {
+  pointer-events: none !important;
+  cursor: default !important;
+}
+
+/* ========= Ocultar botones de escritura por data-testid =========
+   Usamos patrones amplios para cubrir toda la app. Los de solo lectura
+   (volver, ver detalles, abrir dialog de consulta, refresh, exportar,
+   cambiar tema, cerrar sesión) NO llevan estos prefijos. */
+html.readonly-mode [data-testid^="btn-guardar"],
+html.readonly-mode [data-testid^="btn-nuevo"],
+html.readonly-mode [data-testid^="btn-nueva"],
+html.readonly-mode [data-testid^="btn-agregar"],
+html.readonly-mode [data-testid^="btn-crear"],
+html.readonly-mode [data-testid^="btn-copiar"],
+html.readonly-mode [data-testid^="btn-generar-guia"],
+html.readonly-mode [data-testid^="btn-dividir"],
+html.readonly-mode [data-testid^="btn-reunificar"],
+html.readonly-mode [data-testid^="btn-cerrar-orden"],
+html.readonly-mode [data-testid^="btn-reabrir"],
+html.readonly-mode [data-testid^="btn-ejecutar"],
+html.readonly-mode [data-testid^="btn-confirmar"],
+html.readonly-mode [data-testid^="btn-aplicar-estado"],
+html.readonly-mode [data-testid^="btn-crear-motivo"],
+html.readonly-mode [data-testid^="btn-save-motivo"],
+html.readonly-mode [data-testid^="btn-edit-motivo"],
+html.readonly-mode [data-testid^="btn-delete-motivo"],
+html.readonly-mode [data-testid^="btn-editar-"],
+html.readonly-mode [data-testid^="btn-eliminar-"],
+html.readonly-mode [data-testid^="btn-resolver-"],
+html.readonly-mode [data-testid^="editar-"],
+html.readonly-mode [data-testid^="eliminar-"],
+html.readonly-mode [data-testid^="resolver-"],
+html.readonly-mode [data-testid^="delete-"],
+html.readonly-mode [data-testid^="edit-"],
+html.readonly-mode [data-testid^="toggle-skip-validacion"],
+html.readonly-mode [data-testid^="toggle-gestionar-motivos"],
+html.readonly-mode [data-testid^="acciones-movimiento"],
+html.readonly-mode [data-testid^="acciones-movimiento-m"] {
+  display: none !important;
+}
+
+/* Botón Save rápido del header del registro (no lleva prefijo btn-guardar-) */
+html.readonly-mode [data-testid="btn-guardar-rapido"],
+html.readonly-mode [data-testid="btn-guardar-incidencia"],
+html.readonly-mode [data-testid="btn-confirmar-resolucion"] {
+  display: none !important;
+}
+
+/* Algunos botones usan texto "Agregar"/"Nueva"/"Guardar" sin data-testid.
+   Como fallback, escondemos botones con íconos Plus dentro de headers de cards
+   (patrón común en la app). Selector: .registro-movimientos-header > button,
+   .registro-panel-card-header > button no se usan para guardar — son variable. */
+
+/* Checkbox "Sin restricciones" / "Paraliza produccion": ocultar su label entero */
+html.readonly-mode .registro-skip-label { display: none !important; }
+
+/* Botón de "Cancelar" en formularios: se mantiene visible por si acaso */
+html.readonly-mode [data-testid*="cancelar"],
+html.readonly-mode [data-testid="menu-change-password"],
+html.readonly-mode [data-testid="menu-logout"] {
+  display: initial !important;
+}
+
+/* Nota: los diálogos de escritura (nueva incidencia, nuevo movimiento, cierre,
+   etc.) no se abren porque los botones que los disparan están ocultos. Si por
+   algún flujo llegan a abrirse, el backend rechaza con 403. */
+
+/* Indicador sutil de readonly en campos editables */
+html.readonly-mode input:not([type="checkbox"]):not([type="radio"]):not([type="search"]):focus,
+html.readonly-mode textarea:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}

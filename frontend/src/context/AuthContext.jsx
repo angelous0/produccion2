@@ -31,6 +31,18 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]);
 
+  // Toggle de clase 'readonly-mode' en <html> para que el CSS global
+  // deshabilite inputs y oculte botones de escritura.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (user?.rol === 'lectura') {
+      root.classList.add('readonly-mode');
+    } else {
+      root.classList.remove('readonly-mode');
+    }
+    return () => root.classList.remove('readonly-mode');
+  }, [user?.rol]);
+
   // Interceptor para manejar token expirado (401)
   useEffect(() => {
     const interceptor = axios.interceptors.response.use(
