@@ -893,7 +893,7 @@ export const ReabrirCierreDialog = ({ open, onOpenChange, cierreExistente, onCon
           {cierreExistente && (
             <div className="rounded-md bg-muted/40 border px-3 py-2 text-xs grid grid-cols-2 gap-x-4 gap-y-0.5">
               <span className="text-muted-foreground">Fecha cierre</span>
-              <span className="font-mono">{cierreExistente.fecha ? new Date(cierreExistente.fecha).toLocaleDateString('es-PE') : '—'}</span>
+              <span className="font-mono">{cierreExistente.fecha ? new Date(cierreExistente.fecha).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : '—'}</span>
               <span className="text-muted-foreground">Costo Total</span>
               <span className="font-mono">{cierreExistente.costo_total != null ? `S/ ${parseFloat(cierreExistente.costo_total).toFixed(2)}` : '—'}</span>
               <span className="text-muted-foreground">PT Nombre</span>

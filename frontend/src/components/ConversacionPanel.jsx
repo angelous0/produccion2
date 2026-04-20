@@ -34,13 +34,13 @@ function timeAgo(dateStr) {
   if (hrs < 24) return `hace ${hrs}h`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `hace ${days}d`;
-  return d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  return d.toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
 function formatFecha(dateStr) {
   const d = new Date(dateStr);
-  return d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' }) +
-    ' ' + d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: '2-digit' }) +
+    ' ' + d.toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit' });
 }
 
 // ─── Boton flotante fijo arriba derecha ───

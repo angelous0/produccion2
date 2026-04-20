@@ -75,7 +75,7 @@ const TABLA_CONFIG = {
 // Formatear fecha para agrupar
 const formatDateGroup = (dateStr) => {
   const date = new Date(dateStr);
-  const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+  const options = { timeZone: 'America/Lima', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
   let formatted = date.toLocaleDateString('es-PE', options);
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 };
@@ -83,7 +83,7 @@ const formatDateGroup = (dateStr) => {
 // Formatear hora
 const formatTime = (dateStr) => {
   const date = new Date(dateStr);
-  return date.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return date.toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hour12: true });
 };
 
 // Obtener fecha sin hora para agrupar

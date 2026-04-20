@@ -155,7 +155,7 @@ export const AuditoriaLogs = () => {
     const ayer = new Date(Date.now()-86400000).toISOString().substring(0,10);
     if (d === hoy) return 'Hoy';
     if (d === ayer) return 'Ayer';
-    return new Date(d + 'T12:00:00').toLocaleDateString('es-PE', { weekday:'long', day:'numeric', month:'long' });
+    return new Date(d + 'T12:00:00').toLocaleDateString('es-PE', { timeZone: 'America/Lima', weekday:'long', day:'numeric', month:'long' });
   };
 
   const insertCount = items.filter(i => i.accion === 'INSERT').length;

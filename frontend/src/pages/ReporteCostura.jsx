@@ -95,8 +95,8 @@ const AvanceEditor = ({ movimientoId, currentValue, onSaved, nCorte }) => {
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="text-right">
-                          <p className="text-xs">{h.fecha ? new Date(h.fecha).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '-'}</p>
-                          <p className="text-[10px] text-muted-foreground">{h.usuario} · {h.fecha ? new Date(h.fecha).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : ''}</p>
+                          <p className="text-xs">{h.fecha ? new Date(h.fecha).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: '2-digit' }) : '-'}</p>
+                          <p className="text-[10px] text-muted-foreground">{h.usuario} · {h.fecha ? new Date(h.fecha).toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit' }) : ''}</p>
                         </div>
                         <button
                           onClick={async (e) => {
@@ -452,7 +452,7 @@ export const ReporteCostura = () => {
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(120);
-    doc.text(`Generado: ${new Date().toLocaleString('es-PE')}  |  Registros: ${rows.length}  |  Prendas: ${rows.reduce((s,r)=>s+r.cantidad,0).toLocaleString()}`, 14, 20);
+    doc.text(`Generado: ${new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' })}  |  Registros: ${rows.length}  |  Prendas: ${rows.reduce((s,r)=>s+r.cantidad,0).toLocaleString()}`, 14, 20);
     doc.setTextColor(0);
 
     // KPI bar
@@ -838,7 +838,7 @@ export const ReporteCostura = () => {
                       <td className="p-2 whitespace-nowrap">{item.tela_nombre || '-'}</td>
                       <td className="p-2 whitespace-nowrap text-muted-foreground">{item.hilo_especifico || '-'}</td>
                       <td className="p-2 text-right font-mono">{item.cantidad_enviada?.toLocaleString() || '-'}</td>
-                      <td className="p-2 text-center whitespace-nowrap">{item.fecha_inicio ? new Date(item.fecha_inicio + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' }) : '-'}</td>
+                      <td className="p-2 text-center whitespace-nowrap">{item.fecha_inicio ? new Date(item.fecha_inicio + 'T00:00:00').toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit' }) : '-'}</td>
                       <td className="p-2 text-center whitespace-nowrap font-mono" style={{ color: '#6B7280' }}>
                         {(() => {
                           if (!item.fecha_esperada || !item.fecha_inicio) return '-';
@@ -929,7 +929,7 @@ export const ReporteCostura = () => {
                                     {inc.comentario && <p className="text-muted-foreground mt-0.5">{inc.comentario}</p>}
                                     <p className="text-[10px] text-muted-foreground mt-0.5">
                                       {inc.usuario && <span className="font-medium">{inc.usuario} · </span>}
-                                      {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+                                      {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
                                     </p>
                                   </div>
                                   <Button
@@ -1028,7 +1028,7 @@ export const ReporteCostura = () => {
                               <td className="p-2 whitespace-nowrap">{item.tela_nombre || '-'}</td>
                               <td className="p-2 whitespace-nowrap text-muted-foreground">{item.hilo_especifico || '-'}</td>
                               <td className="p-2 text-right font-mono">{item.cantidad_enviada?.toLocaleString() || '-'}</td>
-                              <td className="p-2 text-center whitespace-nowrap">{item.fecha_inicio ? new Date(item.fecha_inicio + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' }) : '-'}</td>
+                              <td className="p-2 text-center whitespace-nowrap">{item.fecha_inicio ? new Date(item.fecha_inicio + 'T00:00:00').toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit' }) : '-'}</td>
                               <td className="p-2 text-center whitespace-nowrap font-mono" style={{ color: '#6B7280' }}>
                                 {(() => {
                                   const fe = item.fecha_esperada || item.fecha_fin;
@@ -1129,7 +1129,7 @@ export const ReporteCostura = () => {
                                             {inc.comentario && <p className="text-muted-foreground mt-0.5">{inc.comentario}</p>}
                                             <p className="text-[10px] text-muted-foreground mt-0.5">
                                               {inc.usuario && <span className="font-medium">{inc.usuario} · </span>}
-                                              {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+                                              {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
                                             </p>
                                           </div>
                                           <Button

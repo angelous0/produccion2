@@ -43,7 +43,7 @@ export const ReporteParalizados = () => {
     if (!str) return '-';
     try {
       const d = new Date(str);
-      return d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' });
+      return d.toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: '2-digit' });
     } catch { return str; }
   };
 

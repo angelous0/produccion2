@@ -213,7 +213,7 @@ export const ReporteTiemposMuertos = () => {
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(120);
-    doc.text(`Generado: ${new Date().toLocaleString('es-PE')}  |  Lotes: ${filtered.length}  |  Días acumulados: ${resumen.dias_perdidos || 0}`, 14, 20);
+    doc.text(`Generado: ${new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' })}  |  Lotes: ${filtered.length}  |  Días acumulados: ${resumen.dias_perdidos || 0}`, 14, 20);
     doc.setTextColor(0);
 
     // KPI bar
@@ -581,7 +581,7 @@ export const ReporteTiemposMuertos = () => {
                         </div>
                         {inc.comentario && <p className="text-xs text-muted-foreground mt-1">{inc.comentario}</p>}
                         <p className="text-[10px] text-muted-foreground mt-1">
-                          {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+                          {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
                         </p>
                       </div>
                       <div className="flex gap-0.5 shrink-0">
@@ -620,9 +620,9 @@ export const ReporteTiemposMuertos = () => {
                             </div>
                             {inc.comentario && <p className="text-xs text-muted-foreground mt-1">{inc.comentario}</p>}
                             <p className="text-[10px] text-muted-foreground mt-1">
-                              {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+                              {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
                               {inc.updated_at && (
-                                <span className="text-green-600 ml-1">· Resuelta: {new Date(inc.updated_at).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</span>
+                                <span className="text-green-600 ml-1">· Resuelta: {new Date(inc.updated_at).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</span>
                               )}
                             </p>
                           </div>

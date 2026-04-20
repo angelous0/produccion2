@@ -119,7 +119,7 @@ export const SeguimientoProduccion = () => {
   const formatFecha = (str) => {
     if (!str) return '-';
     try {
-      return new Date(str).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: '2-digit' });
+      return new Date(str).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: '2-digit' });
     } catch { return str; }
   };
 

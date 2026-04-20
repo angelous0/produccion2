@@ -41,13 +41,11 @@ export const ExportPDFButton = ({
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(100);
-      const fecha = new Date().toLocaleDateString('es-PE', { 
-        day: '2-digit', 
+      const fecha = new Date().toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', 
         month: 'long', 
         year: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
-      });
+        minute: '2-digit' });
       doc.text(`Generado: ${fecha}`, pageWidth / 2, 28, { align: 'center' });
       
       // Línea separadora
@@ -81,7 +79,7 @@ export const ExportPDFButton = ({
             let value = row[col.key];
             if (value === null || value === undefined) return '-';
             if (typeof value === 'boolean') return value ? 'Sí' : 'No';
-            if (value instanceof Date) return value.toLocaleDateString('es-PE');
+            if (value instanceof Date) return value.toLocaleDateString('es-PE', { timeZone: 'America/Lima' });
             if (typeof value === 'number' && col.format === 'currency') {
               return `S/ ${value.toFixed(2)}`;
             }

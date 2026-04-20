@@ -148,7 +148,7 @@ const ProductosOdoo = () => {
             <h1 className="text-2xl font-bold tracking-tight">Productos Odoo</h1>
             <p className="text-sm text-muted-foreground">
               Clasifica los productos sincronizados desde Odoo con los catálogos de producción.
-              {stats?.last_sync && <span className="ml-2">Último sync: {new Date(stats.last_sync).toLocaleString('es-PE')}</span>}
+              {stats?.last_sync && <span className="ml-2">Último sync: {new Date(stats.last_sync).toLocaleString('es-PE', { timeZone: 'America/Lima' })}</span>}
             </p>
           </div>
         </div>

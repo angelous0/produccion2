@@ -51,9 +51,9 @@ export const RegistroIncidenciasCard = ({
                   {inc.comentario && <p className="text-xs text-muted-foreground mt-1.5">{inc.comentario}</p>}
                   {inc.movimiento_servicio && <p className="text-xs text-muted-foreground">Mov: {inc.movimiento_servicio}</p>}
                   <p className="registro-mov-meta mt-1">
-                    {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+                    {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
                     {inc.paraliza && inc.paralizacion_inicio && (
-                      <span className="ml-2">Paralizada: {new Date(inc.paralizacion_inicio).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })} (activa)</span>
+                      <span className="ml-2">Paralizada: {new Date(inc.paralizacion_inicio).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })} (activa)</span>
                     )}
                   </p>
                 </div>
@@ -97,17 +97,17 @@ export const RegistroIncidenciasCard = ({
                           </div>
                           {inc.comentario && <p className="text-xs text-muted-foreground mt-1">{inc.comentario}</p>}
                           <p className="registro-mov-meta mt-1">
-                            {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+                            {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
                             {inc.paraliza && inc.paralizacion_inicio && (
-                              <span className="ml-1">· Paralizada: {new Date(inc.paralizacion_inicio).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}
-                                {inc.paralizacion_fin ? ` → ${new Date(inc.paralizacion_fin).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}` : ''}
+                              <span className="ml-1">· Paralizada: {new Date(inc.paralizacion_inicio).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}
+                                {inc.paralizacion_fin ? ` → ${new Date(inc.paralizacion_fin).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}` : ''}
                               </span>
                             )}
                           </p>
                           {inc.updated_at && (
                             <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
                               <Check className="h-2.5 w-2.5" />
-                              Resuelta: {new Date(inc.updated_at).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' })}
+                              Resuelta: {new Date(inc.updated_at).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' })}
                             </p>
                           )}
                         </div>

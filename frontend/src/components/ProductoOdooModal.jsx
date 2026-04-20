@@ -171,12 +171,12 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
             <InfoRow label="Entalle" value={producto.odoo_entalle_texto} />
             <InfoRow label="Tela" value={producto.odoo_tela_texto} />
             <InfoRow label="Hilo" value={producto.odoo_hilo_texto} />
-            <InfoRow label="Stock" value={parseFloat(producto.odoo_stock_actual || 0).toLocaleString('es-PE')} mono />
+            <InfoRow label="Stock" value={parseFloat(producto.odoo_stock_actual || 0).toLocaleString('es-PE', { timeZone: 'America/Lima' })} mono />
           </div>
           {producto.classified_by && (
             <div className="flex justify-between text-xs pt-2 mt-1 border-t">
               <span className="text-muted-foreground">Última clasificación:</span>
-              <span>{producto.classified_by} · {producto.classified_at && new Date(producto.classified_at).toLocaleString('es-PE')}</span>
+              <span>{producto.classified_by} · {producto.classified_at && new Date(producto.classified_at).toLocaleString('es-PE', { timeZone: 'America/Lima' })}</span>
             </div>
           )}
         </div>
@@ -220,7 +220,7 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
             Se usa para calcular margen en reportes de Ventas. Los productos creados desde el módulo Producción traen el costo automático.
             {producto.costo_updated_at && (
               <span className="block mt-0.5">
-                Última actualización: {new Date(producto.costo_updated_at).toLocaleDateString('es-PE')}
+                Última actualización: {new Date(producto.costo_updated_at).toLocaleDateString('es-PE', { timeZone: 'America/Lima' })}
                 {producto.costo_updated_by && ` por ${producto.costo_updated_by}`}
               </span>
             )}

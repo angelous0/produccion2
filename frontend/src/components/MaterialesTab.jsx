@@ -853,7 +853,7 @@ const MaterialesTab = ({ registroId, totalPrendas, totalPrendasOriginales, model
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <Badge variant={r.estado === 'ACTIVA' ? 'default' : 'secondary'} className="text-xs">{r.estado}</Badge>
-                      <span className="text-xs text-muted-foreground">{r.fecha ? new Date(r.fecha).toLocaleString() : ''}</span>
+                      <span className="text-xs text-muted-foreground">{r.fecha ? new Date(r.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' }) : ''}</span>
                     </div>
                     {r.estado === 'ACTIVA' && (
                       <Button type="button" variant="outline" size="sm" className="text-destructive border-destructive/30 h-6 text-xs px-2"
@@ -906,7 +906,7 @@ const MaterialesTab = ({ registroId, totalPrendas, totalPrendasOriginales, model
                   <TableBody>
                     {salidas.map(s => (
                       <TableRow key={s.id}>
-                        <TableCell className="text-xs">{s.fecha ? new Date(s.fecha).toLocaleDateString() : '-'}</TableCell>
+                        <TableCell className="text-xs">{s.fecha ? new Date(s.fecha).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : '-'}</TableCell>
                         <TableCell className="text-sm">{s.item_nombre}</TableCell>
                         <TableCell className="text-right font-mono text-sm">{parseFloat(s.cantidad).toFixed(1)}</TableCell>
                         <TableCell className="text-right font-mono text-xs text-muted-foreground">

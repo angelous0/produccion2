@@ -46,7 +46,7 @@ export default function ResumenDiario() {
 
   useEffect(() => { cargar(); }, []);
 
-  const hora = lastUpdate ? lastUpdate.toLocaleTimeString('es-PE', { hour:'2-digit', minute:'2-digit' }) : '';
+  const hora = lastUpdate ? lastUpdate.toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour:'2-digit', minute:'2-digit' }) : '';
 
   if (loading) return <div className="flex items-center justify-center h-64 text-muted-foreground gap-2"><RefreshCw className="h-5 w-5 animate-spin" /> Cargando resumen...</div>;
   if (!data) return <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground"><AlertTriangle className="h-8 w-8 text-amber-500" /><p className="text-sm">No se pudo cargar el resumen. Verifica la conexión.</p><button onClick={cargar} className="text-xs border rounded-lg px-3 py-1.5 hover:bg-muted">Reintentar</button></div>;

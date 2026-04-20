@@ -61,7 +61,7 @@ export function ConversacionInline({ registroId, usuario }) {
             <div key={i} className="flex flex-col gap-0.5 rounded-lg bg-card border p-2.5 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold text-primary">{m.autor || 'Usuario'}</span>
-                <span className="text-xs text-muted-foreground">{m.fecha ? new Date(m.fecha).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}</span>
+                <span className="text-xs text-muted-foreground">{m.fecha ? new Date(m.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}</span>
               </div>
               <p className="text-sm leading-snug">{m.texto}</p>
             </div>

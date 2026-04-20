@@ -464,7 +464,7 @@ export const DistribucionPTPanel = ({ registroId }) => {
                           <div className="flex flex-col flex-1">
                             <span className="text-xs font-medium">{a.name}</span>
                             <span className="text-[10px] text-muted-foreground">
-                              ID: {a.odoo_id} | Qty: {a.total_qty} | {a.date ? new Date(a.date).toLocaleDateString('es') : ''}
+                              ID: {a.odoo_id} | Qty: {a.total_qty} | {a.date ? new Date(a.date).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : ''}
                             </span>
                           </div>
                           {!a.disponible && (
@@ -495,7 +495,7 @@ export const DistribucionPTPanel = ({ registroId }) => {
                   <div className="flex flex-col">
                     <span className="text-xs font-medium">{v.ajuste_nombre || `Ajuste #${v.stock_inventory_odoo_id}`}</span>
                     <span className="text-[10px] text-muted-foreground">
-                      ID Odoo: {v.stock_inventory_odoo_id} | Qty Total: {v.total_moves_qty} | {v.ajuste_fecha ? new Date(v.ajuste_fecha).toLocaleDateString('es') : ''}
+                      ID Odoo: {v.stock_inventory_odoo_id} | Qty Total: {v.total_moves_qty} | {v.ajuste_fecha ? new Date(v.ajuste_fecha).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : ''}
                     </span>
                   </div>
                   <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50 shrink-0"

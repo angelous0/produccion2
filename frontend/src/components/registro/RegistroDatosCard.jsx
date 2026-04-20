@@ -259,7 +259,7 @@ export const RegistroDatosCard = ({
                       <span className="font-medium text-amber-700">Historial de reapertura</span>
                     </div>
                     <p className="text-muted-foreground">
-                      Reabierto por <span className="font-medium">{cierreExistente.reabierto_por}</span> el {cierreExistente.reabierto_at ? new Date(cierreExistente.reabierto_at).toLocaleDateString('es-PE') : '-'}
+                      Reabierto por <span className="font-medium">{cierreExistente.reabierto_por}</span> el {cierreExistente.reabierto_at ? new Date(cierreExistente.reabierto_at).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : '-'}
                     </p>
                     <p>Motivo: {cierreExistente.motivo_reapertura}</p>
                   </div>
@@ -283,7 +283,7 @@ export const RegistroDatosCard = ({
                     <RotateCcw className="h-3 w-3" /> REABIERTO
                   </Badge>
                   <span className="text-[10px] text-muted-foreground">
-                    por {cierreExistente.reabierto_por} | {cierreExistente.reabierto_at ? new Date(cierreExistente.reabierto_at).toLocaleDateString('es-PE') : '-'}
+                    por {cierreExistente.reabierto_por} | {cierreExistente.reabierto_at ? new Date(cierreExistente.reabierto_at).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : '-'}
                   </span>
                 </div>
                 <div className="text-xs bg-amber-50 dark:bg-amber-950/20 rounded p-2 border border-amber-200">

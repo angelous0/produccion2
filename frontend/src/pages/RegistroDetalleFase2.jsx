@@ -517,7 +517,7 @@ const ReservasTab = ({ registroId }) => {
                     <div className="flex items-center gap-2">
                       <Badge variant={r.estado === 'ACTIVA' ? 'default' : 'secondary'}>{r.estado}</Badge>
                       <span className="text-sm text-muted-foreground">
-                        {new Date(r.fecha).toLocaleString()}
+                        {new Date(r.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' })}
                       </span>
                       <span className="text-xs text-muted-foreground">({r.lineas?.length || 0} líneas)</span>
                     </div>
@@ -1191,7 +1191,7 @@ const SalidasTab = ({ registroId }) => {
                 <TableBody>
                   {salidas.map((s) => (
                     <TableRow key={s.id}>
-                      <TableCell className="text-xs">{new Date(s.fecha).toLocaleString()}</TableCell>
+                      <TableCell className="text-xs">{new Date(s.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' })}</TableCell>
                       <TableCell>{s.item_nombre || s.item_id?.slice(0, 8)}</TableCell>
                       <TableCell>{s.talla_nombre || '-'}</TableCell>
                       <TableCell>{s.numero_rollo || '-'}</TableCell>

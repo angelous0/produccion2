@@ -194,7 +194,7 @@ function CIFDetallePanel({ cif }) {
               <TableBody>
                 {cif.detalle.map((d, i) => (
                   <TableRow key={i} className="text-[11px]">
-                    <TableCell className="font-mono py-1">{d.fecha ? new Date(d.fecha).toLocaleDateString('es-PE') : '—'}</TableCell>
+                    <TableCell className="font-mono py-1">{d.fecha ? new Date(d.fecha).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : '—'}</TableCell>
                     <TableCell className="py-1">{d.categoria || '—'}</TableCell>
                     <TableCell className="py-1 max-w-[160px] truncate">{d.descripcion || '—'}</TableCell>
                     <TableCell className="py-1">
@@ -289,7 +289,7 @@ function PTDetalleModal({ itemId, onClose }) {
                     <TableBody>
                       {detalle.fifo_capas.map((c, i) => (
                         <TableRow key={i}>
-                          <TableCell className="text-xs font-mono">{c.fecha ? new Date(c.fecha).toLocaleDateString('es-PE') : '—'}</TableCell>
+                          <TableCell className="text-xs font-mono">{c.fecha ? new Date(c.fecha).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : '—'}</TableCell>
                           <TableCell className="text-right font-mono text-xs">{formatNumber(c.cantidad)}</TableCell>
                           <TableCell className="text-right font-mono text-xs font-semibold">{formatNumber(c.cantidad_disponible)}</TableCell>
                           <TableCell className="text-right font-mono text-xs">{formatCurrency(c.costo_unitario)}</TableCell>
@@ -331,7 +331,7 @@ function PTDetalleModal({ itemId, onClose }) {
                             onClick={() => setCifExpandido(cifExpandido === i ? null : i)}>
                             <TableCell className="font-mono text-xs font-semibold">{c.n_corte}</TableCell>
                             <TableCell className="text-xs">{c.modelo_nombre}</TableCell>
-                            <TableCell className="text-xs font-mono">{c.fecha_cierre ? new Date(c.fecha_cierre).toLocaleDateString('es-PE') : '—'}</TableCell>
+                            <TableCell className="text-xs font-mono">{c.fecha_cierre ? new Date(c.fecha_cierre).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : '—'}</TableCell>
                             <TableCell className="text-right font-mono text-xs">{c.total_prendas}</TableCell>
                             <TableCell className="text-right font-mono text-xs">{formatCurrency(c.costo_mp)}</TableCell>
                             <TableCell className="text-right font-mono text-xs">{formatCurrency(c.costo_servicios)}</TableCell>
