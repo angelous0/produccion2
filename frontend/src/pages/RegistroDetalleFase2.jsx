@@ -1761,7 +1761,14 @@ export const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplet
       )}
 
       {/* Detalle Servicios (Movimientos de Producción) */}
-      {preview.movimientos_detalle?.length > 0 && (
+      {preview.movimientos_detalle?.length > 0 && (() => {
+        // Totales para footer
+        const qtyFinal = parseFloat(preview.qty_terminada || preview.cif_detalle?.prendas_lote || 0);
+        const totalServicios = preview.movimientos_detalle.reduce(
+          (s, m) => s + parseFloat(m.costo_total || 0), 0
+        );
+        const totalCostoUnit = qtyFinal > 0 ? totalServicios / qtyFinal : 0;
+        return (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Servicios de Producción (Movimientos)</CardTitle>
@@ -1773,21 +1780,45 @@ export const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplet
                   <TableHead>Servicio</TableHead>
                   <TableHead className="text-right">Cantidad</TableHead>
                   <TableHead className="text-right">Costo Total</TableHead>
+                  <TableHead className="text-right">Costo Unit.</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {preview.movimientos_detalle.map((m, i) => (
-                  <TableRow key={i}>
-                    <TableCell>{m.servicio_nombre || 'Sin nombre'}</TableCell>
-                    <TableCell className="text-right font-mono">{parseFloat(m.cantidad_total || 0).toFixed(0)}</TableCell>
-                    <TableCell className="text-right font-mono">S/ {parseFloat(m.costo_total || 0).toFixed(2)}</TableCell>
-                  </TableRow>
-                ))}
+                {preview.movimientos_detalle.map((m, i) => {
+                  const cant = parseFloat(m.cantidad_total || 0);
+                  const cost = parseFloat(m.costo_total || 0);
+                  const costoUnit = cant > 0 ? cost / cant : 0;
+                  return (
+                    <TableRow key={i}>
+                      <TableCell>{m.servicio_nombre || 'Sin nombre'}</TableCell>
+                      <TableCell className="text-right font-mono">{cant.toFixed(0)}</TableCell>
+                      <TableCell className="text-right font-mono">S/ {cost.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-mono text-muted-foreground">S/ {costoUnit.toFixed(4)}</TableCell>
+                    </TableRow>
+                  );
+                })}
+                {/* Footer: sumatoria de servicios y costo unitario total */}
+                <TableRow className="border-t-2 bg-muted/40 font-semibold">
+                  <TableCell className="font-bold">TOTAL SERVICIOS</TableCell>
+                  <TableCell className="text-right font-mono">
+                    {qtyFinal > 0 ? qtyFinal.toFixed(0) : '—'}
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    S/ {totalServicios.toFixed(2)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-primary">
+                    S/ {totalCostoUnit.toFixed(4)}
+                  </TableCell>
+                </TableRow>
               </TableBody>
             </Table>
+            <p className="text-[10px] text-muted-foreground mt-2">
+              Costo unitario = costo total del servicio ÷ cantidad procesada. El total unitario usa la cantidad final terminada del lote.
+            </p>
           </CardContent>
         </Card>
-      )}
+        );
+      })()}
 
       {/* Resumen */}
       <Card className="border-primary/30 bg-primary/5">
