@@ -93,72 +93,72 @@ export default function IncidenciaAvances({ incidenciaId, canWrite = true }) {
   };
 
   return (
-    <div className="mt-2 pt-2 border-t border-dashed space-y-1.5">
+    <div className="mt-2 pt-2 border-t border-dashed space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
-          <MessageSquare className="h-3 w-3" /> Avances ({avances.length})
+        <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+          <MessageSquare className="h-3.5 w-3.5" /> Avances ({avances.length})
         </span>
         {canWrite && !adding && (
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="text-[11px] text-blue-600 hover:underline flex items-center gap-0.5"
+            className="text-xs text-blue-600 font-medium flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 active:bg-blue-100"
             data-testid={`btn-agregar-avance-${incidenciaId}`}
           >
-            <Plus className="h-3 w-3" /> Agregar
+            <Plus className="h-3.5 w-3.5" /> Agregar
           </button>
         )}
       </div>
 
       {loading ? (
-        <div className="text-[11px] text-muted-foreground">Cargando...</div>
+        <div className="text-xs text-muted-foreground">Cargando...</div>
       ) : avances.length === 0 && !adding ? (
-        <div className="text-[11px] text-muted-foreground italic">Sin avances registrados</div>
+        <div className="text-xs text-muted-foreground italic">Sin avances registrados</div>
       ) : (
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           {avances.map(av => {
             const isEditing = editingId === av.id;
             return (
-              <div key={av.id} className="bg-background rounded-md border px-2 py-1.5">
+              <div key={av.id} className="bg-background rounded-lg border px-3 py-2">
                 {isEditing ? (
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <Input
                       type="date"
                       value={editForm.fecha}
                       onChange={(e) => setEditForm(prev => ({ ...prev, fecha: e.target.value }))}
-                      className="h-7 text-xs"
+                      className="h-9 text-sm"
                     />
                     <Textarea
                       value={editForm.comentario}
                       onChange={(e) => setEditForm(prev => ({ ...prev, comentario: e.target.value }))}
-                      rows={2}
-                      className="text-xs"
+                      rows={3}
+                      className="text-sm"
                     />
-                    <div className="flex gap-1 justify-end">
-                      <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setEditingId(null)} disabled={saving}>
-                        <X className="h-3 w-3" />
+                    <div className="flex gap-2 justify-end">
+                      <Button size="sm" variant="ghost" className="h-9 px-3 text-xs" onClick={() => setEditingId(null)} disabled={saving}>
+                        <X className="h-4 w-4 mr-1" /> Cancelar
                       </Button>
-                      <Button size="sm" className="h-6 px-2 text-xs" onClick={handleSaveEdit} disabled={saving}>
-                        {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                      <Button size="sm" className="h-9 px-3 text-xs" onClick={handleSaveEdit} disabled={saving}>
+                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Check className="h-4 w-4 mr-1" /> Guardar</>}
                       </Button>
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-start gap-2">
                     <div className="flex-1 min-w-0">
-                      <div className="text-[10px] text-muted-foreground flex items-center gap-1.5">
+                      <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
                         <span>{av.fecha ? new Date(av.fecha).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}</span>
                         {av.usuario && <span className="opacity-70">· {av.usuario}</span>}
                       </div>
-                      <p className="text-xs mt-0.5 whitespace-pre-wrap break-words">{av.comentario}</p>
+                      <p className="text-sm mt-0.5 whitespace-pre-wrap break-words">{av.comentario}</p>
                     </div>
                     {canWrite && (
                       <div className="flex gap-0.5 shrink-0">
-                        <button type="button" onClick={() => startEdit(av)} className="h-5 w-5 rounded hover:bg-muted flex items-center justify-center" title="Editar">
-                          <Pencil className="h-3 w-3 text-muted-foreground" />
+                        <button type="button" onClick={() => startEdit(av)} className="h-8 w-8 rounded-lg hover:bg-muted active:bg-muted-foreground/10 flex items-center justify-center" title="Editar">
+                          <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                         </button>
-                        <button type="button" onClick={() => handleDelete(av.id)} className="h-5 w-5 rounded hover:bg-muted flex items-center justify-center" title="Eliminar">
-                          <Trash2 className="h-3 w-3 text-destructive" />
+                        <button type="button" onClick={() => handleDelete(av.id)} className="h-8 w-8 rounded-lg hover:bg-muted active:bg-muted-foreground/10 flex items-center justify-center" title="Eliminar">
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
                         </button>
                       </div>
                     )}
@@ -171,28 +171,28 @@ export default function IncidenciaAvances({ incidenciaId, canWrite = true }) {
       )}
 
       {adding && (
-        <div className="bg-background rounded-md border px-2 py-1.5 space-y-1.5">
+        <div className="bg-background rounded-lg border px-3 py-2 space-y-2">
           <Input
             type="date"
             value={nuevaFecha}
             onChange={(e) => setNuevaFecha(e.target.value)}
             placeholder="Fecha (ahora por defecto)"
-            className="h-7 text-xs"
+            className="h-9 text-sm"
           />
           <Textarea
             value={nuevoComentario}
             onChange={(e) => setNuevoComentario(e.target.value)}
             placeholder="Describir el avance..."
-            rows={2}
-            className="text-xs"
+            rows={3}
+            className="text-sm"
             autoFocus
           />
-          <div className="flex gap-1 justify-end">
-            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => { setAdding(false); setNuevoComentario(''); setNuevaFecha(''); }} disabled={saving}>
+          <div className="flex gap-2 justify-end">
+            <Button size="sm" variant="ghost" className="h-9 px-3 text-xs flex-1 sm:flex-none" onClick={() => { setAdding(false); setNuevoComentario(''); setNuevaFecha(''); }} disabled={saving}>
               Cancelar
             </Button>
-            <Button size="sm" className="h-6 px-2 text-xs" onClick={handleAgregar} disabled={saving || !nuevoComentario.trim()}>
-              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Agregar'}
+            <Button size="sm" className="h-9 px-4 text-xs flex-1 sm:flex-none" onClick={handleAgregar} disabled={saving || !nuevoComentario.trim()}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Plus className="h-4 w-4 mr-1" /> Agregar</>}
             </Button>
           </div>
         </div>

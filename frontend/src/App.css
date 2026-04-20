@@ -1370,3 +1370,71 @@ main::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 
 .dark .registro-panel-inc-badge { background: rgba(220,38,38,0.15) !important; color: #f87171 !important; }
 
 /* === FIN REGISTRO LAYOUT FIX === */
+
+/* === MOBILE POLISH — touch targets y legibilidad === */
+@media (max-width: 767px) {
+  /* Inputs y selects dentro de diálogos: más altos y con fuente 16px para evitar zoom en iOS */
+  [role="dialog"] input:not([type="checkbox"]):not([type="radio"]),
+  [role="dialog"] textarea,
+  [role="dialog"] [role="combobox"],
+  [role="dialog"] button[role="combobox"] {
+    min-height: 44px !important;
+    font-size: 16px !important;
+  }
+  [role="dialog"] label {
+    font-size: 14px !important;
+    font-weight: 600 !important;
+  }
+  /* Botones dentro del footer del diálogo: altura cómoda */
+  [role="dialog"] [class*="DialogFooter"] button,
+  [role="dialog"] > div:last-child > button {
+    min-height: 44px !important;
+    font-size: 15px !important;
+  }
+  /* Título del diálogo un poco más pequeño */
+  [role="dialog"] h2 { font-size: 17px !important; }
+
+  /* Inputs dentro de la tarjeta de incidencias/avances */
+  .registro-movimientos-card input:not([type="checkbox"]):not([type="radio"]),
+  .registro-movimientos-card textarea,
+  .registro-movimientos-card button[role="combobox"] {
+    font-size: 15px !important;
+  }
+
+  /* Botón "Nueva" en header de card — más tocable */
+  .registro-btn-nuevo-mov {
+    min-height: 40px !important;
+    padding: 0 14px !important;
+  }
+
+  /* Tabs: padding mayor y snap para navegación táctil */
+  .registro-tabs-list {
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px !important;
+  }
+  .registro-tab {
+    scroll-snap-align: start;
+    min-height: 44px !important;
+    padding: 10px 14px !important;
+    font-size: 13px !important;
+  }
+
+  /* Incidencias cards: padding menor para aprovechar ancho */
+  .registro-movimientos-body {
+    padding: 10px !important;
+  }
+
+  /* Panel derecho: en mobile los sub-cards ocupan toda la línea */
+  .registro-panel-card { border-radius: 10px !important; }
+  .registro-panel-card-header { padding: 8px 12px !important; }
+  .registro-panel-stats { padding: 4px 12px 10px !important; }
+
+  /* Modelo name en panel: más chico para no desbordar */
+  .registro-panel-modelo-name { font-size: 14px !important; }
+  .registro-panel-lote-num { font-size: 18px !important; }
+
+  /* Stats grid cards: espaciado reducido */
+  .registro-stat-card { padding: 10px 12px !important; }
+  .registro-stat-numero { font-size: 22px !important; }
+}

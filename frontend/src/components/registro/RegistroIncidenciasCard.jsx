@@ -41,41 +41,43 @@ export const RegistroIncidenciasCard = ({
           <div className="space-y-2">
             {/* Incidencias activas */}
             {incidencias.filter(i => i.estado === 'ABIERTA').map((inc) => (
-              <div key={inc.id} className="flex items-start gap-3 p-4 rounded-xl border bg-amber-50/80 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800" data-testid={`incidencia-${inc.id}`}>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge variant="destructive" className="text-xs">{inc.estado}</Badge>
-                    <span className="font-semibold text-sm">{inc.motivo_nombre || inc.tipo}</span>
-                    {inc.paraliza && <Badge variant="outline" className="text-xs border-red-300 text-red-600">Paraliza</Badge>}
-                    {inc.paralizacion_activa && <Badge className="bg-red-600 text-xs">En pausa</Badge>}
+              <div key={inc.id} className="p-3 sm:p-4 rounded-xl border bg-amber-50/80 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800" data-testid={`incidencia-${inc.id}`}>
+                {/* Fila superior: badges + motivo + acciones */}
+                <div className="flex items-start justify-between gap-2 mb-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
+                    <Badge variant="destructive" className="text-[10px] sm:text-xs px-1.5">{inc.estado}</Badge>
+                    <span className="font-semibold text-sm break-words">{inc.motivo_nombre || inc.tipo}</span>
+                    {inc.paraliza && <Badge variant="outline" className="text-[10px] border-red-300 text-red-600 px-1.5">Paraliza</Badge>}
+                    {inc.paralizacion_activa && <Badge className="bg-red-600 text-[10px] px-1.5">En pausa</Badge>}
                   </div>
-                  {inc.comentario && <p className="text-xs text-muted-foreground mt-1.5">{inc.comentario}</p>}
-                  {inc.movimiento_servicio && <p className="text-xs text-muted-foreground">Mov: {inc.movimiento_servicio}</p>}
-                  <p className="registro-mov-meta mt-1">
-                    {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
-                    {inc.paraliza && inc.paralizacion_inicio && (
-                      <span className="ml-2">Paralizada: {new Date(inc.paralizacion_inicio).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })} (activa)</span>
+                  <div className="flex gap-0.5 shrink-0">
+                    {canRegister && onEditar && (
+                      <Button type="button" variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => onEditar(inc)} title="Editar" data-testid={`editar-incidencia-${inc.id}`}>
+                        <Pencil className="h-4 w-4 text-blue-600" />
+                      </Button>
                     )}
-                  </p>
-                  <IncidenciaAvances incidenciaId={inc.id} canWrite={canRegister} />
+                    {canResolve && (
+                      <Button type="button" variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => onResolver(inc)} title="Resolver" data-testid={`resolver-incidencia-${inc.id}`}>
+                        <Check className="h-5 w-5 text-green-600" />
+                      </Button>
+                    )}
+                    {canRegister && (
+                      <Button type="button" variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => onEliminar(inc.id)} title="Eliminar" data-testid={`eliminar-incidencia-${inc.id}`}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex gap-1 shrink-0">
-                  {canRegister && onEditar && (
-                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => onEditar(inc)} title="Editar" data-testid={`editar-incidencia-${inc.id}`}>
-                      <Pencil className="h-3.5 w-3.5 text-blue-600" />
-                    </Button>
+                {/* Comentario y meta */}
+                {inc.comentario && <p className="text-xs sm:text-sm text-muted-foreground">{inc.comentario}</p>}
+                {inc.movimiento_servicio && <p className="text-xs text-muted-foreground mt-0.5">Mov: {inc.movimiento_servicio}</p>}
+                <p className="registro-mov-meta mt-1">
+                  {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+                  {inc.paraliza && inc.paralizacion_inicio && (
+                    <span className="ml-2 block sm:inline">Paralizada: {new Date(inc.paralizacion_inicio).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })} (activa)</span>
                   )}
-                  {canResolve && (
-                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => onResolver(inc)} title="Resolver" data-testid={`resolver-incidencia-${inc.id}`}>
-                      <Check className="h-4 w-4 text-green-600" />
-                    </Button>
-                  )}
-                  {canRegister && (
-                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => onEliminar(inc.id)} title="Eliminar" data-testid={`eliminar-incidencia-${inc.id}`}>
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
-                  )}
-                </div>
+                </p>
+                <IncidenciaAvances incidenciaId={inc.id} canWrite={canRegister} />
               </div>
             ))}
 
