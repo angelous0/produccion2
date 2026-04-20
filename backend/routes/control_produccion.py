@@ -19,13 +19,52 @@ class IncidenciaCreate(BaseModel):
     comentario: str = ""
     usuario: str = ""
     paraliza: bool = False
+    # Fecha/hora manual (ISO 8601). Si viene null usa now() UTC.
+    fecha_hora: Optional[str] = None
 
 class IncidenciaUpdate(BaseModel):
     estado: str  # ABIERTA, RESUELTA
     comentario_resolucion: Optional[str] = None
+    # Fecha manual de resolución (opcional)
+    fecha_resolucion: Optional[str] = None
+
+class IncidenciaEdit(BaseModel):
+    """Editar una incidencia existente (fecha, motivo, comentario)."""
+    fecha_hora: Optional[str] = None
+    motivo_id: Optional[str] = None
+    comentario: Optional[str] = None
+
+class AvanceCreate(BaseModel):
+    comentario: str
+    fecha: Optional[str] = None  # ISO. Si null → now UTC
+
+class AvanceUpdate(BaseModel):
+    comentario: Optional[str] = None
+    fecha: Optional[str] = None
 
 class MotivoCreate(BaseModel):
     nombre: str
+
+
+def _parse_fecha(fecha_str: Optional[str]) -> datetime:
+    """Parsea un ISO datetime (del frontend) a datetime naive UTC.
+    El frontend envía hora Lima local; convertimos a UTC antes de guardar."""
+    if not fecha_str:
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+    try:
+        # Acepta 'YYYY-MM-DDTHH:MM' (sin tz), 'YYYY-MM-DDTHH:MM:SS' y con 'Z' al final
+        s = fecha_str.strip()
+        if s.endswith('Z'):
+            dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
+        elif '+' in s[10:] or '-' in s[10:]:
+            dt = datetime.fromisoformat(s)
+        else:
+            # Sin tz info: interpretamos como hora Lima y convertimos a UTC
+            naive = datetime.fromisoformat(s)
+            dt = naive.replace(tzinfo=TZ_LIMA)
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    except Exception:
+        return datetime.now(timezone.utc).replace(tzinfo=None)
 
 # ========== MOTIVOS DE INCIDENCIA (Catálogo) ==========
 
@@ -134,6 +173,8 @@ async def create_incidencia(input: IncidenciaCreate, _u=Depends(get_current_user
     async with pool.acquire() as conn:
         inc_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).replace(tzinfo=None)
+        # Si el usuario especificó una fecha, usarla. Si no, now().
+        fecha_hora = _parse_fecha(input.fecha_hora) if input.fecha_hora else now
         paralizacion_id = None
 
         # Get motivo nombre
@@ -153,7 +194,7 @@ async def create_incidencia(input: IncidenciaCreate, _u=Depends(get_current_user
             await conn.execute(
                 """INSERT INTO prod_paralizacion (id, registro_id, movimiento_id, fecha_inicio, motivo, comentario, activa, created_at, updated_at)
                    VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$7)""",
-                paralizacion_id, input.registro_id, input.movimiento_id, now, motivo_nombre, input.comentario, now
+                paralizacion_id, input.registro_id, input.movimiento_id, fecha_hora, motivo_nombre, input.comentario, now
             )
             await conn.execute(
                 "UPDATE prod_registros SET estado_operativo = 'PARALIZADA' WHERE id = $1",
@@ -163,7 +204,7 @@ async def create_incidencia(input: IncidenciaCreate, _u=Depends(get_current_user
         await conn.execute(
             """INSERT INTO prod_incidencia (id, registro_id, movimiento_id, fecha_hora, usuario, tipo, comentario, estado, paraliza, paralizacion_id, created_at, updated_at)
                VALUES ($1,$2,$3,$4,$5,$6,$7,'ABIERTA',$8,$9,$10,$10)""",
-            inc_id, input.registro_id, input.movimiento_id, now, input.usuario, input.motivo_id, input.comentario, input.paraliza, paralizacion_id, now
+            inc_id, input.registro_id, input.movimiento_id, fecha_hora, input.usuario, input.motivo_id, input.comentario, input.paraliza, paralizacion_id, now
         )
 
         # Auto-publicar en conversación del registro
@@ -194,9 +235,11 @@ async def update_incidencia(incidencia_id: str, input: IncidenciaUpdate, _u=Depe
             raise HTTPException(status_code=404, detail="Incidencia no encontrada")
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
+        # Fecha de resolución manual (si viene en el body) o ahora
+        fecha_res = _parse_fecha(input.fecha_resolucion) if input.fecha_resolucion else now
         await conn.execute(
             "UPDATE prod_incidencia SET estado = $1, updated_at = $2, comentario_resolucion = $3 WHERE id = $4",
-            input.estado, now, input.comentario_resolucion, incidencia_id
+            input.estado, fecha_res, input.comentario_resolucion, incidencia_id
         )
 
         # Si se resuelve y tenía paralización activa, levantarla automáticamente
@@ -204,8 +247,8 @@ async def update_incidencia(incidencia_id: str, input: IncidenciaUpdate, _u=Depe
             par = await conn.fetchrow("SELECT * FROM prod_paralizacion WHERE id = $1", row['paralizacion_id'])
             if par and par['activa']:
                 await conn.execute(
-                    "UPDATE prod_paralizacion SET activa = FALSE, fecha_fin = $1, updated_at = $1 WHERE id = $2",
-                    now, row['paralizacion_id']
+                    "UPDATE prod_paralizacion SET activa = FALSE, fecha_fin = $1, updated_at = $2 WHERE id = $3",
+                    fecha_res, now, row['paralizacion_id']
                 )
                 # Recalculate estado_operativo
                 registro_id = row['registro_id']
@@ -238,11 +281,139 @@ async def update_incidencia(incidencia_id: str, input: IncidenciaUpdate, _u=Depe
                 """INSERT INTO prod_conversacion (id, registro_id, mensaje_padre_id, autor, mensaje, estado, fijado, created_at)
                    VALUES ($1, $2, NULL, $3, $4, 'resuelto', FALSE, $5)""",
                 conv_id, row['registro_id'], 'Sistema',
-                resolucion_texto, now
+                resolucion_texto, fecha_res
             )
 
         updated = await conn.fetchrow("SELECT * FROM prod_incidencia WHERE id = $1", incidencia_id)
         return row_to_dict(updated)
+
+
+# ========== EDITAR INCIDENCIA (fecha, motivo, comentario) ==========
+
+@router.patch("/incidencias/{incidencia_id}")
+async def edit_incidencia(incidencia_id: str, input: IncidenciaEdit, _u=Depends(get_current_user)):
+    """Edita los campos fecha_hora, motivo y/o comentario de una incidencia."""
+    from server import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        existing = await conn.fetchrow("SELECT * FROM prod_incidencia WHERE id = $1", incidencia_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Incidencia no encontrada")
+
+        sets = []
+        params = []
+        idx = 1
+        if input.fecha_hora is not None:
+            sets.append(f"fecha_hora = ${idx}")
+            params.append(_parse_fecha(input.fecha_hora))
+            idx += 1
+        if input.motivo_id is not None:
+            # Validar que el motivo existe
+            exists = await conn.fetchval("SELECT id FROM prod_motivos_incidencia WHERE id = $1", input.motivo_id)
+            if not exists:
+                raise HTTPException(status_code=400, detail="motivo_id no válido")
+            sets.append(f"tipo = ${idx}")
+            params.append(input.motivo_id)
+            idx += 1
+        if input.comentario is not None:
+            sets.append(f"comentario = ${idx}")
+            params.append(input.comentario)
+            idx += 1
+        if not sets:
+            raise HTTPException(status_code=400, detail="Nada que actualizar")
+
+        sets.append(f"updated_at = ${idx}")
+        params.append(datetime.now(timezone.utc).replace(tzinfo=None))
+        idx += 1
+        params.append(incidencia_id)
+        query = f"UPDATE prod_incidencia SET {', '.join(sets)} WHERE id = ${idx}"
+        await conn.execute(query, *params)
+
+        # Si cambió la fecha_hora y tiene paralización vinculada, actualizar su fecha_inicio también
+        if input.fecha_hora is not None and existing.get('paralizacion_id'):
+            await conn.execute(
+                "UPDATE prod_paralizacion SET fecha_inicio = $1 WHERE id = $2",
+                _parse_fecha(input.fecha_hora), existing['paralizacion_id']
+            )
+
+        updated = await conn.fetchrow("SELECT * FROM prod_incidencia WHERE id = $1", incidencia_id)
+        return row_to_dict(updated)
+
+
+# ========== AVANCES DE INCIDENCIA (historial de comentarios) ==========
+
+@router.get("/incidencias/{incidencia_id}/avances")
+async def list_avances(incidencia_id: str, _u=Depends(get_current_user)):
+    from server import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM prod_incidencia_avance WHERE incidencia_id = $1 ORDER BY fecha ASC",
+            incidencia_id
+        )
+        return [row_to_dict(r) for r in rows]
+
+
+@router.post("/incidencias/{incidencia_id}/avances")
+async def create_avance(incidencia_id: str, input: AvanceCreate, current_user=Depends(get_current_user)):
+    from server import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        exists = await conn.fetchval("SELECT id FROM prod_incidencia WHERE id = $1", incidencia_id)
+        if not exists:
+            raise HTTPException(status_code=404, detail="Incidencia no encontrada")
+        if not (input.comentario and input.comentario.strip()):
+            raise HTTPException(status_code=400, detail="Comentario requerido")
+
+        av_id = str(uuid.uuid4())
+        fecha = _parse_fecha(input.fecha) if input.fecha else datetime.now(timezone.utc).replace(tzinfo=None)
+        usuario = current_user.get('username') or current_user.get('nombre_completo') or ''
+        await conn.execute(
+            """INSERT INTO prod_incidencia_avance (id, incidencia_id, fecha, usuario, comentario)
+               VALUES ($1, $2, $3, $4, $5)""",
+            av_id, incidencia_id, fecha, usuario, input.comentario.strip()
+        )
+        row = await conn.fetchrow("SELECT * FROM prod_incidencia_avance WHERE id = $1", av_id)
+        return row_to_dict(row)
+
+
+@router.patch("/incidencias/{incidencia_id}/avances/{avance_id}")
+async def update_avance(incidencia_id: str, avance_id: str, input: AvanceUpdate, _u=Depends(get_current_user)):
+    from server import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM prod_incidencia_avance WHERE id = $1 AND incidencia_id = $2", avance_id, incidencia_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Avance no encontrado")
+
+        sets = []
+        params = []
+        idx = 1
+        if input.comentario is not None:
+            if not input.comentario.strip():
+                raise HTTPException(status_code=400, detail="Comentario vacío")
+            sets.append(f"comentario = ${idx}"); params.append(input.comentario.strip()); idx += 1
+        if input.fecha is not None:
+            sets.append(f"fecha = ${idx}"); params.append(_parse_fecha(input.fecha)); idx += 1
+        if not sets:
+            raise HTTPException(status_code=400, detail="Nada que actualizar")
+        sets.append(f"updated_at = ${idx}"); params.append(datetime.now(timezone.utc).replace(tzinfo=None)); idx += 1
+        params.append(avance_id)
+        await conn.execute(f"UPDATE prod_incidencia_avance SET {', '.join(sets)} WHERE id = ${idx}", *params)
+        updated = await conn.fetchrow("SELECT * FROM prod_incidencia_avance WHERE id = $1", avance_id)
+        return row_to_dict(updated)
+
+
+@router.delete("/incidencias/{incidencia_id}/avances/{avance_id}")
+async def delete_avance(incidencia_id: str, avance_id: str, _u=Depends(get_current_user)):
+    from server import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "DELETE FROM prod_incidencia_avance WHERE id = $1 AND incidencia_id = $2",
+            avance_id, incidencia_id
+        )
+        return {"ok": True}
 
 @router.delete("/incidencias/{incidencia_id}")
 async def delete_incidencia(incidencia_id: str, _u=Depends(get_current_user)):

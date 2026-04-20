@@ -443,12 +443,15 @@ export const IncidenciaDialog = ({
   motivosIncidencia, onCrear, nuevoMotivoNombre, setNuevoMotivoNombre, onCrearMotivo,
   gestionMotivos, setGestionMotivos, editandoMotivo, setEditandoMotivo,
   editMotivoNombre, setEditMotivoNombre, onEditarMotivo, onEliminarMotivo,
+  mode = 'create',  // 'create' | 'edit'
 }) => (
   <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-w-md">
       <DialogHeader>
-        <DialogTitle>Nueva Incidencia</DialogTitle>
-        <DialogDescription>Registra un evento que afecta la produccion de este registro</DialogDescription>
+        <DialogTitle>{mode === 'edit' ? 'Editar Incidencia' : 'Nueva Incidencia'}</DialogTitle>
+        <DialogDescription>
+          {mode === 'edit' ? 'Modifica los datos de la incidencia' : 'Registra un evento que afecta la produccion de este registro'}
+        </DialogDescription>
       </DialogHeader>
       <div className="space-y-4 py-2">
         <div className="space-y-2">
@@ -504,21 +507,75 @@ export const IncidenciaDialog = ({
           )}
         </div>
         <div className="space-y-2">
+          <Label>Fecha y hora</Label>
+          <Input
+            type="datetime-local"
+            value={incidenciaForm.fecha_hora || ''}
+            onChange={(e) => setIncidenciaForm(prev => ({ ...prev, fecha_hora: e.target.value }))}
+            data-testid="input-fecha-incidencia"
+          />
+          <p className="text-[10px] text-muted-foreground">Hora de Lima. Déjalo vacío para usar la hora actual.</p>
+        </div>
+        <div className="space-y-2">
           <Label>Comentario</Label>
           <Textarea value={incidenciaForm.comentario} onChange={(e) => setIncidenciaForm(prev => ({ ...prev, comentario: e.target.value }))}
             placeholder="Descripcion del problema..." rows={2} data-testid="input-comentario-incidencia" />
         </div>
-        <div className="flex items-center space-x-2 p-3 border rounded-lg bg-red-50 dark:bg-red-950/20">
-          <Checkbox id="paraliza-check" checked={incidenciaForm.paraliza} onCheckedChange={(checked) => setIncidenciaForm(prev => ({ ...prev, paraliza: checked }))} data-testid="checkbox-paraliza" />
-          <div>
-            <Label htmlFor="paraliza-check" className="cursor-pointer font-medium">Paraliza produccion</Label>
-            <p className="text-xs text-muted-foreground">Detiene la produccion hasta que se resuelva esta incidencia</p>
+        {mode === 'create' && (
+          <div className="flex items-center space-x-2 p-3 border rounded-lg bg-red-50 dark:bg-red-950/20">
+            <Checkbox id="paraliza-check" checked={incidenciaForm.paraliza} onCheckedChange={(checked) => setIncidenciaForm(prev => ({ ...prev, paraliza: checked }))} data-testid="checkbox-paraliza" />
+            <div>
+              <Label htmlFor="paraliza-check" className="cursor-pointer font-medium">Paraliza produccion</Label>
+              <p className="text-xs text-muted-foreground">Detiene la produccion hasta que se resuelva esta incidencia</p>
+            </div>
           </div>
+        )}
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+        <Button type="button" onClick={onCrear} data-testid="btn-guardar-incidencia">
+          {mode === 'edit' ? 'Guardar cambios' : 'Registrar Incidencia'}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+);
+
+/**
+ * Dialog para resolver una incidencia — con fecha y comentario de resolución.
+ */
+export const ResolverIncidenciaDialog = ({ open, onOpenChange, form, setForm, onResolver }) => (
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="max-w-md">
+      <DialogHeader>
+        <DialogTitle>Resolver Incidencia</DialogTitle>
+        <DialogDescription>Marca la incidencia como resuelta. Opcionalmente indica fecha y comentario.</DialogDescription>
+      </DialogHeader>
+      <div className="space-y-3 py-2">
+        <div className="space-y-2">
+          <Label>Fecha de resolución</Label>
+          <Input
+            type="datetime-local"
+            value={form?.fecha_resolucion || ''}
+            onChange={(e) => setForm(prev => ({ ...prev, fecha_resolucion: e.target.value }))}
+            data-testid="input-fecha-resolucion"
+          />
+          <p className="text-[10px] text-muted-foreground">Hora de Lima. Déjalo vacío para usar la hora actual.</p>
+        </div>
+        <div className="space-y-2">
+          <Label>Comentario de resolución</Label>
+          <Textarea
+            value={form?.comentario_resolucion || ''}
+            onChange={(e) => setForm(prev => ({ ...prev, comentario_resolucion: e.target.value }))}
+            placeholder="Cómo se resolvió, qué se hizo, observaciones..."
+            rows={3}
+            data-testid="input-comentario-resolucion"
+          />
         </div>
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-        <Button type="button" onClick={onCrear} data-testid="btn-guardar-incidencia">Registrar Incidencia</Button>
+        <Button type="button" onClick={onResolver} data-testid="btn-confirmar-resolucion">Marcar como resuelta</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>

@@ -3,11 +3,12 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Separator } from '../ui/separator';
-import { AlertTriangle, Plus, ChevronDown, ChevronUp, Check, Trash2 } from 'lucide-react';
+import { AlertTriangle, Plus, ChevronDown, ChevronUp, Check, Trash2, Pencil } from 'lucide-react';
+import IncidenciaAvances from './IncidenciaAvances';
 
 export const RegistroIncidenciasCard = ({
   incidencias, showResueltas, onToggleResueltas,
-  onResolver, onEliminar, onNueva, permisos,
+  onResolver, onEliminar, onNueva, onEditar, permisos,
 }) => {
   const canRegister = permisos?.canAction?.('registrar_incidencias') !== false;
   const canResolve = permisos?.canAction?.('resolver_incidencias') !== false;
@@ -56,10 +57,16 @@ export const RegistroIncidenciasCard = ({
                       <span className="ml-2">Paralizada: {new Date(inc.paralizacion_inicio).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })} (activa)</span>
                     )}
                   </p>
+                  <IncidenciaAvances incidenciaId={inc.id} canWrite={canRegister} />
                 </div>
                 <div className="flex gap-1 shrink-0">
+                  {canRegister && onEditar && (
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => onEditar(inc)} title="Editar" data-testid={`editar-incidencia-${inc.id}`}>
+                      <Pencil className="h-3.5 w-3.5 text-blue-600" />
+                    </Button>
+                  )}
                   {canResolve && (
-                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => onResolver(inc.id)} title="Resolver" data-testid={`resolver-incidencia-${inc.id}`}>
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => onResolver(inc)} title="Resolver" data-testid={`resolver-incidencia-${inc.id}`}>
                       <Check className="h-4 w-4 text-green-600" />
                     </Button>
                   )}

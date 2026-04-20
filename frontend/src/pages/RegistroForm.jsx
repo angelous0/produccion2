@@ -31,7 +31,7 @@ import usePermissions from '../hooks/usePermissions';
 import {
   RegistroHeader, RegistroDatosCard, RegistroTallasCard,
   RegistroMovimientosCard, RegistroIncidenciasCard, RegistroPanelLateral,
-  ColoresDialog, MovimientoDialog, IncidenciaDialog,
+  ColoresDialog, MovimientoDialog, IncidenciaDialog, ResolverIncidenciaDialog,
   SugerenciaEstadoDialog, SugerenciaMovDialog, ForzarEstadoDialog,
   RetrocesoEstadoDialog, AdvertenciaCantidadDialog,
   DivisionDialog, SalidaInventarioDialog, ReabrirCierreDialog,
@@ -167,8 +167,12 @@ export const RegistroForm = () => {
   const isParalizado = incidencias.some(i => i.paraliza && i.paralizacion_activa && i.estado === 'ABIERTA');
   const [motivosIncidencia, setMotivosIncidencia] = useState([]);
   const [incidenciaDialogOpen, setIncidenciaDialogOpen] = useState(false);
+  const [incidenciaMode, setIncidenciaMode] = useState('create'); // 'create' | 'edit'
+  const [editingIncidenciaId, setEditingIncidenciaId] = useState(null);
+  const [resolverDialogOpen, setResolverDialogOpen] = useState(false);
+  const [resolverForm, setResolverForm] = useState({ incidencia_id: null, fecha_resolucion: '', comentario_resolucion: '' });
   const [copiarMovOpen, setCopiarMovOpen] = useState(false);
-  const [incidenciaForm, setIncidenciaForm] = useState({ motivo_id: '', comentario: '', paraliza: false });
+  const [incidenciaForm, setIncidenciaForm] = useState({ motivo_id: '', comentario: '', paraliza: false, fecha_hora: '' });
   const [showResueltas, setShowResueltas] = useState(false);
   const [nuevoMotivoNombre, setNuevoMotivoNombre] = useState('');
   const [gestionMotivos, setGestionMotivos] = useState(false);
@@ -819,14 +823,70 @@ export const RegistroForm = () => {
   const handleCrearIncidencia = async () => {
     if (!incidenciaForm.motivo_id) { toast.error('Selecciona un motivo'); return; }
     try {
-      await axios.post(`${API}/incidencias`, { registro_id: id, motivo_id: incidenciaForm.motivo_id, comentario: incidenciaForm.comentario, paraliza: incidenciaForm.paraliza, usuario: 'eduard' });
-      toast.success('Incidencia registrada'); setIncidenciaDialogOpen(false);
-      setIncidenciaForm({ motivo_id: '', comentario: '', paraliza: false }); fetchIncidencias();
-    } catch (error) { toast.error(getErrorMsg(error, 'Error al crear incidencia')); }
+      if (incidenciaMode === 'edit' && editingIncidenciaId) {
+        await axios.patch(`${API}/incidencias/${editingIncidenciaId}`, {
+          motivo_id: incidenciaForm.motivo_id,
+          comentario: incidenciaForm.comentario,
+          fecha_hora: incidenciaForm.fecha_hora || null,
+        });
+        toast.success('Incidencia actualizada');
+      } else {
+        await axios.post(`${API}/incidencias`, {
+          registro_id: id,
+          motivo_id: incidenciaForm.motivo_id,
+          comentario: incidenciaForm.comentario,
+          paraliza: incidenciaForm.paraliza,
+          fecha_hora: incidenciaForm.fecha_hora || null,
+          usuario: 'eduard',
+        });
+        toast.success('Incidencia registrada');
+      }
+      setIncidenciaDialogOpen(false);
+      setIncidenciaMode('create');
+      setEditingIncidenciaId(null);
+      setIncidenciaForm({ motivo_id: '', comentario: '', paraliza: false, fecha_hora: '' });
+      fetchIncidencias();
+    } catch (error) { toast.error(getErrorMsg(error, 'Error al guardar incidencia')); }
   };
-  const handleResolverIncidencia = async (incId) => {
-    try { await axios.put(`${API}/incidencias/${incId}`, { estado: 'RESUELTA' }); toast.success('Incidencia resuelta'); fetchIncidencias(); }
-    catch { toast.error('Error al resolver incidencia'); }
+  const handleEditarIncidencia = (inc) => {
+    setIncidenciaMode('edit');
+    setEditingIncidenciaId(inc.id);
+    // Convertir fecha UTC a datetime-local en hora Lima
+    let fechaLocal = '';
+    if (inc.fecha_hora) {
+      try {
+        const d = new Date(inc.fecha_hora);
+        const parts = d.toLocaleString('en-CA', {
+          timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', hour12: false,
+        });
+        const [date, time] = parts.split(', ');
+        fechaLocal = `${date}T${time}`;
+      } catch { /* ignore */ }
+    }
+    setIncidenciaForm({
+      motivo_id: inc.tipo || inc.motivo_id || '',
+      comentario: inc.comentario || '',
+      paraliza: inc.paraliza || false,
+      fecha_hora: fechaLocal,
+    });
+    setIncidenciaDialogOpen(true);
+  };
+  const handleAbrirResolver = (inc) => {
+    setResolverForm({ incidencia_id: inc.id, fecha_resolucion: '', comentario_resolucion: '' });
+    setResolverDialogOpen(true);
+  };
+  const handleConfirmarResolver = async () => {
+    try {
+      await axios.put(`${API}/incidencias/${resolverForm.incidencia_id}`, {
+        estado: 'RESUELTA',
+        comentario_resolucion: resolverForm.comentario_resolucion || null,
+        fecha_resolucion: resolverForm.fecha_resolucion || null,
+      });
+      toast.success('Incidencia resuelta');
+      setResolverDialogOpen(false);
+      fetchIncidencias();
+    } catch { toast.error('Error al resolver incidencia'); }
   };
   const handleEliminarIncidencia = async (incId) => {
     if (!window.confirm('¿Estás seguro de eliminar esta incidencia?')) return;
@@ -1140,8 +1200,14 @@ export const RegistroForm = () => {
                   <RegistroIncidenciasCard
                     incidencias={incidencias} showResueltas={showResueltas}
                     onToggleResueltas={() => setShowResueltas(prev => !prev)}
-                    onResolver={handleResolverIncidencia} onEliminar={handleEliminarIncidencia}
-                    onNueva={() => { setIncidenciaForm({ motivo_id: '', comentario: '', paraliza: false }); setIncidenciaDialogOpen(true); }}
+                    onResolver={handleAbrirResolver} onEliminar={handleEliminarIncidencia}
+                    onEditar={handleEditarIncidencia}
+                    onNueva={() => {
+                      setIncidenciaMode('create');
+                      setEditingIncidenciaId(null);
+                      setIncidenciaForm({ motivo_id: '', comentario: '', paraliza: false, fecha_hora: '' });
+                      setIncidenciaDialogOpen(true);
+                    }}
                     permisos={perms}
                   />
                   <ArreglosPanel registroId={id} servicios={serviciosProduccion} personas={personasProduccion} />
@@ -1255,6 +1321,13 @@ export const RegistroForm = () => {
         editandoMotivo={editandoMotivo} setEditandoMotivo={setEditandoMotivo}
         editMotivoNombre={editMotivoNombre} setEditMotivoNombre={setEditMotivoNombre}
         onEditarMotivo={handleEditarMotivo} onEliminarMotivo={handleEliminarMotivo}
+        mode={incidenciaMode}
+      />
+
+      <ResolverIncidenciaDialog
+        open={resolverDialogOpen} onOpenChange={setResolverDialogOpen}
+        form={resolverForm} setForm={setResolverForm}
+        onResolver={handleConfirmarResolver}
       />
 
       <ForzarEstadoDialog dialog={forzarEstadoDialog} onClose={() => setForzarEstadoDialog(null)}

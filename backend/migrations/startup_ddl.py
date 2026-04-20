@@ -369,6 +369,21 @@ async def ensure_startup_migrations():
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_color_mapping_color ON prod_odoo_color_mapping(color_id)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_color_mapping_original ON prod_odoo_color_mapping(color_odoo_original)")
 
+        # ─── Incidencias: historial de avances con comentario + fecha ──────
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_incidencia_avance (
+                id VARCHAR PRIMARY KEY,
+                incidencia_id VARCHAR NOT NULL,
+                fecha TIMESTAMP NOT NULL,
+                usuario VARCHAR,
+                comentario TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_avance_incidencia ON prod_incidencia_avance(incidencia_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_avance_fecha ON prod_incidencia_avance(fecha)")
+
         # Tabla de configuración global del sistema
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS prod_configuracion (
