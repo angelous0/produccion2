@@ -51,6 +51,7 @@ export const ReporteTiemposMuertos = () => {
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState('en_curso');
   const [busqueda, setBusqueda] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('__all');
   const [sortDesc, setSortDesc] = useState(true);
 
   // Incidencia panel
@@ -143,6 +144,13 @@ export const ReporteTiemposMuertos = () => {
     }
   };
 
+  // Estados únicos que aparecen en la data actual (para poblar el filtro)
+  const estadosDisponibles = useMemo(() => {
+    if (!data?.items) return [];
+    const set = new Set(data.items.map(it => it.estado_actual).filter(Boolean));
+    return [...set].sort();
+  }, [data]);
+
   const filtered = useMemo(() => {
     if (!data) return [];
     let items = data.items;
@@ -161,9 +169,12 @@ export const ReporteTiemposMuertos = () => {
         (b.estado_actual || '').toLowerCase().includes(q)
       );
     }
+    if (filtroEstado && filtroEstado !== '__all') {
+      items = items.filter(b => b.estado_actual === filtroEstado);
+    }
     items = [...items].sort((a, b) => sortDesc ? b.dias_parado - a.dias_parado : a.dias_parado - b.dias_parado);
     return items;
-  }, [data, busqueda, sortDesc]);
+  }, [data, busqueda, filtroEstado, sortDesc]);
 
   const resumen = data?.resumen || {};
 
@@ -383,16 +394,37 @@ export const ReporteTiemposMuertos = () => {
         <KpiCard label="Días acumulados" value={resumen.dias_perdidos || 0} icon={Clock} danger />
       </div>
 
-      {/* Búsqueda */}
-      <div className="relative max-w-xs">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-        <Input
-          placeholder="Buscar corte, modelo, servicio, estado..."
-          value={busqueda}
-          onChange={e => setBusqueda(e.target.value)}
-          className="h-8 pl-8 text-xs"
-          data-testid="busqueda-tm"
-        />
+      {/* Búsqueda + filtro por estado */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative max-w-xs flex-1 min-w-[200px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Buscar corte, modelo, servicio, estado..."
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            className="h-8 pl-8 text-xs"
+            data-testid="busqueda-tm"
+          />
+        </div>
+        <Select value={filtroEstado} onValueChange={setFiltroEstado}>
+          <SelectTrigger className="h-8 w-[200px] text-xs" data-testid="filtro-estado-tm">
+            <SelectValue placeholder="Todos los estados" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all">Todos los estados</SelectItem>
+            {estadosDisponibles.map(e => (
+              <SelectItem key={e} value={e}>{e}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {filtroEstado !== '__all' && (
+          <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setFiltroEstado('__all')}>
+            Limpiar
+          </Button>
+        )}
+        <div className="text-xs text-muted-foreground ml-auto">
+          {filtered.length} de {data?.items?.length || 0}
+        </div>
       </div>
 
       {/* Tabla */}
