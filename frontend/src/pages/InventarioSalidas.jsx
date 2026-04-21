@@ -182,6 +182,9 @@ export const InventarioSalidas = () => {
   const searchWrapRef = useRef(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  // Flag: en modo carga inicial se permite salir más de lo que hay en stock
+  // (para cargar históricos donde los ingresos aún no están completos).
+  const [modoMigracion, setModoMigracion] = useState(false);
   const [formData, setFormData] = useState({
     item_id: '',
     cantidad: 1,
@@ -192,7 +195,7 @@ export const InventarioSalidas = () => {
 
   const fetchData = async () => {
     try {
-      const [salidasRes, itemsRes, registrosRes, lineasRes] = await Promise.all([
+      const [salidasRes, itemsRes, registrosRes, lineasRes, modoRes] = await Promise.all([
         axios.get(`${API}/inventario-salidas`),
         axios.get(`${API}/inventario?all=true`),
         // limit=2000 para traer TODOS los registros (el endpoint no respeta all=true,
@@ -200,12 +203,14 @@ export const InventarioSalidas = () => {
         // excluir_estados vacío para incluir también lotes en 'Tienda'.
         axios.get(`${API}/registros?limit=2000&excluir_estados=`),
         axios.get(`${API}/lineas-negocio`),
+        axios.get(`${API}/configuracion/modo-migracion`).catch(() => ({ data: { activo: false } })),
       ]);
       setSalidas(salidasRes.data);
       setItems(itemsRes.data);
       const registrosData = registrosRes.data;
       setRegistros(Array.isArray(registrosData) ? registrosData : (registrosData.items || []));
       setLineasNegocio(lineasRes.data || []);
+      setModoMigracion(!!modoRes.data?.activo);
     } catch (error) {
       toast.error('Error al cargar datos');
     } finally {
@@ -716,17 +721,46 @@ export const InventarioSalidas = () => {
               
               <div className="space-y-2">
                 <Label htmlFor="cantidad">Cantidad ({selectedItem?.unidad_medida || 'unidad'}) *</Label>
-                <NumericInput
-                  id="cantidad"
-                  min="0.01"
-                  step="0.01"
-                  max={selectedRollo?.metraje_disponible || selectedItem?.stock_actual || 999999}
-                  value={formData.cantidad}
-                  onChange={(e) => setFormData({ ...formData, cantidad: e.target.value })}
-                  required
-                  className="font-mono"
-                  data-testid="input-cantidad"
-                />
+                {(() => {
+                  // Lógica del max:
+                  // - Si hay rollo seleccionado → su metraje disponible (estricto, por control FIFO).
+                  // - Si NO hay rollo y estamos en modo carga inicial → sin max (permite negativo).
+                  // - Si NO hay rollo y stock < 0 (inconsistencia histórica) → sin max.
+                  // - Caso normal → stock_actual.
+                  let maxValue;
+                  if (selectedRollo?.metraje_disponible != null) {
+                    maxValue = selectedRollo.metraje_disponible;
+                  } else if (modoMigracion) {
+                    maxValue = undefined;  // sin límite en modo carga inicial
+                  } else if ((selectedItem?.stock_actual ?? 0) < 0) {
+                    maxValue = undefined;  // stock ya es negativo, no limitar más
+                  } else {
+                    maxValue = selectedItem?.stock_actual || 999999;
+                  }
+                  return (
+                    <NumericInput
+                      id="cantidad"
+                      min="0.01"
+                      step="0.01"
+                      max={maxValue}
+                      value={formData.cantidad}
+                      onChange={(e) => setFormData({ ...formData, cantidad: e.target.value })}
+                      required
+                      className="font-mono"
+                      data-testid="input-cantidad"
+                    />
+                  );
+                })()}
+                {modoMigracion && !selectedRollo && (
+                  <p className="text-xs text-amber-600">
+                    ⚠ Modo carga inicial activo — se permite cualquier cantidad, aunque supere el stock.
+                  </p>
+                )}
+                {!modoMigracion && (selectedItem?.stock_actual ?? 0) < 0 && !selectedRollo && (
+                  <p className="text-xs text-amber-600">
+                    ⚠ Stock actual negativo ({selectedItem?.stock_actual}). Se permite la salida sin límite.
+                  </p>
+                )}
                 {selectedRollo && (
                   <p className="text-xs text-muted-foreground">
                     Máximo disponible: {selectedRollo.metraje_disponible?.toFixed(2)}m
