@@ -194,15 +194,46 @@ export const RegistroDatosCard = ({
         )}
 
         {/* Panel de Cierre de Produccion */}
-        {esCierreable && (
+        {esCierreable && (() => {
+          const enTienda = formData.estado === 'Tienda';
+          const hayCierre = cierreExistente && cierreExistente.estado_cierre === 'CERRADO';
+          // Caso especial: lote en Tienda SIN cierre ejecutado.
+          // Tienda no es la etapa de cierre — se debió cerrar en Almacén PT.
+          // Mostramos un aviso en vez del formulario de cierre.
+          if (enTienda && !cierreExistente) {
+            return (
+              <div className="rounded-lg border-2 border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-5 space-y-3" data-testid="cierre-panel-tienda-sin-cierre">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
+                    <AlertTriangle className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-amber-800 dark:text-amber-300">Lote en Tienda sin cierre ejecutado</h3>
+                    <p className="text-xs text-amber-700 dark:text-amber-400">El despacho a local se registró antes de ejecutar el cierre de producción.</p>
+                  </div>
+                </div>
+                <div className="bg-white dark:bg-zinc-900 rounded-md p-3 border border-amber-200 dark:border-amber-900 text-xs text-muted-foreground space-y-1.5">
+                  <p>El <strong>cierre de producción</strong> congela los costos (MP + Servicios + CIF) y genera el PT en almacén. Debe hacerse mientras el lote está en una etapa de cierre (ej. <strong>Almacén PT</strong>), no cuando ya está despachado.</p>
+                  <p>Si quieres ejecutar el cierre ahora: regresa el estado del lote a <strong>Almacén PT</strong> (o la etapa de cierre de tu ruta), ejecuta el cierre, y vuelve a marcarlo como Tienda.</p>
+                </div>
+              </div>
+            );
+          }
+          return (
           <div className="rounded-lg border-2 border-green-500/40 bg-green-50 dark:bg-green-950/20 p-5 space-y-4" data-testid="cierre-panel">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-full bg-green-500/15 flex items-center justify-center shrink-0">
                 <Package className="h-5 w-5 text-green-600" />
               </div>
-              <div>
-                <h3 className="font-semibold text-green-800 dark:text-green-400">Cierre de Produccion</h3>
-                <p className="text-xs text-green-600 dark:text-green-500">Cierre oficial con costos congelados y auditoria.</p>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-green-800 dark:text-green-400">
+                  {enTienda && hayCierre ? 'Cierre de Producción (Despachado)' : 'Cierre de Produccion'}
+                </h3>
+                <p className="text-xs text-green-600 dark:text-green-500">
+                  {enTienda && hayCierre
+                    ? 'Lote cerrado y ya despachado a tienda.'
+                    : 'Cierre oficial con costos congelados y auditoria.'}
+                </p>
               </div>
             </div>
 
@@ -383,7 +414,8 @@ export const RegistroDatosCard = ({
               </>
             ) : null}
           </div>
-        )}
+          );
+        })()}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
