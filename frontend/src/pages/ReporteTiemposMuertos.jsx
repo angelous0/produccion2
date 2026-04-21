@@ -164,8 +164,6 @@ export const ReporteTiemposMuertos = () => {
         (b.entalle || '').toLowerCase().includes(q) ||
         (b.tela || '').toLowerCase().includes(q) ||
         (b.hilo_especifico || '').toLowerCase().includes(q) ||
-        (b.ultimo_servicio || '').toLowerCase().includes(q) ||
-        (b.ultima_persona || '').toLowerCase().includes(q) ||
         (b.estado_actual || '').toLowerCase().includes(q)
       );
     }
@@ -182,7 +180,7 @@ export const ReporteTiemposMuertos = () => {
     if (!filtered.length) return;
     const XLSX = (await import('xlsx')).default || await import('xlsx');
     const wsData = [
-      ['Corte', 'Modelo', 'Marca', 'Tipo', 'Entalle', 'Tela', 'Hilo Esp.', 'Último Servicio', 'Persona', 'Terminó', 'Estado Actual', 'Motivo', 'Días Parado', 'Inc. Abiertas', 'Nivel'],
+      ['Corte', 'Modelo', 'Marca', 'Tipo', 'Entalle', 'Tela', 'Hilo Esp.', 'Terminó', 'Estado Actual', 'Motivo', 'Días Parado', 'Inc. Abiertas', 'Nivel'],
       ...filtered.map(r => [
         r.n_corte + (r.urgente ? ' (URG)' : ''),
         r.modelo || '',
@@ -191,8 +189,6 @@ export const ReporteTiemposMuertos = () => {
         r.entalle || '',
         r.tela || '',
         r.hilo_especifico || '',
-        r.ultimo_servicio,
-        r.ultima_persona || '',
         formatDate(r.fecha_termino),
         r.estado_actual,
         r.motivo || 'Sin motivo',
@@ -202,7 +198,7 @@ export const ReporteTiemposMuertos = () => {
       ]),
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
-    ws['!cols'] = [{wch:12},{wch:20},{wch:14},{wch:14},{wch:14},{wch:14},{wch:16},{wch:18},{wch:18},{wch:14},{wch:16},{wch:18},{wch:12},{wch:12},{wch:12}];
+    ws['!cols'] = [{wch:12},{wch:24},{wch:16},{wch:14},{wch:14},{wch:14},{wch:16},{wch:14},{wch:18},{wch:22},{wch:12},{wch:12},{wch:12}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Tiempos Muertos');
     XLSX.writeFile(wb, `tiempos_muertos_${new Date().toISOString().slice(0,10)}.xlsx`);
@@ -255,7 +251,7 @@ export const ReporteTiemposMuertos = () => {
     const nivelColors = { critico: [254,226,226], atencion: [254,243,199], espera: [219,234,254] };
     const nivelTextColors = { critico: [153,27,27], atencion: [146,64,14], espera: [30,64,175] };
 
-    const headers = [['Corte', 'Modelo', 'Marca', 'Tipo', 'Entalle', 'Tela', 'Hilo Esp.', 'Últ. Servicio', 'Persona', 'Terminó', 'Estado', 'Motivo', 'Días', 'Inc.', 'Nivel']];
+    const headers = [['Corte', 'Modelo', 'Marca', 'Tipo', 'Entalle', 'Tela', 'Hilo Esp.', 'Terminó', 'Estado', 'Motivo', 'Días', 'Inc.', 'Nivel']];
     const body = filtered.map(r => [
       r.n_corte,
       r.modelo || '',
@@ -264,8 +260,6 @@ export const ReporteTiemposMuertos = () => {
       r.entalle || '',
       r.tela || '',
       r.hilo_especifico || '',
-      r.ultimo_servicio,
-      r.ultima_persona || '',
       formatDate(r.fecha_termino),
       r.estado_actual,
       r.motivo || '-',
@@ -279,24 +273,22 @@ export const ReporteTiemposMuertos = () => {
       head: headers,
       body: body,
       theme: 'grid',
-      styles: { fontSize: 5.5, cellPadding: 1.2, lineColor: [220,220,220], lineWidth: 0.2, overflow: 'ellipsize' },
-      headStyles: { fillColor: [30,41,59], textColor: 255, fontSize: 5, fontStyle: 'bold', halign: 'center' },
+      styles: { fontSize: 6, cellPadding: 1.2, lineColor: [220,220,220], lineWidth: 0.2, overflow: 'ellipsize' },
+      headStyles: { fillColor: [30,41,59], textColor: 255, fontSize: 5.5, fontStyle: 'bold', halign: 'center' },
       columnStyles: {
-        0: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
-        1: { cellWidth: 22 },
-        2: { cellWidth: 16 },
-        3: { cellWidth: 18 },
-        4: { cellWidth: 16 },
-        5: { cellWidth: 16 },
-        6: { cellWidth: 16 },
-        7: { cellWidth: 20 },
-        8: { cellWidth: 20 },
-        9: { cellWidth: 16, halign: 'center' },
-        10: { cellWidth: 18, halign: 'center' },
-        11: { cellWidth: 20 },
-        12: { cellWidth: 11, halign: 'center', fontStyle: 'bold' },
-        13: { cellWidth: 9, halign: 'center' },
-        14: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
+        0: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+        1: { cellWidth: 26 },
+        2: { cellWidth: 20 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 18 },
+        5: { cellWidth: 18 },
+        6: { cellWidth: 18 },
+        7: { cellWidth: 18, halign: 'center' },
+        8: { cellWidth: 22, halign: 'center' },
+        9: { cellWidth: 26 },
+        10: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
+        11: { cellWidth: 10, halign: 'center' },
+        12: { cellWidth: 18, halign: 'center', fontStyle: 'bold' },
       },
       didParseCell: (data) => {
         if (data.section !== 'body') return;
@@ -310,13 +302,13 @@ export const ReporteTiemposMuertos = () => {
         }
 
         // Motivo: amber if present, gray italic if not
-        if (data.column.index === 11 && !row.motivo) {
+        if (data.column.index === 9 && !row.motivo) {
           data.cell.styles.textColor = [150, 150, 150];
           data.cell.styles.fontStyle = 'italic';
         }
 
         // Días parado: color by severity
-        if (data.column.index === 12) {
+        if (data.column.index === 10) {
           if (row.dias_parado >= 7) {
             data.cell.styles.fillColor = [254, 226, 226];
             data.cell.styles.textColor = [153, 27, 27];
@@ -327,14 +319,14 @@ export const ReporteTiemposMuertos = () => {
         }
 
         // Inc. abiertas: red if > 0
-        if (data.column.index === 13 && row.inc_abiertas > 0) {
+        if (data.column.index === 11 && row.inc_abiertas > 0) {
           data.cell.styles.fillColor = [254, 226, 226];
           data.cell.styles.textColor = [153, 27, 27];
           data.cell.styles.fontStyle = 'bold';
         }
 
         // Nivel: color badge
-        if (data.column.index === 14 && row.nivel !== 'ok') {
+        if (data.column.index === 12 && row.nivel !== 'ok') {
           const bg = nivelColors[row.nivel];
           const tc = nivelTextColors[row.nivel];
           if (bg) {
@@ -453,8 +445,10 @@ export const ReporteTiemposMuertos = () => {
                   <th className="text-left p-2.5 font-medium text-muted-foreground">Entalle</th>
                   <th className="text-left p-2.5 font-medium text-muted-foreground">Tela</th>
                   <th className="text-left p-2.5 font-medium text-muted-foreground">Hilo Esp.</th>
-                  <th className="text-left p-2.5 font-medium text-muted-foreground">Último Servicio</th>
-                  <th className="text-left p-2.5 font-medium text-muted-foreground">Persona</th>
+                  {/* Removido: Último Servicio + Persona
+                      No aportan para tiempos muertos (datos históricos del
+                      último cerrado, no del bloqueo actual). El estado ya dice
+                      qué está esperando el lote. */}
                   <th className="text-center p-2.5 font-medium text-muted-foreground">Terminó</th>
                   <th className="text-left p-2.5 font-medium text-muted-foreground">Estado Actual</th>
                   <th className="text-left p-2.5 font-medium text-muted-foreground">Motivo</th>
@@ -484,8 +478,6 @@ export const ReporteTiemposMuertos = () => {
                       <td className="p-2.5 whitespace-nowrap text-muted-foreground">{item.entalle || '-'}</td>
                       <td className="p-2.5 whitespace-nowrap text-muted-foreground">{item.tela || '-'}</td>
                       <td className="p-2.5 whitespace-nowrap text-muted-foreground">{item.hilo_especifico || '-'}</td>
-                      <td className="p-2.5 whitespace-nowrap font-medium">{item.ultimo_servicio}</td>
-                      <td className="p-2.5 whitespace-nowrap text-muted-foreground">{item.ultima_persona || '-'}</td>
                       <td className="p-2.5 text-center whitespace-nowrap">{formatDate(item.fecha_termino)}</td>
                       <td className="p-2.5 whitespace-nowrap">
                         <Badge variant="outline" className="text-[10px]">{item.estado_actual}</Badge>
