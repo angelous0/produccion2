@@ -1331,13 +1331,7 @@ async def update_salida(salida_id: str, input: SalidaUpdateData, _u=Depends(get_
                     detail="Esta salida está vinculada a un rollo. Debe eliminarse y recrearse para cambiar el ítem o la cantidad."
                 )
 
-            # 1) Revertir stock del ítem viejo (sumar la cantidad que se había restado)
-            await conn.execute(
-                "UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
-                cantidad_vieja, salida['item_id']
-            )
-
-            # 2) Determinar ítem y cantidad nuevos
+            # Determinar ítem y cantidad nuevos
             nuevo_item_id = input.item_id or salida['item_id']
             nuevo_cantidad = nueva_cantidad if nueva_cantidad is not None else cantidad_vieja
 
@@ -1346,25 +1340,34 @@ async def update_salida(salida_id: str, input: SalidaUpdateData, _u=Depends(get_
             if not nuevo_item:
                 raise HTTPException(status_code=404, detail="Item nuevo no encontrado")
 
-            # 3) Descontar stock del ítem nuevo
-            await conn.execute(
-                "UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2",
-                nuevo_cantidad, nuevo_item_id
-            )
+            # Todo en una sola transacción — si cualquier paso falla, nada queda aplicado
+            async with conn.transaction():
+                # 1) Revertir stock del ítem viejo (sumar la cantidad que se había restado)
+                await conn.execute(
+                    "UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
+                    cantidad_vieja, salida['item_id']
+                )
 
-            # 4) Costo: usar costo promedio del nuevo ítem (simplificación en modo carga)
-            costo_unitario = float(nuevo_item.get('costo_promedio') or 0)
-            costo_total = round(costo_unitario * nuevo_cantidad, 4)
+                # 2) Descontar stock del ítem nuevo
+                await conn.execute(
+                    "UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2",
+                    nuevo_cantidad, nuevo_item_id
+                )
 
-            # 5) Actualizar la salida
-            await conn.execute(
-                """UPDATE prod_inventario_salidas
-                   SET item_id = $1, cantidad = $2, costo_unitario = $3, costo_total = $4,
-                       detalle_fifo = NULL, observaciones = $5
-                   WHERE id = $6""",
-                nuevo_item_id, nuevo_cantidad, costo_unitario, costo_total,
-                input.observaciones, salida_id
-            )
+                # 3) Costo total: usar costo promedio del nuevo ítem × cantidad
+                #    (la tabla prod_inventario_salidas sólo tiene costo_total, no costo_unitario)
+                costo_unitario_nuevo = float(nuevo_item.get('costo_promedio') or 0)
+                costo_total = round(costo_unitario_nuevo * nuevo_cantidad, 4)
+
+                # 4) Actualizar la salida
+                await conn.execute(
+                    """UPDATE prod_inventario_salidas
+                       SET item_id = $1, cantidad = $2, costo_total = $3,
+                           detalle_fifo = NULL, observaciones = $4
+                       WHERE id = $5""",
+                    nuevo_item_id, nuevo_cantidad, costo_total,
+                    input.observaciones, salida_id
+                )
             return {
                 "message": "Salida actualizada (ítem/cantidad reemplazado)",
                 "warning": "El detalle FIFO se limpió; el costo usa el promedio actual del nuevo ítem."
