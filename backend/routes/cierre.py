@@ -384,10 +384,18 @@ async def preview_cierre(registro_id: str, current_user: dict = Depends(get_curr
     fallado_pendiente = max(total_fallados - total_en_arreglo, 0)
     normal = max(qty - total_fallados - merma_qty, 0)
 
+    # Fecha de envío a tienda si aplica (estado = Tienda)
+    try:
+        fecha_envio_tienda_val = reg['fecha_envio_tienda']
+    except (KeyError, IndexError):
+        fecha_envio_tienda_val = None
+    fecha_envio_tienda_iso = fecha_envio_tienda_val.isoformat() + 'Z' if fecha_envio_tienda_val else None
+
     return {
         "registro_id": registro_id,
         "n_corte": reg['n_corte'],
         "estado": reg['estado'],
+        "fecha_envio_tienda": fecha_envio_tienda_iso,
         "pt_item": pt_item,
         "qty_terminada": qty,
         "merma_qty": merma_qty,

@@ -290,6 +290,9 @@ async def ensure_startup_migrations():
         await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS division_numero INT DEFAULT 0")
         # Modelo manual (ingresado a mano sin seleccionar del catálogo)
         await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS modelo_manual JSONB")
+        # Fecha de envío a tienda (se captura automáticamente cuando el estado
+        # pasa a 'Tienda'; marca el evento de despacho a local comercial).
+        await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS fecha_envio_tienda TIMESTAMP NULL")
         # Referencia idempotente: salida revertida por ajuste de migración
         await conn.execute("ALTER TABLE prod_inventario_salidas ADD COLUMN IF NOT EXISTS revertida_por_migracion_id VARCHAR NULL")
         # Subtipo de ajuste para identificar ajustes de reversión de migración

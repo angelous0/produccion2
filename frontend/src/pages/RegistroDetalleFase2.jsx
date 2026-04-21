@@ -1773,9 +1773,32 @@ export const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplet
 
   return (
     <div className="space-y-4" data-testid="cierre-tab">
+      {/* Banner de envío a Tienda — evento posterior al cierre de producción */}
+      {preview.estado === 'Tienda' && preview.fecha_envio_tienda && (
+        <Card className="border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-800">
+          <CardContent className="py-4 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-emerald-900 dark:text-emerald-200">
+                Enviado a Tienda
+              </p>
+              <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
+                Despachado el {new Date(preview.fecha_envio_tienda).toLocaleString('es-PE', {
+                  timeZone: 'America/Lima',
+                  day: '2-digit', month: 'long', year: 'numeric',
+                  hour: '2-digit', minute: '2-digit',
+                })}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex items-center justify-between">
         <h3 className="font-semibold">Preview de Cierre</h3>
-        {!preview.pt_item && (
+        {!preview.pt_item && preview.estado !== 'Tienda' && (
           <Badge variant="destructive" className="gap-1">
             <AlertTriangle className="h-3 w-3" />
             Falta asignar PT

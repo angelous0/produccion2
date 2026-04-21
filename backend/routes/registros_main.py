@@ -636,6 +636,27 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
             """UPDATE prod_registros SET n_corte=$1, modelo_id=$2, curva=$3, estado=$4, urgente=$5, hilo_especifico_id=$6, tallas=$7, distribucion_colores=$8, pt_item_id=$9, observaciones=$10, linea_negocio_id=$11, fecha_entrega_final=$13, fecha_inicio_real=$14, modelo_manual=$15 WHERE id=$12""",
             input.n_corte, input.modelo_id, input.curva, input.estado, input.urgente, input.hilo_especifico_id, tallas_json, dist_json, input.pt_item_id, input.observaciones, input.linea_negocio_id, registro_id, fecha_ef, fecha_ir, modelo_manual_json
         )
+
+        # Captura automática de fecha_envio_tienda cuando el lote pasa a 'Tienda'.
+        # Tienda no es un estado productivo — es el evento de despacho al local.
+        # Si se retrocede (sale de Tienda), se limpia la fecha.
+        old_estado = result.get('estado')
+        new_estado = input.estado
+        if old_estado != new_estado:
+            if new_estado == 'Tienda':
+                await conn.execute(
+                    """UPDATE prod_registros
+                       SET fecha_envio_tienda = $1
+                       WHERE id = $2 AND fecha_envio_tienda IS NULL""",
+                    datetime.now(timezone.utc).replace(tzinfo=None),
+                    registro_id,
+                )
+            elif old_estado == 'Tienda':
+                # Retroceso desde Tienda: limpiar fecha
+                await conn.execute(
+                    "UPDATE prod_registros SET fecha_envio_tienda = NULL WHERE id = $1",
+                    registro_id,
+                )
         
         # Sincronizar prod_registro_tallas con las cantidades del JSON
         await conn.execute("DELETE FROM prod_registro_tallas WHERE registro_id = $1", registro_id)
