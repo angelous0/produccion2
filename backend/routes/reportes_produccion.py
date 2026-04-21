@@ -2441,11 +2441,20 @@ async def get_costos_produccion(
             params.append(estado)
             where_parts.append(f"r.estado_op = ${idx}"); idx += 1
         if fecha_desde:
-            params.append(fecha_desde)
-            where_parts.append(f"r.fecha_creacion >= ${idx}::date"); idx += 1
+            # Convertir string 'YYYY-MM-DD' a date — asyncpg NO acepta strings para columnas DATE
+            try:
+                fd = date.fromisoformat(fecha_desde) if isinstance(fecha_desde, str) else fecha_desde
+                params.append(fd)
+                where_parts.append(f"r.fecha_creacion >= ${idx}"); idx += 1
+            except ValueError:
+                pass  # fecha inválida → se ignora
         if fecha_hasta:
-            params.append(fecha_hasta)
-            where_parts.append(f"r.fecha_creacion <= ${idx}::date"); idx += 1
+            try:
+                fh = date.fromisoformat(fecha_hasta) if isinstance(fecha_hasta, str) else fecha_hasta
+                params.append(fh)
+                where_parts.append(f"r.fecha_creacion <= ${idx}"); idx += 1
+            except ValueError:
+                pass
         if linea_negocio_id:
             params.append(linea_negocio_id)
             where_parts.append(f"r.linea_negocio_id = ${idx}"); idx += 1
