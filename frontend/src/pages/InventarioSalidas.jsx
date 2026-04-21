@@ -310,8 +310,15 @@ export const InventarioSalidas = () => {
     const item = items.find(i => i.id === itemId);
     setSelectedItem(item);
     setSelectedRollo(null);
-    setFormData({ ...formData, item_id: itemId, rollo_id: '', cantidad: 1 });
-    
+    // En modo edición preservamos la cantidad actual (el usuario sólo quiere
+    // cambiar el ítem, no reempezar). En modo creación sí reseteamos a 1.
+    setFormData(prev => ({
+      ...prev,
+      item_id: itemId,
+      rollo_id: '',
+      cantidad: editingSalida ? (prev.cantidad || 1) : 1,
+    }));
+
     // Si tiene control por rollos, cargar rollos disponibles
     if (item?.control_por_rollos) {
       try {
