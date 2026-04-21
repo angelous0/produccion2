@@ -74,7 +74,10 @@ export const InventarioSalidas = () => {
       const [salidasRes, itemsRes, registrosRes, lineasRes] = await Promise.all([
         axios.get(`${API}/inventario-salidas`),
         axios.get(`${API}/inventario?all=true`),
-        axios.get(`${API}/registros?all=true`),
+        // limit=2000 para traer TODOS los registros (el endpoint no respeta all=true,
+        // solo limit/offset; el default era 50 y cortaba cortes antiguos del dropdown).
+        // excluir_estados vacío para incluir también lotes en 'Tienda'.
+        axios.get(`${API}/registros?limit=2000&excluir_estados=`),
         axios.get(`${API}/lineas-negocio`),
       ]);
       setSalidas(salidasRes.data);
