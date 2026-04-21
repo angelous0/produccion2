@@ -52,7 +52,7 @@ export const RegistroForm = () => {
   const { id } = useParams();
   const isEditing = Boolean(id);
   const cameFromRegistro = location.state?.fromRegistro;
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const perms = usePermissions('registros');
   const permsMovimientos = usePermissions('movimientos_produccion');
   const permsInventario = usePermissions('inventario_salidas');
@@ -914,6 +914,16 @@ export const RegistroForm = () => {
     try { await axios.delete(`${API}/incidencias/${incId}`); toast.success('Incidencia eliminada'); fetchIncidencias(); }
     catch { toast.error('Error al eliminar incidencia'); }
   };
+  const handleReabrirIncidencia = async (inc) => {
+    // Acción solo-admin: marcar una incidencia resuelta como ABIERTA para
+    // poder editarla. Limpia el comentario de resolución.
+    if (!window.confirm(`¿Reabrir la incidencia "${inc.motivo_nombre || inc.tipo}"? Volverá al estado ABIERTA.`)) return;
+    try {
+      await axios.put(`${API}/incidencias/${inc.id}`, { estado: 'ABIERTA', comentario_resolucion: null });
+      toast.success('Incidencia reabierta');
+      fetchIncidencias();
+    } catch { toast.error('Error al reabrir incidencia'); }
+  };
   const handleCrearMotivo = async () => {
     if (!nuevoMotivoNombre.trim()) return;
     try {
@@ -1223,6 +1233,8 @@ export const RegistroForm = () => {
                     onToggleResueltas={() => setShowResueltas(prev => !prev)}
                     onResolver={handleAbrirResolver} onEliminar={handleEliminarIncidencia}
                     onEditar={handleEditarIncidencia}
+                    onReabrir={handleReabrirIncidencia}
+                    esAdmin={isAdmin()}
                     onNueva={() => {
                       setIncidenciaMode('create');
                       setEditingIncidenciaId(null);

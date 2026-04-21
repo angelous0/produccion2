@@ -3,12 +3,13 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Separator } from '../ui/separator';
-import { AlertTriangle, Plus, ChevronDown, ChevronUp, Check, Trash2, Pencil } from 'lucide-react';
+import { AlertTriangle, Plus, ChevronDown, ChevronUp, Check, Trash2, Pencil, RotateCcw } from 'lucide-react';
 import IncidenciaAvances from './IncidenciaAvances';
 
 export const RegistroIncidenciasCard = ({
   incidencias, showResueltas, onToggleResueltas,
-  onResolver, onEliminar, onNueva, onEditar, permisos,
+  onResolver, onEliminar, onNueva, onEditar, onReabrir, permisos,
+  esAdmin,
 }) => {
   const canRegister = permisos?.canAction?.('registrar_incidencias') !== false;
   const canResolve = permisos?.canAction?.('resolver_incidencias') !== false;
@@ -120,9 +121,22 @@ export const RegistroIncidenciasCard = ({
                             </p>
                           )}
                         </div>
-                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0 rounded-lg" onClick={() => onEliminar(inc.id)} title="Eliminar" data-testid={`eliminar-incidencia-${inc.id}`}>
-                          <Trash2 className="h-3 w-3 text-destructive" />
-                        </Button>
+                        <div className="flex gap-0.5 shrink-0">
+                          {esAdmin && onReabrir && (
+                            <Button
+                              type="button" variant="ghost" size="icon"
+                              className="h-8 w-8 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                              onClick={() => onReabrir(inc)}
+                              title="Reabrir incidencia (admin)"
+                              data-testid={`reabrir-incidencia-${inc.id}`}
+                            >
+                              <RotateCcw className="h-3.5 w-3.5 text-amber-600" />
+                            </Button>
+                          )}
+                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => onEliminar(inc.id)} title="Eliminar" data-testid={`eliminar-incidencia-${inc.id}`}>
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
