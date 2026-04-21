@@ -433,8 +433,9 @@ async def create_color_catalogo(input: ColorCreate, _u=Depends(get_current_user)
             max_orden = await conn.fetchval("SELECT COALESCE(MAX(orden), 0) FROM prod_colores_catalogo")
             color.orden = max_orden + 1
         await conn.execute(
-            "INSERT INTO prod_colores_catalogo (id, nombre, codigo_hex, color_general_id, categoria, orden, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-            color.id, color.nombre, color.codigo_hex, color.color_general_id, color.categoria, color.orden, color.created_at.replace(tzinfo=None)
+            "INSERT INTO prod_colores_catalogo (id, nombre, codigo_hex, color_general_id, categoria, orden, modelo, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            color.id, color.nombre, color.codigo_hex, color.color_general_id, color.categoria, color.orden,
+            color.modelo, color.created_at.replace(tzinfo=None)
         )
     return color
 
@@ -446,10 +447,11 @@ async def update_color_catalogo(color_id: str, input: ColorCreate, _u=Depends(ge
         if not result:
             raise HTTPException(status_code=404, detail="Color no encontrado")
         await conn.execute(
-            "UPDATE prod_colores_catalogo SET nombre = $1, codigo_hex = $2, color_general_id = $3, categoria = $4, orden = $5 WHERE id = $6",
-            input.nombre, input.codigo_hex, input.color_general_id, input.categoria, input.orden, color_id)
+            "UPDATE prod_colores_catalogo SET nombre = $1, codigo_hex = $2, color_general_id = $3, categoria = $4, orden = $5, modelo = $6 WHERE id = $7",
+            input.nombre, input.codigo_hex, input.color_general_id, input.categoria, input.orden, input.modelo, color_id)
         return {**row_to_dict(result), "nombre": input.nombre, "codigo_hex": input.codigo_hex,
-                "color_general_id": input.color_general_id, "categoria": input.categoria, "orden": input.orden}
+                "color_general_id": input.color_general_id, "categoria": input.categoria, "orden": input.orden,
+                "modelo": input.modelo}
 
 @router.delete("/colores-catalogo/{color_id}")
 async def delete_color_catalogo(color_id: str, _u=Depends(get_current_user)):

@@ -36,7 +36,7 @@ export const ColoresCatalogo = () => {
   const { saving, guard } = useSaving();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [formData, setFormData] = useState({ nombre: '', color_general_id: '', categoria: 'basico', orden: 0 });
+  const [formData, setFormData] = useState({ nombre: '', color_general_id: '', categoria: 'basico', orden: 0, modelo: '' });
 
   const { sensors, handleDragEnd, isSaving, modifiers } = useSortableTable(items, setItems, 'colores-catalogo');
 
@@ -74,6 +74,7 @@ export const ColoresCatalogo = () => {
         color_general_id: formData.color_general_id || null,
         categoria: formData.categoria || 'basico',
         orden: formData.orden,
+        modelo: formData.modelo?.trim() || null,
       };
       if (editingItem) {
         await axios.put(`${API}/colores-catalogo/${editingItem.id}`, payload);
@@ -84,7 +85,7 @@ export const ColoresCatalogo = () => {
       }
       setDialogOpen(false);
       setEditingItem(null);
-      setFormData({ nombre: '', color_general_id: '', categoria: 'basico', orden: 0 });
+      setFormData({ nombre: '', color_general_id: '', categoria: 'basico', orden: 0, modelo: '' });
       fetchItems();
     } catch (error) {
       toast.error('Error al guardar color');
@@ -98,6 +99,7 @@ export const ColoresCatalogo = () => {
       color_general_id: item.color_general_id || '',
       categoria: item.categoria || 'basico',
       orden: item.orden || 0,
+      modelo: item.modelo || '',
     });
     setDialogOpen(true);
   };
@@ -115,7 +117,7 @@ export const ColoresCatalogo = () => {
 
   const handleNew = () => {
     setEditingItem(null);
-    setFormData({ nombre: '', color_general_id: '', categoria: 'basico', orden: 0 });
+    setFormData({ nombre: '', color_general_id: '', categoria: 'basico', orden: 0, modelo: '' });
     setDialogOpen(true);
   };
 
@@ -143,6 +145,7 @@ export const ColoresCatalogo = () => {
                 <TableHead className="w-[40px]"></TableHead>
                 <TableHead>Nombre</TableHead>
                 <TableHead>Color General</TableHead>
+                <TableHead>Modelo</TableHead>
                 <TableHead>Categoría</TableHead>
                 <TableHead className="w-[100px]">Acciones</TableHead>
               </TableRow>
@@ -150,13 +153,13 @@ export const ColoresCatalogo = () => {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">
+                  <TableCell colSpan={6} className="text-center py-8">
                     Cargando...
                   </TableCell>
                 </TableRow>
               ) : items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                     No hay colores registrados
                   </TableCell>
                 </TableRow>
@@ -171,6 +174,7 @@ export const ColoresCatalogo = () => {
                     <SortableRow key={item.id} id={item.id}>
                       <TableCell className="font-medium">{item.nombre}</TableCell>
                       <TableCell className="text-muted-foreground">{item.color_general_nombre || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{item.modelo || '-'}</TableCell>
                       <TableCell>
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                           item.categoria === 'moda'
@@ -279,6 +283,19 @@ export const ColoresCatalogo = () => {
                 />
                 <p className="text-xs text-muted-foreground">
                   Agrupa colores similares (Celeste Claro, Celeste Oscuro → &quot;Celeste&quot;)
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="modelo">Modelo</Label>
+                <Input
+                  id="modelo"
+                  value={formData.modelo}
+                  onChange={(e) => setFormData({ ...formData, modelo: e.target.value })}
+                  placeholder="Texto libre (ej. ARSENAL, ALBAN, ZONIC)"
+                  data-testid="input-modelo-color"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Referencia informativa. Texto libre, sin validación.
                 </p>
               </div>
             </div>

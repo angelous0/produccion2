@@ -201,6 +201,7 @@ class ColorBase(BaseModel):
     color_general_id: Optional[str] = None
     categoria: str = "basico"
     orden: int = 0
+    modelo: Optional[str] = None  # Texto libre: referencia informativa al modelo asociado
 
 class ColorCreate(ColorBase):
     pass

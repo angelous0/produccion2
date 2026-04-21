@@ -294,6 +294,9 @@ async def ensure_startup_migrations():
         # pasa a 'Tienda'; marca el evento de despacho a local comercial).
         await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS fecha_envio_tienda TIMESTAMP NULL")
 
+        # Campo texto libre 'modelo' en catálogo de colores (referencia informativa).
+        await conn.execute("ALTER TABLE prod_colores_catalogo ADD COLUMN IF NOT EXISTS modelo TEXT NULL")
+
         # Ampliar precisión de costo_unitario de ingresos de inventario.
         # Antes era NUMERIC(10,2) — solo 2 decimales, cortaba valores como 0.385 a 0.39.
         # Ahora NUMERIC(18,6) — alineado con el resto de tablas de costos.

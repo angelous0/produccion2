@@ -348,7 +348,21 @@ async def get_registros(
             LEFT JOIN prod_registros rp ON r.dividido_desde_registro_id = rp.id
             LEFT JOIN finanzas2.cont_linea_negocio ln ON r.linea_negocio_id = ln.id
             WHERE {where_clause}
-            ORDER BY r.fecha_creacion DESC
+            ORDER BY
+                -- Año del corte: sufijo '-YYYY' si lo tiene, sino año de fecha_creacion.
+                -- Así los cortes del año actual (sin sufijo) quedan arriba y los
+                -- de años anteriores debajo. Ordena DESC (actual primero).
+                CASE
+                    WHEN r.n_corte ~ '-[0-9]{{4}}$' THEN (split_part(r.n_corte, '-', 2))::int
+                    ELSE EXTRACT(YEAR FROM r.fecha_creacion)::int
+                END DESC,
+                -- Dentro del mismo año: por número de corte DESC (más reciente arriba).
+                CASE
+                    WHEN r.n_corte ~ '^[0-9]+-[0-9]{{4}}$' THEN (split_part(r.n_corte, '-', 1))::int
+                    WHEN r.n_corte ~ '^[0-9]+$' THEN r.n_corte::int
+                    ELSE 0
+                END DESC,
+                r.fecha_creacion DESC
             LIMIT ${param_idx} OFFSET ${param_idx + 1}
         """, *params, limit, offset)
 
