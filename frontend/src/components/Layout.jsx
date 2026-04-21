@@ -75,6 +75,7 @@ import {
   AlertTriangle,
   FlaskConical,
   Receipt,
+  Store,
   UserCircle2,
   CircleDot,
   StickerIcon,
@@ -149,6 +150,7 @@ const reportesItems = [
   { to: '/reportes/lotes', icon: GitBranch, label: 'Lotes & Trazabilidad' },
   { to: '/reportes/matriz', icon: Grid3X3, label: 'Matriz Dinamica' },
   { to: '/reportes/rendimiento-servicios', icon: TrendingUp, label: 'Rendimiento Servicios' },
+  { to: '/reportes/despachos-tienda', icon: Store, label: 'Despachos a Tienda' },
   { to: '/reportes/costos-produccion', icon: Receipt, label: 'Costos de Producción' },
 ];
 

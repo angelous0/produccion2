@@ -2599,3 +2599,122 @@ async def get_costos_produccion(
             "servicios_keys": servicios_keys,
             "materiales_keys": materiales_keys,
         }
+
+
+# ============================================================================
+# REPORTE: DESPACHOS A TIENDA
+# ============================================================================
+# Lista los lotes que se enviaron a tienda en un rango de fechas.
+# 'Tienda' no es un estado productivo — es el evento de despacho al local.
+# Requisito: la columna prod_registros.fecha_envio_tienda se captura al
+# transicionar el estado a 'Tienda' (ver routes/registros_main.py).
+@router.get("/despachos-tienda")
+async def reporte_despachos_tienda(
+    desde: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    hasta: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    linea_negocio_id: Optional[int] = Query(None),
+    user=Depends(get_current_user),
+):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Default: últimos 30 días si no viene rango
+        hoy = date.today()
+        if not desde and not hasta:
+            from datetime import timedelta
+            desde_dt = hoy - timedelta(days=30)
+            hasta_dt = hoy
+        else:
+            try:
+                desde_dt = date.fromisoformat(desde) if desde else date(2000, 1, 1)
+            except Exception:
+                desde_dt = date(2000, 1, 1)
+            try:
+                hasta_dt = date.fromisoformat(hasta) if hasta else hoy
+            except Exception:
+                hasta_dt = hoy
+
+        where_clauses = [
+            "r.fecha_envio_tienda IS NOT NULL",
+            "r.fecha_envio_tienda::date >= $1",
+            "r.fecha_envio_tienda::date <= $2",
+        ]
+        params = [desde_dt, hasta_dt]
+        if linea_negocio_id is not None:
+            where_clauses.append(f"r.linea_negocio_id = ${len(params) + 1}")
+            params.append(linea_negocio_id)
+
+        where_sql = " AND ".join(where_clauses)
+
+        rows = await conn.fetch(f"""
+            SELECT
+                r.id,
+                r.n_corte,
+                r.urgente,
+                r.fecha_envio_tienda,
+                r.fecha_inicio_real,
+                r.fecha_creacion,
+                r.estado,
+                COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') AS modelo_nombre,
+                COALESCE(ma.nombre, r.modelo_manual->>'marca_texto') AS marca_nombre,
+                COALESCE(tp.nombre, r.modelo_manual->>'tipo_texto', '') AS tipo_nombre,
+                COALESCE(te.nombre, r.modelo_manual->>'tela_texto', '') AS tela_nombre,
+                COALESCE(ln.nombre, '') AS linea_negocio_nombre,
+                r.linea_negocio_id,
+                r.tallas,
+                (SELECT c.qty_terminada FROM prod_registro_cierre c WHERE c.registro_id = r.id) AS qty_cierre,
+                (SELECT c.costo_total FROM prod_registro_cierre c WHERE c.registro_id = r.id) AS costo_total_cierre
+            FROM prod_registros r
+            LEFT JOIN prod_modelos m ON m.id = r.modelo_id
+            LEFT JOIN prod_marcas ma ON ma.id = m.marca_id
+            LEFT JOIN prod_tipos tp ON tp.id = m.tipo_id
+            LEFT JOIN prod_telas te ON te.id = m.tela_id
+            LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = r.linea_negocio_id
+            WHERE {where_sql}
+            ORDER BY r.fecha_envio_tienda DESC
+        """, *params)
+
+        items = []
+        total_prendas = 0
+        total_valor = 0.0
+        for r in rows:
+            # Cantidad final: qty del cierre si existe, sino suma de tallas
+            qty = r["qty_cierre"]
+            if qty is None or qty == 0:
+                tallas_raw = r["tallas"]
+                if tallas_raw:
+                    try:
+                        tallas = tallas_raw if isinstance(tallas_raw, list) else json.loads(tallas_raw)
+                        qty = sum(int(t.get("cantidad", 0)) for t in tallas if isinstance(t, dict))
+                    except Exception:
+                        qty = 0
+                else:
+                    qty = 0
+            costo = float(r["costo_total_cierre"] or 0)
+            total_prendas += int(qty or 0)
+            total_valor += costo
+            items.append({
+                "registro_id": str(r["id"]),
+                "n_corte": r["n_corte"],
+                "urgente": r["urgente"],
+                "fecha_envio_tienda": r["fecha_envio_tienda"].isoformat() + 'Z' if r["fecha_envio_tienda"] else None,
+                "fecha_inicio_real": str(r["fecha_inicio_real"]) if r["fecha_inicio_real"] else None,
+                "modelo": r["modelo_nombre"] or '—',
+                "marca": r["marca_nombre"] or '—',
+                "tipo": r["tipo_nombre"] or '',
+                "tela": r["tela_nombre"] or '',
+                "linea_negocio": r["linea_negocio_nombre"] or '—',
+                "prendas": int(qty or 0),
+                "costo_total": costo,
+                "costo_unitario": round(costo / qty, 4) if qty and qty > 0 else 0,
+            })
+
+        return {
+            "items": items,
+            "resumen": {
+                "total_lotes": len(items),
+                "total_prendas": total_prendas,
+                "total_valor": round(total_valor, 2),
+                "desde": str(desde_dt),
+                "hasta": str(hasta_dt),
+            },
+        }
