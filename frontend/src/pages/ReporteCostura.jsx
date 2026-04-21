@@ -150,6 +150,88 @@ const AvanceEditor = ({ movimientoId, currentValue, onSaved, nCorte }) => {
   );
 };
 
+// Inline plazo editor — click en la celda PLAZO para setear los días desde fecha_inicio
+const PlazoEditor = ({ movimientoId, fechaInicio, fechaEsperada, onSaved }) => {
+  const calcDias = (inicio, esperada) => {
+    if (!inicio || !esperada) return '';
+    try {
+      const fi = new Date(inicio + 'T00:00:00');
+      const fe = new Date(esperada + 'T00:00:00');
+      const d = Math.round((fe - fi) / 86400000);
+      return d > 0 ? String(d) : '';
+    } catch { return ''; }
+  };
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(calcDias(fechaInicio, fechaEsperada));
+  const [saving, setSaving] = useState(false);
+  const [displayDias, setDisplayDias] = useState(calcDias(fechaInicio, fechaEsperada));
+
+  // Si cambia el valor desde fuera (refresh), resincronizar
+  useEffect(() => {
+    const d = calcDias(fechaInicio, fechaEsperada);
+    setDisplayDias(d);
+    setVal(d);
+  }, [fechaInicio, fechaEsperada]);
+
+  const handleSave = async () => {
+    if (!fechaInicio) {
+      toast.error('El movimiento no tiene fecha de inicio');
+      return;
+    }
+    setSaving(true);
+    try {
+      const n = val === '' ? null : parseInt(val, 10);
+      if (n !== null && (isNaN(n) || n < 0)) {
+        toast.error('Ingresa un número válido');
+        setSaving(false);
+        return;
+      }
+      const resp = await axios.put(`${API}/api/reportes-produccion/costura/plazo/${movimientoId}`, { dias: n });
+      const nuevaFecha = resp.data?.fecha_esperada || null;
+      toast.success(n ? `Plazo: ${n}d` : 'Plazo eliminado');
+      setDisplayDias(n ? String(n) : '');
+      setEditing(false);
+      if (onSaved) onSaved(movimientoId, nuevaFecha);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al guardar');
+    }
+    setSaving(false);
+  };
+
+  if (!editing) {
+    const disabled = !fechaInicio;
+    return (
+      <button
+        type="button"
+        onClick={() => { if (!disabled) { setVal(displayDias); setEditing(true); } }}
+        disabled={disabled}
+        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors group ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-muted cursor-pointer'}`}
+        title={disabled ? 'Falta fecha de inicio' : 'Click para editar plazo (días)'}
+      >
+        <span className="font-mono text-sm">{displayDias ? `${displayDias}d` : '—'}</span>
+        <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1">
+      <Input
+        type="number" min={0} value={val}
+        onChange={e => setVal(e.target.value)}
+        className="w-14 h-7 text-sm font-mono text-center p-1"
+        autoFocus
+        placeholder="0"
+        onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false); }}
+      />
+      <span className="text-xs">d</span>
+      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleSave} disabled={saving}>
+        {saving ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3 text-green-600" />}
+      </Button>
+      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setEditing(false)}><X className="h-3 w-3" /></Button>
+    </div>
+  );
+};
+
 export const ReporteCostura = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -248,6 +330,21 @@ export const ReporteCostura = () => {
         items: prev.items.map(item =>
           item.movimiento_id === movimientoId
             ? { ...item, avance_porcentaje: newValue, avance_updated_at: now, dias_sin_actualizar: 0 }
+            : item
+        ),
+      };
+    });
+  }, []);
+
+  // Actualizar fecha_esperada localmente al editar el plazo
+  const updatePlazoLocal = useCallback((movimientoId, nuevaFechaEsperada) => {
+    setData(prev => {
+      if (!prev?.items) return prev;
+      return {
+        ...prev,
+        items: prev.items.map(item =>
+          item.movimiento_id === movimientoId
+            ? { ...item, fecha_esperada: nuevaFechaEsperada }
             : item
         ),
       };
@@ -839,14 +936,13 @@ export const ReporteCostura = () => {
                       <td className="p-2 whitespace-nowrap text-muted-foreground">{item.hilo_especifico || '-'}</td>
                       <td className="p-2 text-right font-mono">{item.cantidad_enviada?.toLocaleString() || '-'}</td>
                       <td className="p-2 text-center whitespace-nowrap">{item.fecha_inicio ? new Date(item.fecha_inicio + 'T00:00:00').toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit' }) : '-'}</td>
-                      <td className="p-2 text-center whitespace-nowrap font-mono" style={{ color: '#6B7280' }}>
-                        {(() => {
-                          if (!item.fecha_esperada || !item.fecha_inicio) return '-';
-                          const fe = new Date(item.fecha_esperada + 'T00:00:00');
-                          const fi = new Date(item.fecha_inicio + 'T00:00:00');
-                          const diff = Math.round((fe - fi) / 86400000);
-                          return diff > 0 ? `${diff}d` : '-';
-                        })()}
+                      <td className="p-2 text-center whitespace-nowrap">
+                        <PlazoEditor
+                          movimientoId={item.movimiento_id}
+                          fechaInicio={item.fecha_inicio}
+                          fechaEsperada={item.fecha_esperada}
+                          onSaved={updatePlazoLocal}
+                        />
                       </td>
                       <td className="p-2 text-center font-mono font-bold whitespace-nowrap" style={(() => {
                         const dias = item.dias_transcurridos ?? 0;
@@ -1029,13 +1125,13 @@ export const ReporteCostura = () => {
                               <td className="p-2 whitespace-nowrap text-muted-foreground">{item.hilo_especifico || '-'}</td>
                               <td className="p-2 text-right font-mono">{item.cantidad_enviada?.toLocaleString() || '-'}</td>
                               <td className="p-2 text-center whitespace-nowrap">{item.fecha_inicio ? new Date(item.fecha_inicio + 'T00:00:00').toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit' }) : '-'}</td>
-                              <td className="p-2 text-center whitespace-nowrap font-mono" style={{ color: '#6B7280' }}>
-                                {(() => {
-                                  const fe = item.fecha_esperada || item.fecha_fin;
-                                  if (!fe || !item.fecha_inicio) return '-';
-                                  const diff = Math.round((new Date(fe + 'T00:00:00') - new Date(item.fecha_inicio + 'T00:00:00')) / 86400000);
-                                  return diff > 0 ? `${diff}d` : '-';
-                                })()}
+                              <td className="p-2 text-center whitespace-nowrap">
+                                <PlazoEditor
+                                  movimientoId={item.movimiento_id}
+                                  fechaInicio={item.fecha_inicio}
+                                  fechaEsperada={item.fecha_esperada}
+                                  onSaved={updatePlazoLocal}
+                                />
                               </td>
                               <td className="p-2 text-center font-mono font-bold whitespace-nowrap" style={(() => {
                                 const dias = item.dias_transcurridos ?? 0;

@@ -1052,6 +1052,11 @@ from pydantic import BaseModel
 class AvanceRapidoInput(BaseModel):
     avance_porcentaje: int
 
+
+class PlazoRapidoInput(BaseModel):
+    # Días desde fecha_inicio; null/0 para limpiar la fecha esperada
+    dias: Optional[int] = None
+
 @router.get("/costura")
 async def reporte_costura(
     servicio_nombre: str = Query("Costura"),
@@ -1303,6 +1308,46 @@ async def actualizar_avance_rapido(
             movimiento_id, input.avance_porcentaje, usuario_nombre
         )
         return {"ok": True, "avance_porcentaje": input.avance_porcentaje}
+
+
+@router.put("/costura/plazo/{movimiento_id}")
+async def actualizar_plazo_rapido(
+    movimiento_id: str,
+    input: PlazoRapidoInput,
+    user=Depends(get_current_user)
+):
+    """Actualizar solo la fecha_esperada_movimiento a partir de un número de
+    días desde la fecha_inicio. Si dias es null/0, limpia la fecha.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        mov = await conn.fetchrow(
+            "SELECT id, fecha_inicio FROM produccion.prod_movimientos_produccion WHERE id = $1",
+            movimiento_id,
+        )
+        if not mov:
+            raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+
+        nueva_fecha = None
+        dias = input.dias
+        if dias is not None and dias > 0:
+            if not mov["fecha_inicio"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El movimiento no tiene fecha_inicio — no se puede calcular plazo.",
+                )
+            from datetime import timedelta as _td
+            nueva_fecha = mov["fecha_inicio"] + _td(days=dias)
+
+        await conn.execute(
+            "UPDATE produccion.prod_movimientos_produccion SET fecha_esperada_movimiento = $1 WHERE id = $2",
+            nueva_fecha, movimiento_id,
+        )
+        return {
+            "ok": True,
+            "dias": dias or 0,
+            "fecha_esperada": str(nueva_fecha) if nueva_fecha else None,
+        }
 
 
 @router.get("/costura/avance-historial/{movimiento_id}")
