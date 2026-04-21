@@ -1354,12 +1354,82 @@ async def update_salida(salida_id: str, input: SalidaUpdateData, _u=Depends(get_
                     nuevo_cantidad, nuevo_item_id
                 )
 
-                # 3) Costo total: usar costo promedio del nuevo ítem × cantidad
+                # 3) Sincronizar requerimiento MP del registro (si la salida está vinculada)
+                registro_id = salida['registro_id']
+                if registro_id:
+                    talla_id = salida.get('talla_id')
+                    empresa_id = salida.get('empresa_id') or 7
+                    # 3a) Restar cantidad_consumida del ítem viejo
+                    if talla_id:
+                        await conn.execute("""
+                            UPDATE prod_registro_requerimiento_mp
+                            SET cantidad_consumida = GREATEST(cantidad_consumida - $1, 0),
+                                updated_at = CURRENT_TIMESTAMP
+                            WHERE registro_id = $2 AND item_id = $3 AND talla_id = $4
+                        """, cantidad_vieja, registro_id, salida['item_id'], talla_id)
+                    else:
+                        await conn.execute("""
+                            UPDATE prod_registro_requerimiento_mp
+                            SET cantidad_consumida = GREATEST(cantidad_consumida - $1, 0),
+                                updated_at = CURRENT_TIMESTAMP
+                            WHERE registro_id = $2 AND item_id = $3 AND talla_id IS NULL
+                        """, cantidad_vieja, registro_id, salida['item_id'])
+
+                    # 3b) Si quedó la fila vieja en 0/0 y es MANUAL, eliminarla (limpieza)
+                    await conn.execute("""
+                        DELETE FROM prod_registro_requerimiento_mp
+                        WHERE registro_id = $1 AND item_id = $2
+                          AND origen = 'MANUAL'
+                          AND cantidad_requerida <= cantidad_consumida
+                          AND cantidad_consumida = 0
+                    """, registro_id, salida['item_id'])
+
+                    # 3c) Aplicar cantidad al requerimiento del ítem nuevo.
+                    # Si existe una fila (por BOM o por MANUAL previo), sumarle cantidad_consumida
+                    # (y también cantidad_requerida si es MANUAL para mantenerla al tope).
+                    # Si no existe, crear una fila MANUAL nueva.
+                    existing = await conn.fetchrow("""
+                        SELECT id, origen, cantidad_requerida, cantidad_consumida
+                        FROM prod_registro_requerimiento_mp
+                        WHERE registro_id = $1 AND item_id = $2 AND talla_id IS NOT DISTINCT FROM $3
+                    """, registro_id, nuevo_item_id, talla_id)
+                    if existing:
+                        nueva_cons = float(existing['cantidad_consumida']) + nuevo_cantidad
+                        if existing['origen'] == 'MANUAL':
+                            # Subir también cantidad_requerida para que quede COMPLETO
+                            nueva_req = max(float(existing['cantidad_requerida']), nueva_cons)
+                            await conn.execute("""
+                                UPDATE prod_registro_requerimiento_mp
+                                SET cantidad_requerida = $1, cantidad_consumida = $2,
+                                    estado = 'COMPLETO', updated_at = CURRENT_TIMESTAMP
+                                WHERE id = $3
+                            """, nueva_req, nueva_cons, existing['id'])
+                        else:
+                            # BOM: solo consumido; estado se recalcula
+                            req = float(existing['cantidad_requerida'])
+                            nuevo_estado = 'COMPLETO' if nueva_cons >= req else 'PARCIAL'
+                            await conn.execute("""
+                                UPDATE prod_registro_requerimiento_mp
+                                SET cantidad_consumida = $1, estado = $2,
+                                    updated_at = CURRENT_TIMESTAMP
+                                WHERE id = $3
+                            """, nueva_cons, nuevo_estado, existing['id'])
+                    else:
+                        # Crear fila MANUAL para el ítem nuevo (no estaba en el BOM)
+                        import uuid as _uuid
+                        await conn.execute("""
+                            INSERT INTO prod_registro_requerimiento_mp
+                            (id, registro_id, item_id, talla_id, cantidad_requerida, cantidad_reservada,
+                             cantidad_consumida, estado, empresa_id, origen)
+                            VALUES ($1, $2, $3, $4, $5, 0, $5, 'COMPLETO', $6, 'MANUAL')
+                        """, str(_uuid.uuid4()), registro_id, nuevo_item_id, talla_id, nuevo_cantidad, empresa_id)
+
+                # 4) Costo total: usar costo promedio del nuevo ítem × cantidad
                 #    (la tabla prod_inventario_salidas sólo tiene costo_total, no costo_unitario)
                 costo_unitario_nuevo = float(nuevo_item.get('costo_promedio') or 0)
                 costo_total = round(costo_unitario_nuevo * nuevo_cantidad, 4)
 
-                # 4) Actualizar la salida
+                # 5) Actualizar la salida
                 await conn.execute(
                     """UPDATE prod_inventario_salidas
                        SET item_id = $1, cantidad = $2, costo_total = $3,
