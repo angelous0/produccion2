@@ -94,6 +94,7 @@ export const InventarioSalidas = () => {
         (s.item_nombre || '').toLowerCase().includes(q) ||
         (s.item_codigo || '').toLowerCase().includes(q) ||
         (s.registro_n_corte || '').toString().toLowerCase().includes(q) ||
+        (s.registro_modelo_nombre || '').toLowerCase().includes(q) ||
         (s.observaciones || '').toLowerCase().includes(q)
       );
     }
@@ -252,10 +253,10 @@ export const InventarioSalidas = () => {
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
             <Input
-              placeholder="Buscar item, corte..."
+              placeholder="Buscar item, corte, modelo..."
               value={busqueda}
               onChange={e => setBusqueda(e.target.value)}
-              className="pl-8 h-9 w-[200px] text-sm"
+              className="pl-8 h-9 w-[220px] text-sm"
             />
           </div>
           <Select
