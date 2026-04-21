@@ -14,6 +14,130 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { AlertTriangle, Scissors, Package, Check, ChevronsUpDown, FileDown, Lock, RotateCcw, Clock, PenLine, Plus, Sparkles } from 'lucide-react';
 import { Textarea } from '../ui/textarea';
 
+/**
+ * Input de N° Corte con semántica número + año.
+ *
+ * Regla de formato:
+ *   - Año actual  → se guarda solo el número (ej. "112")
+ *   - Años previos → se guarda con sufijo "-YYYY" (ej. "111-2025")
+ *
+ * Internamente trabaja con dos inputs separados pero el valor que sale hacia
+ * el form (formData.n_corte) es el string final ya formateado, para no
+ * romper nada del backend ni de reportes existentes.
+ *
+ * Para modo edición: parsea el string entrante ("111-2025" o "111") y
+ * pre-rellena los dos campos.
+ */
+const NCorteInput = ({ value, onChange }) => {
+  const añoActual = new Date().getFullYear();
+
+  // Parsear el value recibido a {numero, año}
+  const parseValue = React.useCallback((str) => {
+    if (!str) return { numero: '', año: añoActual };
+    const m = String(str).trim().match(/^(\d+)(?:\s*-\s*(\d{4}))?$/);
+    if (m) return { numero: m[1], año: m[2] ? parseInt(m[2], 10) : añoActual };
+    // Si el string tiene un formato raro legacy, dejamos que el usuario lo edite libre
+    return { numero: str, año: añoActual, legacy: true };
+  }, [añoActual]);
+
+  const parsed = parseValue(value);
+  const [numero, setNumero] = React.useState(parsed.numero);
+  const [año, setAño] = React.useState(parsed.año);
+  const [legacy, setLegacy] = React.useState(parsed.legacy || false);
+
+  // Re-sincronizar si cambia value desde fuera (ej. carga de registro)
+  React.useEffect(() => {
+    const p = parseValue(value);
+    setNumero(p.numero);
+    setAño(p.año);
+    setLegacy(p.legacy || false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  const emitChange = (nuevoNumero, nuevoAño) => {
+    if (!nuevoNumero && nuevoNumero !== 0) {
+      onChange('');
+      return;
+    }
+    const numClean = String(nuevoNumero).trim();
+    if (nuevoAño === añoActual) {
+      onChange(numClean);
+    } else {
+      onChange(`${numClean}-${nuevoAño}`);
+    }
+  };
+
+  const handleNumeroChange = (v) => {
+    setNumero(v);
+    emitChange(v, año);
+  };
+
+  const handleAñoChange = (v) => {
+    const y = parseInt(v, 10);
+    if (isNaN(y)) return;
+    setAño(y);
+    emitChange(numero, y);
+  };
+
+  // Lista de años: desde el actual hacia atrás 6 años
+  const añosOpciones = Array.from({ length: 7 }, (_, i) => añoActual - i);
+
+  // Si el value tiene un formato legacy raro, mostrar un input único con ayuda para migrar
+  if (legacy) {
+    return (
+      <div className="space-y-1">
+        <Input
+          value={value}
+          onChange={(e) => {
+            setLegacy(true);
+            onChange(e.target.value);
+          }}
+          placeholder="Número de corte"
+          className="font-mono"
+          data-testid="input-n-corte"
+        />
+        <p className="text-[10px] text-muted-foreground">
+          Formato antiguo detectado — al limpiar y volver a tipear verás el nuevo selector de número + año.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <Input
+          type="text"
+          inputMode="numeric"
+          value={numero}
+          onChange={(e) => handleNumeroChange(e.target.value)}
+          placeholder="Número"
+          required
+          className="font-mono flex-1"
+          data-testid="input-n-corte"
+        />
+        <Select value={String(año)} onValueChange={handleAñoChange}>
+          <SelectTrigger className="w-[110px] font-mono" data-testid="select-año-corte">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {añosOpciones.map(y => (
+              <SelectItem key={y} value={String(y)}>
+                {y} {y === añoActual ? '(actual)' : ''}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {numero && (
+        <p className="text-[10px] text-muted-foreground">
+          Se guardará como: <span className="font-mono font-semibold text-foreground">{año === añoActual ? numero : `${numero}-${año}`}</span>
+        </p>
+      )}
+    </div>
+  );
+};
+
 // Helper: campo con selector + fallback texto libre
 const CampoCascada = ({ label, items, idKey = 'id', nameKey = 'nombre', selectedId, texto, modo, onChange }) => {
   if (modo === 'text') {
@@ -420,8 +544,10 @@ export const RegistroDatosCard = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="n_corte">N° Corte *</Label>
-            <Input id="n_corte" value={formData.n_corte} onChange={(e) => setFormData({ ...formData, n_corte: e.target.value })}
-              placeholder="Número de corte" required className="font-mono" data-testid="input-n-corte" />
+            <NCorteInput
+              value={formData.n_corte}
+              onChange={(v) => setFormData({ ...formData, n_corte: v })}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="curva">Curva</Label>
