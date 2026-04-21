@@ -1292,6 +1292,9 @@ async def create_salida_extra(input: SalidaExtraCreate, _u=Depends(get_current_u
 
 class SalidaUpdateData(BaseModel):
     observaciones: str = ""
+    # Campos opcionales: sólo aplican en modo carga inicial (corregir ítem o cantidad).
+    item_id: Optional[str] = None
+    cantidad: Optional[float] = None
 
 @router.put("/inventario-salidas/{salida_id}")
 async def update_salida(salida_id: str, input: SalidaUpdateData, _u=Depends(get_current_user)):
@@ -1300,6 +1303,74 @@ async def update_salida(salida_id: str, input: SalidaUpdateData, _u=Depends(get_
         salida = await conn.fetchrow("SELECT * FROM prod_inventario_salidas WHERE id = $1", salida_id)
         if not salida:
             raise HTTPException(status_code=404, detail="Salida no encontrada")
+
+        # ¿Se está intentando cambiar el ítem o la cantidad?
+        quiere_cambiar_item = input.item_id and input.item_id != salida['item_id']
+        nueva_cantidad = float(input.cantidad) if input.cantidad is not None else None
+        cantidad_vieja = float(salida['cantidad'])
+        quiere_cambiar_cantidad = (
+            nueva_cantidad is not None and abs(nueva_cantidad - cantidad_vieja) > 1e-6
+        )
+
+        if quiere_cambiar_item or quiere_cambiar_cantidad:
+            # Solo permitido en modo carga inicial — en operación normal se debe
+            # eliminar la salida y crear una nueva para que el FIFO sea correcto.
+            modo_mig = await conn.fetchval(
+                "SELECT valor FROM prod_configuracion WHERE clave = 'modo_migracion'"
+            )
+            if modo_mig != 'true':
+                raise HTTPException(
+                    status_code=400,
+                    detail="Para cambiar el ítem o la cantidad de una salida, activa el Modo Carga Inicial. En operación normal elimina la salida y crea una nueva."
+                )
+
+            # No soportamos cambio con rollos (control FIFO por rollo es estricto).
+            if salida.get('rollo_id'):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Esta salida está vinculada a un rollo. Debe eliminarse y recrearse para cambiar el ítem o la cantidad."
+                )
+
+            # 1) Revertir stock del ítem viejo (sumar la cantidad que se había restado)
+            await conn.execute(
+                "UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
+                cantidad_vieja, salida['item_id']
+            )
+
+            # 2) Determinar ítem y cantidad nuevos
+            nuevo_item_id = input.item_id or salida['item_id']
+            nuevo_cantidad = nueva_cantidad if nueva_cantidad is not None else cantidad_vieja
+
+            # Validar que el ítem nuevo existe
+            nuevo_item = await conn.fetchrow("SELECT * FROM prod_inventario WHERE id = $1", nuevo_item_id)
+            if not nuevo_item:
+                raise HTTPException(status_code=404, detail="Item nuevo no encontrado")
+
+            # 3) Descontar stock del ítem nuevo
+            await conn.execute(
+                "UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2",
+                nuevo_cantidad, nuevo_item_id
+            )
+
+            # 4) Costo: usar costo promedio del nuevo ítem (simplificación en modo carga)
+            costo_unitario = float(nuevo_item.get('costo_promedio') or 0)
+            costo_total = round(costo_unitario * nuevo_cantidad, 4)
+
+            # 5) Actualizar la salida
+            await conn.execute(
+                """UPDATE prod_inventario_salidas
+                   SET item_id = $1, cantidad = $2, costo_unitario = $3, costo_total = $4,
+                       detalle_fifo = NULL, observaciones = $5
+                   WHERE id = $6""",
+                nuevo_item_id, nuevo_cantidad, costo_unitario, costo_total,
+                input.observaciones, salida_id
+            )
+            return {
+                "message": "Salida actualizada (ítem/cantidad reemplazado)",
+                "warning": "El detalle FIFO se limpió; el costo usa el promedio actual del nuevo ítem."
+            }
+
+        # Caso normal: sólo observaciones
         await conn.execute("UPDATE prod_inventario_salidas SET observaciones=$1 WHERE id=$2", input.observaciones, salida_id)
         return {"message": "Salida actualizada"}
 

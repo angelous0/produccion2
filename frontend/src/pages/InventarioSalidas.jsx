@@ -299,6 +299,10 @@ export const InventarioSalidas = () => {
       rollo_id: salida.rollo_id || '',
       observaciones: salida.observaciones || '',
     });
+    // Precargar selectedItem para que el input de cantidad conozca el stock
+    const itemActual = items.find(i => i.id === salida.item_id);
+    setSelectedItem(itemActual || null);
+    setSelectedRollo(null);
     setDialogOpen(true);
   };
 
@@ -332,11 +336,25 @@ export const InventarioSalidas = () => {
     e.preventDefault();
     try {
       if (editingSalida) {
-        // Solo permitir editar observaciones
-        await axios.put(`${API}/inventario-salidas/${editingSalida.id}`, {
-          observaciones: formData.observaciones,
-        });
-        toast.success('Salida actualizada');
+        // Payload de edición: siempre incluye observaciones. En modo carga inicial,
+        // también incluye item_id y cantidad si el usuario los cambió (el backend
+        // valida que modo carga esté activo y que no haya rollo vinculado).
+        const updatePayload = { observaciones: formData.observaciones };
+        if (modoMigracion) {
+          if (formData.item_id && formData.item_id !== editingSalida.item_id) {
+            updatePayload.item_id = formData.item_id;
+          }
+          const nuevaCant = parseFloat(formData.cantidad);
+          if (!isNaN(nuevaCant) && Math.abs(nuevaCant - parseFloat(editingSalida.cantidad)) > 1e-6) {
+            updatePayload.cantidad = nuevaCant;
+          }
+        }
+        await axios.put(`${API}/inventario-salidas/${editingSalida.id}`, updatePayload);
+        toast.success(
+          updatePayload.item_id || updatePayload.cantidad
+            ? 'Salida actualizada (ítem/cantidad reemplazado)'
+            : 'Salida actualizada'
+        );
       } else {
         const payload = { ...formData };
         if (!payload.registro_id) {
@@ -638,7 +656,11 @@ export const InventarioSalidas = () => {
           <DialogHeader>
             <DialogTitle>{editingSalida ? 'Editar Salida' : 'Nueva Salida'}</DialogTitle>
             <DialogDescription>
-              {editingSalida ? 'Modificar observaciones de la salida' : 'Registrar una salida de inventario (FIFO)'}
+              {editingSalida
+                ? (modoMigracion
+                  ? 'Modo carga inicial: puedes cambiar ítem, cantidad u observaciones.'
+                  : 'Sólo observaciones. Para cambiar ítem/cantidad activa el modo carga inicial.')
+                : 'Registrar una salida de inventario (FIFO)'}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
