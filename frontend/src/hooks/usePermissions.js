@@ -82,10 +82,21 @@ export const usePermissions = (tabla) => {
     return accionesInventario[actionKey] === true;
   };
 
-  // Check if user can change to a specific state
+  // Check if user can change to a specific state.
+  // Normaliza comparando sin tildes y en minúsculas, porque los estados de la
+  // ruta de producción pueden llevar acentos ("Para Lavandería") mientras que
+  // el catálogo histórico de permisos los guardó sin acentos ("Para Lavanderia").
+  const normalizeEstado = (s) => (s || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')  // quita diacríticos
+    .trim()
+    .toLowerCase();
+
   const canChangeToState = (estado) => {
     if (estadosPermitidos.length === 0) return true; // vacío = todos
-    return estadosPermitidos.includes(estado);
+    const target = normalizeEstado(estado);
+    return estadosPermitidos.some(e => normalizeEstado(e) === target);
   };
 
   return {

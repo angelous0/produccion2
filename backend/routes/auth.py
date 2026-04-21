@@ -389,12 +389,16 @@ async def get_estructura_permisos():
         ],
         "permisos_operativos": {
             "servicios_disponibles": servicios_list,
+            # Nombres deben coincidir con los de las rutas de producción
+            # (prod_rutas_produccion.etapas → campo 'nombre'). La comparación
+            # en frontend (usePermissions.canChangeToState) ya normaliza sin
+            # acentos por compatibilidad con registros antiguos.
             "estados_disponibles": [
                 "Para Corte", "Corte", "Para Estampado", "Estampado",
                 "Para Costura", "Costura", "Bordado",
-                "Para Atraque", "Atraque", "Para Lavanderia", "Lavanderia",
-                "Para Acabado", "Acabado", "Para Aacabado",
-                "Producto Terminado", "Tienda",
+                "Para Atraque", "Atraque", "Para Lavandería", "Muestra Lavandería", "Lavandería",
+                "Para Acabado", "Acabado",
+                "Almacén PT", "Tienda",
             ],
             "acciones_produccion": [
                 {"key": "crear_movimientos", "nombre": "Crear movimientos de produccion"},
