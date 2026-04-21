@@ -26,7 +26,7 @@ import { Checkbox } from '../components/ui/checkbox';
 import {
   Scissors, Package, BookmarkCheck, LogOut, RefreshCw,
   AlertTriangle, CheckCircle2, Clock, Loader2, Plus, Lock, XCircle, Info, Layers,
-  DollarSign, Trash2, Edit2, RotateCcw
+  DollarSign, Trash2, Edit2, RotateCcw, ArrowUpDown, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
@@ -51,6 +51,83 @@ import {
 import MaterialesTab from '../components/MaterialesTab';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+/**
+ * Tabla reutilizable con columnas ordenables.
+ *
+ * Props:
+ *   rows:    array de objetos a renderizar
+ *   columns: array de { key, label, align?, format?, cellClass? }
+ *   initialSort: { key, dir: 'asc'|'desc' }
+ *   footer:  ReactNode opcional (se renderiza después de las filas)
+ *
+ * Click en el encabezado cicla: desc → asc → sin orden (vuelve al initialSort).
+ */
+const SortableTable = ({ rows, columns, initialSort = null, footer = null }) => {
+  const [sort, setSort] = useState(initialSort);
+  const sortedRows = (() => {
+    if (!sort || !sort.key) return rows;
+    const key = sort.key;
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const va = a[key];
+      const vb = b[key];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), 'es', { numeric: true }) * dir;
+    });
+  })();
+  const handleSort = (key) => {
+    setSort(prev => {
+      if (!prev || prev.key !== key) return { key, dir: 'desc' };
+      if (prev.dir === 'desc') return { key, dir: 'asc' };
+      return initialSort;  // 3er click vuelve al orden inicial
+    });
+  };
+  const SortIcon = ({ colKey }) => {
+    if (!sort || sort.key !== colKey) return <ArrowUpDown className="inline h-3 w-3 ml-1 opacity-40" />;
+    return sort.dir === 'desc'
+      ? <ArrowDown className="inline h-3 w-3 ml-1 text-primary" />
+      : <ArrowUp className="inline h-3 w-3 ml-1 text-primary" />;
+  };
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {columns.map(col => (
+            <TableHead
+              key={col.key}
+              className={`${col.align === 'right' ? 'text-right' : ''} cursor-pointer select-none hover:bg-muted/40 transition-colors`}
+              onClick={() => handleSort(col.key)}
+            >
+              {col.label}
+              <SortIcon colKey={col.key} />
+            </TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sortedRows.map((row, i) => (
+          <TableRow key={i}>
+            {columns.map(col => {
+              const raw = row[col.key];
+              const rendered = col.format ? col.format(raw) : raw;
+              const alignClass = col.align === 'right' ? 'text-right font-mono' : '';
+              return (
+                <TableCell key={col.key} className={`${alignClass} ${col.cellClass || ''}`}>
+                  {rendered}
+                </TableCell>
+              );
+            })}
+          </TableRow>
+        ))}
+        {footer}
+      </TableBody>
+    </Table>
+  );
+};
 
 // Helper: extract error message safely (avoid rendering objects as React children)
 const getErrorMsg = (error, fallback = 'Error') => {
@@ -1730,43 +1807,61 @@ export const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplet
       </Card>
 
       {/* Detalle MP */}
-      {preview.salidas_mp_detalle?.length > 0 && (
+      {preview.salidas_mp_detalle?.length > 0 && (() => {
+        const qtyFinal = parseFloat(preview.qty_terminada || preview.cif_detalle?.prendas_lote || 0);
+        const mpRows = preview.salidas_mp_detalle.map(s => {
+          const cant = parseFloat(s.cantidad_total || 0);
+          const cost = parseFloat(s.costo_total || 0);
+          // Costo unitario MP = costo del material ÷ cantidad final del lote
+          // (indica cuánto aporta cada material al costo por prenda)
+          const costoUnit = qtyFinal > 0 ? cost / qtyFinal : 0;
+          return { ...s, _cant: cant, _cost: cost, _costoUnit: costoUnit };
+        });
+        const totalMP = mpRows.reduce((s, r) => s + r._cost, 0);
+        const totalMPUnit = qtyFinal > 0 ? totalMP / qtyFinal : 0;
+        return (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Consumos de MP (FIFO)</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Código</TableHead>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead className="text-right">Cantidad</TableHead>
-                  <TableHead className="text-right">Costo Total</TableHead>
+            <SortableTable
+              rows={mpRows}
+              columns={[
+                { key: 'codigo', label: 'Código', cellClass: 'font-mono', align: 'left' },
+                { key: 'nombre', label: 'Nombre', align: 'left' },
+                { key: '_cant', label: 'Cantidad', align: 'right', format: (v) => v.toFixed(2) },
+                { key: '_cost', label: 'Costo Total', align: 'right', format: (v) => `S/ ${v.toFixed(2)}` },
+                { key: '_costoUnit', label: 'Costo Unit.', align: 'right', format: (v) => `S/ ${v.toFixed(4)}`, cellClass: 'text-muted-foreground' },
+              ]}
+              initialSort={{ key: '_cost', dir: 'desc' }}
+              footer={(
+                <TableRow className="border-t-2 bg-muted/40 font-semibold">
+                  <TableCell colSpan={3} className="font-bold">TOTAL MP</TableCell>
+                  <TableCell className="text-right font-mono">S/ {totalMP.toFixed(2)}</TableCell>
+                  <TableCell className="text-right font-mono text-primary">S/ {totalMPUnit.toFixed(4)}</TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {preview.salidas_mp_detalle.map((s, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-mono">{s.codigo}</TableCell>
-                    <TableCell>{s.nombre}</TableCell>
-                    <TableCell className="text-right font-mono">{parseFloat(s.cantidad_total).toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-mono">S/ {parseFloat(s.costo_total).toFixed(2)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+              )}
+            />
+            <p className="text-[10px] text-muted-foreground mt-2">
+              Costo unitario = costo total del material ÷ cantidad final terminada del lote ({qtyFinal > 0 ? qtyFinal.toFixed(0) : '—'} prendas). Click en los encabezados para ordenar.
+            </p>
           </CardContent>
         </Card>
-      )}
+        );
+      })()}
 
       {/* Detalle Servicios (Movimientos de Producción) */}
       {preview.movimientos_detalle?.length > 0 && (() => {
         // Totales para footer
         const qtyFinal = parseFloat(preview.qty_terminada || preview.cif_detalle?.prendas_lote || 0);
-        const totalServicios = preview.movimientos_detalle.reduce(
-          (s, m) => s + parseFloat(m.costo_total || 0), 0
-        );
+        const servRows = preview.movimientos_detalle.map(m => {
+          const cant = parseFloat(m.cantidad_total || 0);
+          const cost = parseFloat(m.costo_total || 0);
+          const costoUnit = cant > 0 ? cost / cant : 0;
+          return { ...m, _cant: cant, _cost: cost, _costoUnit: costoUnit };
+        });
+        const totalServicios = servRows.reduce((s, m) => s + m._cost, 0);
         const totalCostoUnit = qtyFinal > 0 ? totalServicios / qtyFinal : 0;
         return (
         <Card>
@@ -1774,30 +1869,16 @@ export const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplet
             <CardTitle className="text-base">Servicios de Producción (Movimientos)</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Servicio</TableHead>
-                  <TableHead className="text-right">Cantidad</TableHead>
-                  <TableHead className="text-right">Costo Total</TableHead>
-                  <TableHead className="text-right">Costo Unit.</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {preview.movimientos_detalle.map((m, i) => {
-                  const cant = parseFloat(m.cantidad_total || 0);
-                  const cost = parseFloat(m.costo_total || 0);
-                  const costoUnit = cant > 0 ? cost / cant : 0;
-                  return (
-                    <TableRow key={i}>
-                      <TableCell>{m.servicio_nombre || 'Sin nombre'}</TableCell>
-                      <TableCell className="text-right font-mono">{cant.toFixed(0)}</TableCell>
-                      <TableCell className="text-right font-mono">S/ {cost.toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-mono text-muted-foreground">S/ {costoUnit.toFixed(4)}</TableCell>
-                    </TableRow>
-                  );
-                })}
-                {/* Footer: sumatoria de servicios y costo unitario total */}
+            <SortableTable
+              rows={servRows}
+              columns={[
+                { key: 'servicio_nombre', label: 'Servicio', align: 'left', format: (v) => v || 'Sin nombre' },
+                { key: '_cant', label: 'Cantidad', align: 'right', format: (v) => v.toFixed(0) },
+                { key: '_cost', label: 'Costo Total', align: 'right', format: (v) => `S/ ${v.toFixed(2)}` },
+                { key: '_costoUnit', label: 'Costo Unit.', align: 'right', format: (v) => `S/ ${v.toFixed(4)}`, cellClass: 'text-muted-foreground' },
+              ]}
+              initialSort={{ key: '_cost', dir: 'desc' }}
+              footer={(
                 <TableRow className="border-t-2 bg-muted/40 font-semibold">
                   <TableCell className="font-bold">TOTAL SERVICIOS</TableCell>
                   <TableCell className="text-right font-mono">
@@ -1810,10 +1891,10 @@ export const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplet
                     S/ {totalCostoUnit.toFixed(4)}
                   </TableCell>
                 </TableRow>
-              </TableBody>
-            </Table>
+              )}
+            />
             <p className="text-[10px] text-muted-foreground mt-2">
-              Costo unitario = costo total del servicio ÷ cantidad procesada. El total unitario usa la cantidad final terminada del lote.
+              Costo unitario = costo total del servicio ÷ cantidad procesada. El total unitario usa la cantidad final terminada del lote. Click en los encabezados para ordenar.
             </p>
           </CardContent>
         </Card>
