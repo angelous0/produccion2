@@ -297,6 +297,13 @@ async def ensure_startup_migrations():
         # Campo texto libre 'modelo' en catálogo de colores (referencia informativa).
         await conn.execute("ALTER TABLE prod_colores_catalogo ADD COLUMN IF NOT EXISTS modelo TEXT NULL")
 
+        # Servicios "simples" (1:1 sin fechas): flag es_simple. Cuando es TRUE,
+        # el diálogo del frontend oculta fechas, fuerza cantidad recibida =
+        # enviada y precarga la cantidad con las prendas efectivas del corte.
+        await conn.execute(
+            "ALTER TABLE prod_servicios_produccion ADD COLUMN IF NOT EXISTS es_simple BOOLEAN DEFAULT FALSE"
+        )
+
         # Ampliar precisión de tarifa de servicios de producción.
         # Antes NUMERIC(10,2) — solo 2 decimales, truncaba valores como 0.048 a 0.05.
         # Ahora NUMERIC(18,4) — alineado con prod_movimientos_produccion.tarifa_aplicada.

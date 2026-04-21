@@ -141,7 +141,14 @@ export const MovimientoDialog = ({
   calcularCostoMovimiento, calcularDiferenciaMovimiento,
   usaRuta, etapasCompletas, movimientosProduccion,
   detalleCostos = [], setDetalleCostos,
-}) => (
+  prendasEfectivas = 0,
+}) => {
+  // Servicio simple (1:1, sin mermas, sin fechas): auto-llena cantidad y
+  // oculta secciones no necesarias. Se marca en el catálogo con es_simple=true.
+  const servicioActual = serviciosProduccion.find(s => s.id === movimientoFormData.servicio_id);
+  const esServicioSimple = servicioActual?.es_simple === true;
+
+  return (
   <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
       <DialogHeader>
@@ -170,9 +177,27 @@ export const MovimientoDialog = ({
                       ? serviciosProduccion.filter(s => modeloSeleccionado.servicios_ids.includes(s.id))
                       : serviciosProduccion
                     ).map((servicio) => (
-                      <CommandItem key={servicio.id} value={servicio.nombre} onSelect={() => { onServicioChange(servicio.id); setServicioPopoverOpen(false); }}>
+                      <CommandItem key={servicio.id} value={servicio.nombre} onSelect={() => {
+                        onServicioChange(servicio.id);
+                        setServicioPopoverOpen(false);
+                        // Si es servicio simple (1:1 sin fechas), auto-llena
+                        // cantidad con prendas efectivas y tarifa del catálogo.
+                        if (servicio.es_simple) {
+                          const cant = Number(prendasEfectivas) || 0;
+                          setMovimientoFormData(prev => ({
+                            ...prev,
+                            cantidad_enviada: cant,
+                            cantidad_recibida: cant,
+                            tarifa_aplicada: Number(servicio.tarifa) || prev.tarifa_aplicada || 0,
+                            fecha_inicio: '',
+                            fecha_fin: '',
+                            fecha_esperada_movimiento: '',
+                          }));
+                        }
+                      }}>
                         <Check className={`mr-2 h-4 w-4 ${movimientoFormData.servicio_id === servicio.id ? 'opacity-100' : 'opacity-0'}`} />
                         {servicio.nombre}
+                        {servicio.es_simple && <span className="ml-2 text-[10px] text-muted-foreground">(1:1)</span>}
                       </CommandItem>
                     ))}
                   </CommandGroup>
@@ -244,6 +269,7 @@ export const MovimientoDialog = ({
           })()}
         </div>
 
+        {!esServicioSimple && (
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="fecha-inicio">Fecha Inicio</Label>
@@ -278,7 +304,9 @@ export const MovimientoDialog = ({
               onChange={(e) => setMovimientoFormData({ ...movimientoFormData, fecha_fin: e.target.value })} data-testid="input-fecha-fin" />
           </div>
         </div>
+        )}
 
+        {!esServicioSimple && (
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="fecha-esperada-dias">
@@ -354,27 +382,44 @@ export const MovimientoDialog = ({
             })()}
           </div>
         </div>
+        )}
+
+        {esServicioSimple && (
+          <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg text-xs text-blue-800 dark:text-blue-300">
+            <strong>Servicio 1:1</strong> — No requiere fechas. La cantidad recibida es automática
+            (igual que enviada, sin mermas).
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="cantidad-enviada">Cantidad Enviada</Label>
+            <Label htmlFor="cantidad-enviada">
+              Cantidad {esServicioSimple ? '(enviada = recibida)' : 'Enviada'}
+            </Label>
             <NumericInput id="cantidad-enviada" min="0" value={movimientoFormData.cantidad_enviada}
               onChange={(e) => {
                 const enviada = e.target.value;
-                setMovimientoFormData({
-                  ...movimientoFormData,
-                  cantidad_enviada: enviada,
-                  cantidad_recibida: movimientoFormData.cantidad_recibida === movimientoFormData.cantidad_enviada ? enviada : movimientoFormData.cantidad_recibida
-                });
+                // Si el servicio es simple, recibida siempre sigue a enviada (1:1 sin mermas)
+                if (esServicioSimple) {
+                  setMovimientoFormData({ ...movimientoFormData, cantidad_enviada: enviada, cantidad_recibida: enviada });
+                } else {
+                  setMovimientoFormData({
+                    ...movimientoFormData,
+                    cantidad_enviada: enviada,
+                    cantidad_recibida: movimientoFormData.cantidad_recibida === movimientoFormData.cantidad_enviada ? enviada : movimientoFormData.cantidad_recibida
+                  });
+                }
               }}
               className="font-mono" data-testid="input-cantidad-enviada" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="cantidad-recibida">Cantidad Recibida</Label>
-            <NumericInput id="cantidad-recibida" min="0" value={movimientoFormData.cantidad_recibida}
-              onChange={(e) => setMovimientoFormData({ ...movimientoFormData, cantidad_recibida: e.target.value })}
-              className="font-mono" data-testid="input-cantidad-recibida" />
-          </div>
+          {!esServicioSimple && (
+            <div className="space-y-2">
+              <Label htmlFor="cantidad-recibida">Cantidad Recibida</Label>
+              <NumericInput id="cantidad-recibida" min="0" value={movimientoFormData.cantidad_recibida}
+                onChange={(e) => setMovimientoFormData({ ...movimientoFormData, cantidad_recibida: e.target.value })}
+                className="font-mono" data-testid="input-cantidad-recibida" />
+            </div>
+          )}
         </div>
 
         {calcularDiferenciaMovimiento() > 0 && (
@@ -501,7 +546,8 @@ export const MovimientoDialog = ({
       </DialogFooter>
     </DialogContent>
   </Dialog>
-);
+  );
+};
 
 /**
  * Incidencia Dialog

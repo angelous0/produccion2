@@ -255,6 +255,10 @@ class ServicioBase(BaseModel):
     tarifa: float = 0
     orden: Optional[int] = None
     usa_avance_porcentaje: bool = False
+    # Servicio "simple" (1:1 sin fechas, sin mermas). Si es TRUE, el diálogo
+    # de movimiento oculta fechas, fuerza cantidad recibida = enviada y
+    # auto-completa la cantidad con las prendas efectivas del corte.
+    es_simple: bool = False
 
 class ServicioCreate(ServicioBase):
     pass

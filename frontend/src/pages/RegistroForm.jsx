@@ -1337,6 +1337,7 @@ export const RegistroForm = () => {
         calcularCostoMovimiento={calcularCostoMovimiento} calcularDiferenciaMovimiento={calcularDiferenciaMovimiento}
         usaRuta={usaRuta} etapasCompletas={etapasCompletas} movimientosProduccion={movimientosProduccion}
         detalleCostos={detalleCostosMovimiento} setDetalleCostos={setDetalleCostosMovimiento}
+        prendasEfectivas={prendasEfectivas}
       />
 
       <SugerenciaEstadoDialog dialog={sugerenciaEstadoDialog} onClose={() => setSugerenciaEstadoDialog(null)}

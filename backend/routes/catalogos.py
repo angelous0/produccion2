@@ -669,8 +669,9 @@ async def create_servicio_produccion(input: ServicioCreate, _u=Depends(get_curre
     async with pool.acquire() as conn:
         max_orden = await conn.fetchval("SELECT COALESCE(MAX(orden), -1) FROM prod_servicios_produccion")
         await conn.execute(
-            "INSERT INTO prod_servicios_produccion (id, nombre, descripcion, tarifa, orden, usa_avance_porcentaje, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-            servicio.id, servicio.nombre, servicio.descripcion, servicio.tarifa, max_orden + 1, input.usa_avance_porcentaje, servicio.created_at.replace(tzinfo=None)
+            "INSERT INTO prod_servicios_produccion (id, nombre, descripcion, tarifa, orden, usa_avance_porcentaje, es_simple, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            servicio.id, servicio.nombre, servicio.descripcion, servicio.tarifa, max_orden + 1,
+            input.usa_avance_porcentaje, input.es_simple, servicio.created_at.replace(tzinfo=None)
         )
     return servicio
 
@@ -683,12 +684,12 @@ async def update_servicio_produccion(servicio_id: str, input: ServicioCreate, _u
             raise HTTPException(status_code=404, detail="Servicio no encontrado")
         if input.orden is not None:
             await conn.execute(
-                "UPDATE prod_servicios_produccion SET nombre = $1, descripcion = $2, tarifa = $3, orden = $4, usa_avance_porcentaje = $5 WHERE id = $6",
-                input.nombre, input.descripcion, input.tarifa, input.orden, input.usa_avance_porcentaje, servicio_id)
+                "UPDATE prod_servicios_produccion SET nombre = $1, descripcion = $2, tarifa = $3, orden = $4, usa_avance_porcentaje = $5, es_simple = $6 WHERE id = $7",
+                input.nombre, input.descripcion, input.tarifa, input.orden, input.usa_avance_porcentaje, input.es_simple, servicio_id)
         else:
             await conn.execute(
-                "UPDATE prod_servicios_produccion SET nombre = $1, descripcion = $2, tarifa = $3, usa_avance_porcentaje = $4 WHERE id = $5",
-                input.nombre, input.descripcion, input.tarifa, input.usa_avance_porcentaje, servicio_id)
+                "UPDATE prod_servicios_produccion SET nombre = $1, descripcion = $2, tarifa = $3, usa_avance_porcentaje = $4, es_simple = $5 WHERE id = $6",
+                input.nombre, input.descripcion, input.tarifa, input.usa_avance_porcentaje, input.es_simple, servicio_id)
         return {**row_to_dict(result), **input.model_dump(exclude_none=True)}
 
 @router.delete("/servicios-produccion/{servicio_id}")
