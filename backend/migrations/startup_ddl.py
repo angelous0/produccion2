@@ -297,6 +297,22 @@ async def ensure_startup_migrations():
         # Campo texto libre 'modelo' en catálogo de colores (referencia informativa).
         await conn.execute("ALTER TABLE prod_colores_catalogo ADD COLUMN IF NOT EXISTS modelo TEXT NULL")
 
+        # Ampliar precisión de tarifa de servicios de producción.
+        # Antes NUMERIC(10,2) — solo 2 decimales, truncaba valores como 0.048 a 0.05.
+        # Ahora NUMERIC(18,4) — alineado con prod_movimientos_produccion.tarifa_aplicada.
+        try:
+            col_info = await conn.fetchrow(
+                """SELECT numeric_precision, numeric_scale FROM information_schema.columns
+                   WHERE table_schema='produccion' AND table_name='prod_servicios_produccion'
+                   AND column_name='tarifa'"""
+            )
+            if col_info and col_info['numeric_scale'] is not None and col_info['numeric_scale'] < 4:
+                await conn.execute(
+                    "ALTER TABLE prod_servicios_produccion ALTER COLUMN tarifa TYPE NUMERIC(18,4)"
+                )
+        except Exception:
+            pass  # Idempotente: si ya está en 18,4 o mayor no hacer nada
+
         # Ampliar precisión de costo_unitario de ingresos de inventario.
         # Antes era NUMERIC(10,2) — solo 2 decimales, cortaba valores como 0.385 a 0.39.
         # Ahora NUMERIC(18,6) — alineado con el resto de tablas de costos.
