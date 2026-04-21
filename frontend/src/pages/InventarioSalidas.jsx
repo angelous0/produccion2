@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { useSaving } from '../hooks/useSaving';
 import { Button } from '../components/ui/button';
@@ -31,7 +31,7 @@ import {
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
-import { Plus, Trash2, ArrowUpCircle, Link2, Layers, Pencil, Search } from 'lucide-react';
+import { Plus, Trash2, ArrowUpCircle, Link2, Layers, Pencil, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
 import { SalidaRollosDialog } from '../components/SalidaRollosDialog';
@@ -55,6 +55,10 @@ export const InventarioSalidas = () => {
   const [selectedRollo, setSelectedRollo] = useState(null);
   const [filtroLinea, setFiltroLinea] = useState('');
   const [busqueda, setBusqueda] = useState('');
+  // Autocomplete del buscador: sugerencias de cortes que coinciden con el texto
+  const [registroFiltroId, setRegistroFiltroId] = useState(null); // null = texto libre
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchWrapRef = useRef(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [formData, setFormData] = useState({
@@ -88,7 +92,11 @@ export const InventarioSalidas = () => {
   const salidasFiltradas = useMemo(() => {
     let lista = salidas;
     if (filtroLinea) lista = lista.filter(s => String(s.linea_negocio_id || '') === filtroLinea);
-    if (busqueda.trim()) {
+    // Si el usuario eligió un corte específico del dropdown → filtro exacto
+    if (registroFiltroId) {
+      lista = lista.filter(s => s.registro_id === registroFiltroId);
+    } else if (busqueda.trim()) {
+      // Búsqueda libre por texto (si no eligió un corte del dropdown)
       const q = busqueda.trim().toLowerCase();
       lista = lista.filter(s =>
         (s.item_nombre || '').toLowerCase().includes(q) ||
@@ -99,7 +107,36 @@ export const InventarioSalidas = () => {
       );
     }
     return lista;
-  }, [salidas, filtroLinea, busqueda]);
+  }, [salidas, filtroLinea, busqueda, registroFiltroId]);
+
+  // Sugerencias de cortes que matchean el texto escrito en el buscador
+  const sugerenciasCortes = useMemo(() => {
+    if (!busqueda.trim() || registroFiltroId) return [];
+    const q = busqueda.trim().toLowerCase();
+    return registros
+      .filter(r =>
+        (r.n_corte || '').toString().toLowerCase().includes(q) ||
+        (r.modelo_nombre || r.modelo_manual?.nombre_modelo || '').toLowerCase().includes(q)
+      )
+      .slice(0, 8);  // Limitar a 8 sugerencias para no sobrecargar
+  }, [busqueda, registros, registroFiltroId]);
+
+  // Cerrar dropdown al hacer click fuera
+  useEffect(() => {
+    const handler = (e) => {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target)) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Info del corte seleccionado para mostrar chip
+  const registroSeleccionado = useMemo(() => {
+    if (!registroFiltroId) return null;
+    return registros.find(r => r.id === registroFiltroId) || null;
+  }, [registroFiltroId, registros]);
 
   useEffect(() => {
     fetchData();
@@ -250,14 +287,68 @@ export const InventarioSalidas = () => {
           <p className="text-muted-foreground">Registro de salidas con método FIFO</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              placeholder="Buscar item, corte, modelo..."
-              value={busqueda}
-              onChange={e => setBusqueda(e.target.value)}
-              className="pl-8 h-9 w-[220px] text-sm"
-            />
+          <div className="relative" ref={searchWrapRef}>
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
+            {registroSeleccionado ? (
+              // Chip del corte seleccionado (filtro exacto)
+              <div className="h-9 w-[260px] pl-8 pr-2 flex items-center gap-1.5 rounded-md border bg-primary/5 text-sm">
+                <span className="font-mono font-semibold text-xs truncate">
+                  Corte #{registroSeleccionado.n_corte}
+                </span>
+                <span className="text-xs text-muted-foreground truncate">
+                  · {registroSeleccionado.modelo_nombre || registroSeleccionado.modelo_manual?.nombre_modelo || '—'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { setRegistroFiltroId(null); setBusqueda(''); }}
+                  className="ml-auto h-5 w-5 rounded hover:bg-muted flex items-center justify-center shrink-0"
+                  title="Quitar filtro"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <Input
+                  placeholder="Buscar item, corte, modelo..."
+                  value={busqueda}
+                  onChange={e => { setBusqueda(e.target.value); setSearchOpen(true); }}
+                  onFocus={() => setSearchOpen(true)}
+                  className="pl-8 h-9 w-[260px] text-sm"
+                />
+                {searchOpen && sugerenciasCortes.length > 0 && (
+                  <div className="absolute top-full left-0 mt-1 w-[320px] max-h-[320px] overflow-y-auto rounded-md border bg-popover shadow-lg z-50">
+                    <p className="px-2.5 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground border-b bg-muted/30">
+                      Elegir corte específico ({sugerenciasCortes.length})
+                    </p>
+                    {sugerenciasCortes.map(r => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => {
+                          setRegistroFiltroId(r.id);
+                          setSearchOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-accent/60 border-b last:border-b-0 flex items-center gap-2"
+                      >
+                        <span className="font-mono font-semibold text-xs min-w-[70px]">
+                          #{r.n_corte}
+                        </span>
+                        <span className="text-xs truncate flex-1">
+                          {r.modelo_nombre || r.modelo_manual?.nombre_modelo || '—'}
+                        </span>
+                        {r.estado && (
+                          <span className="text-[10px] text-muted-foreground shrink-0">{r.estado}</span>
+                        )}
+                      </button>
+                    ))}
+                    <div className="px-3 py-1.5 text-[10px] text-muted-foreground bg-muted/20 border-t">
+                      O sigue tipeando para búsqueda libre
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
           <Select
             value={filtroLinea || 'todas'}
