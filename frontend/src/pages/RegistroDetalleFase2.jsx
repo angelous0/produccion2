@@ -63,6 +63,123 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
  *
  * Click en el encabezado cicla: desc → asc → sin orden (vuelve al initialSort).
  */
+/**
+ * Banner de "Enviado a Tienda" con fecha editable inline.
+ * Click en el ícono lápiz → muestra un <input type="date"> para corregir la
+ * fecha de despacho. Guardar llama PATCH /registros/:id/fecha-envio-tienda.
+ */
+const TiendaBanner = ({ registroId, fechaActual, onUpdated }) => {
+  const [editando, setEditando] = useState(false);
+  const [fechaInput, setFechaInput] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const fechaLimaISODate = (iso) => {
+    if (!iso) return '';
+    try {
+      return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+    } catch { return ''; }
+  };
+
+  const iniciarEdicion = () => {
+    setFechaInput(fechaLimaISODate(fechaActual));
+    setEditando(true);
+  };
+
+  const guardar = async () => {
+    if (!fechaInput) {
+      toast.error('Ingresa una fecha');
+      return;
+    }
+    setSaving(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.patch(
+        `${API}/registros/${registroId}/fecha-envio-tienda`,
+        { fecha: fechaInput },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      toast.success('Fecha de envío actualizada');
+      setEditando(false);
+      if (onUpdated) onUpdated(res.data?.fecha_envio_tienda || null);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al actualizar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!fechaActual && !editando) {
+    // Estado raro: el registro está en Tienda pero no tiene fecha (lote viejo
+    // anterior al fix). Permitimos registrar la fecha manualmente.
+    return (
+      <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+        <CardContent className="py-4 flex items-center gap-3">
+          <div className="h-10 w-10 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-amber-900 dark:text-amber-200">
+              Estado: Tienda (sin fecha registrada)
+            </p>
+            <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+              Este lote fue marcado como Tienda antes de habilitar el registro de fecha. Haz click en "Registrar fecha" para indicar cuándo se despachó.
+            </p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={iniciarEdicion} className="shrink-0">
+            <Edit2 className="h-3.5 w-3.5 mr-1" /> Registrar fecha
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-800">
+      <CardContent className="py-4 flex items-center gap-3">
+        <div className="h-10 w-10 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+          <CheckCircle2 className="h-5 w-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-emerald-900 dark:text-emerald-200">
+            Enviado a Tienda
+          </p>
+          {editando ? (
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <Input
+                type="date"
+                value={fechaInput}
+                onChange={(e) => setFechaInput(e.target.value)}
+                className="h-8 text-xs w-[150px] bg-white dark:bg-zinc-900"
+                autoFocus
+                disabled={saving}
+              />
+              <Button type="button" size="sm" className="h-8 bg-emerald-600 hover:bg-emerald-700" onClick={guardar} disabled={saving}>
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Guardar</>}
+              </Button>
+              <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setEditando(false)} disabled={saving}>
+                <XCircle className="h-3.5 w-3.5 mr-1" /> Cancelar
+              </Button>
+            </div>
+          ) : (
+            <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
+              Despachado el {new Date(fechaActual).toLocaleString('es-PE', {
+                timeZone: 'America/Lima',
+                day: '2-digit', month: 'long', year: 'numeric',
+                hour: '2-digit', minute: '2-digit',
+              })}
+            </p>
+          )}
+        </div>
+        {!editando && fechaActual && (
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100 dark:hover:bg-emerald-900/30" onClick={iniciarEdicion} title="Editar fecha de envío">
+            <Edit2 className="h-4 w-4" />
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 const SortableTable = ({ rows, columns, initialSort = null, footer = null }) => {
   const [sort, setSort] = useState(initialSort);
   const sortedRows = (() => {
@@ -1774,26 +1891,12 @@ export const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplet
   return (
     <div className="space-y-4" data-testid="cierre-tab">
       {/* Banner de envío a Tienda — evento posterior al cierre de producción */}
-      {preview.estado === 'Tienda' && preview.fecha_envio_tienda && (
-        <Card className="border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-800">
-          <CardContent className="py-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-emerald-900 dark:text-emerald-200">
-                Enviado a Tienda
-              </p>
-              <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
-                Despachado el {new Date(preview.fecha_envio_tienda).toLocaleString('es-PE', {
-                  timeZone: 'America/Lima',
-                  day: '2-digit', month: 'long', year: 'numeric',
-                  hour: '2-digit', minute: '2-digit',
-                })}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+      {preview.estado === 'Tienda' && (
+        <TiendaBanner
+          registroId={registroId}
+          fechaActual={preview.fecha_envio_tienda}
+          onUpdated={(nueva) => setPreview(prev => prev ? { ...prev, fecha_envio_tienda: nueva } : prev)}
+        />
       )}
 
       <div className="flex items-center justify-between">

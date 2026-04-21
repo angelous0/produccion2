@@ -1,7 +1,7 @@
 """Router for production registros: CRUD, estados, tallas."""
 import json
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Query
 from db import get_pool
 from auth_utils import get_current_user, require_permiso as require_permission
@@ -584,6 +584,57 @@ async def toggle_skip_validacion(registro_id: str, body: dict, current_user: dic
         await audit_log_safe(conn, usuario, accion, "produccion", "prod_registros", registro_id,
             datos_despues={"skip_validacion_estado": skip, "motivo": motivo or "Sin motivo especificado"})
         return {"ok": True, "skip_validacion_estado": skip}
+
+
+@router.patch("/registros/{registro_id}/fecha-envio-tienda")
+async def actualizar_fecha_envio_tienda(registro_id: str, body: dict, current_user: dict = Depends(get_current_user)):
+    """Permite editar manualmente la fecha de envío a tienda.
+
+    Útil cuando el usuario marca 'Tienda' con retraso (ej. despachó el lunes
+    pero registró el jueves). Acepta 'fecha' como:
+      - 'YYYY-MM-DD'  → guarda ese día con la hora actual de Lima
+      - ISO datetime  → se guarda tal cual (convertido a UTC naive)
+      - null / ''     → limpia la fecha (vuelve al estado 'no despachado')
+    """
+    fecha_raw = body.get("fecha") if body else None
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        existing = await conn.fetchrow(
+            "SELECT estado, fecha_envio_tienda FROM prod_registros WHERE id = $1", registro_id
+        )
+        if not existing:
+            raise HTTPException(status_code=404, detail="Registro no encontrado")
+
+        nueva_fecha = None
+        if fecha_raw:
+            s = str(fecha_raw).strip()
+            try:
+                if 'T' in s:
+                    # ISO datetime
+                    dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
+                    nueva_fecha = dt.astimezone(timezone.utc).replace(tzinfo=None)
+                else:
+                    # Solo fecha: combino con la hora actual de Lima, luego convierto a UTC
+                    d = date.fromisoformat(s)
+                    tz_lima = timezone(timedelta(hours=-5))
+                    now_lima = datetime.now(tz_lima)
+                    dt_lima = datetime(d.year, d.month, d.day, now_lima.hour, now_lima.minute, now_lima.second, tzinfo=tz_lima)
+                    nueva_fecha = dt_lima.astimezone(timezone.utc).replace(tzinfo=None)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Fecha inválida: {e}")
+
+        await conn.execute(
+            "UPDATE prod_registros SET fecha_envio_tienda = $1 WHERE id = $2",
+            nueva_fecha, registro_id,
+        )
+        usuario = get_usuario(current_user)
+        await audit_log_safe(conn, usuario, "UPDATE_FECHA_TIENDA", "produccion", "prod_registros", registro_id,
+            datos_antes={"fecha_envio_tienda": str(existing["fecha_envio_tienda"]) if existing["fecha_envio_tienda"] else None},
+            datos_despues={"fecha_envio_tienda": str(nueva_fecha) if nueva_fecha else None})
+    return {
+        "ok": True,
+        "fecha_envio_tienda": nueva_fecha.isoformat() + 'Z' if nueva_fecha else None,
+    }
 
 
 @router.put("/registros/{registro_id}")
