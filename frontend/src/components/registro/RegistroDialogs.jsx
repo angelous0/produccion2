@@ -281,9 +281,77 @@ export const MovimientoDialog = ({
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="fecha-esperada">Fecha Esperada</Label>
-            <Input id="fecha-esperada" type="date" value={movimientoFormData.fecha_esperada_movimiento} min={movimientoFormData.fecha_inicio || undefined}
-              onChange={(e) => setMovimientoFormData({ ...movimientoFormData, fecha_esperada_movimiento: e.target.value })} data-testid="input-fecha-esperada-movimiento" />
+            <Label htmlFor="fecha-esperada-dias">
+              Fecha Esperada <span className="text-muted-foreground font-normal">(días desde inicio)</span>
+            </Label>
+            {(() => {
+              // Calcular días entre fecha_inicio y fecha_esperada_movimiento (si hay ambas)
+              const diasActual = (() => {
+                if (!movimientoFormData.fecha_inicio || !movimientoFormData.fecha_esperada_movimiento) return '';
+                try {
+                  const ini = new Date(movimientoFormData.fecha_inicio + 'T00:00:00');
+                  const esp = new Date(movimientoFormData.fecha_esperada_movimiento + 'T00:00:00');
+                  const diff = Math.round((esp - ini) / (1000 * 60 * 60 * 24));
+                  return diff >= 0 ? String(diff) : '';
+                } catch { return ''; }
+              })();
+              // Fecha calculada legible
+              const fechaCalc = movimientoFormData.fecha_esperada_movimiento
+                ? new Date(movimientoFormData.fecha_esperada_movimiento + 'T00:00:00').toLocaleDateString('es-PE', {
+                    day: '2-digit', month: '2-digit', year: 'numeric', weekday: 'short',
+                  })
+                : null;
+              const addDaysISO = (isoStart, dias) => {
+                if (!isoStart) return '';
+                try {
+                  const d = new Date(isoStart + 'T00:00:00');
+                  d.setDate(d.getDate() + dias);
+                  return d.toISOString().slice(0, 10);
+                } catch { return ''; }
+              };
+              const handleChangeDias = (valStr) => {
+                if (valStr === '') {
+                  setMovimientoFormData({ ...movimientoFormData, fecha_esperada_movimiento: '' });
+                  return;
+                }
+                const n = parseInt(valStr, 10);
+                if (isNaN(n) || n < 0) return;
+                if (!movimientoFormData.fecha_inicio) {
+                  // Sin fecha_inicio no se puede calcular; guardamos el string "dias" para que el usuario vea el número
+                  return;
+                }
+                setMovimientoFormData({
+                  ...movimientoFormData,
+                  fecha_esperada_movimiento: addDaysISO(movimientoFormData.fecha_inicio, n),
+                });
+              };
+              return (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="fecha-esperada-dias"
+                      type="number"
+                      min="0"
+                      placeholder="ej. 5"
+                      value={diasActual}
+                      onChange={(e) => handleChangeDias(e.target.value)}
+                      disabled={!movimientoFormData.fecha_inicio}
+                      className="max-w-[100px]"
+                      data-testid="input-fecha-esperada-dias"
+                    />
+                    <span className="text-xs text-muted-foreground">días</span>
+                    {fechaCalc && (
+                      <span className="text-xs text-muted-foreground ml-auto">
+                        → <span className="font-medium text-foreground">{fechaCalc}</span>
+                      </span>
+                    )}
+                  </div>
+                  {!movimientoFormData.fecha_inicio && (
+                    <p className="text-[10px] text-muted-foreground">Primero ingresa la fecha de inicio.</p>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
 
