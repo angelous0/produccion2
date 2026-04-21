@@ -588,6 +588,70 @@ span[class*="rounded-md"][class*="text-xs"][class*="px-"] {
   cursor: not-allowed;
 }
 
+/* ── Tienda: evento de despacho, no etapa productiva ── */
+/* Separador con label "despacho" entre Almacén PT y Tienda */
+.registro-pipeline-sep-tienda {
+  position: relative;
+  width: 28px !important;
+  height: 1px;
+  background: transparent !important;
+  border-top: 1px dashed #9ca3af;
+  opacity: 0.8 !important;
+  margin: 0 4px;
+}
+.dark .registro-pipeline-sep-tienda { border-top-color: #6b7280; }
+.registro-pipeline-sep-label {
+  position: absolute;
+  top: -14px; left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.dark .registro-pipeline-sep-label { color: #6b7280; }
+
+/* Pastilla Tienda: paleta esmeralda */
+.registro-etapa-tienda-futura {
+  background: transparent;
+  color: #059669;
+  border: 1.5px dashed #10b981;
+  opacity: 0.55;
+  font-size: 10px;
+  padding: 4px 10px;
+}
+.dark .registro-etapa-tienda-futura {
+  color: #34d399;
+  border-color: #065f46;
+}
+.registro-etapa-tienda-pasada {
+  background: #d1fae5;
+  color: #065f46;
+  font-weight: 600;
+  border: 1px solid #a7f3d0;
+}
+.dark .registro-etapa-tienda-pasada {
+  background: #064e3b;
+  color: #6ee7b7;
+  border-color: #047857;
+}
+.registro-etapa-tienda-actual {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
+  padding: 6px 16px;
+  font-weight: 700;
+  font-size: 12px;
+  box-shadow: 0 3px 10px rgba(16, 185, 129, 0.35);
+  transform: scale(1.08);
+  border: 1.5px solid #059669;
+}
+.dark .registro-etapa-tienda-actual {
+  background: linear-gradient(135deg, #34d399, #10b981);
+  color: #052e16;
+}
+
 /* Progress bar */
 .registro-progress-bar {
   height: 2px;

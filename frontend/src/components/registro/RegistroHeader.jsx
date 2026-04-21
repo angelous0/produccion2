@@ -6,7 +6,7 @@ import {
 } from '../ui/select';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { ArrowLeft, ChevronLeft, ChevronRight, Save, AlertTriangle, Play, CheckCircle2, MessageCircle, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Save, AlertTriangle, Play, CheckCircle2, MessageCircle, FileSpreadsheet, Store } from 'lucide-react';
 
 // Mini-componente de stats de mensajes para el header
 const HeaderMensajes = ({ registroId, API, onOpen, refreshKey }) => {
@@ -273,21 +273,31 @@ export const RegistroHeader = ({
                   const isPast = idx < currentIdx;
                   const isCurrent = idx === currentIdx;
                   const allowed = canChangeStates && canChangeToState(e);
+                  // "Tienda" se diferencia visualmente: no es etapa productiva,
+                  // es el evento de despacho al local. Se separa del tramo
+                  // productivo con un divisor + badge esmeralda con ícono.
+                  const isTienda = e === 'Tienda';
                   return (
                     <React.Fragment key={e}>
                       {idx > 0 && (
-                        <div className={`registro-pipeline-connector ${isPast ? 'registro-pipeline-connector-done' : ''}`} />
+                        <div className={`registro-pipeline-connector ${isPast ? 'registro-pipeline-connector-done' : ''} ${isTienda ? 'registro-pipeline-sep-tienda' : ''}`}>
+                          {isTienda && <span className="registro-pipeline-sep-label">despacho</span>}
+                        </div>
                       )}
                       <div
                         className={`registro-etapa ${
-                          isCurrent ? 'registro-etapa-actual' :
-                          isPast ? 'registro-etapa-pasada' :
-                          'registro-etapa-futura'
+                          isTienda
+                            ? (isCurrent ? 'registro-etapa-tienda-actual' : isPast ? 'registro-etapa-tienda-pasada' : 'registro-etapa-tienda-futura')
+                            : (isCurrent ? 'registro-etapa-actual' : isPast ? 'registro-etapa-pasada' : 'registro-etapa-futura')
                         } ${allowed && !isCurrent ? 'registro-etapa-clickable' : ''} ${!allowed && !isCurrent ? 'registro-etapa-disabled' : ''}`}
                         onClick={() => allowed && handleEstadoChange(e)}
-                        title={!allowed ? 'Sin permiso para este estado' : e}
+                        title={!allowed ? 'Sin permiso para este estado' : isTienda ? 'Tienda — despacho al local (no es etapa de producción)' : e}
                       >
-                        {isPast && <CheckCircle2 className="registro-etapa-check" />}
+                        {isTienda ? (
+                          <Store className="h-3 w-3" />
+                        ) : (
+                          isPast && <CheckCircle2 className="registro-etapa-check" />
+                        )}
                         {e}
                       </div>
                     </React.Fragment>
