@@ -293,6 +293,22 @@ async def ensure_startup_migrations():
         # Fecha de envío a tienda (se captura automáticamente cuando el estado
         # pasa a 'Tienda'; marca el evento de despacho a local comercial).
         await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS fecha_envio_tienda TIMESTAMP NULL")
+
+        # Ampliar precisión de costo_unitario de ingresos de inventario.
+        # Antes era NUMERIC(10,2) — solo 2 decimales, cortaba valores como 0.385 a 0.39.
+        # Ahora NUMERIC(18,6) — alineado con el resto de tablas de costos.
+        try:
+            col_info = await conn.fetchrow(
+                """SELECT numeric_precision, numeric_scale FROM information_schema.columns
+                   WHERE table_schema='produccion' AND table_name='prod_inventario_ingresos'
+                   AND column_name='costo_unitario'"""
+            )
+            if col_info and col_info['numeric_scale'] is not None and col_info['numeric_scale'] < 6:
+                await conn.execute(
+                    "ALTER TABLE prod_inventario_ingresos ALTER COLUMN costo_unitario TYPE NUMERIC(18,6)"
+                )
+        except Exception:
+            pass  # Idempotente: si ya está en 18,6 no hacer nada
         # Referencia idempotente: salida revertida por ajuste de migración
         await conn.execute("ALTER TABLE prod_inventario_salidas ADD COLUMN IF NOT EXISTS revertida_por_migracion_id VARCHAR NULL")
         # Subtipo de ajuste para identificar ajustes de reversión de migración
