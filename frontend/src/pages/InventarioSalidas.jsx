@@ -31,14 +31,135 @@ import {
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
-import { Plus, Trash2, ArrowUpCircle, Link2, Layers, Pencil, Search, X } from 'lucide-react';
+import { Plus, Trash2, ArrowUpCircle, Link2, Layers, Pencil, Search, X, ChevronsUpDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
 import { SalidaRollosDialog } from '../components/SalidaRollosDialog';
 import { formatDate } from '../lib/dateUtils';
 import { formatCurrency } from '../lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
+import { cn } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+/**
+ * Combobox para seleccionar un ítem de inventario con:
+ *  - Buscador por código o nombre (input arriba del listado)
+ *  - Si 'lineaFiltro' está seteado, muestra sólo ítems de esa línea de negocio
+ *    (el resto aparece bajo una sección 'Otras líneas' colapsable).
+ */
+const ItemCombobox = ({ items = [], value, onChange, lineaFiltro, lineasNegocio = [] }) => {
+  const [open, setOpen] = useState(false);
+  const [showOtrasLineas, setShowOtrasLineas] = useState(false);
+  const selected = items.find(i => i.id === value);
+  // Filtrar categoría PT (no se saca PT como materia prima)
+  const disponibles = items.filter(i => i.categoria !== 'PT');
+  const enLinea = lineaFiltro
+    ? disponibles.filter(i => Number(i.linea_negocio_id) === Number(lineaFiltro))
+    : disponibles;
+  const otrasLinea = lineaFiltro
+    ? disponibles.filter(i => Number(i.linea_negocio_id) !== Number(lineaFiltro))
+    : [];
+  const lineaNombre = lineaFiltro
+    ? (lineasNegocio.find(l => Number(l.id) === Number(lineaFiltro))?.nombre || `Línea ${lineaFiltro}`)
+    : null;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal"
+          data-testid="select-item"
+        >
+          {selected ? (
+            <span className="flex items-center gap-2 truncate">
+              <span className="font-mono text-xs text-muted-foreground">{selected.codigo}</span>
+              <span className="truncate">{selected.nombre}</span>
+              <span className="text-xs text-muted-foreground shrink-0">(Stock: {selected.stock_actual})</span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">Seleccionar item...</span>
+          )}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="p-0 w-[var(--radix-popover-trigger-width)] min-w-[380px]"
+        align="start"
+        sideOffset={4}
+      >
+        <Command shouldFilter={true}>
+          <CommandInput placeholder="Buscar por código o nombre..." className="h-10" />
+          <CommandList className="max-h-[340px]">
+            <CommandEmpty>No se encontraron items.</CommandEmpty>
+            {lineaFiltro && (
+              <div className="px-2 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground bg-muted/30 border-b">
+                {lineaNombre} ({enLinea.length})
+              </div>
+            )}
+            <CommandGroup>
+              {enLinea.map((item) => (
+                <CommandItem
+                  key={item.id}
+                  value={`${item.codigo} ${item.nombre}`}
+                  onSelect={() => {
+                    onChange(item.id);
+                    setOpen(false);
+                  }}
+                  className="cursor-pointer"
+                >
+                  <Check className={cn('mr-2 h-4 w-4', value === item.id ? 'opacity-100' : 'opacity-0')} />
+                  <span className="font-mono text-xs text-muted-foreground mr-2 min-w-[60px]">{item.codigo}</span>
+                  <span className="flex-1 truncate">{item.nombre}</span>
+                  <span className="ml-2 text-xs text-muted-foreground shrink-0">Stock: {item.stock_actual}</span>
+                  {item.control_por_rollos && (
+                    <Badge variant="outline" className="ml-2 text-[9px] shrink-0">Rollos</Badge>
+                  )}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+            {otrasLinea.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowOtrasLineas(v => !v)}
+                  className="w-full text-left px-3 py-1.5 text-[11px] text-muted-foreground hover:bg-accent/40 border-t flex items-center gap-1.5"
+                >
+                  <ChevronsUpDown className="h-3 w-3" />
+                  {showOtrasLineas ? 'Ocultar' : 'Mostrar'} otras líneas ({otrasLinea.length})
+                </button>
+                {showOtrasLineas && (
+                  <CommandGroup heading="Otras líneas">
+                    {otrasLinea.map((item) => (
+                      <CommandItem
+                        key={item.id}
+                        value={`${item.codigo} ${item.nombre}`}
+                        onSelect={() => {
+                          onChange(item.id);
+                          setOpen(false);
+                        }}
+                        className="cursor-pointer opacity-70"
+                      >
+                        <Check className={cn('mr-2 h-4 w-4', value === item.id ? 'opacity-100' : 'opacity-0')} />
+                        <span className="font-mono text-xs text-muted-foreground mr-2 min-w-[60px]">{item.codigo}</span>
+                        <span className="flex-1 truncate">{item.nombre}</span>
+                        <span className="ml-2 text-xs text-muted-foreground shrink-0">Stock: {item.stock_actual}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+              </>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+};
 
 export const InventarioSalidas = () => {
   const [salidas, setSalidas] = useState([]);
@@ -519,27 +640,19 @@ export const InventarioSalidas = () => {
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label>Item *</Label>
-                <Select
+                <ItemCombobox
+                  items={items}
                   value={formData.item_id}
-                  onValueChange={handleItemChange}
-                  required
-                >
-                  <SelectTrigger data-testid="select-item">
-                    <SelectValue placeholder="Seleccionar item..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {items.filter(i => i.categoria !== 'PT').map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        <span className="font-mono mr-2">{item.codigo}</span>
-                        {item.nombre}
-                        <span className="ml-2 text-muted-foreground">(Stock: {item.stock_actual})</span>
-                        {item.control_por_rollos && (
-                          <Badge variant="outline" className="ml-2 text-xs">Rollos</Badge>
-                        )}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={handleItemChange}
+                  lineaFiltro={(() => {
+                    // Si la salida está vinculada a un registro con línea de negocio,
+                    // restringir el listado a items de esa misma línea.
+                    if (!formData.registro_id) return null;
+                    const reg = registros.find(r => r.id === formData.registro_id);
+                    return reg?.linea_negocio_id || null;
+                  })()}
+                  lineasNegocio={lineasNegocio}
+                />
                 {selectedItem && !selectedItem.control_por_rollos && (
                   <p className="text-sm text-muted-foreground">
                     Stock disponible: <span className="font-mono font-semibold">{selectedItem.stock_actual}</span> {selectedItem.unidad_medida}
