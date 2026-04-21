@@ -104,6 +104,25 @@ export const RegistroPanelLateral = ({
 
           <div className="registro-panel-divider" />
 
+          {/* Indicador de envío a tienda — evento posterior al cierre */}
+          {formData.estado === 'Tienda' && formData.fecha_envio_tienda && (
+            <div className="mx-3 mt-2 mb-1 rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1.5 flex items-center gap-2">
+              <div className="h-6 w-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M20 6L9 17l-5-5"/></svg>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-emerald-800 dark:text-emerald-200 leading-none">En Tienda</p>
+                <p className="text-[10px] text-emerald-700 dark:text-emerald-300 mt-0.5 leading-tight">
+                  {new Date(formData.fecha_envio_tienda).toLocaleDateString('es-PE', {
+                    timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: '2-digit',
+                  })} · {new Date(formData.fecha_envio_tienda).toLocaleTimeString('es-PE', {
+                    timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit',
+                  })}
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="registro-panel-stats">
             <div className="registro-panel-stat-row">
               <span className="registro-panel-stat-label">Prendas</span>
