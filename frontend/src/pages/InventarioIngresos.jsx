@@ -54,7 +54,9 @@ export const InventarioIngresos = () => {
   const [proveedores, setProveedores] = useState([]);
   const [lineasNegocio, setLineasNegocio] = useState([]);
   const [filtroLinea, setFiltroLinea] = useState('');
+  const [filtroCategoria, setFiltroCategoria] = useState('todas');
   const [busqueda, setBusqueda] = useState('');
+  const [modoMigracion, setModoMigracion] = useState(false);
   // Combobox states
   const [itemPopoverOpen, setItemPopoverOpen] = useState(false);
   const [proveedorPopoverOpen, setProveedorPopoverOpen] = useState(false);
@@ -69,10 +71,20 @@ export const InventarioIngresos = () => {
     );
   }, [items, filtroLinea]);
 
+  // Mapa item_id -> categoría (para filtrar ingresos por categoría del item)
+  const itemCategoriaById = useMemo(() => {
+    const map = {};
+    for (const it of items) map[it.id] = it.categoria || 'Otros';
+    return map;
+  }, [items]);
+
   // Ingresos filtrados para la tabla
   const ingresosFiltrados = useMemo(() => {
     let lista = ingresos;
     if (filtroLinea) lista = lista.filter(i => String(i.linea_negocio_id || '') === filtroLinea);
+    if (filtroCategoria !== 'todas') {
+      lista = lista.filter(i => (itemCategoriaById[i.item_id] || 'Otros') === filtroCategoria);
+    }
     if (busqueda.trim()) {
       const q = busqueda.trim().toLowerCase();
       lista = lista.filter(i =>
@@ -83,20 +95,22 @@ export const InventarioIngresos = () => {
       );
     }
     return lista;
-  }, [ingresos, filtroLinea, busqueda]);
+  }, [ingresos, filtroLinea, filtroCategoria, busqueda, itemCategoriaById]);
 
   const fetchData = async () => {
     try {
-      const [ingresosRes, itemsRes, provRes, lnRes] = await Promise.all([
+      const [ingresosRes, itemsRes, provRes, lnRes, migRes] = await Promise.all([
         axios.get(`${API}/inventario-ingresos`),
         axios.get(`${API}/inventario?all=true`),
         axios.get(`${API}/proveedores`),
         axios.get(`${API}/lineas-negocio`),
+        axios.get(`${API}/configuracion/modo-migracion`).catch(() => ({ data: { activo: false } })),
       ]);
       setIngresos(ingresosRes.data);
       setItems(itemsRes.data);
       setProveedores(provRes.data);
       setLineasNegocio(lnRes.data);
+      setModoMigracion(!!migRes.data?.activo);
     } catch (error) {
       toast.error('Error al cargar datos');
     } finally {
@@ -301,6 +315,21 @@ export const InventarioIngresos = () => {
               ))}
             </SelectContent>
           </Select>
+          <Select
+            value={filtroCategoria}
+            onValueChange={setFiltroCategoria}
+          >
+            <SelectTrigger className="w-[170px] h-9 text-sm" data-testid="filtro-categoria">
+              <SelectValue placeholder="Categoría" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas las categorías</SelectItem>
+              <SelectItem value="Telas">Telas</SelectItem>
+              <SelectItem value="Avios">Avíos</SelectItem>
+              <SelectItem value="Otros">Otros</SelectItem>
+              <SelectItem value="PT">PT</SelectItem>
+            </SelectContent>
+          </Select>
           <Button
             variant={mostrarCodigo ? 'secondary' : 'outline'}
             size="sm"
@@ -414,16 +443,28 @@ export const InventarioIngresos = () => {
                           >
                             <Pencil className="h-4 w-4 text-blue-500" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(ingreso.id)}
-                            title={ingreso.cantidad_disponible !== ingreso.cantidad ? "No se puede eliminar: tiene salidas" : "Eliminar"}
-                            disabled={ingreso.cantidad_disponible !== ingreso.cantidad}
-                            data-testid={`delete-ingreso-${ingreso.id}`}
-                          >
-                            <Trash2 className={`h-4 w-4 ${ingreso.cantidad_disponible !== ingreso.cantidad ? 'text-gray-300' : 'text-destructive'}`} />
-                          </Button>
+                          {(() => {
+                            const tieneSalidas = ingreso.cantidad_disponible !== ingreso.cantidad;
+                            const bloqueado = tieneSalidas && !modoMigracion;
+                            return (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDelete(ingreso.id)}
+                                title={
+                                  bloqueado
+                                    ? 'No se puede eliminar: tiene salidas'
+                                    : tieneSalidas && modoMigracion
+                                      ? 'Eliminar (modo carga inicial)'
+                                      : 'Eliminar'
+                                }
+                                disabled={bloqueado}
+                                data-testid={`delete-ingreso-${ingreso.id}`}
+                              >
+                                <Trash2 className={`h-4 w-4 ${bloqueado ? 'text-gray-300' : 'text-destructive'}`} />
+                              </Button>
+                            );
+                          })()}
                         </div>
                       </TableCell>
                     </TableRow>

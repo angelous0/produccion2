@@ -62,6 +62,7 @@ const ReporteTrazabilidad = lazy(() => import("./pages/ReporteTrazabilidad").the
 const MatrizProduccion = lazy(() => import("./pages/MatrizProduccion").then(m => ({ default: m.MatrizProduccion })));
 const RendimientoServicios = lazy(() => import("./pages/RendimientoServicios"));
 const ReporteDespachosTienda = lazy(() => import("./pages/ReporteDespachosTienda"));
+const ReporteMovimientosCostos = lazy(() => import("./pages/ReporteMovimientosCostos"));
 const ReporteStockBajo = lazy(() => import("./pages/ReporteStockBajo").then(m => ({ default: m.ReporteStockBajo })));
 const SeguimientoProduccion = lazy(() => import("./pages/SeguimientoProduccion").then(m => ({ default: m.SeguimientoProduccion })));
 const OperativoTerceros = lazy(() => import("./pages/OperativoTerceros").then(m => ({ default: m.OperativoTerceros })));
@@ -73,6 +74,7 @@ const CalidadConsolidado = lazy(() => import("./pages/CalidadConsolidado").then(
 const SalidasLibres = lazy(() => import("./pages/SalidasLibres").then(m => ({ default: m.SalidasLibres })));
 const Muestras = lazy(() => import("./pages/Muestras").then(m => ({ default: m.Muestras })));
 const MuestraDetalle = lazy(() => import("./pages/MuestraDetalle").then(m => ({ default: m.MuestraDetalle })));
+const ValidacionRegistros = lazy(() => import("./pages/ValidacionRegistros").then(m => ({ default: m.ValidacionRegistros })));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center h-64">
@@ -202,6 +204,7 @@ function AppRoutes() {
         <Route path="reportes/matriz" element={<LazyWrap><MatrizProduccion /></LazyWrap>} />
         <Route path="reportes/rendimiento-servicios" element={<LazyWrap><RendimientoServicios /></LazyWrap>} />
         <Route path="reportes/despachos-tienda" element={<LazyWrap><ReporteDespachosTienda /></LazyWrap>} />
+        <Route path="reportes/movimientos-costos" element={<LazyWrap><ReporteMovimientosCostos /></LazyWrap>} />
         <Route path="reportes/trazabilidad/:registroId" element={<LazyWrap><ReporteTrazabilidad /></LazyWrap>} />
         {/* Legacy redirects */}
         <Route path="reportes/dashboard" element={<Navigate to="/" replace />} />
@@ -220,6 +223,7 @@ function AppRoutes() {
         <Route path="calidad/merma" element={<Navigate to="/reportes/calidad?tab=mermas" replace />} />
         <Route path="calidad/reporte-mermas" element={<Navigate to="/reportes/calidad?tab=resumen-calidad" replace />} />
         <Route path="reportes/estados-item" element={<Navigate to="/reportes/calidad?tab=estados" replace />} />
+        <Route path="reportes/validacion-registros" element={<LazyWrap><ValidacionRegistros /></LazyWrap>} />
       </Route>
       
       {/* Redirigir cualquier ruta desconocida a login */}

@@ -43,6 +43,7 @@ const HeaderMensajes = ({ registroId, API, onOpen, refreshKey }) => {
 
 export const RegistroHeader = ({
   formData, setFormData, modeloSeleccionado, isEditing, isParalizado,
+  paralizacionReal, esAdmin,
   estados, usaRuta, rutaNombre, analisisEstado,
   loading, id, navigate, API,
   autoGuardarEstado, setForzarEstadoDialog, setSugerenciaMovDialog,
@@ -313,7 +314,7 @@ export const RegistroHeader = ({
         </div>
       )}
 
-      {/* Banner PARALIZADO */}
+      {/* Banner PARALIZADO (para usuarios no-admin) */}
       {isEditing && isParalizado && (
         <div className="registro-paralizado-banner" data-testid="banner-paralizado">
           <div className="registro-paralizado-icon">
@@ -322,6 +323,28 @@ export const RegistroHeader = ({
           <div className="flex-1 min-w-0">
             <p className="registro-paralizado-title">Registro PARALIZADO</p>
             <p className="registro-paralizado-desc">No se puede cambiar de estado ni crear/editar movimientos hasta resolver la incidencia.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Banner paralización con BYPASS DE ADMIN activo */}
+      {isEditing && paralizacionReal && esAdmin && !isParalizado && (
+        <div
+          className="registro-paralizado-banner"
+          data-testid="banner-paralizado-admin"
+          style={{ background: 'linear-gradient(135deg, #fef3c7, #fde68a)', border: '1px solid #f59e0b' }}
+        >
+          <div className="registro-paralizado-icon">
+            <AlertTriangle className="h-5 w-5" style={{ color: '#b45309' }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="registro-paralizado-title" style={{ color: '#92400e' }}>
+              ⚠️ Registro PARALIZADO — Bypass de administrador activo
+            </p>
+            <p className="registro-paralizado-desc" style={{ color: '#92400e' }}>
+              Este corte tiene una incidencia abierta que paraliza producción. Como admin podés editar,
+              pero tené en cuenta que el resto del equipo lo ve bloqueado. Resolvé la incidencia cuando termines.
+            </p>
           </div>
         </div>
       )}

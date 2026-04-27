@@ -8,6 +8,7 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
 import { Package, DollarSign, TrendingUp, Loader2, ChevronRight, ChevronDown, Layers, Wrench, Shirt, Info } from 'lucide-react';
+import ExportButton from '../components/ExportButton';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -507,15 +508,18 @@ export function ReporteWIP({ lineaNegocioId = 'todos' }) {
           <h1 className="text-2xl font-bold">WIP - Trabajo en Proceso</h1>
           <p className="text-muted-foreground">Registros en producción con costos acumulados · clic en una fila para ver el desglose</p>
         </div>
-        <Card className="bg-amber-500/5 border-amber-500/20">
-          <CardContent className="p-4 flex items-center gap-3">
-            <TrendingUp className="h-8 w-8 text-amber-500" />
-            <div>
-              <p className="text-sm text-muted-foreground">Total WIP</p>
-              <p className="text-xl font-bold font-mono" data-testid="total-wip">{formatCurrency(data.resumen.total_wip)}</p>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex items-center gap-3">
+          <ExportButton tabla="wip" label="Exportar WIP" variant="outline" />
+          <Card className="bg-amber-500/5 border-amber-500/20">
+            <CardContent className="p-4 flex items-center gap-3">
+              <TrendingUp className="h-8 w-8 text-amber-500" />
+              <div>
+                <p className="text-sm text-muted-foreground">Total WIP</p>
+                <p className="text-xl font-bold font-mono" data-testid="total-wip">{formatCurrency(data.resumen.total_wip)}</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <Card>

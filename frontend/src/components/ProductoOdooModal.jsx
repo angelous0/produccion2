@@ -6,7 +6,7 @@ import { Textarea } from './ui/textarea';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from './ui/dialog';
-import { Ban, Save, Loader2, Package, DollarSign } from 'lucide-react';
+import { Ban, Save, Loader2, Package, DollarSign, GitBranch } from 'lucide-react';
 import { toast } from 'sonner';
 import useCascadaClasificacion from '../hooks/useCascadaClasificacion';
 import VariantesColorMapper from './VariantesColorMapper';
@@ -34,6 +34,7 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
     lavado_id: producto.lavado_id || '',
     hilo_id: producto.hilo_id || '',
     categoria_color_id: producto.categoria_color_id || '',
+    linea_negocio_id: producto.linea_negocio_id != null ? String(producto.linea_negocio_id) : '',
     notas: producto.notas || '',
     costo_manual: producto.costo_manual != null ? String(producto.costo_manual) : '',
   });
@@ -44,6 +45,7 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
   const {
     marcas, tipos, entalles, telas, telasGenerales,
     generos, cuellos, detalles, lavados, hilos, categoriasColor,
+    lineasNegocio,
     mostrarCuello, mostrarLavado, esIdValido,
   } = useCascadaClasificacion({
     marca_id: form.marca_id,
@@ -102,6 +104,11 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
       const { costo_manual, ...clasifForm } = form;
       const body = { ...clasifForm };
       Object.keys(body).forEach(k => { if (body[k] === '') body[k] = null; });
+      // linea_negocio_id llega como string desde el select → convertir a int
+      if (body.linea_negocio_id != null) {
+        body.linea_negocio_id = parseInt(body.linea_negocio_id, 10);
+        if (isNaN(body.linea_negocio_id)) body.linea_negocio_id = null;
+      }
       const res = await axios.patch(`${API}/odoo-enriq/${producto.id}/clasificar`, body);
 
       // Si el costo cambió, llamar al endpoint específico
@@ -198,6 +205,33 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
           )}
           <SelectField label="Hilo" hint={producto.odoo_hilo_texto} value={form.hilo_id} onChange={v => setField('hilo_id', v)} options={hilos} />
           <SelectField label="Categoría Color" value={form.categoria_color_id} onChange={v => setField('categoria_color_id', v)} options={categoriasColor} />
+        </div>
+
+        {/* Línea de Negocio — control desde Producción para Finanzas */}
+        <div className="pt-4 mt-2 border-t">
+          <Label className="text-xs flex items-center gap-1.5 mb-1">
+            <GitBranch className="h-3.5 w-3.5 text-blue-600" />
+            Línea de Negocio
+          </Label>
+          <Select
+            value={form.linea_negocio_id || '_none'}
+            onValueChange={v => setField('linea_negocio_id', v)}
+          >
+            <SelectTrigger className="h-9 text-sm">
+              <SelectValue placeholder="Seleccionar línea de negocio" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_none">— Sin asignar —</SelectItem>
+              {lineasNegocio.map(ln => (
+                <SelectItem key={ln.id} value={String(ln.id)}>
+                  {ln.codigo ? `${ln.codigo} · ${ln.nombre}` : ln.nombre}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug">
+            Define la línea de negocio que usará este producto en ventas POS y reportes financieros.
+          </p>
         </div>
 
         {/* Costo manual — editable para productos antiguos sin costo en Odoo */}

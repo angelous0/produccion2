@@ -81,6 +81,7 @@ import {
   StickerIcon,
   WashingMachine,
   Layers3,
+  ShieldAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -139,6 +140,7 @@ const inventarioItems = [
 
 const reportesItems = [
   { to: '/reportes/alertas', icon: Bell, label: 'Alertas del Día' },
+  { to: '/reportes/validacion-registros', icon: ShieldAlert, label: 'Validación MP/Servicios' },
   { to: '/reportes/seguimiento', icon: Activity, label: 'Seguimiento' },
   { to: '/reportes/agenda-entregas', icon: CalendarDays, label: 'Agenda Entregas' },
   { to: '/reportes/entregas', icon: Truck, label: 'Entregas' },
@@ -152,6 +154,7 @@ const reportesItems = [
   { to: '/reportes/rendimiento-servicios', icon: TrendingUp, label: 'Rendimiento Servicios' },
   { to: '/reportes/despachos-tienda', icon: Store, label: 'Despachos a Tienda' },
   { to: '/reportes/costos-produccion', icon: Receipt, label: 'Costos de Producción' },
+  { to: '/reportes/movimientos-costos', icon: Receipt, label: 'Movimientos & Costos' },
 ];
 
 const catalogosItems = [

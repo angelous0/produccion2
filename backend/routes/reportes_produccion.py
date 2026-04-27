@@ -1550,6 +1550,201 @@ async def alertas_produccion():
         
 
 
+@router.get("/validacion-registros")
+async def validacion_registros(
+    linea_negocio_id: Optional[int] = None,
+    user=Depends(get_current_user),
+):
+    """Valida que registros de pantalones/shorts/casacas tengan los MP y servicios
+    requeridos según su etapa actual de producción."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        linea_filter = f"AND r.linea_negocio_id = {linea_negocio_id}" if linea_negocio_id else ""
+
+        registros = await conn.fetch(f"""
+            SELECT
+                r.id::text AS id,
+                r.n_corte,
+                r.estado,
+                COALESCE(mod.nombre, r.modelo_manual->>'nombre_modelo', '') AS modelo_nombre,
+                COALESCE(tp.nombre, r.modelo_manual->>'tipo_texto', '')    AS tipo_nombre,
+                COALESCE(
+                    (SELECT SUM(rt.cantidad_real)
+                     FROM prod_registro_tallas rt WHERE rt.registro_id = r.id),
+                    0
+                ) AS total_prendas
+            FROM prod_registros r
+            LEFT JOIN prod_modelos mod ON mod.id = r.modelo_id
+            LEFT JOIN prod_tipos tp    ON tp.id  = mod.tipo_id
+            WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
+              AND r.dividido_desde_registro_id IS NULL
+              {linea_filter}
+              AND (
+                tp.nombre ILIKE '%pantalon%' OR tp.nombre ILIKE '%pantalón%'
+                OR tp.nombre ILIKE '%short%'
+                OR tp.nombre ILIKE '%casaca%'
+                OR r.modelo_manual->>'tipo_texto' ILIKE '%pantalon%'
+                OR r.modelo_manual->>'tipo_texto' ILIKE '%pantalón%'
+                OR r.modelo_manual->>'tipo_texto' ILIKE '%short%'
+                OR r.modelo_manual->>'tipo_texto' ILIKE '%casaca%'
+              )
+        """)
+
+        if not registros:
+            return {"grupos": [], "total_con_faltantes": 0, "total_revisados": 0}
+
+        reg_ids = [r["id"] for r in registros]
+
+        mp_rows = await conn.fetch("""
+            SELECT req.registro_id::text AS registro_id,
+                   i.nombre              AS item_nombre,
+                   i.categoria,
+                   req.talla_id
+            FROM prod_registro_requerimiento_mp req
+            JOIN prod_inventario i ON i.id = req.item_id
+            WHERE req.registro_id::text = ANY($1::text[])
+              AND req.cantidad_requerida > 0
+        """, reg_ids)
+
+        mov_rows = await conn.fetch("""
+            SELECT m.registro_id::text AS registro_id,
+                   s.nombre            AS servicio_nombre
+            FROM prod_movimientos_produccion m
+            JOIN prod_servicios_produccion s ON s.id = m.servicio_id
+            WHERE m.registro_id::text = ANY($1::text[])
+        """, reg_ids)
+
+        mp_by_reg: dict = {}
+        for row in mp_rows:
+            mp_by_reg.setdefault(row["registro_id"], []).append({
+                "nombre": (row["item_nombre"] or "").lower(),
+                "categoria": row["categoria"] or "",
+                "talla_id": row["talla_id"],
+            })
+
+        mov_by_reg: dict = {}
+        for row in mov_rows:
+            mov_by_reg.setdefault(row["registro_id"], []).append(
+                (row["servicio_nombre"] or "").lower()
+            )
+
+        STAGE_ORDER = {
+            "Para Corte": 0, "Corte": 1,
+            "Para Costura": 2, "Costura": 3,
+            "Para Atraque": 4, "Atraque": 5,
+            "Para Lavandería": 6, "Muestra Lavanderia": 7, "Lavandería": 8,
+            "Para Acabado": 9, "Acabado": 10,
+            "Almacén PT": 11, "Tienda": 12,
+        }
+
+        def has_mp(rid, kw):
+            return any(kw in it["nombre"] for it in mp_by_reg.get(rid, []))
+
+        def has_tela_no_tocuyo(rid):
+            return any(
+                it["categoria"] == "Telas" and "tocuyo" not in it["nombre"]
+                for it in mp_by_reg.get(rid, [])
+            )
+
+        def has_tallas_mp(rid):
+            return any(
+                "talla" in it["nombre"] or it["talla_id"] is not None
+                for it in mp_by_reg.get(rid, [])
+            )
+
+        def has_svc(rid, kw):
+            return any(kw in s for s in mov_by_reg.get(rid, []))
+
+        groups: dict = {}
+
+        for reg in registros:
+            rid = reg["id"]
+            estado = reg["estado"] or ""
+            stage_idx = STAGE_ORDER.get(estado, -1)
+
+            if stage_idx < 2:
+                continue
+
+            faltantes = []
+
+            # Materiales requeridos desde Para Costura
+            if not has_mp(rid, "tocuyo"):
+                faltantes.append("tocuyo")
+            if not has_tela_no_tocuyo(rid):
+                faltantes.append("tela principal")
+            if not has_mp(rid, "cierre"):
+                faltantes.append("Cierre")
+            if not has_tallas_mp(rid):
+                faltantes.append("Tallas")
+
+            # Servicios comunes desde Para Costura
+            if not has_svc(rid, "corte"):
+                faltantes.append("servicio Corte")
+            if not has_svc(rid, "estampado"):
+                faltantes.append("Estampado")
+            if not has_svc(rid, "bordado"):
+                faltantes.append("Bordado")
+            if not has_svc(rid, "pretina"):
+                faltantes.append("Pretina")
+
+            # Desde Para Lavandería: deben tener movimiento Costura y Atraque
+            if stage_idx >= 6:
+                if not has_svc(rid, "costura"):
+                    faltantes.append("Costura")
+                if not has_svc(rid, "atraque"):
+                    faltantes.append("Atraque")
+
+            # Desde Para Acabado: deben tener servicio Lavandería
+            if stage_idx >= 9:
+                if not has_svc(rid, "lavand"):
+                    faltantes.append("Lavandería")
+
+            # Desde Acabado: servicio Acabado + avíos de acabado
+            if stage_idx >= 10:
+                if not has_svc(rid, "acabado"):
+                    faltantes.append("servicio Acabado")
+                if not has_mp(rid, "boton") and not has_mp(rid, "botón"):
+                    faltantes.append("Botón")
+                if not has_mp(rid, "remache"):
+                    faltantes.append("Remache x2")
+                if not has_mp(rid, "bolsillero"):
+                    faltantes.append("Hangtag Bolsillero")
+                if not has_mp(rid, "pretinero"):
+                    faltantes.append("Hangtag Pretinero")
+                if not has_mp(rid, "entalle") and not has_mp(rid, "perfect"):
+                    faltantes.append("Hangtag Entalle")
+                if not has_mp(rid, "colgante"):
+                    faltantes.append("Colgante")
+                if not has_mp(rid, "adhesivo"):
+                    faltantes.append("Adhesivo por talla")
+
+            if faltantes:
+                groups.setdefault(estado, []).append({
+                    "id": rid,
+                    "n_corte": reg["n_corte"],
+                    "modelo": reg["modelo_nombre"],
+                    "tipo": reg["tipo_nombre"],
+                    "total_prendas": safe_int(reg["total_prendas"]),
+                    "faltantes": faltantes,
+                })
+
+        sorted_groups = []
+        for estado, _ in sorted(STAGE_ORDER.items(), key=lambda x: x[1]):
+            if estado in groups:
+                sorted_groups.append({
+                    "estado": estado,
+                    "registros": sorted(groups[estado], key=lambda r: r["n_corte"] or ""),
+                    "total": len(groups[estado]),
+                })
+
+        total = sum(g["total"] for g in sorted_groups)
+        return {
+            "grupos": sorted_groups,
+            "total_con_faltantes": total,
+            "total_revisados": len(registros),
+        }
+
+
 @router.get("/tiempos-muertos")
 async def reporte_tiempos_muertos(
     incluir_resueltos: bool = Query(False),
@@ -2772,3 +2967,768 @@ async def reporte_despachos_tienda(
                 "hasta": str(hasta_dt),
             },
         }
+
+
+# ==================== MOVIMIENTOS DE COSTO (Reporte para Finanzas) ====================
+
+@router.get("/movimientos-costos")
+async def movimientos_costos(
+    fecha_desde: Optional[str] = Query(None, description="YYYY-MM-DD (fecha_inicio del movimiento)"),
+    fecha_hasta: Optional[str] = Query(None, description="YYYY-MM-DD inclusive"),
+    servicio_id: Optional[str] = Query(None),
+    persona_id: Optional[str] = Query(None),
+    facturado: Optional[str] = Query(None, description="'si' | 'no' | null para todos"),
+    tipo_persona: Optional[str] = Query(None, description="'INTERNO' | 'EXTERNO' | null para todos"),
+    _u=Depends(get_current_user),
+):
+    """
+    Lista detallada de movimientos de producción con información de corte, modelo,
+    persona, servicio y costo referencial. Diseñado para conciliar con Finanzas.
+
+    Filtros:
+    - Rango de fechas (sobre fecha_inicio del movimiento)
+    - Servicio
+    - Persona (en cascada: usualmente se filtra por servicio primero, luego persona)
+    - Estado de facturación: si / no / todos
+
+    Devuelve tanto los movimientos individuales como un resumen agrupado por factura
+    cuando ya están vinculados, para identificar "gastos con múltiples cortes".
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        conditions = ["COALESCE(mp.costo_calculado, 0) >= 0"]
+        params: list = []
+        idx = 1
+
+        # asyncpg requiere objetos date, no strings
+        if fecha_desde:
+            try:
+                fd = date.fromisoformat(fecha_desde)
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail="fecha_desde con formato inválido (YYYY-MM-DD)")
+            conditions.append(f"mp.fecha_inicio >= ${idx}")
+            params.append(fd)
+            idx += 1
+        if fecha_hasta:
+            try:
+                fh = date.fromisoformat(fecha_hasta)
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail="fecha_hasta con formato inválido (YYYY-MM-DD)")
+            conditions.append(f"mp.fecha_inicio <= ${idx}")
+            params.append(fh)
+            idx += 1
+        if servicio_id:
+            conditions.append(f"mp.servicio_id = ${idx}")
+            params.append(servicio_id)
+            idx += 1
+        if persona_id:
+            conditions.append(f"mp.persona_id = ${idx}")
+            params.append(persona_id)
+            idx += 1
+        if facturado == "si":
+            conditions.append("mp.factura_numero IS NOT NULL")
+        elif facturado == "no":
+            conditions.append("mp.factura_numero IS NULL")
+        if tipo_persona in ("INTERNO", "EXTERNO"):
+            conditions.append(f"COALESCE(p.tipo_persona, 'EXTERNO') = ${idx}")
+            params.append(tipo_persona)
+            idx += 1
+
+        where = " AND ".join(conditions)
+
+        rows = await conn.fetch(f"""
+            SELECT
+                mp.id AS movimiento_id,
+                mp.registro_id,
+                mp.servicio_id,
+                mp.persona_id,
+                mp.fecha_inicio,
+                mp.fecha_fin,
+                mp.cantidad_enviada,
+                mp.cantidad_recibida,
+                mp.tarifa_aplicada,
+                mp.costo_calculado,
+                mp.factura_numero,
+                mp.factura_id,
+                s.nombre  AS servicio_nombre,
+                p.nombre  AS persona_nombre,
+                COALESCE(p.tipo_persona, 'EXTERNO') AS persona_tipo,
+                p.unidad_interna_id AS unidad_interna_id,
+                ui.nombre AS unidad_interna_nombre,
+                r.n_corte AS n_corte,
+                COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') AS modelo_nombre,
+                COALESCE(ma.nombre, r.modelo_manual->>'marca_texto')  AS marca_nombre,
+                COALESCE(tp.nombre, r.modelo_manual->>'tipo_texto')   AS tipo_nombre,
+                (
+                    SELECT COALESCE(SUM(cantidad_real), 0)::int
+                    FROM prod_registro_tallas rt
+                    WHERE rt.registro_id = r.id
+                ) AS prendas_registro,
+                EXISTS(
+                    SELECT 1 FROM finanzas2.fin_cargo_interno ci
+                    WHERE ci.movimiento_id = mp.id
+                ) AS tiene_cargo_interno
+            FROM prod_movimientos_produccion mp
+            LEFT JOIN prod_servicios_produccion s ON mp.servicio_id = s.id
+            LEFT JOIN prod_personas_produccion  p ON mp.persona_id  = p.id
+            LEFT JOIN finanzas2.fin_unidad_interna ui ON p.unidad_interna_id = ui.id
+            LEFT JOIN prod_registros            r ON mp.registro_id = r.id
+            LEFT JOIN prod_modelos              m ON r.modelo_id    = m.id
+            LEFT JOIN prod_marcas               ma ON m.marca_id    = ma.id
+            LEFT JOIN prod_tipos                tp ON m.tipo_id     = tp.id
+            WHERE {where}
+            ORDER BY mp.fecha_inicio DESC NULLS LAST, r.n_corte DESC
+            LIMIT 1000
+        """, *params)
+
+        items = []
+        total_costo = 0.0
+        total_prendas = 0
+        personas_set = set()
+        facturados = 0
+        pendientes = 0
+        internos = 0
+        externos = 0
+        costo_interno = 0.0
+        costo_externo = 0.0
+        by_factura: dict = {}
+        by_unidad: dict = {}
+
+        for r in rows:
+            d = row_to_dict(r)
+            # Normalizar fechas
+            for f in ("fecha_inicio", "fecha_fin"):
+                if d.get(f):
+                    d[f] = str(d[f])
+            costo = safe_float(d.get("costo_calculado"))
+            qty_rec = safe_int(d.get("cantidad_recibida"))
+            qty_env = safe_int(d.get("cantidad_enviada"))
+            # "cantidad de prendas" = cantidad_recibida si ya está, sino la del corte
+            d["prendas"] = qty_rec if qty_rec else safe_int(d.get("prendas_registro"))
+            d["facturado"] = bool(d.get("factura_numero"))
+            d["es_interno"] = d.get("persona_tipo") == "INTERNO"
+
+            total_costo += costo
+            total_prendas += d["prendas"]
+            if d.get("persona_nombre"):
+                personas_set.add(d["persona_nombre"])
+            if d["es_interno"]:
+                internos += 1
+                costo_interno += costo
+                # agrupar por unidad interna
+                uid = d.get("unidad_interna_id")
+                if uid:
+                    g = by_unidad.setdefault(uid, {
+                        "unidad_interna_id": uid,
+                        "unidad_interna_nombre": d.get("unidad_interna_nombre"),
+                        "movimientos": 0,
+                        "costo_total": 0.0,
+                        "con_cargo": 0,
+                        "sin_cargo": 0,
+                    })
+                    g["movimientos"] += 1
+                    g["costo_total"] += costo
+                    if d.get("tiene_cargo_interno"):
+                        g["con_cargo"] += 1
+                    else:
+                        g["sin_cargo"] += 1
+            else:
+                externos += 1
+                costo_externo += costo
+            if d["facturado"]:
+                facturados += 1
+                key = d.get("factura_id") or d.get("factura_numero")
+                g = by_factura.setdefault(key, {
+                    "factura_numero": d.get("factura_numero"),
+                    "factura_id": d.get("factura_id"),
+                    "movimientos": 0,
+                    "costo_total": 0.0,
+                    "cortes": set(),
+                })
+                g["movimientos"] += 1
+                g["costo_total"] += costo
+                if d.get("n_corte"):
+                    g["cortes"].add(d["n_corte"])
+            else:
+                pendientes += 1
+            items.append(d)
+
+        # Reformatear agrupado por factura (set -> list)
+        facturas_resumen = []
+        for k, v in by_factura.items():
+            facturas_resumen.append({
+                "factura_numero": v["factura_numero"],
+                "factura_id": v["factura_id"],
+                "movimientos": v["movimientos"],
+                "costo_total": round(v["costo_total"], 2),
+                "cortes": sorted(list(v["cortes"])),
+            })
+        facturas_resumen.sort(key=lambda x: -x["costo_total"])
+
+        unidades_resumen = []
+        for v in by_unidad.values():
+            unidades_resumen.append({
+                **v,
+                "costo_total": round(v["costo_total"], 2),
+            })
+        unidades_resumen.sort(key=lambda x: -x["costo_total"])
+
+        return {
+            "items": items,
+            "resumen": {
+                "total_movimientos": len(items),
+                "total_costo": round(total_costo, 2),
+                "total_prendas": total_prendas,
+                "personas_distintas": len(personas_set),
+                "facturados": facturados,
+                "pendientes": pendientes,
+                "internos": internos,
+                "externos": externos,
+                "costo_interno": round(costo_interno, 2),
+                "costo_externo": round(costo_externo, 2),
+            },
+            "facturas": facturas_resumen,
+            "unidades_internas": unidades_resumen,
+        }
+
+
+class VincularFacturaBulkInput(BaseModel):
+    movimiento_ids: list[str]
+    factura_numero: str
+    factura_id: str
+
+
+@router.post("/movimientos-costos/vincular-factura-bulk")
+async def vincular_factura_bulk(
+    input: VincularFacturaBulkInput,
+    _u=Depends(get_current_user),
+):
+    """Vincula una misma factura a varios movimientos de producción.
+    Permite cubrir el caso 'una factura / un gasto con varios cortes'."""
+    if not input.movimiento_ids:
+        raise HTTPException(status_code=400, detail="Lista de movimientos vacía")
+    if not input.factura_numero.strip():
+        raise HTTPException(status_code=400, detail="factura_numero es obligatorio")
+    if not input.factura_id.strip():
+        raise HTTPException(status_code=400, detail="factura_id es obligatorio")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            result = await conn.execute(
+                """
+                UPDATE prod_movimientos_produccion
+                SET factura_numero = $1, factura_id = $2
+                WHERE id = ANY($3::text[])
+                """,
+                input.factura_numero.strip(),
+                input.factura_id.strip(),
+                input.movimiento_ids,
+            )
+    # result es tipo "UPDATE N"
+    try:
+        affected = int(result.split()[-1])
+    except Exception:
+        affected = 0
+    return {
+        "message": f"{affected} movimiento(s) vinculados a {input.factura_numero}",
+        "movimientos_actualizados": affected,
+        "factura_numero": input.factura_numero,
+        "factura_id": input.factura_id,
+    }
+
+
+@router.post("/movimientos-costos/desvincular-factura-bulk")
+async def desvincular_factura_bulk(
+    movimiento_ids: list[str],
+    _u=Depends(get_current_user),
+):
+    """Rompe el vínculo con factura de varios movimientos."""
+    if not movimiento_ids:
+        raise HTTPException(status_code=400, detail="Lista de movimientos vacía")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            """
+            UPDATE prod_movimientos_produccion
+            SET factura_numero = NULL, factura_id = NULL
+            WHERE id = ANY($1::text[])
+            """,
+            movimiento_ids,
+        )
+    try:
+        affected = int(result.split()[-1])
+    except Exception:
+        affected = 0
+    return {
+        "message": f"{affected} movimiento(s) desvinculados",
+        "movimientos_actualizados": affected,
+    }
+
+
+class GenerarCargosInternosInput(BaseModel):
+    movimiento_ids: list[str]
+
+
+@router.post("/movimientos-costos/generar-cargos-internos")
+async def generar_cargos_internos_seleccion(
+    input: GenerarCargosInternosInput,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Genera cargos internos (fin_cargo_interno) para los movimientos seleccionados,
+    equivalente al POST /cargos-internos/generar de Finanzas pero acotado a los
+    movimiento_ids que mandes.
+
+    Para cada movimiento:
+    - Valida que la persona sea INTERNO y tenga unidad_interna_id
+    - Inserta fin_cargo_interno (ON CONFLICT DO NOTHING por movimiento_id)
+    - Registra INGRESO en la cuenta ficticia de la unidad
+    - Suma el importe al saldo_actual de esa cuenta
+
+    Skipea movimientos que ya tienen cargo (idempotente) o que no cumplen reglas.
+    """
+    if not input.movimiento_ids:
+        raise HTTPException(status_code=400, detail="Lista de movimientos vacía")
+
+    empresa_id = current_user.get("empresa_id") or 7
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Traer los movimientos con info enriquecida y validar persona INTERNO
+        movs = await conn.fetch(
+            """
+            SELECT mp.id AS movimiento_id, mp.registro_id, mp.servicio_id, mp.persona_id,
+                   mp.cantidad_recibida, mp.cantidad_enviada, mp.tarifa_aplicada, mp.costo_calculado,
+                   COALESCE(mp.fecha_fin, mp.fecha_inicio, mp.created_at::date) AS fecha,
+                   p.nombre AS persona_nombre,
+                   p.unidad_interna_id,
+                   COALESCE(p.tipo_persona, 'EXTERNO') AS persona_tipo,
+                   s.nombre AS servicio_nombre
+            FROM prod_movimientos_produccion mp
+            JOIN prod_personas_produccion p ON p.id = mp.persona_id
+            LEFT JOIN prod_servicios_produccion s ON s.id = mp.servicio_id
+            WHERE mp.id = ANY($1::text[])
+            """,
+            input.movimiento_ids,
+        )
+        if not movs:
+            raise HTTPException(status_code=404, detail="No se encontraron movimientos")
+
+        no_internos = [m["movimiento_id"] for m in movs if m["persona_tipo"] != "INTERNO"]
+        if no_internos:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{len(no_internos)} movimiento(s) son de personas EXTERNO — usá 'Generar factura borrador' para ellos.",
+            )
+        sin_unidad = [m["movimiento_id"] for m in movs if not m["unidad_interna_id"]]
+        if sin_unidad:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{len(sin_unidad)} persona(s) INTERNO no tienen unidad asignada. Asignales una unidad en el maestro de personas.",
+            )
+
+        generados = 0
+        saltados = 0
+        errores: list[dict] = []
+        unidades_afectadas: dict = {}
+
+        async with conn.transaction():
+            for mov in movs:
+                cantidad = safe_int(mov["cantidad_recibida"] or mov["cantidad_enviada"])
+                tarifa = safe_float(mov["tarifa_aplicada"])
+                importe = safe_float(mov["costo_calculado"])
+                if importe == 0 and tarifa > 0 and cantidad > 0:
+                    importe = round(cantidad * tarifa, 2)
+                if importe == 0:
+                    saltados += 1
+                    errores.append({"movimiento_id": mov["movimiento_id"], "razon": "importe=0"})
+                    continue
+
+                try:
+                    cargo_id = await conn.fetchval(
+                        """
+                        INSERT INTO finanzas2.fin_cargo_interno
+                            (fecha, registro_id, movimiento_id, unidad_interna_id,
+                             servicio_nombre, persona_nombre, cantidad, tarifa, importe,
+                             estado, empresa_id)
+                        VALUES ($1, $2, $3, $4,
+                                $5, $6, $7, $8, $9,
+                                'generado', $10)
+                        ON CONFLICT (movimiento_id) DO NOTHING
+                        RETURNING id
+                        """,
+                        mov["fecha"], mov["registro_id"], mov["movimiento_id"],
+                        mov["unidad_interna_id"],
+                        mov["servicio_nombre"] or "Servicio",
+                        mov["persona_nombre"] or "",
+                        cantidad, tarifa, importe,
+                        empresa_id,
+                    )
+                    if cargo_id is None:
+                        saltados += 1
+                        errores.append({"movimiento_id": mov["movimiento_id"], "razon": "ya tenía cargo"})
+                        continue
+
+                    generados += 1
+                    # Registrar INGRESO en cuenta ficticia
+                    cuenta_id = await conn.fetchval(
+                        """
+                        SELECT id FROM finanzas2.cont_cuenta_financiera
+                        WHERE empresa_id = $1 AND unidad_interna_id = $2 AND es_ficticia = TRUE
+                        LIMIT 1
+                        """,
+                        empresa_id, mov["unidad_interna_id"],
+                    )
+                    if cuenta_id:
+                        await conn.execute(
+                            """
+                            INSERT INTO finanzas2.fin_movimiento_cuenta
+                                (cuenta_id, empresa_id, tipo, monto, descripcion, fecha,
+                                 referencia_id, referencia_tipo)
+                            VALUES ($1, $2, 'INGRESO', $3, $4, $5, $6, 'CARGO_INTERNO')
+                            """,
+                            cuenta_id, empresa_id, importe,
+                            f"Cobro {cantidad} prendas - {mov['servicio_nombre'] or 'Servicio'}",
+                            mov["fecha"], str(cargo_id),
+                        )
+                        await conn.execute(
+                            """
+                            UPDATE finanzas2.cont_cuenta_financiera
+                            SET saldo_actual = COALESCE(saldo_actual, 0) + $1
+                            WHERE id = $2
+                            """,
+                            importe, cuenta_id,
+                        )
+                    # Acumular resumen por unidad
+                    uid = mov["unidad_interna_id"]
+                    g = unidades_afectadas.setdefault(uid, {
+                        "unidad_interna_id": uid,
+                        "cargos": 0,
+                        "total": 0.0,
+                    })
+                    g["cargos"] += 1
+                    g["total"] += importe
+                except Exception as e:
+                    errores.append({"movimiento_id": mov["movimiento_id"], "razon": str(e)})
+
+        resumen_unidades = [
+            {**v, "total": round(v["total"], 2)} for v in unidades_afectadas.values()
+        ]
+
+        return {
+            "message": f"{generados} cargo(s) interno(s) generado(s), {saltados} saltado(s)",
+            "generados": generados,
+            "saltados": saltados,
+            "errores": errores,
+            "unidades_afectadas": resumen_unidades,
+        }
+
+
+class GenerarFacturaBorradorInput(BaseModel):
+    movimiento_ids: list[str]
+    empresa_id: Optional[int] = None
+    tipo_documento: Optional[str] = "factura"  # factura | boleta | recibo | nota_interna (auto)
+    aplicar_igv: Optional[bool] = False         # si True, calcula 18% sobre subtotal
+    notas: Optional[str] = None
+
+
+@router.post("/movimientos-costos/generar-factura-borrador")
+async def generar_factura_borrador(
+    input: GenerarFacturaBorradorInput,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Crea un documento borrador en Finanzas a partir de los movimientos seleccionados.
+
+    El sistema detecta automáticamente el tipo según la persona:
+    - Persona EXTERNO → factura de proveedor normal (con CxP)
+    - Persona INTERNO → 'nota_interna' (sin CxP) + cargo interno + INGRESO en cuenta ficticia
+
+    Reglas:
+    - Todos los movimientos deben pertenecer a la misma persona.
+    - Todos los movimientos deben ser del MISMO tipo (todos INTERNO o todos EXTERNO).
+    - Ningún movimiento puede estar ya facturado.
+    - Si la persona externa no existe como proveedor, se crea automáticamente.
+
+    El número se genera como 'BORR-<timestamp>' (factura) o 'NI-<timestamp>' (nota interna).
+    """
+    if not input.movimiento_ids:
+        raise HTTPException(status_code=400, detail="Lista de movimientos vacía")
+
+    empresa_id = input.empresa_id or current_user.get("empresa_id") or 7
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # 1) Traer los movimientos con info enriquecida (incluye tipo_persona)
+            movs = await conn.fetch(
+                """
+                SELECT
+                    mp.id, mp.registro_id, mp.persona_id, mp.servicio_id,
+                    mp.cantidad_recibida, mp.tarifa_aplicada, mp.costo_calculado,
+                    mp.factura_numero,
+                    p.nombre  AS persona_nombre,
+                    COALESCE(p.tipo_persona, 'EXTERNO') AS persona_tipo,
+                    p.unidad_interna_id,
+                    s.nombre  AS servicio_nombre,
+                    r.n_corte AS n_corte,
+                    r.linea_negocio_id,
+                    COALESCE(mp.fecha_fin, mp.fecha_inicio, mp.created_at::date) AS fecha_mov
+                FROM prod_movimientos_produccion mp
+                LEFT JOIN prod_personas_produccion p ON p.id = mp.persona_id
+                LEFT JOIN prod_servicios_produccion s ON s.id = mp.servicio_id
+                LEFT JOIN prod_registros r ON r.id = mp.registro_id
+                WHERE mp.id = ANY($1::text[])
+                """,
+                input.movimiento_ids,
+            )
+            if len(movs) != len(input.movimiento_ids):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Se encontraron {len(movs)} movimientos de {len(input.movimiento_ids)} solicitados",
+                )
+
+            # 2) Validaciones generales
+            ya_facturados = [m["id"] for m in movs if m["factura_numero"]]
+            if ya_facturados:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{len(ya_facturados)} movimiento(s) ya están facturados. Desvinculalos primero.",
+                )
+            personas = {m["persona_id"] for m in movs if m["persona_id"]}
+            if not personas:
+                raise HTTPException(status_code=400, detail="Los movimientos no tienen persona asignada")
+            if len(personas) > 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Todos los movimientos deben ser de la misma persona. Seleccioná uno a la vez o filtrá por persona.",
+                )
+            persona_nombre = movs[0]["persona_nombre"] or "Sin nombre"
+            tipos = {m["persona_tipo"] for m in movs}
+            if len(tipos) > 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se puede mezclar movimientos INTERNO y EXTERNO en un mismo documento.",
+                )
+            es_nota_interna = (movs[0]["persona_tipo"] == "INTERNO")
+            unidad_interna_id = movs[0]["unidad_interna_id"] if es_nota_interna else None
+            if es_nota_interna and not unidad_interna_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La persona INTERNO no tiene unidad asignada en el maestro de personas.",
+                )
+
+            # 3) Proveedor:
+            #    EXTERNO → buscar/crear tercero
+            #    INTERNO → proveedor_id queda NULL; usamos unidad_interna_id en la factura
+            proveedor_id = None
+            proveedor_creado = False
+            if not es_nota_interna:
+                prov = await conn.fetchrow(
+                    """
+                    SELECT id FROM finanzas2.cont_tercero
+                    WHERE nombre ILIKE $1 AND es_proveedor = TRUE AND empresa_id = $2
+                    LIMIT 1
+                    """,
+                    persona_nombre, empresa_id,
+                )
+                if prov:
+                    proveedor_id = prov["id"]
+                else:
+                    proveedor_id = await conn.fetchval(
+                        """
+                        INSERT INTO finanzas2.cont_tercero
+                            (nombre, es_proveedor, es_cliente, activo, empresa_id, notas)
+                        VALUES ($1, TRUE, FALSE, TRUE, $2, $3)
+                        RETURNING id
+                        """,
+                        persona_nombre, empresa_id,
+                        "Creado automáticamente desde Producción",
+                    )
+                    proveedor_creado = True
+
+            # 4) (Las líneas van como tipo_linea='servicio' en 'Detalle del artículo / servicio')
+
+            # 5) Totales
+            subtotal = sum(safe_float(m["costo_calculado"]) for m in movs)
+            # Para notas internas no aplicamos IGV (no es doc SUNAT)
+            aplicar_igv_efectivo = (not es_nota_interna) and bool(input.aplicar_igv)
+            igv_val = round(subtotal * 0.18, 2) if aplicar_igv_efectivo else 0.0
+            total = round(subtotal + igv_val, 2)
+
+            # 6) Número y tipo de documento
+            from datetime import datetime as _dt
+            ts = _dt.now().strftime("%Y%m%d%H%M%S")
+            if es_nota_interna:
+                numero_borrador = f"NI-{ts}"
+                tipo_doc_final = "nota_interna"
+                tipo_sunat = None  # no es doc SUNAT
+            else:
+                numero_borrador = f"BORR-{ts}"
+                tipo_doc_final = input.tipo_documento or "factura"
+                tipo_sunat = "01" if tipo_doc_final == "factura" else "03"
+
+            notas_auto = (
+                f"{'Nota interna' if es_nota_interna else 'Factura'} generada desde Producción · "
+                f"{len(movs)} movimiento(s) · Persona: {persona_nombre}"
+            )
+            if input.notas:
+                notas_auto = f"{input.notas}\n---\n{notas_auto}"
+
+            # 7) Insertar factura (incluyendo unidad_interna_id si aplica)
+            factura_id = await conn.fetchval(
+                """
+                INSERT INTO finanzas2.cont_factura_proveedor
+                    (numero, proveedor_id, fecha_factura, terminos_dias,
+                     tipo_documento, estado, subtotal, igv, total, saldo_pendiente,
+                     notas, empresa_id, tipo_comprobante_sunat, impuestos_incluidos,
+                     base_gravada, igv_sunat, unidad_interna_id)
+                VALUES ($1, $2, CURRENT_DATE, 0,
+                        $3, 'pendiente', $4, $5, $6, $6,
+                        $7, $8, $9, FALSE,
+                        $4, $5, $10)
+                RETURNING id
+                """,
+                numero_borrador, proveedor_id,
+                tipo_doc_final,
+                subtotal, igv_val, total,
+                notas_auto, empresa_id,
+                tipo_sunat,
+                unidad_interna_id,
+            )
+
+            # 8) Insertar una línea por movimiento — como tipo_linea='servicio'
+            # Campos que llenamos (mapeo al UI 'Detalle del artículo / servicio'):
+            #   - tipo_linea       = 'servicio'
+            #   - servicio_id      = UUID del servicio de producción (Corte, Costura, etc.)
+            #   - servicio_detalle = texto descriptivo (corte + n° prendas)
+            #   - modelo_corte_id  = registro_id (UUID del corte) → enlace al "Registro"
+            #   - cantidad         = cantidad_recibida (prendas procesadas)
+            #   - precio_unitario  = tarifa_aplicada del movimiento
+            #   - importe          = costo_calculado (cantidad × precio)
+            #   - linea_negocio_id = del registro
+            #   - igv_aplica       = respeta la elección del usuario (False por defecto)
+            for m in movs:
+                cantidad = safe_int(m["cantidad_recibida"])
+                tarifa = safe_float(m["tarifa_aplicada"])
+                importe = safe_float(m["costo_calculado"])
+                # Fallback por si el movimiento no tiene tarifa pero sí costo y cantidad
+                if tarifa == 0 and cantidad > 0 and importe > 0:
+                    tarifa = round(importe / cantidad, 4)
+
+                servicio_detalle = (
+                    f"Corte #{m['n_corte'] or '?'} · {cantidad} prendas"
+                )
+                descripcion = f"{m['servicio_nombre'] or 'Servicio'} — Corte #{m['n_corte'] or '?'}"
+
+                await conn.execute(
+                    """
+                    INSERT INTO finanzas2.cont_factura_proveedor_linea
+                        (factura_id, tipo_linea, servicio_id, servicio_detalle,
+                         modelo_corte_id, descripcion, cantidad, precio_unitario,
+                         importe, igv_aplica, linea_negocio_id, empresa_id,
+                         categoria_id)
+                    VALUES ($1, 'servicio', $2, $3,
+                            $4, $5, $6, $7,
+                            $8, $9, $10, $11,
+                            NULL)
+                    """,
+                    factura_id,
+                    m["servicio_id"],            # UUID del servicio de producción
+                    servicio_detalle,
+                    m["registro_id"],            # UUID del corte → "Registro"
+                    descripcion,
+                    cantidad,
+                    tarifa,
+                    importe,
+                    bool(input.aplicar_igv),
+                    m["linea_negocio_id"],
+                    empresa_id,
+                )
+
+            # 9) Vincular los movimientos a esta factura
+            await conn.execute(
+                """
+                UPDATE prod_movimientos_produccion
+                SET factura_numero = $1, factura_id = $2
+                WHERE id = ANY($3::text[])
+                """,
+                numero_borrador, str(factura_id), input.movimiento_ids,
+            )
+
+            # 10) Si es NOTA INTERNA: generar los cargos internos en estado 'generado' (CxC virtual)
+            #     NOTA IMPORTANTE: al crear la NI NO se mueve el saldo de la cuenta ficticia.
+            #     El ingreso se materializa recién cuando la NI se "procesa" (análogo a pagar
+            #     la factura). Hasta entonces, el cargo representa una cuenta por cobrar virtual
+            #     de la unidad interna hacia la empresa.
+            cargos_creados = 0
+            saldo_cuenta_ficticia = None
+            cuenta_ficticia_id = None
+            if es_nota_interna:
+                cuenta_ficticia_id = await conn.fetchval(
+                    """
+                    SELECT id FROM finanzas2.cont_cuenta_financiera
+                    WHERE empresa_id = $1 AND unidad_interna_id = $2 AND es_ficticia = TRUE
+                    LIMIT 1
+                    """,
+                    empresa_id, unidad_interna_id,
+                )
+                for m in movs:
+                    cantidad = safe_int(m["cantidad_recibida"])
+                    tarifa = safe_float(m["tarifa_aplicada"])
+                    importe = safe_float(m["costo_calculado"])
+                    if importe == 0 and tarifa > 0 and cantidad > 0:
+                        importe = round(cantidad * tarifa, 2)
+                    if importe == 0:
+                        continue
+                    cargo_id = await conn.fetchval(
+                        """
+                        INSERT INTO finanzas2.fin_cargo_interno
+                            (fecha, registro_id, movimiento_id, unidad_interna_id,
+                             servicio_nombre, persona_nombre, cantidad, tarifa, importe,
+                             estado, empresa_id)
+                        VALUES ($1, $2, $3, $4,
+                                $5, $6, $7, $8, $9,
+                                'generado', $10)
+                        ON CONFLICT (movimiento_id) DO NOTHING
+                        RETURNING id
+                        """,
+                        m["fecha_mov"], m["registro_id"], m["id"], unidad_interna_id,
+                        m["servicio_nombre"] or "Servicio",
+                        m["persona_nombre"] or "",
+                        cantidad, tarifa, importe,
+                        empresa_id,
+                    )
+                    if cargo_id is None:
+                        continue
+                    cargos_creados += 1
+                    # ⚠️ NO creamos fin_movimiento_cuenta aquí. Eso se hace recién cuando
+                    #    se procesa la NI desde Finanzas.
+                if cuenta_ficticia_id:
+                    saldo_cuenta_ficticia = await conn.fetchval(
+                        "SELECT saldo_actual FROM finanzas2.cont_cuenta_financiera WHERE id = $1",
+                        cuenta_ficticia_id,
+                    )
+
+    return {
+        "message": (
+            f"Nota interna creada (pendiente de procesar) con {len(movs)} movimiento(s) · {cargos_creados} cargo(s) como CxC virtual"
+            if es_nota_interna
+            else f"Factura borrador creada con {len(movs)} movimiento(s)"
+        ),
+        "tipo_documento": tipo_doc_final,
+        "es_nota_interna": es_nota_interna,
+        "unidad_interna_id": unidad_interna_id,
+        "cargos_internos_creados": cargos_creados,
+        "saldo_cuenta_ficticia": float(saldo_cuenta_ficticia) if saldo_cuenta_ficticia is not None else None,
+        "factura_id": factura_id,
+        "factura_numero": numero_borrador,
+        "proveedor_id": proveedor_id,
+        "proveedor_creado": proveedor_creado,
+        "persona_nombre": persona_nombre,
+        "subtotal": round(subtotal, 2),
+        "igv": igv_val,
+        "total": total,
+        "movimientos_vinculados": len(movs),
+    }

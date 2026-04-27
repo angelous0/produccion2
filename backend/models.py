@@ -727,5 +727,6 @@ class OdooProductoClasificarInput(BaseModel):
     lavado_id: Optional[str] = None
     hilo_id: Optional[str] = None
     categoria_color_id: Optional[str] = None
+    linea_negocio_id: Optional[int] = None
     notas: Optional[str] = None
     excluir: Optional[bool] = False

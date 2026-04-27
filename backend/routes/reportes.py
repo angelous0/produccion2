@@ -153,7 +153,8 @@ async def get_wip_valorizado(
                 r.n_corte,
                 r.estado,
                 r.estado_op,
-                m.nombre as modelo_nombre,
+                -- modelo: FK a prod_modelos si existe; si no, lee de modelo_manual JSONB
+                COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') as modelo_nombre,
                 pt.codigo as pt_codigo,
                 pt.nombre as pt_nombre,
                 r.fecha_creacion,

@@ -31,21 +31,24 @@ export function useCascadaClasificacion({ marca_id, tipo_id, entalle_id, tela_ge
   const [lavados, setLavados] = useState([]);
   const [hilos, setHilos] = useState([]);
   const [categoriasColor, setCategoriasColor] = useState([]);
+  const [lineasNegocio, setLineasNegocio] = useState([]);
 
-  // Marca + tela_general + color_general + hilos se cargan solo una vez
+  // Marca + tela_general + color_general + hilos + líneas de negocio se cargan solo una vez
   useEffect(() => {
     (async () => {
       try {
-        const [m, tg, cc, h] = await Promise.all([
+        const [m, tg, cc, h, ln] = await Promise.all([
           axios.get(`${API}/marcas`),
           axios.get(`${API}/telas-general`),
           axios.get(`${API}/colores-generales`),
           axios.get(`${API}/hilos`),
+          axios.get(`${API}/lineas-negocio`).catch(() => ({ data: [] })),
         ]);
         setMarcas(m.data || []);
         setTelasGenerales(tg.data || []);
         setCategoriasColor(cc.data || []);
         setHilos(h.data || []);
+        setLineasNegocio(ln.data || []);
       } catch {}
     })();
   }, []);
@@ -156,6 +159,7 @@ export function useCascadaClasificacion({ marca_id, tipo_id, entalle_id, tela_ge
     lavados,
     hilos,
     categoriasColor,
+    lineasNegocio,
     mostrarCuello,
     mostrarLavado,
     tipoNombre: tipoSeleccionado?.nombre || null,

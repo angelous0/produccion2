@@ -83,17 +83,35 @@ async def _match_tela_general(conn, tipo_texto: str, empresa_id: int) -> Optiona
     return None
 
 
+# Alias map: texto que llega de Odoo → nombre exacto del catálogo (prod_entalles).
+# Útil cuando Odoo y el catálogo nombran el mismo fit distinto.
+ENTALLE_ALIAS = {
+    "mom jeans": "mom",
+    "boxy fit":  "boxi fit",
+    "bermuda":   "regular",
+}
+
+
 async def _match_entalle(conn, nombre: str, empresa_id: int, entalles_cache: list,
                           entalle_texto: Optional[str] = None) -> Optional[str]:
-    """Match de entalle: primero exacto contra el campo 'entalle' de Odoo,
-    luego fallback a keyword dentro del nombre del producto."""
-    # 1. Match exacto contra campo entalle de Odoo (más confiable)
+    """Match de entalle, en este orden:
+      1. Exacto (case-insensitive) contra campo 'entalle' de Odoo.
+      2. Alias map (Mom Jeans → Mom, Boxy Fit → Boxi fit, etc).
+      3. Fallback: keyword dentro del nombre del producto.
+    """
     if entalle_texto:
         target = entalle_texto.strip().lower()
+        # 1. Match directo
         for ent in entalles_cache:
             if ent['nombre'].strip().lower() == target:
                 return ent['id']
-    # 2. Fallback: buscar nombre de entalle dentro del nombre del producto
+        # 2. Alias
+        alias_target = ENTALLE_ALIAS.get(target)
+        if alias_target:
+            for ent in entalles_cache:
+                if ent['nombre'].strip().lower() == alias_target:
+                    return ent['id']
+    # 3. Fallback: buscar nombre de entalle dentro del nombre del producto
     if nombre:
         upper = nombre.upper()
         for ent in entalles_cache:
@@ -166,14 +184,25 @@ def _recalcular_estado(vals: dict, tipo_nombre: Optional[str]) -> tuple:
 async def sync_odoo_productos(current_user: dict = Depends(get_current_user)):
     """
     Sync con auto-matching. Idempotente.
-    Trae templates activos con stock > 0 desde schema odoo.
+
+    Filtros aplicados a la lista de templates Odoo:
+      - active = TRUE
+      - purchase_ok = FALSE  (solo productos terminados; excluye insumos
+                              comprables como telas/hilos/avíos)
+      - marca NOT NULL y NOT vacío  (excluye accesorios/empaques sin marca)
+      - tipo NO en ('Otros','Otro','')  (excluye productos accesorios como
+                                         CORREAS, PROBADOR, etc.)
+      - nombre no es claramente un accesorio (CORREA, PROBADOR, ENVIO, SACO …)
+      - SUM(available_qty) > 0  (productos NUEVOS solo entran si tienen stock)
+      - **excepción**: productos que YA están en prod_odoo_productos_enriq se
+        incluyen aunque su stock haya caído a 0, para refrescar saldos a 0.
     """
     t0 = time.time()
     empresa_id = current_user.get("empresa_id") or 7
     pool = await get_pool()
 
     async with pool.acquire() as conn:
-        # 1. Traer productos desde Odoo (agrupando stock de variantes)
+        # 1. Traer productos desde Odoo (agrupando stock de variantes).
         productos_odoo = await conn.fetch("""
             SELECT
                 pt.odoo_id AS template_id,
@@ -189,9 +218,22 @@ async def sync_odoo_productos(current_user: dict = Depends(get_current_user)):
             LEFT JOIN odoo.product_product pp ON pp.product_tmpl_id = pt.odoo_id
             LEFT JOIN odoo.v_stock_by_product s ON s.product_id = pp.odoo_id
             WHERE pt.active = TRUE
+              AND COALESCE(pt.purchase_ok, FALSE) = FALSE
+              AND pt.marca IS NOT NULL
+              AND TRIM(pt.marca) <> ''
+              AND LOWER(TRIM(COALESCE(pt.tipo, ''))) NOT IN ('otros', 'otro', '')
+              AND UPPER(pt.name) NOT LIKE 'CORREA%'
+              AND UPPER(pt.name) NOT LIKE 'PROBADOR%'
+              AND UPPER(pt.name) NOT LIKE 'ENVIO %'
+              AND UPPER(pt.name) NOT LIKE 'SACO %'
             GROUP BY pt.odoo_id, pt.name, pt.marca, pt.tipo, pt.entalle, pt.tela, pt.hilo, pt.active
             HAVING COALESCE(SUM(s.available_qty), 0) > 0
-        """)
+               OR EXISTS (
+                    SELECT 1 FROM produccion.prod_odoo_productos_enriq pe
+                     WHERE pe.odoo_template_id = pt.odoo_id
+                       AND pe.empresa_id = $1
+               )
+        """, empresa_id)
 
         # 2. Cache de entalles ordenados por largo desc
         entalles_cache = await conn.fetch(
@@ -387,6 +429,8 @@ async def list_productos(
     marca_id: Optional[str] = None,
     tipo_id: Optional[str] = None,
     tela_general_id: Optional[str] = None,
+    entalle_id: Optional[str] = None,
+    hilo_id: Optional[str] = None,
     q: Optional[str] = None,
     sort_by: Optional[str] = Query('default', pattern='^(default|stock|nombre|estado)$'),
     sort_dir: Optional[str] = Query('asc', pattern='^(asc|desc)$'),
@@ -408,6 +452,10 @@ async def list_productos(
             conditions.append(f"p.tipo_id = ${idx}"); params.append(tipo_id); idx += 1
         if tela_general_id:
             conditions.append(f"p.tela_general_id = ${idx}"); params.append(tela_general_id); idx += 1
+        if entalle_id:
+            conditions.append(f"p.entalle_id = ${idx}"); params.append(entalle_id); idx += 1
+        if hilo_id:
+            conditions.append(f"p.hilo_id = ${idx}"); params.append(hilo_id); idx += 1
         if q and q.strip():
             conditions.append(
                 f"(LOWER(p.odoo_nombre) LIKE ${idx} OR LOWER(p.odoo_default_code) LIKE ${idx}"
@@ -423,6 +471,19 @@ async def list_productos(
         )
         offset = (page - 1) * limit
         rows = await conn.fetch(f"""
+            WITH variantes_por_tmpl AS (
+                -- Colores Odoo por template (excluye variantes sin color)
+                SELECT v.product_tmpl_id,
+                       COUNT(DISTINCT v.color)            AS total_colores,
+                       COUNT(DISTINCT v.color)
+                         FILTER (WHERE m.color_id IS NOT NULL) AS colores_mapeados
+                  FROM odoo.v_product_variant_flat v
+                  LEFT JOIN prod_odoo_color_mapping m
+                         ON m.odoo_product_id = v.product_product_id
+                        AND m.empresa_id = $1
+                 WHERE v.color IS NOT NULL AND TRIM(v.color) <> ''
+                 GROUP BY v.product_tmpl_id
+            )
             SELECT p.*,
                    ma.nombre AS marca_nombre,
                    t.nombre  AS tipo_nombre,
@@ -434,7 +495,10 @@ async def list_productos(
                    d.nombre  AS detalle_nombre,
                    l.nombre  AS lavado_nombre,
                    h.nombre  AS hilo_nombre,
-                   cc.nombre AS categoria_color_nombre
+                   cc.nombre AS categoria_color_nombre,
+                   ln.nombre AS linea_negocio_nombre,
+                   COALESCE(vt.total_colores, 0)    AS colores_total,
+                   COALESCE(vt.colores_mapeados, 0) AS colores_mapeados
             FROM prod_odoo_productos_enriq p
             LEFT JOIN prod_marcas ma ON p.marca_id = ma.id
             LEFT JOIN prod_tipos t   ON p.tipo_id = t.id
@@ -447,12 +511,72 @@ async def list_productos(
             LEFT JOIN prod_lavados l  ON p.lavado_id = l.id
             LEFT JOIN prod_hilos h    ON p.hilo_id = h.id
             LEFT JOIN prod_colores_generales cc ON p.categoria_color_id = cc.id
+            LEFT JOIN finanzas2.cont_linea_negocio ln ON p.linea_negocio_id = ln.id
+            LEFT JOIN variantes_por_tmpl vt ON vt.product_tmpl_id = p.odoo_template_id
             WHERE {where}
             ORDER BY {_build_order_by(sort_by, sort_dir)}
             LIMIT {limit} OFFSET {offset}
         """, *params)
         items = [row_to_dict(r) for r in rows]
         return {"items": items, "total": total, "page": page, "limit": limit}
+
+
+# ─── Facets (para filtros cascada) ───────────────────────────────────
+# Dado un subset de filtros, devuelve las opciones (id + nombre) que
+# efectivamente existen para que el frontend haga cascade.
+
+@router.get("/facets/cascada")
+async def facets_cascada(
+    estado: Optional[str] = None,
+    marca_id: Optional[str] = None,
+    tipo_id: Optional[str] = None,
+    tela_general_id: Optional[str] = None,
+    entalle_id: Optional[str] = None,
+    hilo_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Devuelve, para cada dimensión filtrable, los IDs disponibles según
+    los filtros actuales. Se usa para deshabilitar opciones imposibles
+    en los dropdowns de la pantalla Productos Odoo."""
+    empresa_id = current_user.get("empresa_id") or 7
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        def build_where(exclude: Optional[str] = None):
+            conds = ["empresa_id = $1"]
+            params: list = [empresa_id]
+            idx = 2
+            if estado and estado != 'todos':
+                conds.append(f"estado = ${idx}"); params.append(estado); idx += 1
+            if marca_id and exclude != 'marca':
+                conds.append(f"marca_id = ${idx}"); params.append(marca_id); idx += 1
+            if tipo_id and exclude != 'tipo':
+                conds.append(f"tipo_id = ${idx}"); params.append(tipo_id); idx += 1
+            if tela_general_id and exclude != 'tela':
+                conds.append(f"tela_general_id = ${idx}"); params.append(tela_general_id); idx += 1
+            if entalle_id and exclude != 'entalle':
+                conds.append(f"entalle_id = ${idx}"); params.append(entalle_id); idx += 1
+            if hilo_id and exclude != 'hilo':
+                conds.append(f"hilo_id = ${idx}"); params.append(hilo_id); idx += 1
+            return " AND ".join(conds), params
+
+        result = {}
+        # Por cada dimensión, excluimos su propio filtro para que
+        # el usuario vea TODAS las opciones de esa dim, no solo la seleccionada.
+        for dim, col in [
+            ('marca', 'marca_id'),
+            ('tipo', 'tipo_id'),
+            ('tela', 'tela_general_id'),
+            ('entalle', 'entalle_id'),
+            ('hilo', 'hilo_id'),
+        ]:
+            where, params = build_where(exclude=dim)
+            rows = await conn.fetch(
+                f"SELECT DISTINCT {col} AS id FROM prod_odoo_productos_enriq "
+                f"WHERE {where} AND {col} IS NOT NULL",
+                *params,
+            )
+            result[dim] = [r['id'] for r in rows]
+        return result
 
 
 @router.get("/{enriq_id}")
@@ -471,7 +595,8 @@ async def get_producto(enriq_id: str, current_user: dict = Depends(get_current_u
                    d.nombre  AS detalle_nombre,
                    l.nombre  AS lavado_nombre,
                    h.nombre  AS hilo_nombre,
-                   cc.nombre AS categoria_color_nombre
+                   cc.nombre AS categoria_color_nombre,
+                   ln.nombre AS linea_negocio_nombre
             FROM prod_odoo_productos_enriq p
             LEFT JOIN prod_marcas ma ON p.marca_id = ma.id
             LEFT JOIN prod_tipos t   ON p.tipo_id = t.id
@@ -484,6 +609,7 @@ async def get_producto(enriq_id: str, current_user: dict = Depends(get_current_u
             LEFT JOIN prod_lavados l  ON p.lavado_id = l.id
             LEFT JOIN prod_hilos h    ON p.hilo_id = h.id
             LEFT JOIN prod_colores_generales cc ON p.categoria_color_id = cc.id
+            LEFT JOIN finanzas2.cont_linea_negocio ln ON p.linea_negocio_id = ln.id
             WHERE p.id = $1
         """, enriq_id)
         if not row:
@@ -550,17 +676,19 @@ async def clasificar_producto(
                 lavado_id = $9,
                 hilo_id = $10,
                 categoria_color_id = $11,
-                notas = $12,
-                estado = $13,
+                linea_negocio_id = $12,
+                notas = $13,
+                estado = $14,
                 excluido_motivo = NULL,
-                campos_pendientes = $14::jsonb,
-                classified_by = $15,
+                campos_pendientes = $15::jsonb,
+                classified_by = $16,
                 classified_at = NOW(),
                 updated_at = NOW()
-            WHERE id = $16
+            WHERE id = $17
         """, body.marca_id, body.tipo_id, body.tela_general_id, body.tela_id,
              body.entalle_id, body.genero_id, body.cuello_id, body.detalle_id,
-             body.lavado_id, body.hilo_id, body.categoria_color_id, body.notas,
+             body.lavado_id, body.hilo_id, body.categoria_color_id,
+             body.linea_negocio_id, body.notas,
              nuevo_estado, json.dumps(pendientes),
              current_user.get('username'), enriq_id)
         return {"message": "Producto clasificado", "estado": nuevo_estado, "campos_pendientes": pendientes}

@@ -164,7 +164,10 @@ export const RegistroForm = () => {
   const [personaPopoverOpen, setPersonaPopoverOpen] = useState(false);
 
   const [incidencias, setIncidencias] = useState([]);
-  const isParalizado = incidencias.some(i => i.paraliza && i.paralizacion_activa && i.estado === 'ABIERTA');
+  // Un registro "está paralizado" cuando tiene una incidencia abierta que paraliza.
+  // Los administradores tienen bypass: pueden seguir editando aunque esté paralizado.
+  const paralizacionReal = incidencias.some(i => i.paraliza && i.paralizacion_activa && i.estado === 'ABIERTA');
+  const isParalizado = paralizacionReal && !isAdmin();
   const [motivosIncidencia, setMotivosIncidencia] = useState([]);
   const [incidenciaDialogOpen, setIncidenciaDialogOpen] = useState(false);
   const [incidenciaMode, setIncidenciaMode] = useState('create'); // 'create' | 'edit'
@@ -1025,7 +1028,8 @@ export const RegistroForm = () => {
       {/* HEADER FULL WIDTH */}
       <RegistroHeader
         formData={formData} setFormData={setFormData} modeloSeleccionado={modeloSeleccionado}
-        isEditing={isEditing} isParalizado={isParalizado} estados={estados} usaRuta={usaRuta}
+        isEditing={isEditing} isParalizado={isParalizado} paralizacionReal={paralizacionReal} esAdmin={isAdmin()}
+        estados={estados} usaRuta={usaRuta}
         rutaNombre={rutaNombre} analisisEstado={analisisEstado} loading={loading} id={id}
         navigate={safeNavigate} API={API} autoGuardarEstado={autoGuardarEstado}
         setForzarEstadoDialog={setForzarEstadoDialog} setSugerenciaMovDialog={setSugerenciaMovDialog}

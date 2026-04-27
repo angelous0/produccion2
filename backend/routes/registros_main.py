@@ -669,6 +669,7 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
         # Validar cambio de línea de negocio si hay consumos/movimientos
         old_linea = result.get('linea_negocio_id')
         new_linea = input.linea_negocio_id
+        cascada_linea = False
         if old_linea and new_linea != old_linea:
             tiene_consumos = await conn.fetchval(
                 "SELECT COUNT(*) FROM prod_inventario_salidas WHERE registro_id = $1", registro_id
@@ -677,10 +678,16 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
                 "SELECT COUNT(*) FROM prod_movimientos_produccion WHERE registro_id = $1", registro_id
             )
             if tiene_consumos > 0 or tiene_movimientos > 0:
-                raise HTTPException(
-                    status_code=400,
-                    detail="No se puede cambiar la línea de negocio: el registro ya tiene consumos o movimientos asociados."
-                )
+                # Bypass para administradores: permitir el cambio y propagar la nueva
+                # línea a los consumos (salidas de inventario) en cascada. Los movimientos
+                # de producción no tienen columna linea_negocio_id propia, heredan del registro.
+                if current_user.get("rol") == "admin":
+                    cascada_linea = True
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="No se puede cambiar la línea de negocio: el registro ya tiene consumos o movimientos asociados."
+                    )
         
         tallas_json = json.dumps([t.model_dump() for t in input.tallas])
         dist_json = json.dumps([d.model_dump() for d in input.distribucion_colores])
@@ -701,6 +708,17 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
             """UPDATE prod_registros SET n_corte=$1, modelo_id=$2, curva=$3, estado=$4, urgente=$5, hilo_especifico_id=$6, tallas=$7, distribucion_colores=$8, pt_item_id=$9, observaciones=$10, linea_negocio_id=$11, fecha_entrega_final=$13, fecha_inicio_real=$14, modelo_manual=$15 WHERE id=$12""",
             input.n_corte, input.modelo_id, input.curva, input.estado, input.urgente, input.hilo_especifico_id, tallas_json, dist_json, input.pt_item_id, input.observaciones, input.linea_negocio_id, registro_id, fecha_ef, fecha_ir, modelo_manual_json
         )
+
+        # Cascada de línea de negocio (solo admin con bypass):
+        # propagar la nueva línea a las salidas de inventario asociadas al registro
+        # para mantener consistencia en los reportes de costos por línea.
+        if cascada_linea:
+            await conn.execute(
+                """UPDATE prod_inventario_salidas
+                   SET linea_negocio_id = $1
+                   WHERE registro_id = $2""",
+                input.linea_negocio_id, registro_id,
+            )
 
         # Captura automática de fecha_envio_tienda cuando el lote pasa a 'Tienda'.
         # Tienda no es un estado productivo — es el evento de despacho al local.

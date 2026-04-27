@@ -9,9 +9,10 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '../components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Package, RefreshCw, Search, Pencil, Loader2, Ban, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Package, RefreshCw, Search, Pencil, Loader2, Ban, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Palette, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import ProductoOdooModal from '../components/ProductoOdooModal';
+import ExportButton from '../components/ExportButton';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -34,11 +35,17 @@ const ProductosOdoo = () => {
   const [filtroMarca, setFiltroMarca] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
   const [filtroTelaGeneral, setFiltroTelaGeneral] = useState('');
+  const [filtroEntalle, setFiltroEntalle] = useState('');
+  const [filtroHilo, setFiltroHilo] = useState('');
   const [sortBy, setSortBy] = useState('default');
   const [sortDir, setSortDir] = useState('asc');
   const [marcas, setMarcas] = useState([]);
   const [tipos, setTipos] = useState([]);
   const [telasGenerales, setTelasGenerales] = useState([]);
+  const [entalles, setEntalles] = useState([]);
+  const [hilos, setHilos] = useState([]);
+  // Facets: IDs de cada dimensión que aparecen en algún producto con los filtros actuales
+  const [facets, setFacets] = useState({ marca: null, tipo: null, tela: null, entalle: null, hilo: null });
   const [editing, setEditing] = useState(null);
 
   const limit = 50;
@@ -63,6 +70,8 @@ const ProductosOdoo = () => {
       if (filtroMarca) params.append('marca_id', filtroMarca);
       if (filtroTipo) params.append('tipo_id', filtroTipo);
       if (filtroTelaGeneral) params.append('tela_general_id', filtroTelaGeneral);
+      if (filtroEntalle) params.append('entalle_id', filtroEntalle);
+      if (filtroHilo) params.append('hilo_id', filtroHilo);
       if (sortBy !== 'default') {
         params.append('sort_by', sortBy);
         params.append('sort_dir', sortDir);
@@ -75,25 +84,53 @@ const ProductosOdoo = () => {
     } finally {
       setLoading(false);
     }
-  }, [tab, page, q, filtroMarca, filtroTipo, filtroTelaGeneral, sortBy, sortDir]);
+  }, [tab, page, q, filtroMarca, filtroTipo, filtroTelaGeneral, filtroEntalle, filtroHilo, sortBy, sortDir]);
+
+  // Facets cascada: recomputa qué opciones están disponibles dados los filtros actuales
+  const fetchFacets = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      params.append('estado', tab);
+      if (filtroMarca) params.append('marca_id', filtroMarca);
+      if (filtroTipo) params.append('tipo_id', filtroTipo);
+      if (filtroTelaGeneral) params.append('tela_general_id', filtroTelaGeneral);
+      if (filtroEntalle) params.append('entalle_id', filtroEntalle);
+      if (filtroHilo) params.append('hilo_id', filtroHilo);
+      const res = await axios.get(`${API}/odoo-enriq/facets/cascada?${params.toString()}`);
+      setFacets({
+        marca: new Set(res.data.marca || []),
+        tipo: new Set(res.data.tipo || []),
+        tela: new Set(res.data.tela || []),
+        entalle: new Set(res.data.entalle || []),
+        hilo: new Set(res.data.hilo || []),
+      });
+    } catch {
+      setFacets({ marca: null, tipo: null, tela: null, entalle: null, hilo: null });
+    }
+  }, [tab, filtroMarca, filtroTipo, filtroTelaGeneral, filtroEntalle, filtroHilo]);
 
   useEffect(() => {
     (async () => {
       try {
-        const [m, t, tg] = await Promise.all([
+        const [m, t, tg, e, h] = await Promise.all([
           axios.get(`${API}/marcas`),
           axios.get(`${API}/tipos`),
           axios.get(`${API}/telas-general`),
+          axios.get(`${API}/entalles`),
+          axios.get(`${API}/hilos`),
         ]);
         setMarcas(m.data || []);
         setTipos(t.data || []);
         setTelasGenerales(tg.data || []);
+        setEntalles(e.data || []);
+        setHilos(h.data || []);
       } catch {}
     })();
     fetchStats();
   }, [fetchStats]);
 
   useEffect(() => { fetchList(); }, [fetchList]);
+  useEffect(() => { fetchFacets(); }, [fetchFacets]);
 
   const handleSync = async () => {
     if (syncing) return;
@@ -152,10 +189,18 @@ const ProductosOdoo = () => {
             </p>
           </div>
         </div>
-        <Button onClick={handleSync} disabled={syncing} data-testid="btn-sync-odoo">
-          {syncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-          Sync desde Odoo
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportButton
+            tabla="productos_odoo"
+            label="Exportar"
+            variant="outline"
+            data-testid="export-productos-odoo"
+          />
+          <Button onClick={handleSync} disabled={syncing} data-testid="btn-sync-odoo">
+            {syncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+            Sync desde Odoo
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -192,27 +237,22 @@ const ProductosOdoo = () => {
                 className="pl-8 h-9"
               />
             </div>
-            <Select value={filtroMarca || '_all'} onValueChange={v => { setFiltroMarca(v === '_all' ? '' : v); setPage(1); }}>
-              <SelectTrigger className="w-[180px] h-9 text-sm"><SelectValue placeholder="Todas las marcas" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_all">Todas las marcas</SelectItem>
-                {marcas.map(m => <SelectItem key={m.id} value={m.id}>{m.nombre}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={filtroTipo || '_all'} onValueChange={v => { setFiltroTipo(v === '_all' ? '' : v); setPage(1); }}>
-              <SelectTrigger className="w-[150px] h-9 text-sm"><SelectValue placeholder="Todos los tipos" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_all">Todos los tipos</SelectItem>
-                {tipos.map(t => <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={filtroTelaGeneral || '_all'} onValueChange={v => { setFiltroTelaGeneral(v === '_all' ? '' : v); setPage(1); }}>
-              <SelectTrigger className="w-[180px] h-9 text-sm"><SelectValue placeholder="Todas las telas" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_all">Todas las telas</SelectItem>
-                {telasGenerales.map(tg => <SelectItem key={tg.id} value={tg.id}>{tg.nombre}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <CascadeSelect label="marcas" items={marcas} availableSet={facets.marca}
+              value={filtroMarca} onChange={v => { setFiltroMarca(v); setPage(1); }} width={180}/>
+            <CascadeSelect label="tipos" items={tipos} availableSet={facets.tipo}
+              value={filtroTipo} onChange={v => { setFiltroTipo(v); setPage(1); }} width={150}/>
+            <CascadeSelect label="entalles" items={entalles} availableSet={facets.entalle}
+              value={filtroEntalle} onChange={v => { setFiltroEntalle(v); setPage(1); }} width={150}/>
+            <CascadeSelect label="telas" items={telasGenerales} availableSet={facets.tela}
+              value={filtroTelaGeneral} onChange={v => { setFiltroTelaGeneral(v); setPage(1); }} width={170}/>
+            <CascadeSelect label="hilos" items={hilos} availableSet={facets.hilo}
+              value={filtroHilo} onChange={v => { setFiltroHilo(v); setPage(1); }} width={150}/>
+            {(filtroMarca || filtroTipo || filtroTelaGeneral || filtroEntalle || filtroHilo) && (
+              <Button variant="ghost" size="sm" className="h-9 text-xs"
+                onClick={() => { setFiltroMarca(''); setFiltroTipo(''); setFiltroTelaGeneral(''); setFiltroEntalle(''); setFiltroHilo(''); setPage(1); }}>
+                Limpiar filtros
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -230,12 +270,14 @@ const ProductosOdoo = () => {
                   </TableHead>
                   <TableHead>Marca</TableHead>
                   <TableHead>Tipo</TableHead>
-                  <TableHead>Tela</TableHead>
                   <TableHead>Entalle</TableHead>
-                  <TableHead>Género</TableHead>
+                  <TableHead>Tela</TableHead>
+                  <TableHead>Hilo</TableHead>
+                  <TableHead>Línea Negocio</TableHead>
                   <TableHead className="text-right">
                     <SortHeader label="Stock" col="stock" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} align="right" />
                   </TableHead>
+                  <TableHead className="text-center w-[90px]" title="Colores Odoo mapeados al catálogo / total">Colores</TableHead>
                   <TableHead className="text-right w-[110px]">Costo</TableHead>
                   <TableHead>
                     <SortHeader label="Estado" col="estado" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
@@ -245,9 +287,9 @@ const ProductosOdoo = () => {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={11} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin inline-block mr-2" />Cargando…</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={13} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin inline-block mr-2" />Cargando…</TableCell></TableRow>
                 ) : items.length === 0 ? (
-                  <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Sin productos</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={13} className="text-center py-8 text-muted-foreground">Sin productos</TableCell></TableRow>
                 ) : items.map(it => (
                   <TableRow key={it.id} data-testid={`producto-row-${it.id}`}>
                     <TableCell className="font-mono text-xs">{it.odoo_default_code || `#${it.odoo_template_id}`}</TableCell>
@@ -266,10 +308,18 @@ const ProductosOdoo = () => {
                         <Badge variant="outline" className="border-amber-400 text-amber-700 dark:text-amber-400">{it.odoo_tipo_texto}</Badge>
                       ) : <span className="text-muted-foreground text-xs">—</span>}
                     </TableCell>
-                    <TableCell className="text-xs">{it.tela_general_nombre || <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell className="text-xs">{it.entalle_nombre || <span className="text-muted-foreground">—</span>}</TableCell>
-                    <TableCell className="text-xs">{it.genero_nombre || <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell className="text-xs">{it.tela_general_nombre || <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell className="text-xs">{it.hilo_nombre || <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell>
+                      {it.linea_negocio_nombre ? (
+                        <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300">{it.linea_negocio_nombre}</Badge>
+                      ) : <span className="text-muted-foreground text-xs">—</span>}
+                    </TableCell>
                     <TableCell className="text-right font-mono text-xs">{parseFloat(it.odoo_stock_actual || 0).toLocaleString('es-PE', { maximumFractionDigits: 0 })}</TableCell>
+                    <TableCell className="text-center">
+                      <ColoresBadge mapeados={it.colores_mapeados} total={it.colores_total} />
+                    </TableCell>
                     <TableCell className="text-right font-mono text-xs">
                       {it.costo_manual != null ? (
                         <span className="text-emerald-700 dark:text-emerald-400">S/ {parseFloat(it.costo_manual).toFixed(2)}</span>
@@ -342,5 +392,69 @@ const StatCard = ({ label, value, color }) => (
     </CardContent>
   </Card>
 );
+
+// Badge de colores mapeados: muestra X/Y con icono según estado
+function ColoresBadge({ mapeados, total }) {
+  const m = parseInt(mapeados) || 0;
+  const t = parseInt(total) || 0;
+  if (t === 0) {
+    return <span className="text-muted-foreground text-xs" title="Este producto no tiene variantes con color en Odoo">—</span>;
+  }
+  if (m === t) {
+    // Completo
+    return (
+      <span
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 text-xs font-mono"
+        title={`Los ${t} colores Odoo están mapeados al catálogo`}
+      >
+        <Check className="h-3 w-3" /> {m}/{t}
+      </span>
+    );
+  }
+  if (m === 0) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300 text-xs font-mono"
+        title={`Ningún color mapeado todavía. Faltan los ${t} colores.`}
+      >
+        <Palette className="h-3 w-3" /> 0/{t}
+      </span>
+    );
+  }
+  // Parcial
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 text-xs font-mono"
+      title={`${m} de ${t} colores mapeados. Faltan ${t - m}.`}
+    >
+      <Palette className="h-3 w-3" /> {m}/{t}
+    </span>
+  );
+}
+
+// Select "cascada" — deshabilita opciones que no aparecen en ningún producto
+// con los filtros actuales. availableSet: Set<id> o null (= sin restricción).
+const CascadeSelect = ({ label, items, availableSet, value, onChange, width = 160 }) => {
+  const placeholder = `Todas${label.endsWith('s') ? ' las' : ' los'} ${label}`;
+  return (
+    <Select value={value || '_all'} onValueChange={v => onChange(v === '_all' ? '' : v)}>
+      <SelectTrigger className="h-9 text-sm" style={{ width }}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="_all">{placeholder}</SelectItem>
+        {items.map(it => {
+          const disabled = availableSet && !availableSet.has(it.id) && it.id !== value;
+          return (
+            <SelectItem key={it.id} value={it.id} disabled={disabled}>
+              {it.nombre}
+              {disabled && <span className="ml-2 text-[10px] text-muted-foreground">(0)</span>}
+            </SelectItem>
+          );
+        })}
+      </SelectContent>
+    </Select>
+  );
+};
 
 export default ProductosOdoo;

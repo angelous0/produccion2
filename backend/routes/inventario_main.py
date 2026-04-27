@@ -888,11 +888,19 @@ async def delete_ingreso(ingreso_id: str, _u=Depends(get_current_user)):
         ingreso = await conn.fetchrow("SELECT * FROM prod_inventario_ingresos WHERE id = $1", ingreso_id)
         if not ingreso:
             raise HTTPException(status_code=404, detail="Ingreso no encontrado")
-        if ingreso['cantidad_disponible'] != ingreso['cantidad']:
+
+        modo_mig = await conn.fetchval(
+            "SELECT valor FROM prod_configuracion WHERE clave = 'modo_migracion'"
+        )
+        en_migracion = modo_mig == 'true'
+
+        if ingreso['cantidad_disponible'] != ingreso['cantidad'] and not en_migracion:
             raise HTTPException(status_code=400, detail="No se puede eliminar un ingreso que ya tiene salidas")
-        await conn.execute("DELETE FROM prod_inventario_rollos WHERE ingreso_id = $1", ingreso_id)
-        await conn.execute("DELETE FROM prod_inventario_ingresos WHERE id = $1", ingreso_id)
-        await conn.execute("UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2", ingreso['cantidad'], ingreso['item_id'])
+
+        async with conn.transaction():
+            await conn.execute("DELETE FROM prod_inventario_rollos WHERE ingreso_id = $1", ingreso_id)
+            await conn.execute("DELETE FROM prod_inventario_ingresos WHERE id = $1", ingreso_id)
+            await conn.execute("UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2", ingreso['cantidad'], ingreso['item_id'])
         return {"message": "Ingreso eliminado"}
 
 # ==================== ENDPOINTS SALIDAS INVENTARIO ====================
@@ -1447,28 +1455,191 @@ async def update_salida(salida_id: str, input: SalidaUpdateData, _u=Depends(get_
         await conn.execute("UPDATE prod_inventario_salidas SET observaciones=$1 WHERE id=$2", input.observaciones, salida_id)
         return {"message": "Salida actualizada"}
 
+
+# ════════════════════════════════════════════════════════════════════════
+# RECÁLCULO DE COSTO FIFO PARA SALIDAS HISTÓRICAS
+# ════════════════════════════════════════════════════════════════════════
+@router.post("/inventario-salidas/recalcular-costo-fifo")
+async def recalcular_costo_fifo(
+    item_id: Optional[str] = None,
+    solo_costo_cero: bool = True,
+    _u=Depends(get_current_user),
+):
+    """
+    Recalcula el costo FIFO de salidas históricas usando los ingresos
+    actualmente disponibles. Útil cuando se hicieron salidas ANTES de
+    registrar los ingresos (típico en migración/carga inicial).
+
+    Parámetros:
+    - item_id: si se provee, solo recalcula salidas de ese item.
+    - solo_costo_cero: si True (default), solo toca salidas con costo_total=0.
+                       Si False, recalcula TODAS las salidas (peligroso).
+
+    Proceso:
+    1. Toma salidas objetivo ordenadas por fecha ASC (para preservar el orden FIFO cronológico).
+    2. Para cada salida: consume FIFO contra ingresos con cantidad_disponible > 0.
+    3. Actualiza costo_total y detalle_fifo de la salida.
+    4. Decrementa cantidad_disponible de los ingresos consumidos.
+
+    Retorna un resumen: cuántas salidas se tocaron, costo total asignado,
+    cuántas quedaron sin cubrir (porque faltan ingresos).
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # Filtros
+            conds = []
+            params: list = []
+            idx = 1
+            if item_id:
+                conds.append(f"s.item_id = ${idx}"); params.append(item_id); idx += 1
+            if solo_costo_cero:
+                conds.append("COALESCE(s.costo_total, 0) = 0")
+            where = ("WHERE " + " AND ".join(conds)) if conds else ""
+
+            salidas = await conn.fetch(f"""
+                SELECT s.id, s.item_id, s.cantidad, s.rollo_id, s.costo_total, s.detalle_fifo,
+                       s.fecha
+                FROM prod_inventario_salidas s
+                {where}
+                ORDER BY s.fecha ASC, s.id ASC
+            """, *params)
+
+            actualizadas = 0
+            total_costo_asignado = 0.0
+            sin_cubrir = 0
+            parciales = 0
+            por_item: dict = {}
+
+            for sal in salidas:
+                item_id_sal = sal["item_id"]
+                cantidad = float(sal["cantidad"])
+                rollo_id = sal["rollo_id"]
+                cantidad_restante = cantidad
+                costo_total = 0.0
+                detalle_fifo: list = []
+
+                if rollo_id:
+                    # Si tenía rollo, consume del ingreso asociado al rollo
+                    rollo = await conn.fetchrow(
+                        "SELECT ingreso_id FROM prod_inventario_rollos WHERE id = $1", rollo_id
+                    )
+                    if rollo and rollo["ingreso_id"]:
+                        ing = await conn.fetchrow(
+                            "SELECT id, cantidad_disponible, costo_unitario FROM prod_inventario_ingresos WHERE id = $1",
+                            rollo["ingreso_id"],
+                        )
+                        if ing and float(ing["cantidad_disponible"]) > 0:
+                            disponible = float(ing["cantidad_disponible"])
+                            consumir = min(disponible, cantidad_restante)
+                            costo_unit = float(ing["costo_unitario"])
+                            costo_total += consumir * costo_unit
+                            detalle_fifo.append({
+                                "rollo_id": rollo_id,
+                                "ingreso_id": ing["id"],
+                                "cantidad": consumir,
+                                "costo_unitario": costo_unit,
+                            })
+                            await conn.execute(
+                                "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible - $1 WHERE id = $2",
+                                consumir, ing["id"],
+                            )
+                            cantidad_restante -= consumir
+                else:
+                    # FIFO normal contra todos los ingresos del item con disponible
+                    ingresos = await conn.fetch(
+                        "SELECT id, cantidad_disponible, costo_unitario FROM prod_inventario_ingresos "
+                        "WHERE item_id = $1 AND cantidad_disponible > 0 ORDER BY fecha ASC, id ASC",
+                        item_id_sal,
+                    )
+                    for ing in ingresos:
+                        if cantidad_restante <= 0:
+                            break
+                        disponible = float(ing["cantidad_disponible"])
+                        if disponible <= 0:
+                            continue
+                        consumir = min(disponible, cantidad_restante)
+                        costo_unit = float(ing["costo_unitario"])
+                        costo_total += consumir * costo_unit
+                        detalle_fifo.append({
+                            "ingreso_id": ing["id"],
+                            "cantidad": consumir,
+                            "costo_unitario": costo_unit,
+                        })
+                        await conn.execute(
+                            "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible - $1 WHERE id = $2",
+                            consumir, ing["id"],
+                        )
+                        cantidad_restante -= consumir
+
+                # Actualizar la salida
+                import json as _json
+                await conn.execute(
+                    "UPDATE prod_inventario_salidas SET costo_total = $1, detalle_fifo = $2::jsonb WHERE id = $3",
+                    round(costo_total, 4),
+                    _json.dumps(detalle_fifo),
+                    sal["id"],
+                )
+                actualizadas += 1
+                total_costo_asignado += costo_total
+                if cantidad_restante > 0:
+                    if costo_total > 0:
+                        parciales += 1
+                    else:
+                        sin_cubrir += 1
+                    # Anotar en por_item
+                    por_item.setdefault(item_id_sal, {"faltante": 0, "salidas": 0})
+                    por_item[item_id_sal]["faltante"] += cantidad_restante
+                    por_item[item_id_sal]["salidas"] += 1
+
+            # Enriquecer items no cubiertos con el nombre
+            items_faltantes = []
+            for iid, data in por_item.items():
+                inv = await conn.fetchrow(
+                    "SELECT codigo, nombre FROM prod_inventario WHERE id = $1", iid
+                )
+                items_faltantes.append({
+                    "item_id": iid,
+                    "codigo": inv["codigo"] if inv else "",
+                    "nombre": inv["nombre"] if inv else "",
+                    "cantidad_faltante": round(data["faltante"], 4),
+                    "salidas_afectadas": data["salidas"],
+                })
+            items_faltantes.sort(key=lambda x: -x["cantidad_faltante"])
+
+            return {
+                "message": (
+                    f"{actualizadas} salida(s) procesada(s) · "
+                    f"Costo asignado: S/ {total_costo_asignado:.2f} · "
+                    f"Sin cubrir: {sin_cubrir} · Parcialmente cubiertas: {parciales}"
+                ),
+                "salidas_procesadas": actualizadas,
+                "total_costo_asignado": round(total_costo_asignado, 2),
+                "sin_cubrir": sin_cubrir,
+                "parcialmente_cubiertas": parciales,
+                "items_con_faltante": items_faltantes[:30],
+            }
+
+
 @router.delete("/inventario-salidas/{salida_id}")
 async def delete_salida(salida_id: str, _u=Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Bloquear eliminación de salidas mientras el modo carga inicial esté activo
-        modo_mig = await conn.fetchval(
-            "SELECT valor FROM prod_configuracion WHERE clave = 'modo_migracion'"
-        )
-        if modo_mig == 'true':
-            raise HTTPException(
-                status_code=400,
-                detail="No se puede eliminar salidas mientras el modo carga inicial esté activo. Desactívalo primero.",
-            )
         salida = await conn.fetchrow("SELECT * FROM prod_inventario_salidas WHERE id = $1", salida_id)
         if not salida:
             raise HTTPException(status_code=404, detail="Salida no encontrada")
         # Bloquear eliminación de salidas ya revertidas por un período de migración cerrado
+        # (histórico inmutable de un período cerrado).
         if salida.get('revertida_por_migracion_id'):
             raise HTTPException(
                 status_code=400,
-                detail="Esta salida ya fue revertida por un período de carga inicial y no puede eliminarse.",
+                detail="Esta salida ya fue revertida por un período de carga inicial cerrado y no puede eliminarse.",
             )
+        # Nota: si estamos en modo carga inicial, permitimos eliminar.
+        # La reversa al desactivar el modo es coherente: al cerrar el período, el sistema
+        # busca salidas con fecha >= activado_at AND revertida_por_migracion_id IS NULL
+        # y las revierte. Si una salida fue eliminada durante la carga, simplemente ya no
+        # existe → no entra en el conteo → estado físico idéntico al esperado.
         detalle_fifo = parse_jsonb(salida['detalle_fifo'])
         for detalle in detalle_fifo:
             if detalle.get('rollo_id'):

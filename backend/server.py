@@ -111,9 +111,14 @@ async def startup():
     await ensure_clasificacion_tables()
     # Índices de performance
     await ensure_startup_indices()
+    # Scheduler in-process: sync diario con Odoo a las 23:00 Lima
+    from scheduler import start_scheduler
+    start_scheduler()
 
 @app.on_event("shutdown")
 async def shutdown():
+    from scheduler import stop_scheduler
+    stop_scheduler()
     await close_pool()
 
 # ==================== CORS & ROUTER ====================

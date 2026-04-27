@@ -393,6 +393,9 @@ async def ensure_startup_migrations():
         # FK a prod_hilos (hilo general) — asignable con auto-match
         await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS hilo_id VARCHAR DEFAULT NULL")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_odoo_enriq_hilo ON prod_odoo_productos_enriq(hilo_id)")
+        # Línea de negocio (finanzas2.cont_linea_negocio) — control desde Producción
+        await conn.execute("ALTER TABLE prod_odoo_productos_enriq ADD COLUMN IF NOT EXISTS linea_negocio_id INTEGER DEFAULT NULL")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_odoo_enriq_linea_negocio ON prod_odoo_productos_enriq(linea_negocio_id)")
 
         # ─── Mapeo de colores por variante (product_id de Odoo) ────────────
         await conn.execute("""

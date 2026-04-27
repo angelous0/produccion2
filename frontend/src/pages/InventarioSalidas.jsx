@@ -31,7 +31,7 @@ import {
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
-import { Plus, Trash2, ArrowUpCircle, Link2, Layers, Pencil, Search, X, ChevronsUpDown, Check } from 'lucide-react';
+import { Plus, Trash2, ArrowUpCircle, Link2, Layers, Pencil, Search, X, ChevronsUpDown, Check, Calculator } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
 import { SalidaRollosDialog } from '../components/SalidaRollosDialog';
@@ -182,6 +182,7 @@ export const InventarioSalidas = () => {
   const searchWrapRef = useRef(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [recalculandoFifo, setRecalculandoFifo] = useState(false);
   // Flag: en modo carga inicial se permite salir más de lo que hay en stock
   // (para cargar históricos donde los ingresos aún no están completos).
   const [modoMigracion, setModoMigracion] = useState(false);
@@ -433,6 +434,46 @@ export const InventarioSalidas = () => {
     fetchData();
   };
 
+  const handleRecalcularFifo = async () => {
+    const msg =
+      'Recalcular costo FIFO de salidas con S/ 0.00\n\n' +
+      '¿Qué hace esto?\n' +
+      '• Toma todas las salidas con costo = 0\n' +
+      '• Las ordena por fecha (más antiguas primero)\n' +
+      '• Les asigna costo usando los ingresos disponibles actuales (FIFO)\n' +
+      '• Consume cantidad_disponible de cada ingreso\n\n' +
+      'Las salidas que no puedan cubrirse por falta de ingresos quedarán parcialmente cubiertas (con costo proporcional).\n\n' +
+      '¿Continuar?';
+    if (!window.confirm(msg)) return;
+    setRecalculandoFifo(true);
+    try {
+      const res = await axios.post(`${API}/inventario-salidas/recalcular-costo-fifo`, {}, {
+        params: { solo_costo_cero: true },
+      });
+      const data = res.data;
+      toast.success(data.message || 'Recálculo completado');
+      // Mostrar resumen detallado si hay items con faltante
+      if (data.items_con_faltante && data.items_con_faltante.length > 0) {
+        const top = data.items_con_faltante
+          .slice(0, 5)
+          .map(i => `${i.codigo} ${i.nombre}: −${i.cantidad_faltante}`)
+          .join('\n');
+        setTimeout(() => {
+          window.alert(
+            `Recálculo OK: ${data.salidas_procesadas} salidas procesadas · Costo asignado S/ ${data.total_costo_asignado}\n\n` +
+            `Items con déficit de stock (${data.items_con_faltante.length}):\n${top}` +
+            (data.items_con_faltante.length > 5 ? `\n... y ${data.items_con_faltante.length - 5} más` : '')
+          );
+        }, 500);
+      }
+      fetchData();
+    } catch (error) {
+      toast.error(typeof error.response?.data?.detail === 'string' ? error.response?.data?.detail : 'Error al recalcular FIFO');
+    } finally {
+      setRecalculandoFifo(false);
+    }
+  };
+
   return (
     <div className="space-y-6" data-testid="salidas-page">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -533,6 +574,18 @@ export const InventarioSalidas = () => {
             <Layers className="h-4 w-4 mr-2" />
             Salida de Rollos
           </Button>
+          {modoMigracion && (
+            <Button
+              variant="outline"
+              onClick={handleRecalcularFifo}
+              disabled={recalculandoFifo}
+              data-testid="btn-recalcular-fifo"
+              title="Recalcula el costo FIFO de todas las salidas con costo S/ 0.00 usando los ingresos actuales"
+            >
+              <Calculator className="h-4 w-4 mr-2" />
+              {recalculandoFifo ? 'Recalculando...' : 'Recalcular Costo FIFO'}
+            </Button>
+          )}
           <Button onClick={handleOpenDialog} data-testid="btn-nueva-salida">
             <Plus className="h-4 w-4 mr-2" />
             Nueva Salida

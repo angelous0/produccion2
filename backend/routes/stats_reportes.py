@@ -992,6 +992,8 @@ EXPORT_TITLES = {
     "mermas": "Mermas",
     "fallados": "Fallados",
     "arreglos": "Arreglos",
+    "productos_odoo": "Productos Odoo",
+    "wip": "Valorizado WIP en Proceso",
 }
 
 EXPORT_CONFIG = {
@@ -1016,11 +1018,108 @@ EXPORT_CONFIG = {
     },
     "inventario": {
         "query": """
-            SELECT codigo, nombre, descripcion, unidad_medida, stock_actual, stock_minimo,
-                   control_por_rollos
+            SELECT codigo, nombre, descripcion, unidad_medida,
+                   stock_actual, stock_minimo, control_por_rollos,
+                   COALESCE(costo_promedio, costo_compra, 0)::numeric(14,4) AS costo_unitario,
+                   (COALESCE(stock_actual, 0)
+                    * COALESCE(costo_promedio, costo_compra, 0))::numeric(14,2) AS valorizado
             FROM prod_inventario ORDER BY codigo
         """,
-        "headers": ["Código", "Nombre", "Descripción", "Unidad", "Stock Actual", "Stock Mínimo", "Control Rollos"]
+        "headers": ["Código", "Nombre", "Descripción", "Unidad",
+                    "Stock Actual", "Stock Mínimo", "Control Rollos",
+                    "Costo Unitario", "Valorizado"]
+    },
+    "wip": {
+        # Valorizado WIP: registros (cortes) en proceso.
+        #   Costo MP       = SUM(costo_total) de prod_inventario_salidas (FIFO)
+        #   Costo Servicios = SUM(costo_calculado) de prod_movimientos_produccion
+        # Los registros activos usan `modelo_manual` (JSONB) con marca/tipo/etc
+        # ya pre-resueltos como texto, por eso usamos COALESCE con esos campos.
+        # Excluye registros CERRADOS / ANULADOS.
+        "query": """
+            SELECT r.n_corte AS corte,
+                   COALESCE(m.nombre,    r.modelo_manual->>'nombre_modelo', '—') AS modelo,
+                   COALESCE(ma.nombre,   r.modelo_manual->>'marca_texto',   '—') AS marca,
+                   COALESCE(t.nombre,    r.modelo_manual->>'tipo_texto',    '—') AS tipo,
+                   COALESCE(en.nombre,   r.modelo_manual->>'entalle_texto', '—') AS entalle,
+                   COALESCE(te.nombre,   r.modelo_manual->>'tela_texto',    '—') AS tela,
+                   COALESCE(h.nombre,    r.modelo_manual->>'hilo_texto',    '—') AS hilo,
+                   COALESCE(r.estado_op, r.estado, '—') AS estado,
+                   r.fecha_creacion,
+                   COALESCE((SELECT SUM(cantidad_real)
+                              FROM prod_registro_tallas
+                             WHERE registro_id = r.id), 0)::int AS prendas,
+                   ROUND(COALESCE((SELECT SUM(costo_total)
+                                    FROM prod_inventario_salidas
+                                   WHERE registro_id = r.id), 0)::numeric, 2) AS costo_mp,
+                   ROUND(COALESCE((SELECT SUM(costo_calculado)
+                                    FROM prod_movimientos_produccion
+                                   WHERE registro_id = r.id), 0)::numeric, 2) AS costo_servicios,
+                   ROUND((COALESCE((SELECT SUM(costo_total)
+                                     FROM prod_inventario_salidas
+                                    WHERE registro_id = r.id), 0)
+                         + COALESCE((SELECT SUM(costo_calculado)
+                                      FROM prod_movimientos_produccion
+                                     WHERE registro_id = r.id), 0))::numeric, 2) AS total
+              FROM prod_registros r
+              LEFT JOIN prod_modelos m  ON r.modelo_id = m.id
+              LEFT JOIN prod_marcas  ma ON m.marca_id   = ma.id
+              LEFT JOIN prod_tipos   t  ON m.tipo_id    = t.id
+              LEFT JOIN prod_entalles en ON m.entalle_id = en.id
+              LEFT JOIN prod_telas   te ON m.tela_id    = te.id
+              LEFT JOIN prod_hilos   h  ON m.hilo_id    = h.id
+             WHERE COALESCE(r.estado, '') NOT IN ('CERRADA', 'ANULADA')
+               AND COALESCE(r.estado_op, '') NOT IN ('CERRADO', 'ENTREGADO')
+             ORDER BY r.fecha_creacion DESC NULLS LAST, r.n_corte
+        """,
+        "headers": ["N° Corte", "Modelo", "Marca", "Tipo", "Entalle", "Tela", "Hilo",
+                    "Estado", "Fecha", "Prendas",
+                    "Costo MP", "Costo Servicios", "Total"]
+    },
+    "productos_odoo": {
+        # NOTAS sobre IGV:
+        #  - list_price en Odoo viene con IGV incluido (precio público)
+        #  - costo_manual es neto (sin IGV)
+        #  - Para calcular margen REAL: precio_neto = list_price / 1.18,
+        #    margen = precio_neto - costo
+        "query": """
+            SELECT pe.odoo_default_code AS sku,
+                   pe.odoo_nombre        AS producto,
+                   COALESCE(ma.nombre, pe.odoo_marca_texto, '—')   AS marca,
+                   COALESCE(ti.nombre, pe.odoo_tipo_texto, '—')    AS tipo,
+                   COALESCE(en.nombre, pe.odoo_entalle_texto, '—') AS entalle,
+                   COALESCE(tg.nombre, te.nombre, pe.odoo_tela_texto, '—') AS tela,
+                   COALESCE(pe.costo_manual, 0)::numeric(14,2)     AS costo,
+                   COALESCE(pt.list_price, 0)::numeric(14,2)       AS precio_venta_con_igv,
+                   ROUND((COALESCE(pt.list_price, 0) / 1.18)::numeric, 2) AS precio_venta_sin_igv,
+                   ROUND(((COALESCE(pt.list_price, 0) / 1.18) - COALESCE(pe.costo_manual, 0))::numeric, 2)
+                                                                   AS margen_real,
+                   CASE WHEN COALESCE(pt.list_price, 0) > 0
+                        THEN ROUND(
+                              (((COALESCE(pt.list_price, 0) / 1.18) - COALESCE(pe.costo_manual, 0))
+                               / (pt.list_price / 1.18) * 100)::numeric, 2)
+                        ELSE 0
+                   END AS margen_pct,
+                   COALESCE(pe.odoo_stock_actual, 0)::numeric(14,2) AS stock,
+                   (COALESCE(pe.odoo_stock_actual, 0) * COALESCE(pe.costo_manual, 0))::numeric(14,2)
+                                                                   AS valorizado_costo,
+                   ROUND((COALESCE(pe.odoo_stock_actual, 0) * COALESCE(pt.list_price, 0) / 1.18)::numeric, 2)
+                                                                   AS valorizado_venta_neto,
+                   pe.estado AS estado_clasificacion
+              FROM prod_odoo_productos_enriq pe
+              LEFT JOIN odoo.product_template pt ON pt.odoo_id = pe.odoo_template_id
+              LEFT JOIN prod_marcas    ma ON ma.id = pe.marca_id
+              LEFT JOIN prod_tipos     ti ON ti.id = pe.tipo_id
+              LEFT JOIN prod_entalles  en ON en.id = pe.entalle_id
+              LEFT JOIN prod_telas     te ON te.id = pe.tela_id
+              LEFT JOIN prod_telas_general tg ON tg.id = pe.tela_general_id
+             ORDER BY pe.odoo_nombre
+        """,
+        "headers": ["SKU", "Producto", "Marca", "Tipo", "Entalle", "Tela",
+                    "Costo", "Precio Venta c/IGV", "Precio Venta s/IGV",
+                    "Margen S/", "Margen %",
+                    "Stock", "Valorizado Costo", "Valorizado Venta s/IGV",
+                    "Estado"]
     },
     "movimientos": {
         "query": """
