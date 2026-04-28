@@ -651,6 +651,36 @@ async def actualizar_fecha_envio_tienda(registro_id: str, body: dict, current_us
     }
 
 
+@router.patch("/registros/{registro_id}/urgente")
+async def toggle_urgente(registro_id: str, body: dict = None, current_user: dict = Depends(get_current_user)):
+    """Marcar/desmarcar un registro como urgente desde la vista de lista.
+
+    Acepta `{"urgente": true/false}` en el body. Si no se manda, alterna el valor
+    actual (toggle).
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        existing = await conn.fetchrow(
+            "SELECT urgente FROM prod_registros WHERE id = $1", registro_id)
+        if not existing:
+            raise HTTPException(404, "Registro no encontrado")
+        # Determinar nuevo valor
+        if body and 'urgente' in body:
+            nuevo = bool(body['urgente'])
+        else:
+            nuevo = not bool(existing['urgente'])
+        await conn.execute(
+            "UPDATE prod_registros SET urgente = $1 WHERE id = $2",
+            nuevo, registro_id)
+        # Auditoría
+        usuario = current_user.get("username") if isinstance(current_user, dict) else None
+        await audit_log_safe(
+            conn, usuario, "TOGGLE_URGENTE", "produccion", "prod_registros", registro_id,
+            datos_antes={"urgente": bool(existing['urgente'])},
+            datos_despues={"urgente": nuevo})
+    return {"ok": True, "urgente": nuevo}
+
+
 @router.put("/registros/{registro_id}")
 async def update_registro(registro_id: str, input: RegistroCreate, current_user: dict = Depends(get_current_user)):
     # Sanitizar FKs opcionales: string vacío → None

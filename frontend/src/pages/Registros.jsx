@@ -430,6 +430,23 @@ export const Registros = () => {
     }
   };
 
+  // Toggle urgente desde la lista (sin abrir el detalle)
+  const handleToggleUrgente = async (item) => {
+    const nuevoEstado = !item.urgente;
+    // Optimistic UI: actualizar antes de la respuesta
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, urgente: nuevoEstado } : i));
+    try {
+      await axios.patch(`${API}/registros/${item.id}/urgente`, { urgente: nuevoEstado });
+      toast.success(nuevoEstado
+        ? `Lote ${item.n_corte} marcado como urgente`
+        : `Lote ${item.n_corte} ya no es urgente`);
+    } catch (error) {
+      // Revert si falla
+      setItems(prev => prev.map(i => i.id === item.id ? { ...i, urgente: !nuevoEstado } : i));
+      toast.error('Error al cambiar urgencia');
+    }
+  };
+
   const getTotalPiezas = (registro) => {
     if (!registro.tallas) return 0;
     return registro.tallas.reduce((sum, t) => sum + (t.cantidad || 0), 0);
@@ -848,9 +865,18 @@ export const Registros = () => {
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
-                  <Badge variant="outline" className={`${getStatusClass(item.estado)} text-[11px] whitespace-nowrap`}>
-                    {item.estado}
-                  </Badge>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleToggleUrgente(item); }}
+                      className={`h-6 w-6 flex items-center justify-center rounded-md transition-colors ${item.urgente ? 'bg-rose-100 dark:bg-rose-900/40' : 'bg-muted/40 hover:bg-muted'}`}
+                      title={item.urgente ? 'Quitar urgente' : 'Marcar urgente'}
+                    >
+                      <AlertTriangle className={`h-3.5 w-3.5 ${item.urgente ? 'text-rose-600 fill-rose-500' : 'text-muted-foreground'}`} />
+                    </button>
+                    <Badge variant="outline" className={`${getStatusClass(item.estado)} text-[11px] whitespace-nowrap`}>
+                      {item.estado}
+                    </Badge>
+                  </div>
                   <span className="font-mono font-semibold text-sm">{getTotalPiezas(item)}</span>
                 </div>
               </div>
@@ -1000,6 +1026,16 @@ export const Registros = () => {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${item.urgente ? 'bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/40 dark:hover:bg-rose-900/60' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); handleToggleUrgente(item); }}
+                            title={item.urgente ? 'Quitar marca de urgente' : 'Marcar como urgente'}
+                            data-testid={`urgente-registro-${item.id}`}
+                          >
+                            <AlertTriangle className={`h-3.5 w-3.5 ${item.urgente ? 'text-rose-600 fill-rose-500' : 'text-muted-foreground'}`} />
+                          </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleOpenColoresDialog(item); }} title="Colores" data-testid={`colores-registro-${item.id}`}>
                             <Palette className={`h-3.5 w-3.5 ${tieneColores(item) ? 'text-primary' : ''}`} />
                           </Button>

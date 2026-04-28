@@ -30,6 +30,7 @@ from routes.integracion_finanzas import router as integracion_finanzas_router
 from routes.bom import router as bom_router
 from routes.control_produccion import router as control_produccion_router
 from routes.reportes_produccion import router as reportes_produccion_router
+from routes.productividad import router as productividad_router
 from routes.trazabilidad import router as trazabilidad_router, init_trazabilidad_tables
 from routes.transferencias_linea import router as transferencias_linea_router, init_transferencias_tables
 from routes.auditoria import router as auditoria_router, init_audit_tables
@@ -227,6 +228,7 @@ app.include_router(consumo_router)
 app.include_router(servicios_router)
 app.include_router(movimientos_router)
 app.include_router(stats_reportes_router)
+app.include_router(productividad_router)
 app.include_router(costos_router)
 app.include_router(cierre_legacy_router)
 app.include_router(reportes_router)

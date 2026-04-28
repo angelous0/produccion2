@@ -61,8 +61,8 @@ export const ReporteProductividad = () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (filtroFechaDesde) params.append('fecha_inicio', filtroFechaDesde);
-      if (filtroFechaHasta) params.append('fecha_fin', filtroFechaHasta);
+      if (filtroFechaDesde) params.append('fecha_desde', filtroFechaDesde);
+      if (filtroFechaHasta) params.append('fecha_hasta', filtroFechaHasta);
       if (filtroServicio) params.append('servicio_id', filtroServicio);
       if (filtroPersona) params.append('persona_id', filtroPersona);
       
@@ -82,6 +82,17 @@ export const ReporteProductividad = () => {
   useEffect(() => {
     fetchReporte();
   }, [filtroFechaDesde, filtroFechaHasta, filtroServicio, filtroPersona]);
+
+  // Auto-resetear filtros si la opción seleccionada queda fuera de la cascada
+  useEffect(() => {
+    if (!reporte?.cascada) return;
+    if (filtroServicio && !reporte.cascada.servicios_disponibles?.some(s => s.id === filtroServicio)) {
+      setFiltroServicio('');
+    }
+    if (filtroPersona && !reporte.cascada.personas_disponibles?.some(p => p.id === filtroPersona)) {
+      setFiltroPersona('');
+    }
+  }, [reporte?.cascada]);
 
   const limpiarFiltros = () => {
     setFiltroServicio('');
@@ -142,39 +153,51 @@ export const ReporteProductividad = () => {
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Servicio</Label>
-              <Select value={filtroServicio} onValueChange={(val) => setFiltroServicio(val === 'all' ? '' : val)}>
+              <Select value={filtroServicio || 'all'} onValueChange={(val) => setFiltroServicio(val === 'all' ? '' : val)}>
                 <SelectTrigger data-testid="filtro-servicio">
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  {servicios.map((s) => (
+                  {/* Cascada: muestra solo servicios con datos en el período + persona seleccionada */}
+                  {(reporte?.cascada?.servicios_disponibles || servicios).map((s) => (
                     <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {reporte?.cascada?.servicios_disponibles && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {reporte.cascada.servicios_disponibles.length} con datos
+                </p>
+              )}
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Persona</Label>
-              <Select value={filtroPersona} onValueChange={(val) => setFiltroPersona(val === 'all' ? '' : val)}>
+              <Select value={filtroPersona || 'all'} onValueChange={(val) => setFiltroPersona(val === 'all' ? '' : val)}>
                 <SelectTrigger data-testid="filtro-persona">
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  {personas.map((p) => (
+                  {/* Cascada: muestra solo personas con datos en el período + servicio seleccionado */}
+                  {(reporte?.cascada?.personas_disponibles || personas).map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {reporte?.cascada?.personas_disponibles && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {reporte.cascada.personas_disponibles.length} con datos
+                </p>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Resumen General */}
-      {reporte && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {reporte && reporte.resumen && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
@@ -182,10 +205,9 @@ export const ReporteProductividad = () => {
                   <Package className="h-6 w-6 text-blue-500" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Prendas</p>
-                  <p className="text-2xl font-bold">
-                    {(reporte.por_persona || []).reduce((sum, p) => sum + (p.total_cantidad || 0), 0).toLocaleString()}
-                  </p>
+                  <p className="text-sm text-muted-foreground">Prendas Recibidas</p>
+                  <p className="text-2xl font-bold">{(reporte.resumen.recibidas || 0).toLocaleString()}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">de {(reporte.resumen.enviadas || 0).toLocaleString()} enviadas</p>
                 </div>
               </div>
             </CardContent>
@@ -197,10 +219,23 @@ export const ReporteProductividad = () => {
                   <DollarSign className="h-6 w-6 text-green-500" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Costo Total Mano de Obra</p>
-                  <p className="text-2xl font-bold">
-                    {formatCurrency((reporte.por_persona || []).reduce((sum, p) => sum + (p.total_costo || 0), 0))}
-                  </p>
+                  <p className="text-sm text-muted-foreground">Costo Total</p>
+                  <p className="text-2xl font-bold">{formatCurrency(reporte.resumen.costo_total || 0)}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{reporte.resumen.movimientos || 0} mov · {reporte.resumen.registros_distintos || 0} lotes</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-rose-500/10 rounded-full">
+                  <TrendingUp className="h-6 w-6 text-rose-500" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Diferencia (mermas)</p>
+                  <p className="text-2xl font-bold text-rose-600">{(reporte.resumen.diferencia || 0).toLocaleString()}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">prendas no recibidas</p>
                 </div>
               </div>
             </CardContent>
@@ -209,11 +244,12 @@ export const ReporteProductividad = () => {
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-purple-500/10 rounded-full">
-                  <TrendingUp className="h-6 w-6 text-purple-500" />
+                  <Users className="h-6 w-6 text-purple-500" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Movimientos</p>
-                  <p className="text-2xl font-bold">{(reporte.total_movimientos || 0).toLocaleString()}</p>
+                  <p className="text-sm text-muted-foreground">Personas / Servicios</p>
+                  <p className="text-2xl font-bold">{reporte.resumen.personas_distintas || 0} <span className="text-base text-muted-foreground">/ {reporte.resumen.servicios_distintos || 0}</span></p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">activos en el período</p>
                 </div>
               </div>
             </CardContent>
@@ -261,9 +297,13 @@ export const ReporteProductividad = () => {
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-muted/50">
-                          <TableHead>Persona</TableHead>
-                          <TableHead className="text-center">Movimientos</TableHead>
-                          <TableHead className="text-right">Cantidad Prendas</TableHead>
+                          <TableHead>Persona / Taller</TableHead>
+                          <TableHead className="text-center">Mov.</TableHead>
+                          <TableHead className="text-right">Enviadas</TableHead>
+                          <TableHead className="text-right">Recibidas</TableHead>
+                          <TableHead className="text-right">Dif.</TableHead>
+                          <TableHead className="text-center">Lotes</TableHead>
+                          <TableHead className="text-center">Servicios</TableHead>
                           <TableHead className="text-right">Costo Total</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -273,17 +313,22 @@ export const ReporteProductividad = () => {
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <Users className="h-4 w-4 text-muted-foreground" />
-                                <span className="font-medium">{item.persona_nombre}</span>
+                                <div>
+                                  <div className="font-medium">{item.persona_nombre}</div>
+                                  {item.persona_tipo && <div className="text-[10px] text-muted-foreground">{item.persona_tipo}</div>}
+                                </div>
                               </div>
                             </TableCell>
-                            <TableCell className="text-center font-mono">
-                              {item.movimientos || 0}
+                            <TableCell className="text-center font-mono">{item.movimientos || 0}</TableCell>
+                            <TableCell className="text-right font-mono">{(item.enviadas || 0).toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono font-semibold">{(item.recibidas || 0).toLocaleString()}</TableCell>
+                            <TableCell className={`text-right font-mono ${item.diferencia > 0 ? 'text-rose-600' : 'text-muted-foreground'}`}>
+                              {item.diferencia > 0 ? `-${item.diferencia}` : '0'}
                             </TableCell>
-                            <TableCell className="text-right font-mono font-semibold">
-                              {(item.total_cantidad || 0).toLocaleString()}
-                            </TableCell>
+                            <TableCell className="text-center font-mono text-xs">{item.registros_distintos || 0}</TableCell>
+                            <TableCell className="text-center font-mono text-xs">{item.servicios_distintos || 0}</TableCell>
                             <TableCell className="text-right font-mono text-green-600 font-semibold">
-                              {formatCurrency(item.total_costo || 0)}
+                              {formatCurrency(item.costo_total || 0)}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -312,9 +357,12 @@ export const ReporteProductividad = () => {
                       <TableHeader>
                         <TableRow className="bg-muted/50">
                           <TableHead>Servicio</TableHead>
-                          <TableHead className="text-right">Tarifa</TableHead>
-                          <TableHead className="text-center">Movimientos</TableHead>
-                          <TableHead className="text-right">Cantidad Prendas</TableHead>
+                          <TableHead className="text-center">Mov.</TableHead>
+                          <TableHead className="text-right">Enviadas</TableHead>
+                          <TableHead className="text-right">Recibidas</TableHead>
+                          <TableHead className="text-right">Dif.</TableHead>
+                          <TableHead className="text-center">Lotes</TableHead>
+                          <TableHead className="text-center">Personas</TableHead>
                           <TableHead className="text-right">Costo Total</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -327,17 +375,16 @@ export const ReporteProductividad = () => {
                                 <span className="font-medium">{item.servicio_nombre}</span>
                               </div>
                             </TableCell>
-                            <TableCell className="text-right font-mono text-muted-foreground">
-                              {(item.tarifa || 0) > 0 ? formatCurrency(item.tarifa) : '-'}
+                            <TableCell className="text-center font-mono">{item.movimientos || 0}</TableCell>
+                            <TableCell className="text-right font-mono">{(item.enviadas || 0).toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono font-semibold">{(item.recibidas || 0).toLocaleString()}</TableCell>
+                            <TableCell className={`text-right font-mono ${item.diferencia > 0 ? 'text-rose-600' : 'text-muted-foreground'}`}>
+                              {item.diferencia > 0 ? `-${item.diferencia}` : '0'}
                             </TableCell>
-                            <TableCell className="text-center font-mono">
-                              {item.movimientos || 0}
-                            </TableCell>
-                            <TableCell className="text-right font-mono font-semibold">
-                              {(item.total_cantidad || 0).toLocaleString()}
-                            </TableCell>
+                            <TableCell className="text-center font-mono text-xs">{item.registros_distintos || 0}</TableCell>
+                            <TableCell className="text-center font-mono text-xs">{item.personas_distintas || 0}</TableCell>
                             <TableCell className="text-right font-mono text-green-600 font-semibold">
-                              {formatCurrency(item.total_costo || 0)}
+                              {formatCurrency(item.costo_total || 0)}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -349,16 +396,77 @@ export const ReporteProductividad = () => {
             </Card>
           </TabsContent>
 
-          {/* Detalle Persona-Servicio */}
+          {/* Detalle de movimientos */}
           <TabsContent value="detalle">
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Detalle Persona - Servicio</CardTitle>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-lg">Detalle de movimientos ({(reporte.detalle || []).length})</CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    if (filtroFechaDesde) params.append('fecha_desde', filtroFechaDesde);
+                    if (filtroFechaHasta) params.append('fecha_hasta', filtroFechaHasta);
+                    if (filtroServicio) params.append('servicio_id', filtroServicio);
+                    if (filtroPersona) params.append('persona_id', filtroPersona);
+                    window.open(`${API}/reportes/productividad/export?${params.toString()}`, '_blank');
+                  }}
+                >
+                  Exportar Excel
+                </Button>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  Este reporte detallado estará disponible próximamente
-                </div>
+                {(reporte.detalle || []).length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">No hay movimientos en el período</div>
+                ) : (
+                  <div className="border rounded-lg overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead>Fecha fin</TableHead>
+                          <TableHead>N° Corte</TableHead>
+                          <TableHead>Modelo</TableHead>
+                          <TableHead>Tipo</TableHead>
+                          <TableHead>Marca</TableHead>
+                          <TableHead>Entalle</TableHead>
+                          <TableHead>Estado</TableHead>
+                          <TableHead>Servicio</TableHead>
+                          <TableHead>Persona/Taller</TableHead>
+                          <TableHead className="text-right">Env.</TableHead>
+                          <TableHead className="text-right">Recib.</TableHead>
+                          <TableHead className="text-right">Dif.</TableHead>
+                          <TableHead className="text-right">Tarifa</TableHead>
+                          <TableHead className="text-right">Costo</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(reporte.detalle || []).map((m) => (
+                          <TableRow key={m.id}>
+                            <TableCell className="text-xs whitespace-nowrap">{m.fecha_fin || '-'}</TableCell>
+                            <TableCell className="font-mono text-xs font-bold">{m.n_corte || '-'}</TableCell>
+                            <TableCell className="text-xs font-medium">{m.modelo_nombre || '-'}</TableCell>
+                            <TableCell className="text-xs">
+                              {m.tipo_nombre ? <Badge variant="secondary" className="text-[10px] whitespace-nowrap">{m.tipo_nombre}</Badge> : '-'}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{m.marca_nombre || '-'}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{m.entalle_nombre || '-'}</TableCell>
+                            <TableCell><Badge variant="outline" className="text-[10px] whitespace-nowrap">{m.registro_estado || '-'}</Badge></TableCell>
+                            <TableCell className="text-xs whitespace-nowrap"><Cog className="inline h-3 w-3 mr-1 text-blue-500" />{m.servicio_nombre}</TableCell>
+                            <TableCell className="text-xs whitespace-nowrap">{m.persona_nombre}</TableCell>
+                            <TableCell className="text-right font-mono text-xs">{m.cantidad_enviada?.toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-mono text-xs font-semibold">{m.cantidad_recibida?.toLocaleString()}</TableCell>
+                            <TableCell className={`text-right font-mono text-xs ${m.diferencia > 0 ? 'text-rose-600 font-semibold' : 'text-muted-foreground'}`}>
+                              {m.diferencia > 0 ? `-${m.diferencia}` : '0'}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-xs text-muted-foreground">{m.tarifa_aplicada > 0 ? formatCurrency(m.tarifa_aplicada) : '-'}</TableCell>
+                            <TableCell className="text-right font-mono text-xs text-green-700 dark:text-green-400 font-semibold">{formatCurrency(m.costo_calculado)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

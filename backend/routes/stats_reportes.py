@@ -193,62 +193,9 @@ async def get_reporte_mermas(fecha_inicio: str = None, fecha_fin: str = None, pe
         }
 
 # ==================== REPORTE PRODUCTIVIDAD ====================
-
-@router.get("/reportes/productividad")
-async def get_reporte_productividad(fecha_inicio: str = None, fecha_fin: str = None, servicio_id: str = None, persona_id: str = None):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        query = "SELECT * FROM prod_movimientos_produccion WHERE fecha_fin IS NOT NULL"
-        params = []
-        if fecha_inicio:
-            params.append(fecha_inicio)
-            query += f" AND fecha_fin >= ${len(params)}::date"
-        if fecha_fin:
-            params.append(fecha_fin)
-            query += f" AND fecha_fin <= ${len(params)}::date"
-        if servicio_id:
-            params.append(servicio_id)
-            query += f" AND servicio_id = ${len(params)}"
-        if persona_id:
-            params.append(persona_id)
-            query += f" AND persona_id = ${len(params)}"
-
-
-        
-        rows = await conn.fetch(query, *params)
-        
-        por_servicio = {}
-        por_persona = {}
-        
-        for m in rows:
-            srv_id = m['servicio_id']
-            per_id = m['persona_id']
-            cantidad = m['cantidad_recibida'] or 0
-            costo = float(m['costo_calculado'] or 0)
-            
-            srv = await conn.fetchrow("SELECT nombre FROM prod_servicios_produccion WHERE id = $1", srv_id)
-            srv_nombre = srv['nombre'] if srv else 'Desconocido'
-            
-            if srv_id not in por_servicio:
-                por_servicio[srv_id] = {"servicio_id": srv_id, "servicio_nombre": srv_nombre, "total_cantidad": 0, "total_costo": 0, "movimientos": 0}
-            por_servicio[srv_id]['total_cantidad'] += cantidad
-            por_servicio[srv_id]['total_costo'] += costo
-            por_servicio[srv_id]['movimientos'] += 1
-            
-            per = await conn.fetchrow("SELECT nombre FROM prod_personas_produccion WHERE id = $1", per_id)
-            per_nombre = per['nombre'] if per else 'Desconocido'
-            
-            if per_id not in por_persona:
-                por_persona[per_id] = {"persona_id": per_id, "persona_nombre": per_nombre, "total_cantidad": 0, "total_costo": 0, "movimientos": 0}
-            por_persona[per_id]['total_cantidad'] += cantidad
-            por_persona[per_id]['total_costo'] += costo
-            por_persona[per_id]['movimientos'] += 1
-        
-        return {
-            "por_servicio": list(por_servicio.values()),
-            "por_persona": list(por_persona.values()),
-            "total_movimientos": len(rows)
-        }
+# NOTA: el endpoint /reportes/productividad fue movido a routes/productividad.py
+# (versión nueva con cascada de filtros, métricas detalladas y export Excel).
+# Esta sección queda como referencia histórica.
 
 # ==================== ENDPOINTS KARDEX E INVENTARIO MOVIMIENTOS ====================
 
