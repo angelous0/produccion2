@@ -262,7 +262,7 @@ export const SeguimientoProduccion = () => {
             )}
             {filterRuta && filterRuta !== '_all' && (
               <span className="text-[10px] text-muted-foreground">
-                Etapas ordenadas según el flujo de la ruta seleccionada
+                Ruta: ordena las etapas del chart según ese flujo. No filtra registros (para filtrar usá Tipo).
               </span>
             )}
           </div>

@@ -253,21 +253,24 @@ async def wip_por_etapa(
     pool = await get_pool()
     async with pool.acquire() as conn:
         # 1) Construir filtros opcionales para tipo / ruta
+        # Soportamos registros del catálogo (modelo_id) Y registros manuales (modelo_manual JSONB).
         joins = ""
         conds = ["r.estado_op IN ('ABIERTA', 'EN_PROCESO')",
                  "r.dividido_desde_registro_id IS NULL"]
         params: list = []
 
-        if tipo_id or ruta_id:
-            joins = "LEFT JOIN prod_modelos m ON m.id = r.modelo_id"
-
         if tipo_id:
+            joins = "LEFT JOIN prod_modelos m ON m.id = r.modelo_id"
             params.append(tipo_id)
-            conds.append(f"m.tipo_id = ${len(params)}")
+            # Match contra modelo del catálogo O contra el tipo guardado en modelo_manual
+            conds.append(
+                f"(m.tipo_id = ${len(params)} OR r.modelo_manual->>'tipo_id' = ${len(params)})"
+            )
 
-        if ruta_id:
-            params.append(ruta_id)
-            conds.append(f"m.ruta_produccion_id = ${len(params)}")
+        # NOTA: ruta_id NO filtra registros (porque los manuales no la guardan
+        # consistentemente). Sólo se usa más abajo para ORDENAR las etapas
+        # según el flujo de la ruta seleccionada. Si querés filtrar por
+        # tipo de producto, usá el filtro Tipo.
 
         where_sql = " AND ".join(conds)
 
