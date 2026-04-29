@@ -238,34 +238,92 @@ async def produccion_en_proceso(
 @router.get("/wip-etapa")
 async def wip_por_etapa(
     empresa_id: int = Query(7),
+    tipo_id: Optional[str] = Query(None),
+    ruta_id: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
+    """WIP agrupado por etapa.
+
+    - Si se pasa `tipo_id` o `ruta_id`, los registros se filtran por modelo.
+    - Si se pasa `ruta_id`, las etapas se devuelven en el ORDEN DE LA RUTA
+      (incluyendo etapas vacías que existan en la ruta pero no tengan lotes
+      todavía). Esto permite ver el flujo natural en orden.
+    - Sin filtros: orden por cantidad de lotes desc (comportamiento previo).
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch("""
+        # 1) Construir filtros opcionales para tipo / ruta
+        joins = ""
+        conds = ["r.estado_op IN ('ABIERTA', 'EN_PROCESO')",
+                 "r.dividido_desde_registro_id IS NULL"]
+        params: list = []
+
+        if tipo_id or ruta_id:
+            joins = "LEFT JOIN prod_modelos m ON m.id = r.modelo_id"
+
+        if tipo_id:
+            params.append(tipo_id)
+            conds.append(f"m.tipo_id = ${len(params)}")
+
+        if ruta_id:
+            params.append(ruta_id)
+            conds.append(f"m.ruta_produccion_id = ${len(params)}")
+
+        where_sql = " AND ".join(conds)
+
+        rows = await conn.fetch(f"""
             SELECT r.estado,
                    COUNT(*) as lotes,
                    COALESCE(SUM((SELECT COALESCE(SUM(rt.cantidad_real),0) FROM prod_registro_tallas rt WHERE rt.registro_id = r.id)),0) as prendas,
                    MIN(r.fecha_creacion) as lote_mas_antiguo,
                    COUNT(*) FILTER (WHERE r.urgente = true) as urgentes
             FROM prod_registros r
-            WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
-              AND r.dividido_desde_registro_id IS NULL
+            {joins}
+            WHERE {where_sql}
             GROUP BY r.estado
             ORDER BY lotes DESC
-        """)
+        """, *params)
 
-        etapas = []
+        etapas_data = {}
         for r in rows:
-            d = {
+            etapas_data[r["estado"]] = {
                 "etapa": r["estado"],
                 "lotes": int(r["lotes"]),
                 "prendas": safe_int(r["prendas"]),
                 "urgentes": int(r["urgentes"]),
                 "lote_mas_antiguo": str(r["lote_mas_antiguo"]) if r["lote_mas_antiguo"] else None,
             }
-            etapas.append(d)
 
+        # 2) Si hay filtro de ruta, ordenar por el orden definido en la ruta
+        if ruta_id:
+            ruta_row = await conn.fetchrow(
+                "SELECT etapas FROM prod_rutas_produccion WHERE id = $1", ruta_id)
+            if ruta_row and ruta_row["etapas"]:
+                etapas_ruta_raw = ruta_row["etapas"]
+                if isinstance(etapas_ruta_raw, str):
+                    import json as _json
+                    etapas_ruta_raw = _json.loads(etapas_ruta_raw)
+                # Solo etapas que aparecen como estado del registro (aparece_en_estado=True)
+                etapas_ruta = sorted(
+                    [e for e in etapas_ruta_raw if e.get("aparece_en_estado", True)],
+                    key=lambda e: e.get("orden", 0)
+                )
+                etapas_ord = []
+                for e_def in etapas_ruta:
+                    nombre = e_def.get("nombre")
+                    d = etapas_data.get(nombre) or {
+                        "etapa": nombre, "lotes": 0, "prendas": 0,
+                        "urgentes": 0, "lote_mas_antiguo": None,
+                    }
+                    etapas_ord.append(d)
+                # Agregar etapas que aparecen en datos pero no en la ruta (raro pero por seguridad)
+                for nombre, d in etapas_data.items():
+                    if not any(eo["etapa"] == nombre for eo in etapas_ord):
+                        etapas_ord.append(d)
+                return {"etapas": etapas_ord, "total_etapas": len(etapas_ord)}
+
+        # 3) Sin ruta filtrada → orden por cantidad de lotes desc (comportamiento previo)
+        etapas = list(etapas_data.values())
         return {"etapas": etapas, "total_etapas": len(etapas)}
 
 
@@ -693,10 +751,15 @@ async def get_filtros_reportes(
         estados = await conn.fetch("""
             SELECT DISTINCT estado FROM prod_registros WHERE estado_op IN ('ABIERTA','EN_PROCESO') ORDER BY estado
         """)
+        # Tipos de producto (ej. polo, pantalón, casaca) — útil para filtrar el WIP
+        tipos = await conn.fetch("""
+            SELECT id, nombre FROM prod_tipos ORDER BY nombre
+        """)
 
         return {
             "servicios": [{"id": r["id"], "nombre": r["nombre"]} for r in servicios],
             "rutas": [{"id": r["id"], "nombre": r["nombre"]} for r in rutas],
+            "tipos": [{"id": r["id"], "nombre": r["nombre"]} for r in tipos],
             # id = nombre para que el filtro envíe el nombre como valor
             "modelos": [{"id": r["nombre"], "nombre": r["nombre"]} for r in modelos],
             "estados": [r["estado"] for r in estados],

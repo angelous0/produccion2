@@ -36,6 +36,8 @@ export const SeguimientoProduccion = () => {
   // Filters
   const [filterEstado, setFilterEstado] = useState('');
   const [filterModelo, setFilterModelo] = useState('');
+  const [filterTipo, setFilterTipo] = useState('');
+  const [filterRuta, setFilterRuta] = useState('');
 
   // Paralizados filter
   const [soloActivas, setSoloActivas] = useState(false);
@@ -48,10 +50,15 @@ export const SeguimientoProduccion = () => {
     if (filterEstado && filterEstado !== '_all') params.append('estado', filterEstado);
     if (filterModelo && filterModelo !== '_all') params.append('modelo_id', filterModelo);
 
+    // WIP-etapa acepta tipo_id y ruta_id para filtrar y ordenar las etapas según ruta
+    const wipParams = new URLSearchParams();
+    if (filterTipo && filterTipo !== '_all') wipParams.append('tipo_id', filterTipo);
+    if (filterRuta && filterRuta !== '_all') wipParams.append('ruta_id', filterRuta);
+
     const safe = (p) => p.catch(() => null);
     const [ep, wip, atr, filtrosRes] = await Promise.all([
       safe(axios.get(`${API}/reportes-produccion/en-proceso?${params}`)),
-      safe(axios.get(`${API}/reportes-produccion/wip-etapa`)),
+      safe(axios.get(`${API}/reportes-produccion/wip-etapa?${wipParams}`)),
       safe(axios.get(`${API}/reportes-produccion/atrasados`)),
       safe(axios.get(`${API}/reportes-produccion/filtros`)),
     ]);
@@ -61,7 +68,7 @@ export const SeguimientoProduccion = () => {
     setAtrasadosData(atr?.data || null);
     setFiltros(filtrosRes?.data || null);
     setLoading(false);
-  }, [filterEstado, filterModelo]);
+  }, [filterEstado, filterModelo, filterTipo, filterRuta]);
 
   const fetchParalizados = useCallback(async () => {
     try {
@@ -225,10 +232,38 @@ export const SeguimientoProduccion = () => {
                 ))}
               </SelectContent>
             </Select>
-            {(filterEstado || filterModelo) && (
-              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => { setFilterEstado(''); setFilterModelo(''); }}>
+            <Select value={filterTipo} onValueChange={setFilterTipo}>
+              <SelectTrigger className="w-[160px] h-8 text-xs">
+                <SelectValue placeholder="Tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">Todos los tipos</SelectItem>
+                {(filtros?.tipos || []).map(t => (
+                  <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterRuta} onValueChange={setFilterRuta}>
+              <SelectTrigger className="w-[200px] h-8 text-xs">
+                <SelectValue placeholder="Ruta (ordena etapas)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">Todas las rutas</SelectItem>
+                {(filtros?.rutas || []).map(r => (
+                  <SelectItem key={r.id} value={r.id}>{r.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {(filterEstado || filterModelo || filterTipo || filterRuta) && (
+              <Button variant="outline" size="sm" className="h-8 text-xs"
+                onClick={() => { setFilterEstado(''); setFilterModelo(''); setFilterTipo(''); setFilterRuta(''); }}>
                 Limpiar
               </Button>
+            )}
+            {filterRuta && filterRuta !== '_all' && (
+              <span className="text-[10px] text-muted-foreground">
+                Etapas ordenadas según el flujo de la ruta seleccionada
+              </span>
             )}
           </div>
         </CardContent>
