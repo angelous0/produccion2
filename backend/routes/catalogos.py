@@ -408,14 +408,22 @@ async def delete_color_general(color_general_id: str, _u=Depends(get_current_use
 # ==================== ENDPOINTS COLOR CATALOGO ====================
 
 @router.get("/colores-catalogo")
-async def get_colores_catalogo():
+async def get_colores_catalogo(tipo_id: str = None):
+    """Lista colores del catálogo. Si se pasa tipo_id, filtra solo los asignados a ese tipo."""
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT * FROM prod_colores_catalogo ORDER BY orden ASC, nombre ASC")
+        if tipo_id:
+            rows = await conn.fetch("""
+                SELECT c.* FROM prod_colores_catalogo c
+                JOIN prod_color_tipo ct ON ct.color_id = c.id
+                WHERE ct.tipo_id = $1
+                ORDER BY ct.orden ASC, c.nombre ASC
+            """, tipo_id)
+        else:
+            rows = await conn.fetch("SELECT * FROM prod_colores_catalogo ORDER BY orden ASC, nombre ASC")
         result = []
         for r in rows:
             d = row_to_dict(r)
-            # Obtener nombre del color general
             if d.get('color_general_id'):
                 cg = await conn.fetchrow("SELECT nombre FROM prod_colores_generales WHERE id = $1", d['color_general_id'])
                 d['color_general_nombre'] = cg['nombre'] if cg else None
@@ -423,6 +431,46 @@ async def get_colores_catalogo():
                 d['color_general_nombre'] = None
             result.append(d)
         return result
+
+
+# ─── Color por Tipo (relación N a N) ───
+
+@router.get("/tipos/{tipo_id}/colores")
+async def get_colores_por_tipo(tipo_id: str):
+    """Devuelve TODOS los colores con flag asignado=true/false según si están en ese tipo."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT c.id, c.nombre, c.codigo_hex, c.orden,
+                   EXISTS (
+                     SELECT 1 FROM prod_color_tipo ct
+                      WHERE ct.color_id = c.id AND ct.tipo_id = $1
+                   ) AS asignado
+              FROM prod_colores_catalogo c
+              ORDER BY c.orden ASC, c.nombre ASC
+        """, tipo_id)
+        return [{"id": r["id"], "nombre": r["nombre"], "codigo_hex": r["codigo_hex"],
+                 "orden": r["orden"], "asignado": r["asignado"]} for r in rows]
+
+
+@router.put("/tipos/{tipo_id}/colores")
+async def set_colores_por_tipo(tipo_id: str, body: dict, _u=Depends(get_current_user)):
+    """Bulk-asigna colores a un tipo. Body: {"color_ids": ["uuid1", "uuid2", ...]}.
+
+    Reemplaza por completo: lo que NO esté en la lista se desasigna del tipo.
+    """
+    color_ids = body.get("color_ids", []) or []
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute("DELETE FROM prod_color_tipo WHERE tipo_id = $1", tipo_id)
+            if color_ids:
+                # Insertar respetando el orden de envío
+                for i, cid in enumerate(color_ids):
+                    await conn.execute(
+                        "INSERT INTO prod_color_tipo (color_id, tipo_id, orden) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                        cid, tipo_id, i)
+    return {"ok": True, "tipo_id": tipo_id, "colores_asignados": len(color_ids)}
 
 @router.post("/colores-catalogo")
 async def create_color_catalogo(input: ColorCreate, _u=Depends(get_current_user)):

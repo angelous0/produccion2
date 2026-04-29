@@ -38,6 +38,7 @@ const ImportRegistros = lazy(() => import("./pages/ImportRegistros"));
 const TallasCatalogo = lazy(() => import("./pages/TallasCatalogo").then(m => ({ default: m.TallasCatalogo })));
 const ColoresCatalogo = lazy(() => import("./pages/ColoresCatalogo").then(m => ({ default: m.ColoresCatalogo })));
 const ColoresGenerales = lazy(() => import("./pages/ColoresGenerales").then(m => ({ default: m.ColoresGenerales })));
+const ColoresPorTipo = lazy(() => import("./pages/ColoresPorTipo").then(m => ({ default: m.ColoresPorTipo })));
 const ModelosLazy = lazy(() => import("./pages/Modelos").then(m => ({ default: m.Modelos })));
 const ModelosBasesLazy = lazy(() => import("./pages/Modelos").then(m => ({ default: m.ModelosBases })));
 const ModelosVariantesLazy = lazy(() => import("./pages/Modelos").then(m => ({ default: m.ModelosVariantes })));
@@ -153,6 +154,7 @@ function AppRoutes() {
         <Route path="tallas-catalogo" element={<LazyWrap><TallasCatalogo /></LazyWrap>} />
         <Route path="colores-catalogo" element={<LazyWrap><ColoresCatalogo /></LazyWrap>} />
         <Route path="colores-generales" element={<LazyWrap><ColoresGenerales /></LazyWrap>} />
+        <Route path="colores-por-tipo" element={<LazyWrap><ColoresPorTipo /></LazyWrap>} />
         <Route path="generos" element={<LazyWrap><Generos /></LazyWrap>} />
         <Route path="telas-general" element={<LazyWrap><TelasGenerales /></LazyWrap>} />
         <Route path="cuellos" element={<LazyWrap><Cuellos /></LazyWrap>} />

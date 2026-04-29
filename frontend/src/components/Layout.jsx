@@ -169,6 +169,7 @@ const catalogosItems = [
   { to: '/tallas-catalogo', icon: Ruler, label: 'Tallas' },
   { to: '/colores-catalogo', icon: Droplets, label: 'Colores' },
   { to: '/colores-generales', icon: Palette, label: 'Colores Generales' },
+  { to: '/colores-por-tipo', icon: Palette, label: 'Colores por Tipo' },
   { to: '/cuellos', icon: CircleDot, label: 'Cuellos' },
   { to: '/detalles', icon: StickerIcon, label: 'Detalles' },
   { to: '/lavados', icon: WashingMachine, label: 'Lavados' },

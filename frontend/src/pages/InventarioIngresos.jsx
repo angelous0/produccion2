@@ -666,20 +666,35 @@ export const InventarioIngresos = () => {
                   
                   <div className="space-y-2">
                     <Label htmlFor="costo_unitario">Costo por Metro</Label>
-                    <NumericInput
-                      id="costo_unitario"
-                      min="0"
-                      step="0.01"
-                      value={formData.costo_unitario}
-                      onChange={(e) => setFormData({ ...formData, costo_unitario: e.target.value })}
-                      className="font-mono"
-                      data-testid="input-costo"
-                    />
-                    {ultimoCosto && ultimoCosto.tiene_historial && !editingIngreso && (
-                      <p className="text-xs text-blue-600 flex items-center gap-1">
-                        <Info className="h-3 w-3" /> Último: {new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(ultimoCosto.costo_unitario)}
-                      </p>
-                    )}
+                    {(() => {
+                      const refCost = ultimoCosto?.tiene_historial ? Number(ultimoCosto.costo_unitario) : null;
+                      const currentCost = parseFloat(formData.costo_unitario) || 0;
+                      const matchesRef = refCost !== null && Math.abs(currentCost - refCost) < 0.001;
+                      return (
+                        <>
+                          <NumericInput
+                            id="costo_unitario"
+                            min="0"
+                            step="0.01"
+                            value={formData.costo_unitario}
+                            onChange={(e) => setFormData({ ...formData, costo_unitario: e.target.value })}
+                            className="font-mono"
+                            style={refCost !== null && matchesRef ? { backgroundColor: 'rgba(254,243,199,0.5)', borderColor: '#f59e0b' } : undefined}
+                            title={refCost !== null
+                              ? `Costo referencial del último ingreso: S/ ${refCost.toFixed(2)}. Editable.`
+                              : 'Costo unitario. Editable.'}
+                            data-testid="input-costo"
+                          />
+                          {ultimoCosto && ultimoCosto.tiene_historial && !editingIngreso && (
+                            <p className="text-xs flex items-center gap-1" style={{ color: matchesRef ? '#b45309' : '#2563eb' }}>
+                              <Info className="h-3 w-3" />
+                              {matchesRef ? '🟡 ref. último ingreso · ' : '✎ editado · ref: '}
+                              <strong className="font-mono">{new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(refCost)}</strong>
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </>
               ) : !editingIngreso && formData.item_id ? (
