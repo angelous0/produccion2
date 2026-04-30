@@ -363,6 +363,91 @@ async def wip_por_etapa(
         return {"etapas": etapas, "total_etapas": len(etapas)}
 
 
+# ==================== 3.5 INCIDENCIAS (paralizan o no) ====================
+
+@router.get("/incidencias")
+async def reporte_incidencias(
+    estado: Optional[str] = Query(None, description="ABIERTA / RESUELTA / vacío para todas"),
+    paraliza: Optional[bool] = Query(None, description="True solo paralizantes, False solo no-paralizantes, vacío todas"),
+    current_user: dict = Depends(get_current_user),
+):
+    """Lista incidencias con info del registro y, si aplica, su paralización.
+
+    Pensado para la pestaña 'Incidencias' del Seguimiento de Producción
+    — incluye todas las incidencias, tengan o no paralización asociada.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        conds = []
+        params: list = []
+        if estado:
+            params.append(estado.upper())
+            conds.append(f"i.estado = ${len(params)}")
+        if paraliza is not None:
+            params.append(paraliza)
+            conds.append(f"i.paraliza = ${len(params)}")
+
+        where_sql = (" WHERE " + " AND ".join(conds)) if conds else ""
+
+        rows = await conn.fetch(f"""
+            SELECT i.id,
+                   i.fecha_hora,
+                   i.usuario,
+                   i.tipo,
+                   i.comentario,
+                   i.estado,
+                   i.paraliza,
+                   i.paralizacion_id,
+                   i.comentario_resolucion,
+                   i.created_at,
+                   i.updated_at,
+                   m.nombre AS motivo_nombre,
+                   r.id::text AS registro_id,
+                   r.n_corte,
+                   r.estado AS etapa,
+                   r.urgente,
+                   COALESCE(mod.nombre, r.modelo_manual->>'nombre_modelo') AS modelo_nombre,
+                   COALESCE(tp.nombre, r.modelo_manual->>'tipo_texto')     AS tipo_producto,
+                   p.activa       AS paralizacion_activa,
+                   p.fecha_inicio AS paralizacion_inicio,
+                   p.fecha_fin    AS paralizacion_fin,
+                   srv.nombre     AS movimiento_servicio
+              FROM prod_incidencia i
+              JOIN prod_registros r       ON r.id = i.registro_id
+              LEFT JOIN prod_modelos mod  ON mod.id = r.modelo_id
+              LEFT JOIN prod_tipos tp     ON tp.id  = mod.tipo_id
+              LEFT JOIN prod_motivos_incidencia m ON i.tipo = m.id
+              LEFT JOIN prod_paralizacion p       ON p.id = i.paralizacion_id
+              LEFT JOIN prod_movimientos_produccion mp ON mp.id = i.movimiento_id
+              LEFT JOIN prod_servicios_produccion srv  ON srv.id = mp.servicio_id
+              {where_sql}
+             ORDER BY (i.estado = 'ABIERTA') DESC,
+                      i.fecha_hora DESC NULLS LAST
+        """, *params)
+
+        items = []
+        for r in rows:
+            d = row_to_dict(r)
+            # Fallback: tipo guardado como texto libre cuando no apunta a un motivo
+            if not d.get('motivo_nombre') and d.get('tipo'):
+                d['motivo_nombre'] = d['tipo']
+            for k in ('fecha_hora', 'created_at', 'updated_at',
+                     'paralizacion_inicio', 'paralizacion_fin'):
+                if d.get(k):
+                    d[k] = str(d[k])
+            items.append(d)
+
+        # Resumen rápido para la UI
+        resumen = {
+            "total":             len(items),
+            "abiertas":          sum(1 for i in items if i.get("estado") == "ABIERTA"),
+            "resueltas":         sum(1 for i in items if i.get("estado") == "RESUELTA"),
+            "con_paralizacion":  sum(1 for i in items if i.get("paraliza")),
+            "sin_paralizacion":  sum(1 for i in items if not i.get("paraliza")),
+        }
+        return {"incidencias": items, "resumen": resumen}
+
+
 # ==================== 4. LOTES ATRASADOS ====================
 
 @router.get("/atrasados")

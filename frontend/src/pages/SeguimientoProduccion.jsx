@@ -12,7 +12,7 @@ import {
 } from '../components/ui/table';
 import {
   Activity, Layers, AlertTriangle, PauseCircle, Clock, CheckCircle2,
-  ExternalLink, ArrowRight, Filter, Shirt, Flame, CalendarClock,
+  ExternalLink, ArrowRight, Filter, Shirt, Flame, CalendarClock, FileWarning,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatDate } from '../lib/dateUtils';
@@ -30,6 +30,8 @@ export const SeguimientoProduccion = () => {
   const [wipData, setWipData] = useState(null);
   const [atrasadosData, setAtrasadosData] = useState(null);
   const [paralizadosData, setParalizadosData] = useState(null);
+  const [incidenciasData, setIncidenciasData] = useState(null);
+  const [incidenciasFiltro, setIncidenciasFiltro] = useState('abiertas'); // abiertas | todas | resueltas
   const [filtros, setFiltros] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -81,8 +83,20 @@ export const SeguimientoProduccion = () => {
     } catch { /* ignore */ }
   }, [soloActivas]);
 
+  // Incidencias (paralizan o no)
+  const fetchIncidencias = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (incidenciasFiltro === 'abiertas') params.append('estado', 'ABIERTA');
+      else if (incidenciasFiltro === 'resueltas') params.append('estado', 'RESUELTA');
+      const res = await axios.get(`${API}/reportes-produccion/incidencias?${params}`);
+      setIncidenciasData(res.data);
+    } catch { /* ignore */ }
+  }, [incidenciasFiltro]);
+
   useEffect(() => { fetchAll(); }, [fetchAll]);
   useEffect(() => { fetchParalizados(); }, [fetchParalizados]);
+  useEffect(() => { fetchIncidencias(); }, [fetchIncidencias]);
 
   // KPI calculations
   const registros = enProcesoData?.registros || [];
@@ -282,6 +296,12 @@ export const SeguimientoProduccion = () => {
           <TabsTrigger value="paralizados" className="text-xs gap-1.5" data-testid="tab-paralizados">
             <PauseCircle className="h-3.5 w-3.5" /> Paralizados
             {(pResumen.activas || 0) > 0 && <Badge variant="destructive" className="ml-1 text-[9px] px-1 py-0">{pResumen.activas}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="incidencias" className="text-xs gap-1.5" data-testid="tab-incidencias">
+            <FileWarning className="h-3.5 w-3.5" /> Incidencias
+            {(incidenciasData?.resumen?.abiertas || 0) > 0 && (
+              <Badge variant="destructive" className="ml-1 text-[9px] px-1 py-0">{incidenciasData.resumen.abiertas}</Badge>
+            )}
           </TabsTrigger>
         </TabsList>
 
@@ -582,6 +602,126 @@ export const SeguimientoProduccion = () => {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* TAB 4: Incidencias */}
+        <TabsContent value="incidencias">
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <FileWarning className="h-4 w-4 text-amber-500"/> Incidencias
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Todas las incidencias registradas — paralicen el lote o no.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select value={incidenciasFiltro} onValueChange={setIncidenciasFiltro}>
+                    <SelectTrigger className="h-8 text-xs w-[150px]">
+                      <SelectValue/>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="abiertas">Solo abiertas</SelectItem>
+                      <SelectItem value="resueltas">Solo resueltas</SelectItem>
+                      <SelectItem value="todas">Todas</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {incidenciasData?.resumen && (
+                <div className="flex flex-wrap gap-3 text-[11px] mt-2 text-muted-foreground">
+                  <span><strong>{incidenciasData.resumen.total}</strong> total</span>
+                  <span className="text-amber-700 dark:text-amber-400">{incidenciasData.resumen.abiertas} abiertas</span>
+                  <span className="text-emerald-700 dark:text-emerald-400">{incidenciasData.resumen.resueltas} resueltas</span>
+                  <span className="text-red-700 dark:text-red-400">{incidenciasData.resumen.con_paralizacion} paralizan</span>
+                  <span>{incidenciasData.resumen.sin_paralizacion} sin paralización</span>
+                </div>
+              )}
+            </CardHeader>
+            <CardContent className="pt-2">
+              {!incidenciasData ? (
+                <div className="text-center text-muted-foreground py-8 text-sm">Cargando...</div>
+              ) : (incidenciasData.incidencias || []).length === 0 ? (
+                <div className="text-center text-muted-foreground py-8 text-sm">
+                  No hay incidencias para el filtro seleccionado.
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[90px]">N° Corte</TableHead>
+                      <TableHead>Modelo / Tipo</TableHead>
+                      <TableHead>Etapa</TableHead>
+                      <TableHead>Motivo</TableHead>
+                      <TableHead>Comentario</TableHead>
+                      <TableHead className="w-[110px]">Fecha</TableHead>
+                      <TableHead className="w-[100px]">Estado</TableHead>
+                      <TableHead className="w-[110px] text-center">Paraliza?</TableHead>
+                      <TableHead className="w-[40px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {incidenciasData.incidencias.map(i => (
+                      <TableRow key={i.id} className={i.estado === 'ABIERTA' ? 'bg-amber-50/40 dark:bg-amber-950/10' : ''}>
+                        <TableCell className="font-mono font-semibold text-xs">
+                          {i.n_corte || '-'}
+                          {i.urgente && <Flame className="inline h-3 w-3 text-red-500 ml-1"/>}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <div className="font-medium">{i.modelo_nombre || '-'}</div>
+                          <div className="text-muted-foreground">{i.tipo_producto || '-'}</div>
+                        </TableCell>
+                        <TableCell className="text-xs">{i.etapa || '-'}</TableCell>
+                        <TableCell className="text-xs">
+                          {i.motivo_nombre || '-'}
+                          {i.movimiento_servicio && (
+                            <div className="text-[10px] text-muted-foreground">en {i.movimiento_servicio}</div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs max-w-[300px]">
+                          <div className="truncate" title={i.comentario}>{i.comentario || '-'}</div>
+                          {i.estado === 'RESUELTA' && i.comentario_resolucion && (
+                            <div className="text-[10px] text-emerald-700 dark:text-emerald-400 truncate" title={i.comentario_resolucion}>
+                              ✓ {i.comentario_resolucion}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {i.fecha_hora ? formatDate(i.fecha_hora) : '-'}
+                        </TableCell>
+                        <TableCell>
+                          {i.estado === 'ABIERTA' ? (
+                            <Badge className="bg-amber-500 text-white text-[10px] px-1.5">ABIERTA</Badge>
+                          ) : (
+                            <Badge className="bg-emerald-600 text-white text-[10px] px-1.5">RESUELTA</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {i.paraliza ? (
+                            <Badge className="bg-red-600 text-white text-[10px] px-1.5 gap-0.5">
+                              <PauseCircle className="h-2.5 w-2.5"/>SÍ
+                              {i.paralizacion_activa === false && <span className="ml-0.5">(cerrada)</span>}
+                            </Badge>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground">no</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" className="h-7 w-7"
+                            onClick={() => navigate(`/registros/${i.registro_id}`)}
+                            title="Ver registro">
+                            <ExternalLink className="h-3.5 w-3.5"/>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
