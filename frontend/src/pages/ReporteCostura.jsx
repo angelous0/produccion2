@@ -7,15 +7,17 @@ import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Separator } from '../components/ui/separator';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../lib/dateUtils';
+import IncidenciaAvances from '../components/registro/IncidenciaAvances';
 import {
   ChevronDown, ChevronRight, Users, Package, AlertTriangle, Clock, FileWarning,
-  ExternalLink, Plus, Pencil, Filter, X, RefreshCw, History, Eye, Check, Download, Trash2
+  ExternalLink, Plus, Pencil, Filter, X, RefreshCw, History, Eye, Check, Download, Trash2,
+  Info, MessageSquare, PauseCircle,
 } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
@@ -267,6 +269,7 @@ export const ReporteCostura = () => {
   const [resolverDialog, setResolverDialog] = useState(null);
   const [resolverTexto, setResolverTexto] = useState('');
   const [resolverSaving, setResolverSaving] = useState(false);
+  const [avancesDialog, setAvancesDialog] = useState(null); // { id, motivo, comentario, n_corte, paraliza, estado, fecha_hora, usuario }
 
   const fetchIncidencias = async (registroId) => {
     try {
@@ -909,7 +912,7 @@ export const ReporteCostura = () => {
                   <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">D/s Act.</th>
                   <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Inc.</th>
                   <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Riesgo</th>
-                  <th className="text-left p-2 font-medium text-muted-foreground whitespace-nowrap">Obs.</th>
+                  <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap w-8" title="Observaciones (hover para ver detalle)">Obs.</th>
                   <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
@@ -983,9 +986,14 @@ export const ReporteCostura = () => {
                           <Badge className={`${cfg.color} text-[10px] border`}>{cfg.label}</Badge>
                         )}
                       </td>
-                      <td className="p-2 text-left max-w-[180px]">
-                        {item.nivel_riesgo !== 'normal' && (
-                          <span className="text-[10px] text-muted-foreground leading-tight">{buildObsText(item)}</span>
+                      <td className="p-2 text-center w-8">
+                        {item.nivel_riesgo !== 'normal' ? (
+                          <span title={buildObsText(item)}
+                                className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 text-amber-700 cursor-help">
+                            <Info className="h-3 w-3"/>
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-[10px]">—</span>
                         )}
                       </td>
                       <td className="p-2 text-center">
@@ -1028,6 +1036,13 @@ export const ReporteCostura = () => {
                                       {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
                                     </p>
                                   </div>
+                                  <Button
+                                    type="button" variant="outline" size="sm" className="h-7 text-xs shrink-0"
+                                    onClick={() => setAvancesDialog({ ...inc, n_corte: item.n_corte })}
+                                    title="Ver historial de avances"
+                                  >
+                                    <MessageSquare className="h-3 w-3 mr-1" /> Avances
+                                  </Button>
                                   <Button
                                     type="button" variant="outline" size="sm" className="h-7 text-xs text-green-700 border-green-300 hover:bg-green-50 shrink-0"
                                     onClick={() => setResolverDialog({ id: inc.id, registro_id: item.registro_id, motivo: inc.motivo_nombre || inc.tipo, comentario: inc.comentario })}
@@ -1102,7 +1117,7 @@ export const ReporteCostura = () => {
                           <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">D/s Act.</th>
                           <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Inc.</th>
                           <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Riesgo</th>
-                          <th className="text-left p-2 font-medium text-muted-foreground whitespace-nowrap">Obs.</th>
+                          <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap w-8" title="Observaciones (hover para ver detalle)">Obs.</th>
                           <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Acciones</th>
                         </tr>
                       </thead>
@@ -1173,9 +1188,14 @@ export const ReporteCostura = () => {
                                   <Badge className={`${cfg.color} text-[10px] border`}>{cfg.label}</Badge>
                                 )}
                               </td>
-                              <td className="p-2 text-left max-w-[180px]">
-                                {item.nivel_riesgo !== 'normal' && (
-                                  <span className="text-[10px] text-muted-foreground leading-tight">{buildObsText(item)}</span>
+                              <td className="p-2 text-center w-8">
+                                {item.nivel_riesgo !== 'normal' ? (
+                                  <span title={buildObsText(item)}
+                                        className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 text-amber-700 cursor-help">
+                                    <Info className="h-3 w-3"/>
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground text-[10px]">—</span>
                                 )}
                               </td>
                               <td className="p-2 text-center">
@@ -1332,6 +1352,55 @@ export const ReporteCostura = () => {
               {resolverSaving ? 'Resolviendo...' : 'Marcar como resuelta'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog avances de incidencia */}
+      <Dialog open={!!avancesDialog} onOpenChange={(open) => !open && setAvancesDialog(null)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          {avancesDialog && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 flex-wrap">
+                  <FileWarning className="h-4 w-4 text-amber-500"/>
+                  Incidencia · Corte <span className="font-mono">{avancesDialog.n_corte}</span>
+                  {avancesDialog.estado === 'ABIERTA'
+                    ? <Badge className="bg-amber-500 text-white text-[10px] px-1.5">ABIERTA</Badge>
+                    : <Badge className="bg-emerald-600 text-white text-[10px] px-1.5">RESUELTA</Badge>}
+                  {avancesDialog.paraliza && (
+                    <Badge className="bg-red-600 text-white text-[10px] px-1.5 gap-0.5">
+                      <PauseCircle className="h-2.5 w-2.5"/>PARALIZA
+                    </Badge>
+                  )}
+                </DialogTitle>
+                <DialogDescription className="text-xs space-y-0.5">
+                  <div><strong>Motivo:</strong> {avancesDialog.motivo_nombre || avancesDialog.tipo || '-'}</div>
+                  <div><strong>Reportada:</strong> {avancesDialog.fecha_hora ? formatDate(avancesDialog.fecha_hora) : '-'} por <em>{avancesDialog.usuario || '-'}</em></div>
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Comentario inicial</div>
+                  <div className="text-sm bg-muted/30 rounded p-2 border">{avancesDialog.comentario || '—'}</div>
+                </div>
+                {avancesDialog.estado === 'RESUELTA' && avancesDialog.comentario_resolucion && (
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mb-1">Resolución</div>
+                    <div className="text-sm bg-emerald-50/50 dark:bg-emerald-950/20 rounded p-2 border border-emerald-200/50 text-emerald-900 dark:text-emerald-100">
+                      ✓ {avancesDialog.comentario_resolucion}
+                    </div>
+                  </div>
+                )}
+                <div className="border-t pt-3">
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                    <MessageSquare className="h-3 w-3"/> Historial de avances
+                  </div>
+                  <IncidenciaAvances incidenciaId={avancesDialog.id} canWrite />
+                </div>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
