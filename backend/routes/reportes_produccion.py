@@ -338,15 +338,12 @@ async def wip_por_etapa(
                         data_index[ALIAS[nk]] = v
 
                 etapas_ord = []
-                used_keys = set()
                 for e_def in etapas_ruta:
                     nombre_ruta = e_def.get("nombre")
                     nk = _norm(nombre_ruta)
                     real = data_index.get(nk) or data_index.get(ALIAS.get(nk, ""))
                     if real is not None:
                         d = dict(real)
-                        # Conservamos el nombre real (con tildes, como aparece en BD)
-                        used_keys.add(_norm(d["etapa"]))
                     else:
                         d = {
                             "etapa": nombre_ruta, "lotes": 0, "prendas": 0,
@@ -354,11 +351,10 @@ async def wip_por_etapa(
                         }
                     etapas_ord.append(d)
 
-                # Agregar etapas con datos que NO matchearon ninguna etapa de la ruta
-                # (raro: serían estados huérfanos no contemplados en la ruta)
-                for nombre, d in etapas_data.items():
-                    if _norm(nombre) not in used_keys:
-                        etapas_ord.append(d)
+                # NOTA: las etapas con datos que NO pertenecen a esta ruta
+                # (ej. registros pantalones cuando la ruta es Polo) se omiten
+                # del chart. Si querés verlos, cambiá el filtro de Tipo o
+                # selecciona la ruta correspondiente.
 
                 return {"etapas": etapas_ord, "total_etapas": len(etapas_ord)}
 
