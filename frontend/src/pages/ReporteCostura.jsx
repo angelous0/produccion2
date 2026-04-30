@@ -377,6 +377,38 @@ export const ReporteCostura = () => {
     return m.join('; ') || '';
   };
 
+  // Generar lista de mini-badges para la columna OBS — compacto pero informativo
+  const buildObsBadges = (item) => {
+    if (!item || item.nivel_riesgo === 'normal') return [];
+    const badges = [];
+    if (item.nivel_riesgo === 'vencido') {
+      badges.push({ text: 'vencida', cls: 'bg-zinc-800 text-white' });
+    }
+    if (item.dias_sin_actualizar != null && item.dias_sin_actualizar >= 3) {
+      badges.push({
+        text: `${item.dias_sin_actualizar}d s/act`,
+        cls: item.dias_sin_actualizar >= 5 ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-amber-100 text-amber-700 border border-amber-200'
+      });
+    }
+    if (item.fecha_esperada) {
+      const de = Math.round((new Date(item.fecha_esperada) - new Date()) / 86400000);
+      const trigger = (de <= 2 && item.avance_porcentaje < 70) || (de <= 5 && item.avance_porcentaje < 50);
+      if (trigger) {
+        badges.push({
+          text: de < 0 ? `${de}d` : `${de}d entr.`,
+          cls: de < 0 ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-orange-100 text-orange-700 border border-orange-200'
+        });
+      }
+    }
+    if (item.incidencias_abiertas >= 1) {
+      badges.push({ text: `${item.incidencias_abiertas} inc`, cls: 'bg-purple-100 text-purple-700 border border-purple-200' });
+    }
+    if (item.urgente) {
+      badges.push({ text: 'urg', cls: 'bg-red-600 text-white' });
+    }
+    return badges;
+  };
+
   // Agrupar items por persona
   const grouped = useMemo(() => {
     if (!data) return [];
@@ -912,7 +944,7 @@ export const ReporteCostura = () => {
                   <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">D/s Act.</th>
                   <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Inc.</th>
                   <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Riesgo</th>
-                  <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap w-8" title="Observaciones (hover para ver detalle)">Obs.</th>
+                  <th className="text-left p-2 font-medium text-muted-foreground whitespace-nowrap" title="Observaciones (hover para ver detalle completo)">Obs.</th>
                   <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
@@ -986,12 +1018,13 @@ export const ReporteCostura = () => {
                           <Badge className={`${cfg.color} text-[10px] border`}>{cfg.label}</Badge>
                         )}
                       </td>
-                      <td className="p-2 text-center w-8">
+                      <td className="p-2 align-middle max-w-[140px]" title={buildObsText(item)}>
                         {item.nivel_riesgo !== 'normal' ? (
-                          <span title={buildObsText(item)}
-                                className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 text-amber-700 cursor-help">
-                            <Info className="h-3 w-3"/>
-                          </span>
+                          <div className="flex flex-wrap gap-0.5 leading-tight">
+                            {buildObsBadges(item).map((b, idx) => (
+                              <span key={idx} className={`inline-flex items-center px-1 py-0 text-[9px] font-medium rounded ${b.cls}`}>{b.text}</span>
+                            ))}
+                          </div>
                         ) : (
                           <span className="text-muted-foreground text-[10px]">—</span>
                         )}
@@ -1117,7 +1150,7 @@ export const ReporteCostura = () => {
                           <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">D/s Act.</th>
                           <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Inc.</th>
                           <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Riesgo</th>
-                          <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap w-8" title="Observaciones (hover para ver detalle)">Obs.</th>
+                          <th className="text-left p-2 font-medium text-muted-foreground whitespace-nowrap" title="Observaciones (hover para ver detalle completo)">Obs.</th>
                           <th className="text-center p-2 font-medium text-muted-foreground whitespace-nowrap">Acciones</th>
                         </tr>
                       </thead>
@@ -1188,12 +1221,13 @@ export const ReporteCostura = () => {
                                   <Badge className={`${cfg.color} text-[10px] border`}>{cfg.label}</Badge>
                                 )}
                               </td>
-                              <td className="p-2 text-center w-8">
+                              <td className="p-2 align-middle max-w-[140px]" title={buildObsText(item)}>
                                 {item.nivel_riesgo !== 'normal' ? (
-                                  <span title={buildObsText(item)}
-                                        className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 text-amber-700 cursor-help">
-                                    <Info className="h-3 w-3"/>
-                                  </span>
+                                  <div className="flex flex-wrap gap-0.5 leading-tight">
+                                    {buildObsBadges(item).map((b, idx) => (
+                                      <span key={idx} className={`inline-flex items-center px-1 py-0 text-[9px] font-medium rounded ${b.cls}`}>{b.text}</span>
+                                    ))}
+                                  </div>
                                 ) : (
                                   <span className="text-muted-foreground text-[10px]">—</span>
                                 )}
