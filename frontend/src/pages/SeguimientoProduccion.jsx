@@ -11,8 +11,13 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '../components/ui/table';
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from '../components/ui/dialog';
+import IncidenciaAvances from '../components/registro/IncidenciaAvances';
+import {
   Activity, Layers, AlertTriangle, PauseCircle, Clock, CheckCircle2,
   ExternalLink, ArrowRight, Filter, Shirt, Flame, CalendarClock, FileWarning,
+  MessageSquare,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatDate } from '../lib/dateUtils';
@@ -32,6 +37,7 @@ export const SeguimientoProduccion = () => {
   const [paralizadosData, setParalizadosData] = useState(null);
   const [incidenciasData, setIncidenciasData] = useState(null);
   const [incidenciasFiltro, setIncidenciasFiltro] = useState('abiertas'); // abiertas | todas | resueltas
+  const [incidenciaSeleccionada, setIncidenciaSeleccionada] = useState(null); // para el modal de detalle/avances
   const [filtros, setFiltros] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -659,6 +665,7 @@ export const SeguimientoProduccion = () => {
                       <TableHead className="w-[110px]">Fecha</TableHead>
                       <TableHead className="w-[100px]">Estado</TableHead>
                       <TableHead className="w-[110px] text-center">Paraliza?</TableHead>
+                      <TableHead className="w-[80px] text-center">Avances</TableHead>
                       <TableHead className="w-[40px]"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -708,10 +715,17 @@ export const SeguimientoProduccion = () => {
                             <span className="text-[10px] text-muted-foreground">no</span>
                           )}
                         </TableCell>
+                        <TableCell className="text-center">
+                          <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-[10px]"
+                            onClick={() => setIncidenciaSeleccionada(i)}
+                            title="Ver avances/notas de la incidencia">
+                            <MessageSquare className="h-3 w-3"/> Ver
+                          </Button>
+                        </TableCell>
                         <TableCell>
                           <Button variant="ghost" size="icon" className="h-7 w-7"
                             onClick={() => navigate(`/registros/editar/${i.registro_id}`)}
-                            title="Ver registro">
+                            title="Ir al registro">
                             <ExternalLink className="h-3.5 w-3.5"/>
                           </Button>
                         </TableCell>
@@ -724,6 +738,71 @@ export const SeguimientoProduccion = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Modal de detalle de incidencia + avances */}
+      <Dialog open={!!incidenciaSeleccionada} onOpenChange={(open) => !open && setIncidenciaSeleccionada(null)}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          {incidenciaSeleccionada && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 flex-wrap">
+                  <FileWarning className="h-4 w-4 text-amber-500"/>
+                  Incidencia · Corte <span className="font-mono">{incidenciaSeleccionada.n_corte}</span>
+                  <span className="text-muted-foreground font-normal text-sm">
+                    · {incidenciaSeleccionada.modelo_nombre} ({incidenciaSeleccionada.tipo_producto})
+                  </span>
+                  {incidenciaSeleccionada.estado === 'ABIERTA'
+                    ? <Badge className="bg-amber-500 text-white text-[10px] px-1.5">ABIERTA</Badge>
+                    : <Badge className="bg-emerald-600 text-white text-[10px] px-1.5">RESUELTA</Badge>}
+                  {incidenciaSeleccionada.paraliza && (
+                    <Badge className="bg-red-600 text-white text-[10px] px-1.5 gap-0.5">
+                      <PauseCircle className="h-2.5 w-2.5"/>PARALIZA
+                    </Badge>
+                  )}
+                </DialogTitle>
+                <DialogDescription className="text-xs space-y-0.5">
+                  <div><strong>Etapa:</strong> {incidenciaSeleccionada.etapa} · <strong>Motivo:</strong> {incidenciaSeleccionada.motivo_nombre || '-'}</div>
+                  <div><strong>Reportada:</strong> {incidenciaSeleccionada.fecha_hora ? formatDate(incidenciaSeleccionada.fecha_hora) : '-'} por <em>{incidenciaSeleccionada.usuario || '-'}</em></div>
+                  {incidenciaSeleccionada.movimiento_servicio && (
+                    <div><strong>Servicio:</strong> {incidenciaSeleccionada.movimiento_servicio}</div>
+                  )}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Comentario inicial</div>
+                  <div className="text-sm bg-muted/30 rounded p-2 border">{incidenciaSeleccionada.comentario || '—'}</div>
+                </div>
+
+                {incidenciaSeleccionada.estado === 'RESUELTA' && incidenciaSeleccionada.comentario_resolucion && (
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mb-1">Resolución</div>
+                    <div className="text-sm bg-emerald-50/50 dark:bg-emerald-950/20 rounded p-2 border border-emerald-200/50 text-emerald-900 dark:text-emerald-100">
+                      ✓ {incidenciaSeleccionada.comentario_resolucion}
+                    </div>
+                  </div>
+                )}
+
+                <div className="border-t pt-3">
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                    <MessageSquare className="h-3 w-3"/> Historial de avances
+                  </div>
+                  <IncidenciaAvances incidenciaId={incidenciaSeleccionada.id} canWrite />
+                </div>
+
+                <div className="border-t pt-2 flex justify-end">
+                  <Button variant="outline" size="sm"
+                    onClick={() => navigate(`/registros/editar/${incidenciaSeleccionada.registro_id}`)}
+                    className="text-xs gap-1.5">
+                    <ExternalLink className="h-3.5 w-3.5"/> Ir al registro
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
