@@ -311,18 +311,55 @@ async def wip_por_etapa(
                     [e for e in etapas_ruta_raw if e.get("aparece_en_estado", True)],
                     key=lambda e: e.get("orden", 0)
                 )
+
+                # Helper: normaliza nombre (sin tildes, lowercase, espacios trim)
+                # para emparejar "Lavandería" ↔ "Lavanderia", etc.
+                import unicodedata as _u
+                def _norm(s: str) -> str:
+                    if not s:
+                        return ""
+                    s = _u.normalize("NFD", str(s))
+                    s = "".join(c for c in s if _u.category(c) != "Mn")
+                    return s.lower().strip()
+
+                # Alias manuales para nombres equivalentes pero distintos
+                # (ej. la ruta los llama "Producto Terminado" y la BD "Almacén PT").
+                ALIAS = {
+                    "producto terminado": "almacen pt",
+                    "almacen pt":         "producto terminado",
+                }
+
+                # Index normalizado de los datos reales
+                data_index = {}
+                for k, v in etapas_data.items():
+                    nk = _norm(k)
+                    data_index[nk] = v
+                    if nk in ALIAS:
+                        data_index[ALIAS[nk]] = v
+
                 etapas_ord = []
+                used_keys = set()
                 for e_def in etapas_ruta:
-                    nombre = e_def.get("nombre")
-                    d = etapas_data.get(nombre) or {
-                        "etapa": nombre, "lotes": 0, "prendas": 0,
-                        "urgentes": 0, "lote_mas_antiguo": None,
-                    }
+                    nombre_ruta = e_def.get("nombre")
+                    nk = _norm(nombre_ruta)
+                    real = data_index.get(nk) or data_index.get(ALIAS.get(nk, ""))
+                    if real is not None:
+                        d = dict(real)
+                        # Conservamos el nombre real (con tildes, como aparece en BD)
+                        used_keys.add(_norm(d["etapa"]))
+                    else:
+                        d = {
+                            "etapa": nombre_ruta, "lotes": 0, "prendas": 0,
+                            "urgentes": 0, "lote_mas_antiguo": None,
+                        }
                     etapas_ord.append(d)
-                # Agregar etapas que aparecen en datos pero no en la ruta (raro pero por seguridad)
+
+                # Agregar etapas con datos que NO matchearon ninguna etapa de la ruta
+                # (raro: serían estados huérfanos no contemplados en la ruta)
                 for nombre, d in etapas_data.items():
-                    if not any(eo["etapa"] == nombre for eo in etapas_ord):
+                    if _norm(nombre) not in used_keys:
                         etapas_ord.append(d)
+
                 return {"etapas": etapas_ord, "total_etapas": len(etapas_ord)}
 
         # 3) Sin ruta filtrada → orden por cantidad de lotes desc (comportamiento previo)
