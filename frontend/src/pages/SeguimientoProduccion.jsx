@@ -11,8 +11,10 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '../components/ui/table';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '../components/ui/dialog';
+import { Checkbox } from '../components/ui/checkbox';
+import { Label } from '../components/ui/label';
 import IncidenciaAvances from '../components/registro/IncidenciaAvances';
 import {
   Activity, Layers, AlertTriangle, PauseCircle, Clock, CheckCircle2,
@@ -41,6 +43,17 @@ export const SeguimientoProduccion = () => {
   const [filtros, setFiltros] = useState(null);
   const [loading, setLoading] = useState(true);
   const [descargandoExcel, setDescargandoExcel] = useState(false);
+
+  // Modal de filtros para el export
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportCatalogos, setExportCatalogos] = useState({ marcas: [], tipos: [], entalles: [], telas: [], estados: [] });
+  const [exportFiltros, setExportFiltros] = useState({
+    estados: [],     // array de estados a incluir (vacío = todos)
+    marca_id: '',    // string (vacío = todas)
+    tipo_id: '',
+    entalle_id: '',
+    tela_id: '',
+  });
 
   // Filters
   const [filterEstado, setFilterEstado] = useState('');
@@ -101,13 +114,54 @@ export const SeguimientoProduccion = () => {
     } catch { /* ignore */ }
   }, [incidenciasFiltro]);
 
-  // Descarga Excel de lotes en proceso (respeta filtros Tipo y Estado activos)
+  // Abre el modal y precarga catálogos (marcas, tipos, entalles, telas).
+  // Pre-rellena los filtros del modal con los filtros activos de la página.
+  const openExportDialog = async () => {
+    // Precargar valores actuales como punto de partida
+    setExportFiltros({
+      estados: filterEstado && filterEstado !== '_all' ? [filterEstado] : [],
+      marca_id: '',
+      tipo_id: filterTipo && filterTipo !== '_all' ? filterTipo : '',
+      entalle_id: '',
+      tela_id: '',
+    });
+    setExportDialogOpen(true);
+
+    // Catálogos (lazy: solo la primera vez)
+    if (exportCatalogos.marcas.length === 0) {
+      try {
+        const safe = (p) => p.catch(() => ({ data: [] }));
+        const [m, t, e, te] = await Promise.all([
+          safe(axios.get(`${API}/marcas`)),
+          safe(axios.get(`${API}/tipos`)),
+          safe(axios.get(`${API}/entalles`)),
+          safe(axios.get(`${API}/telas`)),
+        ]);
+        setExportCatalogos({
+          marcas: m?.data || [],
+          tipos: t?.data || [],
+          entalles: e?.data || [],
+          telas: te?.data || [],
+          estados: filtros?.estados || [],
+        });
+      } catch { /* ignore */ }
+    } else {
+      // refrescar lista de estados (puede haber cambiado con datos nuevos)
+      setExportCatalogos(prev => ({ ...prev, estados: filtros?.estados || prev.estados }));
+    }
+  };
+
+  // Descarga el Excel respetando los filtros elegidos en el modal
   const handleDownloadEnProcesoXLSX = async () => {
     setDescargandoExcel(true);
     try {
       const params = new URLSearchParams();
-      if (filterTipo && filterTipo !== '_all') params.append('tipo_id', filterTipo);
-      if (filterEstado && filterEstado !== '_all') params.append('estado', filterEstado);
+      if (exportFiltros.tipo_id)    params.append('tipo_id', exportFiltros.tipo_id);
+      if (exportFiltros.marca_id)   params.append('marca_id', exportFiltros.marca_id);
+      if (exportFiltros.entalle_id) params.append('entalle_id', exportFiltros.entalle_id);
+      if (exportFiltros.tela_id)    params.append('tela_id', exportFiltros.tela_id);
+      (exportFiltros.estados || []).forEach(e => params.append('estados', e));
+
       const res = await axios.get(
         `${API}/reportes-produccion/en-proceso/export-xlsx?${params}`,
         { responseType: 'blob' }
@@ -124,12 +178,24 @@ export const SeguimientoProduccion = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      setExportDialogOpen(false);
     } catch (err) {
       console.error('Error descargando Excel:', err);
       alert('No se pudo descargar el Excel. Revisa la consola.');
     } finally {
       setDescargandoExcel(false);
     }
+  };
+
+  // Helper para los checkboxes de estados
+  const toggleEstadoEnExport = (estado) => {
+    setExportFiltros(prev => {
+      const exists = prev.estados.includes(estado);
+      return {
+        ...prev,
+        estados: exists ? prev.estados.filter(e => e !== estado) : [...prev.estados, estado],
+      };
+    });
   };
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
@@ -211,14 +277,14 @@ export const SeguimientoProduccion = () => {
         <Button
           variant="outline"
           size="sm"
-          onClick={handleDownloadEnProcesoXLSX}
+          onClick={openExportDialog}
           disabled={descargandoExcel}
           data-testid="btn-descargar-en-proceso-xlsx"
-          title="Descarga Excel con todos los lotes en proceso (respeta los filtros de Tipo y Estado)"
+          title="Abrir filtros para descargar Excel"
           className="shrink-0"
         >
           <Download className={`h-3.5 w-3.5 mr-1.5 ${descargandoExcel ? 'animate-pulse' : ''}`} />
-          {descargandoExcel ? 'Descargando…' : 'Descargar Excel'}
+          Descargar Excel
         </Button>
       </div>
 
@@ -847,6 +913,159 @@ export const SeguimientoProduccion = () => {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de filtros para Descargar Excel — Lotes en proceso */}
+      <Dialog open={exportDialogOpen} onOpenChange={(open) => !descargandoExcel && setExportDialogOpen(open)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="h-4 w-4 text-emerald-600" />
+              Descargar Excel — Lotes en proceso
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Elegí los filtros que querés aplicar. Si dejás un filtro vacío, se incluyen todos los valores.
+              Para estados, podés marcar varios — si no marcás ninguno, se incluyen todos.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Estados — multi-checkbox */}
+            <div>
+              <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Estados / Etapas a incluir
+              </Label>
+              <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2 p-2 border rounded-md bg-muted/30 max-h-48 overflow-y-auto">
+                {(exportCatalogos.estados || []).length === 0 ? (
+                  <span className="text-xs text-muted-foreground col-span-full">Cargando estados…</span>
+                ) : (
+                  exportCatalogos.estados.map((e) => (
+                    <label key={e} className="flex items-center gap-2 cursor-pointer text-sm hover:bg-background rounded px-1.5 py-0.5">
+                      <Checkbox
+                        checked={exportFiltros.estados.includes(e)}
+                        onCheckedChange={() => toggleEstadoEnExport(e)}
+                      />
+                      <span className="truncate">{e}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+              <div className="flex gap-2 mt-1.5">
+                <button
+                  type="button"
+                  onClick={() => setExportFiltros(prev => ({ ...prev, estados: [...(exportCatalogos.estados || [])] }))}
+                  className="text-[10px] text-emerald-700 hover:underline"
+                >
+                  Marcar todos
+                </button>
+                <span className="text-[10px] text-muted-foreground">·</span>
+                <button
+                  type="button"
+                  onClick={() => setExportFiltros(prev => ({ ...prev, estados: [] }))}
+                  className="text-[10px] text-muted-foreground hover:underline"
+                >
+                  Limpiar
+                </button>
+                <span className="text-[10px] text-muted-foreground ml-auto">
+                  {exportFiltros.estados.length === 0
+                    ? '→ se incluyen todos'
+                    : `${exportFiltros.estados.length} estado(s) seleccionados`}
+                </span>
+              </div>
+            </div>
+
+            {/* Marca, Tipo, Entalle, Tela — selects single */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Marca</Label>
+                <Select
+                  value={exportFiltros.marca_id || '_all'}
+                  onValueChange={(v) => setExportFiltros(prev => ({ ...prev, marca_id: v === '_all' ? '' : v }))}
+                >
+                  <SelectTrigger className="h-9 mt-1.5 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todas las marcas</SelectItem>
+                    {(exportCatalogos.marcas || []).map(m => (
+                      <SelectItem key={m.id} value={m.id}>{m.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Tipo</Label>
+                <Select
+                  value={exportFiltros.tipo_id || '_all'}
+                  onValueChange={(v) => setExportFiltros(prev => ({ ...prev, tipo_id: v === '_all' ? '' : v }))}
+                >
+                  <SelectTrigger className="h-9 mt-1.5 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todos los tipos</SelectItem>
+                    {(exportCatalogos.tipos || []).map(t => (
+                      <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Entalle</Label>
+                <Select
+                  value={exportFiltros.entalle_id || '_all'}
+                  onValueChange={(v) => setExportFiltros(prev => ({ ...prev, entalle_id: v === '_all' ? '' : v }))}
+                >
+                  <SelectTrigger className="h-9 mt-1.5 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todos los entalles</SelectItem>
+                    {(exportCatalogos.entalles || []).map(en => (
+                      <SelectItem key={en.id} value={en.id}>{en.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Tela</Label>
+                <Select
+                  value={exportFiltros.tela_id || '_all'}
+                  onValueChange={(v) => setExportFiltros(prev => ({ ...prev, tela_id: v === '_all' ? '' : v }))}
+                >
+                  <SelectTrigger className="h-9 mt-1.5 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todas las telas</SelectItem>
+                    {(exportCatalogos.telas || []).map(te => (
+                      <SelectItem key={te.id} value={te.id}>{te.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-muted-foreground">
+              💡 Los filtros buscan tanto en modelos del catálogo como en registros con modelo manual (cuando guardan el mismo nombre).
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setExportDialogOpen(false)}
+              disabled={descargandoExcel}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleDownloadEnProcesoXLSX}
+              disabled={descargandoExcel}
+              className="gap-1.5"
+            >
+              <Download className={`h-3.5 w-3.5 ${descargandoExcel ? 'animate-pulse' : ''}`} />
+              {descargandoExcel ? 'Generando…' : 'Generar y Descargar'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

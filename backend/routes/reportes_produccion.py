@@ -4,7 +4,7 @@ Dashboard KPIs, En Proceso, WIP por Etapa, Atrasados, Trazabilidad,
 Cumplimiento de Ruta, Balance Terceros, Lotes Fraccionados.
 """
 from fastapi import APIRouter, HTTPException, Depends, Query
-from typing import Optional
+from typing import Optional, List
 from datetime import date, datetime, timezone
 import json
 
@@ -238,16 +238,29 @@ async def produccion_en_proceso(
 @router.get("/en-proceso/export-xlsx")
 async def export_en_proceso_xlsx(
     empresa_id: int = Query(7),
-    tipo_id: Optional[str] = Query(None, description="Filtra por tipo de producto (modelo o modelo_manual)"),
-    estado: Optional[str] = Query(None, description="Filtra por estado/etapa"),
+    tipo_id: Optional[str] = Query(None, description="Filtra por tipo (catálogo o modelo_manual)"),
+    marca_id: Optional[str] = Query(None, description="Filtra por marca (catálogo o modelo_manual)"),
+    entalle_id: Optional[str] = Query(None, description="Filtra por entalle (catálogo o modelo_manual)"),
+    tela_id: Optional[str] = Query(None, description="Filtra por tela (catálogo o modelo_manual)"),
+    estados: Optional[List[str]] = Query(None, description="Lista de estados/etapas a incluir (repetible)"),
+    estado: Optional[str] = Query(None, description="(Deprecated) usar 'estados' en su lugar"),
     current_user: dict = Depends(get_current_user),
 ):
     """Descarga Excel con los lotes en proceso. Columnas:
        N° Corte, Marca, Tipo, Entalle, Tela, Fecha Inicio, Estado,
-       Último Movimiento, Días sin Movimiento.
+       Último Movimiento, Días sin Movimiento, Modelo, Urgente.
 
     Fecha Inicio: usa r.fecha_inicio_real; si no, fecha del primer movimiento
     de Corte; si no, fecha_creacion.
+
+    Filtros opcionales:
+      - tipo_id, marca_id, entalle_id, tela_id: matchea contra el catálogo
+        (`prod_modelos.X_id`) Y contra el JSONB de modelo_manual cuando guarda
+        `<X>_id` o `<X>_texto` (en este último caso se compara con el `nombre`
+        del catálogo correspondiente).
+      - estados: lista de estados a incluir; si no se envía, NO se filtra por
+        estado (se toman todos los activos).
+      - estado: parámetro singular legacy, sigue funcionando por compatibilidad.
     """
     from io import BytesIO
     from fastapi.responses import StreamingResponse
@@ -256,18 +269,52 @@ async def export_en_proceso_xlsx(
 
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # Resolver textos de catálogo para matchear contra modelo_manual JSONB
+        # (los registros manuales guardan el nombre como texto, no el UUID).
+        async def _nombre_catalogo(tabla: str, _id: str) -> Optional[str]:
+            if not _id:
+                return None
+            row = await conn.fetchrow(f"SELECT nombre FROM {tabla} WHERE id = $1", _id)
+            return row["nombre"] if row else None
+
+        marca_txt   = await _nombre_catalogo("prod_marcas",   marca_id)
+        tipo_txt    = await _nombre_catalogo("prod_tipos",    tipo_id)
+        entalle_txt = await _nombre_catalogo("prod_entalles", entalle_id)
+        tela_txt    = await _nombre_catalogo("prod_telas",    tela_id)
+
         conds = ["r.estado_op IN ('ABIERTA', 'EN_PROCESO')",
                  "r.dividido_desde_registro_id IS NULL"]
         params: list = []
 
+        def _add_filter_id_or_texto(_id: str, _txt: Optional[str], col_id: str, json_key_id: str, json_key_texto: str):
+            """Match contra (modelo del catálogo OR JSONB id OR JSONB texto)."""
+            params.append(_id)
+            idx_id = len(params)
+            parts = [f"{col_id} = ${idx_id}", f"r.modelo_manual->>'{json_key_id}' = ${idx_id}"]
+            if _txt:
+                params.append(_txt)
+                idx_txt = len(params)
+                parts.append(f"r.modelo_manual->>'{json_key_texto}' = ${idx_txt}")
+            conds.append("(" + " OR ".join(parts) + ")")
+
         if tipo_id:
-            params.append(tipo_id)
-            conds.append(
-                f"(m.tipo_id = ${len(params)} OR r.modelo_manual->>'tipo_id' = ${len(params)})"
-            )
-        if estado:
-            params.append(estado)
-            conds.append(f"r.estado = ${len(params)}")
+            _add_filter_id_or_texto(tipo_id, tipo_txt, "m.tipo_id", "tipo_id", "tipo_texto")
+        if marca_id:
+            _add_filter_id_or_texto(marca_id, marca_txt, "m.marca_id", "marca_id", "marca_texto")
+        if entalle_id:
+            _add_filter_id_or_texto(entalle_id, entalle_txt, "m.entalle_id", "entalle_id", "entalle_texto")
+        if tela_id:
+            _add_filter_id_or_texto(tela_id, tela_txt, "m.tela_id", "tela_id", "tela_texto")
+
+        # Estados: lista (preferida) O singular (legacy)
+        estados_efectivos: list = []
+        if estados:
+            estados_efectivos = [e for e in estados if e]
+        elif estado:
+            estados_efectivos = [estado]
+        if estados_efectivos:
+            params.append(estados_efectivos)
+            conds.append(f"r.estado = ANY(${len(params)}::text[])")
 
         where_sql = " AND ".join(conds)
 
