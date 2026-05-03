@@ -233,6 +233,152 @@ async def produccion_en_proceso(
         return {"registros": registros, "total": len(registros)}
 
 
+# ==================== 2.5 EXPORT XLSX DE EN-PROCESO ====================
+
+@router.get("/en-proceso/export-xlsx")
+async def export_en_proceso_xlsx(
+    empresa_id: int = Query(7),
+    tipo_id: Optional[str] = Query(None, description="Filtra por tipo de producto (modelo o modelo_manual)"),
+    estado: Optional[str] = Query(None, description="Filtra por estado/etapa"),
+    current_user: dict = Depends(get_current_user),
+):
+    """Descarga Excel con los lotes en proceso. Columnas:
+       N° Corte, Marca, Tipo, Entalle, Tela, Fecha Inicio, Estado,
+       Último Movimiento, Días sin Movimiento.
+
+    Fecha Inicio: usa r.fecha_inicio_real; si no, fecha del primer movimiento
+    de Corte; si no, fecha_creacion.
+    """
+    from io import BytesIO
+    from fastapi.responses import StreamingResponse
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        conds = ["r.estado_op IN ('ABIERTA', 'EN_PROCESO')",
+                 "r.dividido_desde_registro_id IS NULL"]
+        params: list = []
+
+        if tipo_id:
+            params.append(tipo_id)
+            conds.append(
+                f"(m.tipo_id = ${len(params)} OR r.modelo_manual->>'tipo_id' = ${len(params)})"
+            )
+        if estado:
+            params.append(estado)
+            conds.append(f"r.estado = ${len(params)}")
+
+        where_sql = " AND ".join(conds)
+
+        rows = await conn.fetch(f"""
+            WITH ultimo_mov AS (
+                SELECT mp.registro_id,
+                       MAX(GREATEST(
+                           COALESCE(mp.fecha_fin, '1900-01-01'::date),
+                           COALESCE(mp.fecha_inicio, '1900-01-01'::date),
+                           COALESCE(mp.avance_updated_at::date, '1900-01-01'::date),
+                           mp.created_at::date
+                       )) AS fecha_ultimo_mov
+                  FROM prod_movimientos_produccion mp
+                 GROUP BY mp.registro_id
+            ),
+            fecha_corte AS (
+                SELECT mp.registro_id, MIN(mp.fecha_inicio) AS fecha_corte
+                  FROM prod_movimientos_produccion mp
+                  JOIN prod_servicios_produccion s ON s.id = mp.servicio_id
+                 WHERE LOWER(s.nombre) LIKE '%corte%'
+                 GROUP BY mp.registro_id
+            )
+            SELECT
+                r.n_corte,
+                COALESCE(ma.nombre, r.modelo_manual->>'marca_texto', '')   AS marca,
+                COALESCE(tp.nombre, r.modelo_manual->>'tipo_texto', '')    AS tipo,
+                COALESCE(en.nombre, r.modelo_manual->>'entalle_texto', '') AS entalle,
+                COALESCE(te.nombre, r.modelo_manual->>'tela_texto', '')    AS tela,
+                COALESCE(r.fecha_inicio_real, fc.fecha_corte, r.fecha_creacion::date) AS fecha_inicio,
+                r.estado,
+                um.fecha_ultimo_mov,
+                CASE WHEN um.fecha_ultimo_mov IS NOT NULL
+                     THEN (CURRENT_DATE - um.fecha_ultimo_mov)
+                     ELSE NULL END AS dias_sin_mov,
+                COALESCE(mod.nombre, r.modelo_manual->>'nombre_modelo', '') AS modelo,
+                r.urgente
+              FROM prod_registros r
+              LEFT JOIN prod_modelos mod ON mod.id = r.modelo_id
+              LEFT JOIN prod_marcas ma   ON ma.id  = mod.marca_id
+              LEFT JOIN prod_tipos tp    ON tp.id  = mod.tipo_id
+              LEFT JOIN prod_entalles en ON en.id  = mod.entalle_id
+              LEFT JOIN prod_telas te    ON te.id  = mod.tela_id
+              LEFT JOIN ultimo_mov um    ON um.registro_id = r.id
+              LEFT JOIN fecha_corte fc   ON fc.registro_id = r.id
+              -- alias 'm' usado por filtros de tipo_id si aplica:
+              LEFT JOIN prod_modelos m   ON m.id = r.modelo_id
+             WHERE {where_sql}
+             ORDER BY um.fecha_ultimo_mov ASC NULLS LAST, r.n_corte
+        """, *params)
+
+    # ──────────────────────────────────────────────────────────────
+    # Construcción del XLSX
+    # ──────────────────────────────────────────────────────────────
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "En Proceso"
+
+    headers = [
+        "N° Corte", "Marca", "Tipo", "Entalle", "Tela",
+        "Fecha Inicio", "Estado", "Último Movimiento", "Días sin Mov.",
+        "Modelo", "Urgente",
+    ]
+
+    header_fill = PatternFill(start_color="1F2937", end_color="1F2937", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    thin = Side(border_style="thin", color="D1D5DB")
+    border_all = Border(top=thin, bottom=thin, left=thin, right=thin)
+
+    for col_idx, h in enumerate(headers, start=1):
+        c = ws.cell(row=1, column=col_idx, value=h)
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = border_all
+
+    # Anchos por columna (heurística por contenido típico)
+    widths = [12, 18, 14, 18, 18, 13, 18, 18, 14, 22, 10]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
+
+    for row_idx, r in enumerate(rows, start=2):
+        ws.cell(row=row_idx, column=1, value=r["n_corte"])
+        ws.cell(row=row_idx, column=2, value=r["marca"])
+        ws.cell(row=row_idx, column=3, value=r["tipo"])
+        ws.cell(row=row_idx, column=4, value=r["entalle"])
+        ws.cell(row=row_idx, column=5, value=r["tela"])
+        ws.cell(row=row_idx, column=6, value=r["fecha_inicio"])
+        ws.cell(row=row_idx, column=7, value=r["estado"])
+        ws.cell(row=row_idx, column=8, value=r["fecha_ultimo_mov"])
+        dias = r["dias_sin_mov"]
+        ws.cell(row=row_idx, column=9, value=int(dias) if dias is not None else None)
+        ws.cell(row=row_idx, column=10, value=r["modelo"])
+        ws.cell(row=row_idx, column=11, value="SÍ" if r["urgente"] else "")
+
+    # Freeze de la fila de cabeceras + filtro automático
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    fecha_str = datetime.now().strftime("%Y-%m-%d")
+    filename = f"en-proceso_{fecha_str}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 # ==================== 3. WIP POR ETAPA ====================
 
 @router.get("/wip-etapa")
