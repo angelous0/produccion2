@@ -17,7 +17,7 @@ import IncidenciaAvances from '../components/registro/IncidenciaAvances';
 import {
   Activity, Layers, AlertTriangle, PauseCircle, Clock, CheckCircle2,
   ExternalLink, ArrowRight, Filter, Shirt, Flame, CalendarClock, FileWarning,
-  MessageSquare,
+  MessageSquare, Download,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatDate } from '../lib/dateUtils';
@@ -40,6 +40,7 @@ export const SeguimientoProduccion = () => {
   const [incidenciaSeleccionada, setIncidenciaSeleccionada] = useState(null); // para el modal de detalle/avances
   const [filtros, setFiltros] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [descargandoExcel, setDescargandoExcel] = useState(false);
 
   // Filters
   const [filterEstado, setFilterEstado] = useState('');
@@ -99,6 +100,37 @@ export const SeguimientoProduccion = () => {
       setIncidenciasData(res.data);
     } catch { /* ignore */ }
   }, [incidenciasFiltro]);
+
+  // Descarga Excel de lotes en proceso (respeta filtros Tipo y Estado activos)
+  const handleDownloadEnProcesoXLSX = async () => {
+    setDescargandoExcel(true);
+    try {
+      const params = new URLSearchParams();
+      if (filterTipo && filterTipo !== '_all') params.append('tipo_id', filterTipo);
+      if (filterEstado && filterEstado !== '_all') params.append('estado', filterEstado);
+      const res = await axios.get(
+        `${API}/reportes-produccion/en-proceso/export-xlsx?${params}`,
+        { responseType: 'blob' }
+      );
+      const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const fecha = new Date().toISOString().slice(0, 10);
+      link.setAttribute('download', `en-proceso_${fecha}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error descargando Excel:', err);
+      alert('No se pudo descargar el Excel. Revisa la consola.');
+    } finally {
+      setDescargandoExcel(false);
+    }
+  };
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
   useEffect(() => { fetchParalizados(); }, [fetchParalizados]);
@@ -171,9 +203,23 @@ export const SeguimientoProduccion = () => {
 
   return (
     <div className="space-y-4" data-testid="seguimiento-produccion">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Seguimiento de Produccion</h2>
-        <p className="text-sm text-muted-foreground">Monitoreo de lotes, etapas y cumplimiento</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Seguimiento de Produccion</h2>
+          <p className="text-sm text-muted-foreground">Monitoreo de lotes, etapas y cumplimiento</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDownloadEnProcesoXLSX}
+          disabled={descargandoExcel}
+          data-testid="btn-descargar-en-proceso-xlsx"
+          title="Descarga Excel con todos los lotes en proceso (respeta los filtros de Tipo y Estado)"
+          className="shrink-0"
+        >
+          <Download className={`h-3.5 w-3.5 mr-1.5 ${descargandoExcel ? 'animate-pulse' : ''}`} />
+          {descargandoExcel ? 'Descargando…' : 'Descargar Excel'}
+        </Button>
       </div>
 
       {/* SECCION 1: KPIs */}
