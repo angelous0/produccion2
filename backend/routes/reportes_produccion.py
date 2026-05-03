@@ -343,6 +343,12 @@ async def export_en_proceso_xlsx(
                 COALESCE(tp.nombre, r.modelo_manual->>'tipo_texto', '')    AS tipo,
                 COALESCE(en.nombre, r.modelo_manual->>'entalle_texto', '') AS entalle,
                 COALESCE(te.nombre, r.modelo_manual->>'tela_texto', '')    AS tela,
+                COALESCE(
+                    (SELECT SUM(rt.cantidad_real)
+                       FROM prod_registro_tallas rt
+                      WHERE rt.registro_id = r.id),
+                    0
+                )::int AS cantidad_prendas,
                 COALESCE(r.fecha_inicio_real, fc.fecha_corte, r.fecha_creacion::date) AS fecha_inicio,
                 r.estado,
                 um.fecha_ultimo_mov,
@@ -374,7 +380,7 @@ async def export_en_proceso_xlsx(
 
     headers = [
         "N° Corte", "Marca", "Tipo", "Entalle", "Tela",
-        "Fecha Inicio", "Estado", "Último Movimiento", "Días sin Mov.",
+        "Cantidad", "Fecha Inicio", "Estado", "Último Movimiento", "Días sin Mov.",
         "Modelo", "Urgente",
     ]
 
@@ -391,7 +397,7 @@ async def export_en_proceso_xlsx(
         c.border = border_all
 
     # Anchos por columna (heurística por contenido típico)
-    widths = [12, 18, 14, 18, 18, 13, 18, 18, 14, 22, 10]
+    widths = [12, 18, 14, 18, 18, 10, 13, 18, 18, 14, 22, 10]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
 
@@ -401,13 +407,14 @@ async def export_en_proceso_xlsx(
         ws.cell(row=row_idx, column=3, value=r["tipo"])
         ws.cell(row=row_idx, column=4, value=r["entalle"])
         ws.cell(row=row_idx, column=5, value=r["tela"])
-        ws.cell(row=row_idx, column=6, value=r["fecha_inicio"])
-        ws.cell(row=row_idx, column=7, value=r["estado"])
-        ws.cell(row=row_idx, column=8, value=r["fecha_ultimo_mov"])
+        ws.cell(row=row_idx, column=6, value=int(r["cantidad_prendas"] or 0))
+        ws.cell(row=row_idx, column=7, value=r["fecha_inicio"])
+        ws.cell(row=row_idx, column=8, value=r["estado"])
+        ws.cell(row=row_idx, column=9, value=r["fecha_ultimo_mov"])
         dias = r["dias_sin_mov"]
-        ws.cell(row=row_idx, column=9, value=int(dias) if dias is not None else None)
-        ws.cell(row=row_idx, column=10, value=r["modelo"])
-        ws.cell(row=row_idx, column=11, value="SÍ" if r["urgente"] else "")
+        ws.cell(row=row_idx, column=10, value=int(dias) if dias is not None else None)
+        ws.cell(row=row_idx, column=11, value=r["modelo"])
+        ws.cell(row=row_idx, column=12, value="SÍ" if r["urgente"] else "")
 
     # Freeze de la fila de cabeceras + filtro automático
     ws.freeze_panes = "A2"
