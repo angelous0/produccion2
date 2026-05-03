@@ -339,6 +339,7 @@ async def export_en_proceso_xlsx(
                  GROUP BY mp.registro_id
             )
             SELECT
+                r.id::text AS registro_id,
                 r.n_corte,
                 COALESCE(ma.nombre, r.modelo_manual->>'marca_texto', '')   AS marca,
                 COALESCE(tp.nombre, r.modelo_manual->>'tipo_texto', '')    AS tipo,
@@ -425,31 +426,27 @@ async def export_en_proceso_xlsx(
     # Hoja 2 (opcional): Detalle por Talla — formato pivot
     # ──────────────────────────────────────────────────────────────
     if incluir_tallas and rows:
-        registro_ids = [r["n_corte"] and str(r.get("registro_id")) for r in rows]
-        # Re-acquiero conn para la query de tallas
+        # Usamos registro_id (UUID único) como clave del pivot, NO n_corte —
+        # n_corte puede repetirse entre dos registros activos distintos.
+        registro_ids = [r["registro_id"] for r in rows]
         async with pool.acquire() as conn2:
-            tallas_rows = await conn2.fetch(f"""
-                SELECT r.n_corte,
+            tallas_rows = await conn2.fetch("""
+                SELECT rt.registro_id::text AS registro_id,
                        COALESCE(t.nombre, '?') AS talla,
                        SUM(rt.cantidad_real)::int AS cantidad
                   FROM prod_registro_tallas rt
-                  JOIN prod_registros r ON r.id = rt.registro_id
-                  LEFT JOIN prod_modelos m  ON m.id = r.modelo_id
                   LEFT JOIN prod_tallas_catalogo t ON t.id = rt.talla_id
-                 WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
-                   AND r.dividido_desde_registro_id IS NULL
-                   AND r.n_corte = ANY($1::text[])
-                 GROUP BY r.n_corte, t.nombre
-                 ORDER BY r.n_corte, t.nombre
-            """, [r["n_corte"] for r in rows])
+                 WHERE rt.registro_id::text = ANY($1::text[])
+                 GROUP BY rt.registro_id, t.nombre
+            """, registro_ids)
 
-        # Pivot en memoria: { n_corte: { talla: cantidad } }
+        # Pivot en memoria: { registro_id: { talla: cantidad } }
         pivot: dict = {}
         tallas_set = set()
         for tr in tallas_rows:
-            n = tr["n_corte"]
+            rid = tr["registro_id"]
             t = tr["talla"]
-            pivot.setdefault(n, {})[t] = int(tr["cantidad"] or 0)
+            pivot.setdefault(rid, {})[t] = int(tr["cantidad"] or 0)
             tallas_set.add(t)
 
         # Ordenar tallas: primero las numéricas asc, después las de letras (S, M, L, XL)
@@ -480,7 +477,7 @@ async def export_en_proceso_xlsx(
             ws2.cell(row=row_idx, column=2, value=r["marca"])
             ws2.cell(row=row_idx, column=3, value=r["tipo"])
             ws2.cell(row=row_idx, column=4, value=r["modelo"])
-            por_talla = pivot.get(r["n_corte"], {})
+            por_talla = pivot.get(r["registro_id"], {})
             total_fila = 0
             for j, t in enumerate(tallas_ordenadas, start=5):
                 v = por_talla.get(t, 0)
@@ -492,6 +489,46 @@ async def export_en_proceso_xlsx(
 
         ws2.freeze_panes = "E2"  # freeze hasta columna Modelo, así las tallas hacen scroll
         ws2.auto_filter.ref = ws2.dimensions
+
+        # ──────────────────────────────────────────────────────────────
+        # Hoja 3: Tallas en filas (formato "long" — ideal para tabla dinámica)
+        # Una fila por (lote × talla con cantidad > 0).
+        # Columnas: N° Corte | Marca | Tipo | Modelo | Estado | Talla | Cantidad
+        # ──────────────────────────────────────────────────────────────
+        ws3 = wb.create_sheet("Tallas en Filas")
+
+        headers3 = ["N° Corte", "Marca", "Tipo", "Modelo", "Estado", "Talla", "Cantidad"]
+        for col_idx, h in enumerate(headers3, start=1):
+            c = ws3.cell(row=1, column=col_idx, value=h)
+            c.fill = header_fill
+            c.font = header_font
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.border = border_all
+        widths3 = [12, 18, 14, 22, 18, 8, 10]
+        for i, w in enumerate(widths3, start=1):
+            ws3.column_dimensions[ws3.cell(row=1, column=i).column_letter].width = w
+
+        long_row = 2
+        # Recorre en el mismo orden de la hoja 1 (rows), y dentro de cada lote,
+        # las tallas en orden global (numéricas asc, luego letras).
+        # Usa registro_id como clave (n_corte puede repetirse entre lotes).
+        for r in rows:
+            por_talla = pivot.get(r["registro_id"], {})
+            for t in tallas_ordenadas:
+                v = por_talla.get(t, 0)
+                if not v:
+                    continue
+                ws3.cell(row=long_row, column=1, value=r["n_corte"])
+                ws3.cell(row=long_row, column=2, value=r["marca"])
+                ws3.cell(row=long_row, column=3, value=r["tipo"])
+                ws3.cell(row=long_row, column=4, value=r["modelo"])
+                ws3.cell(row=long_row, column=5, value=r["estado"])
+                ws3.cell(row=long_row, column=6, value=t)
+                ws3.cell(row=long_row, column=7, value=int(v))
+                long_row += 1
+
+        ws3.freeze_panes = "A2"
+        ws3.auto_filter.ref = ws3.dimensions
 
     buf = BytesIO()
     wb.save(buf)
