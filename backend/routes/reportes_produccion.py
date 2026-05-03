@@ -460,15 +460,15 @@ async def export_en_proceso_xlsx(
 
         ws2 = wb.create_sheet("Detalle por Talla")
 
-        headers2 = ["N° Corte", "Marca", "Tipo", "Modelo"] + tallas_ordenadas + ["Total"]
+        headers2 = ["N° Corte", "Marca", "Tipo", "Entalle", "Tela", "Modelo"] + tallas_ordenadas + ["Total"]
         for col_idx, h in enumerate(headers2, start=1):
             c = ws2.cell(row=1, column=col_idx, value=h)
             c.fill = header_fill
             c.font = header_font
             c.alignment = Alignment(horizontal="center", vertical="center")
             c.border = border_all
-        # Anchos: N° Corte/Marca/Tipo/Modelo + cada talla 8px + Total 10
-        widths2 = [12, 18, 14, 22] + [8] * len(tallas_ordenadas) + [10]
+        # Anchos: 6 cols descriptivas + cada talla 8px + Total 10
+        widths2 = [12, 18, 14, 18, 18, 22] + [8] * len(tallas_ordenadas) + [10]
         for i, w in enumerate(widths2, start=1):
             ws2.column_dimensions[ws2.cell(row=1, column=i).column_letter].width = w
 
@@ -476,18 +476,20 @@ async def export_en_proceso_xlsx(
             ws2.cell(row=row_idx, column=1, value=r["n_corte"])
             ws2.cell(row=row_idx, column=2, value=r["marca"])
             ws2.cell(row=row_idx, column=3, value=r["tipo"])
-            ws2.cell(row=row_idx, column=4, value=r["modelo"])
+            ws2.cell(row=row_idx, column=4, value=r["entalle"])
+            ws2.cell(row=row_idx, column=5, value=r["tela"])
+            ws2.cell(row=row_idx, column=6, value=r["modelo"])
             por_talla = pivot.get(r["registro_id"], {})
             total_fila = 0
-            for j, t in enumerate(tallas_ordenadas, start=5):
+            for j, t in enumerate(tallas_ordenadas, start=7):
                 v = por_talla.get(t, 0)
                 if v:
                     ws2.cell(row=row_idx, column=j, value=v)
                     total_fila += v
-            ws2.cell(row=row_idx, column=4 + len(tallas_ordenadas) + 1,
+            ws2.cell(row=row_idx, column=6 + len(tallas_ordenadas) + 1,
                      value=total_fila or None)
 
-        ws2.freeze_panes = "E2"  # freeze hasta columna Modelo, así las tallas hacen scroll
+        ws2.freeze_panes = "G2"  # freeze hasta col F (Modelo), las tallas hacen scroll
         ws2.auto_filter.ref = ws2.dimensions
 
         # ──────────────────────────────────────────────────────────────
@@ -497,14 +499,14 @@ async def export_en_proceso_xlsx(
         # ──────────────────────────────────────────────────────────────
         ws3 = wb.create_sheet("Tallas en Filas")
 
-        headers3 = ["N° Corte", "Marca", "Tipo", "Modelo", "Estado", "Talla", "Cantidad"]
+        headers3 = ["N° Corte", "Marca", "Tipo", "Entalle", "Tela", "Modelo", "Estado", "Talla", "Cantidad"]
         for col_idx, h in enumerate(headers3, start=1):
             c = ws3.cell(row=1, column=col_idx, value=h)
             c.fill = header_fill
             c.font = header_font
             c.alignment = Alignment(horizontal="center", vertical="center")
             c.border = border_all
-        widths3 = [12, 18, 14, 22, 18, 8, 10]
+        widths3 = [12, 18, 14, 18, 18, 22, 18, 8, 10]
         for i, w in enumerate(widths3, start=1):
             ws3.column_dimensions[ws3.cell(row=1, column=i).column_letter].width = w
 
@@ -521,10 +523,12 @@ async def export_en_proceso_xlsx(
                 ws3.cell(row=long_row, column=1, value=r["n_corte"])
                 ws3.cell(row=long_row, column=2, value=r["marca"])
                 ws3.cell(row=long_row, column=3, value=r["tipo"])
-                ws3.cell(row=long_row, column=4, value=r["modelo"])
-                ws3.cell(row=long_row, column=5, value=r["estado"])
-                ws3.cell(row=long_row, column=6, value=t)
-                ws3.cell(row=long_row, column=7, value=int(v))
+                ws3.cell(row=long_row, column=4, value=r["entalle"])
+                ws3.cell(row=long_row, column=5, value=r["tela"])
+                ws3.cell(row=long_row, column=6, value=r["modelo"])
+                ws3.cell(row=long_row, column=7, value=r["estado"])
+                ws3.cell(row=long_row, column=8, value=t)
+                ws3.cell(row=long_row, column=9, value=int(v))
                 long_row += 1
 
         ws3.freeze_panes = "A2"
