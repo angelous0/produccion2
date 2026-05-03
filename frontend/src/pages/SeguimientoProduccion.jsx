@@ -65,6 +65,7 @@ export const SeguimientoProduccion = () => {
     tipo_id: '',
     entalle_id: '',
     tela_id: '',
+    incluir_tallas: false,  // si true → 2da hoja "Detalle por Talla"
   });
 
   // Filters
@@ -135,6 +136,7 @@ export const SeguimientoProduccion = () => {
       tipo_id: filterTipo && filterTipo !== '_all' ? filterTipo : '',
       entalle_id: '',
       tela_id: '',
+      incluir_tallas: false,
     });
     setExportDialogOpen(true);
 
@@ -178,6 +180,7 @@ export const SeguimientoProduccion = () => {
       if (exportFiltros.entalle_id) params.append('entalle_id', exportFiltros.entalle_id);
       if (exportFiltros.tela_id)    params.append('tela_id', exportFiltros.tela_id);
       (exportFiltros.estados || []).forEach(e => params.append('estados', e));
+      if (exportFiltros.incluir_tallas) params.append('incluir_tallas', 'true');
 
       const res = await axios.get(
         `${API}/reportes-produccion/en-proceso/export-xlsx?${params}`,
@@ -1068,6 +1071,24 @@ export const SeguimientoProduccion = () => {
             <p className="text-[10px] text-muted-foreground">
               💡 Los filtros buscan tanto en modelos del catálogo como en registros con modelo manual (cuando guardan el mismo nombre).
             </p>
+
+            {/* Opción extra: detalle por talla */}
+            <div className="border-t pt-3">
+              <label className="flex items-start gap-2 cursor-pointer hover:bg-muted/30 rounded p-2 -m-2">
+                <Checkbox
+                  checked={exportFiltros.incluir_tallas}
+                  onCheckedChange={(v) => setExportFiltros(prev => ({ ...prev, incluir_tallas: !!v }))}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="text-sm font-medium">Incluir detalle por talla</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Agrega una <strong>segunda hoja</strong> al Excel con la curva de tallas de cada lote
+                    (S, M, L, XL, 26, 28, 30, …) y el total por fila.
+                  </div>
+                </div>
+              </label>
+            </div>
           </div>
 
           <DialogFooter>

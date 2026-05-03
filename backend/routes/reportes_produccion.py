@@ -244,6 +244,7 @@ async def export_en_proceso_xlsx(
     tela_id: Optional[str] = Query(None, description="Filtra por tela (catálogo o modelo_manual)"),
     estados: Optional[List[str]] = Query(None, description="Lista de estados/etapas a incluir (repetible)"),
     estado: Optional[str] = Query(None, description="(Deprecated) usar 'estados' en su lugar"),
+    incluir_tallas: bool = Query(False, description="Si True, agrega una segunda hoja con detalle por talla"),
     current_user: dict = Depends(get_current_user),
 ):
     """Descarga Excel con los lotes en proceso. Columnas:
@@ -419,6 +420,78 @@ async def export_en_proceso_xlsx(
     # Freeze de la fila de cabeceras + filtro automático
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
+
+    # ──────────────────────────────────────────────────────────────
+    # Hoja 2 (opcional): Detalle por Talla — formato pivot
+    # ──────────────────────────────────────────────────────────────
+    if incluir_tallas and rows:
+        registro_ids = [r["n_corte"] and str(r.get("registro_id")) for r in rows]
+        # Re-acquiero conn para la query de tallas
+        async with pool.acquire() as conn2:
+            tallas_rows = await conn2.fetch(f"""
+                SELECT r.n_corte,
+                       COALESCE(t.nombre, '?') AS talla,
+                       SUM(rt.cantidad_real)::int AS cantidad
+                  FROM prod_registro_tallas rt
+                  JOIN prod_registros r ON r.id = rt.registro_id
+                  LEFT JOIN prod_modelos m  ON m.id = r.modelo_id
+                  LEFT JOIN prod_tallas_catalogo t ON t.id = rt.talla_id
+                 WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
+                   AND r.dividido_desde_registro_id IS NULL
+                   AND r.n_corte = ANY($1::text[])
+                 GROUP BY r.n_corte, t.nombre
+                 ORDER BY r.n_corte, t.nombre
+            """, [r["n_corte"] for r in rows])
+
+        # Pivot en memoria: { n_corte: { talla: cantidad } }
+        pivot: dict = {}
+        tallas_set = set()
+        for tr in tallas_rows:
+            n = tr["n_corte"]
+            t = tr["talla"]
+            pivot.setdefault(n, {})[t] = int(tr["cantidad"] or 0)
+            tallas_set.add(t)
+
+        # Ordenar tallas: primero las numéricas asc, después las de letras (S, M, L, XL)
+        ORDEN_LETRAS = {"XS": 1, "S": 2, "M": 3, "L": 4, "XL": 5, "XXL": 6, "XXXL": 7}
+        def _talla_key(t: str):
+            try:
+                return (0, int(t), t)  # numérica
+            except (ValueError, TypeError):
+                return (1, ORDEN_LETRAS.get(t.upper(), 99), t)
+        tallas_ordenadas = sorted(tallas_set, key=_talla_key)
+
+        ws2 = wb.create_sheet("Detalle por Talla")
+
+        headers2 = ["N° Corte", "Marca", "Tipo", "Modelo"] + tallas_ordenadas + ["Total"]
+        for col_idx, h in enumerate(headers2, start=1):
+            c = ws2.cell(row=1, column=col_idx, value=h)
+            c.fill = header_fill
+            c.font = header_font
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.border = border_all
+        # Anchos: N° Corte/Marca/Tipo/Modelo + cada talla 8px + Total 10
+        widths2 = [12, 18, 14, 22] + [8] * len(tallas_ordenadas) + [10]
+        for i, w in enumerate(widths2, start=1):
+            ws2.column_dimensions[ws2.cell(row=1, column=i).column_letter].width = w
+
+        for row_idx, r in enumerate(rows, start=2):
+            ws2.cell(row=row_idx, column=1, value=r["n_corte"])
+            ws2.cell(row=row_idx, column=2, value=r["marca"])
+            ws2.cell(row=row_idx, column=3, value=r["tipo"])
+            ws2.cell(row=row_idx, column=4, value=r["modelo"])
+            por_talla = pivot.get(r["n_corte"], {})
+            total_fila = 0
+            for j, t in enumerate(tallas_ordenadas, start=5):
+                v = por_talla.get(t, 0)
+                if v:
+                    ws2.cell(row=row_idx, column=j, value=v)
+                    total_fila += v
+            ws2.cell(row=row_idx, column=4 + len(tallas_ordenadas) + 1,
+                     value=total_fila or None)
+
+        ws2.freeze_panes = "E2"  # freeze hasta columna Modelo, así las tallas hacen scroll
+        ws2.auto_filter.ref = ws2.dimensions
 
     buf = BytesIO()
     wb.save(buf)
