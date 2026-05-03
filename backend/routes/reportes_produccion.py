@@ -345,6 +345,7 @@ async def export_en_proceso_xlsx(
                 COALESCE(tp.nombre, r.modelo_manual->>'tipo_texto', '')    AS tipo,
                 COALESCE(en.nombre, r.modelo_manual->>'entalle_texto', '') AS entalle,
                 COALESCE(te.nombre, r.modelo_manual->>'tela_texto', '')    AS tela,
+                COALESCE(hi.nombre, r.modelo_manual->>'hilo_texto', '')    AS hilo,
                 COALESCE(
                     (SELECT SUM(rt.cantidad_real)
                        FROM prod_registro_tallas rt
@@ -365,6 +366,7 @@ async def export_en_proceso_xlsx(
               LEFT JOIN prod_tipos tp    ON tp.id  = mod.tipo_id
               LEFT JOIN prod_entalles en ON en.id  = mod.entalle_id
               LEFT JOIN prod_telas te    ON te.id  = mod.tela_id
+              LEFT JOIN prod_hilos_especificos hi ON hi.id = r.hilo_especifico_id
               LEFT JOIN ultimo_mov um    ON um.registro_id = r.id
               LEFT JOIN fecha_corte fc   ON fc.registro_id = r.id
               -- alias 'm' usado por filtros de tipo_id si aplica:
@@ -381,7 +383,7 @@ async def export_en_proceso_xlsx(
     ws.title = "En Proceso"
 
     headers = [
-        "N° Corte", "Marca", "Tipo", "Entalle", "Tela",
+        "N° Corte", "Marca", "Tipo", "Entalle", "Tela", "Hilo",
         "Cantidad", "Fecha Inicio", "Estado", "Último Movimiento", "Días sin Mov.",
         "Modelo", "Urgente",
     ]
@@ -399,7 +401,7 @@ async def export_en_proceso_xlsx(
         c.border = border_all
 
     # Anchos por columna (heurística por contenido típico)
-    widths = [12, 18, 14, 18, 18, 10, 13, 18, 18, 14, 22, 10]
+    widths = [12, 18, 14, 18, 18, 14, 10, 13, 18, 18, 14, 22, 10]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
 
@@ -409,14 +411,15 @@ async def export_en_proceso_xlsx(
         ws.cell(row=row_idx, column=3, value=r["tipo"])
         ws.cell(row=row_idx, column=4, value=r["entalle"])
         ws.cell(row=row_idx, column=5, value=r["tela"])
-        ws.cell(row=row_idx, column=6, value=int(r["cantidad_prendas"] or 0))
-        ws.cell(row=row_idx, column=7, value=r["fecha_inicio"])
-        ws.cell(row=row_idx, column=8, value=r["estado"])
-        ws.cell(row=row_idx, column=9, value=r["fecha_ultimo_mov"])
+        ws.cell(row=row_idx, column=6, value=r["hilo"])
+        ws.cell(row=row_idx, column=7, value=int(r["cantidad_prendas"] or 0))
+        ws.cell(row=row_idx, column=8, value=r["fecha_inicio"])
+        ws.cell(row=row_idx, column=9, value=r["estado"])
+        ws.cell(row=row_idx, column=10, value=r["fecha_ultimo_mov"])
         dias = r["dias_sin_mov"]
-        ws.cell(row=row_idx, column=10, value=int(dias) if dias is not None else None)
-        ws.cell(row=row_idx, column=11, value=r["modelo"])
-        ws.cell(row=row_idx, column=12, value="SÍ" if r["urgente"] else "")
+        ws.cell(row=row_idx, column=11, value=int(dias) if dias is not None else None)
+        ws.cell(row=row_idx, column=12, value=r["modelo"])
+        ws.cell(row=row_idx, column=13, value="SÍ" if r["urgente"] else "")
 
     # Freeze de la fila de cabeceras + filtro automático
     ws.freeze_panes = "A2"
@@ -460,15 +463,15 @@ async def export_en_proceso_xlsx(
 
         ws2 = wb.create_sheet("Detalle por Talla")
 
-        headers2 = ["N° Corte", "Marca", "Tipo", "Entalle", "Tela", "Modelo"] + tallas_ordenadas + ["Total"]
+        headers2 = ["N° Corte", "Marca", "Tipo", "Entalle", "Tela", "Hilo", "Modelo"] + tallas_ordenadas + ["Total"]
         for col_idx, h in enumerate(headers2, start=1):
             c = ws2.cell(row=1, column=col_idx, value=h)
             c.fill = header_fill
             c.font = header_font
             c.alignment = Alignment(horizontal="center", vertical="center")
             c.border = border_all
-        # Anchos: 6 cols descriptivas + cada talla 8px + Total 10
-        widths2 = [12, 18, 14, 18, 18, 22] + [8] * len(tallas_ordenadas) + [10]
+        # Anchos: 7 cols descriptivas + cada talla 8px + Total 10
+        widths2 = [12, 18, 14, 18, 18, 14, 22] + [8] * len(tallas_ordenadas) + [10]
         for i, w in enumerate(widths2, start=1):
             ws2.column_dimensions[ws2.cell(row=1, column=i).column_letter].width = w
 
@@ -478,18 +481,19 @@ async def export_en_proceso_xlsx(
             ws2.cell(row=row_idx, column=3, value=r["tipo"])
             ws2.cell(row=row_idx, column=4, value=r["entalle"])
             ws2.cell(row=row_idx, column=5, value=r["tela"])
-            ws2.cell(row=row_idx, column=6, value=r["modelo"])
+            ws2.cell(row=row_idx, column=6, value=r["hilo"])
+            ws2.cell(row=row_idx, column=7, value=r["modelo"])
             por_talla = pivot.get(r["registro_id"], {})
             total_fila = 0
-            for j, t in enumerate(tallas_ordenadas, start=7):
+            for j, t in enumerate(tallas_ordenadas, start=8):
                 v = por_talla.get(t, 0)
                 if v:
                     ws2.cell(row=row_idx, column=j, value=v)
                     total_fila += v
-            ws2.cell(row=row_idx, column=6 + len(tallas_ordenadas) + 1,
+            ws2.cell(row=row_idx, column=7 + len(tallas_ordenadas) + 1,
                      value=total_fila or None)
 
-        ws2.freeze_panes = "G2"  # freeze hasta col F (Modelo), las tallas hacen scroll
+        ws2.freeze_panes = "H2"  # freeze hasta col G (Modelo), las tallas hacen scroll
         ws2.auto_filter.ref = ws2.dimensions
 
         # ──────────────────────────────────────────────────────────────
@@ -499,14 +503,14 @@ async def export_en_proceso_xlsx(
         # ──────────────────────────────────────────────────────────────
         ws3 = wb.create_sheet("Tallas en Filas")
 
-        headers3 = ["N° Corte", "Marca", "Tipo", "Entalle", "Tela", "Modelo", "Estado", "Talla", "Cantidad"]
+        headers3 = ["N° Corte", "Marca", "Tipo", "Entalle", "Tela", "Hilo", "Modelo", "Estado", "Talla", "Cantidad"]
         for col_idx, h in enumerate(headers3, start=1):
             c = ws3.cell(row=1, column=col_idx, value=h)
             c.fill = header_fill
             c.font = header_font
             c.alignment = Alignment(horizontal="center", vertical="center")
             c.border = border_all
-        widths3 = [12, 18, 14, 18, 18, 22, 18, 8, 10]
+        widths3 = [12, 18, 14, 18, 18, 14, 22, 18, 8, 10]
         for i, w in enumerate(widths3, start=1):
             ws3.column_dimensions[ws3.cell(row=1, column=i).column_letter].width = w
 
@@ -525,10 +529,11 @@ async def export_en_proceso_xlsx(
                 ws3.cell(row=long_row, column=3, value=r["tipo"])
                 ws3.cell(row=long_row, column=4, value=r["entalle"])
                 ws3.cell(row=long_row, column=5, value=r["tela"])
-                ws3.cell(row=long_row, column=6, value=r["modelo"])
-                ws3.cell(row=long_row, column=7, value=r["estado"])
-                ws3.cell(row=long_row, column=8, value=t)
-                ws3.cell(row=long_row, column=9, value=int(v))
+                ws3.cell(row=long_row, column=6, value=r["hilo"])
+                ws3.cell(row=long_row, column=7, value=r["modelo"])
+                ws3.cell(row=long_row, column=8, value=r["estado"])
+                ws3.cell(row=long_row, column=9, value=t)
+                ws3.cell(row=long_row, column=10, value=int(v))
                 long_row += 1
 
         ws3.freeze_panes = "A2"
