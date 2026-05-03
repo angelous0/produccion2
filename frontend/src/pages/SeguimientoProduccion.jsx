@@ -25,6 +25,18 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { formatDate } from '../lib/dateUtils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+// Estados/etapas conocidos del flujo de producción (orden lógico).
+// Se usa como fallback en el modal de export si el endpoint /filtros
+// todavía no respondió. La lista real viene del backend cuando carga.
+const ESTADOS_FALLBACK = [
+  'Para Corte', 'Corte',
+  'Para Costura', 'Costura',
+  'Para Atraque', 'Atraque',
+  'Para Lavandería', 'Lavandería',
+  'Para Acabado', 'Acabado',
+  'Almacén PT', 'Tienda',
+];
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
 export const SeguimientoProduccion = () => {
@@ -114,10 +126,9 @@ export const SeguimientoProduccion = () => {
     } catch { /* ignore */ }
   }, [incidenciasFiltro]);
 
-  // Abre el modal y precarga catálogos (marcas, tipos, entalles, telas).
+  // Abre el modal y precarga catálogos (marcas, tipos, entalles, telas, estados).
   // Pre-rellena los filtros del modal con los filtros activos de la página.
   const openExportDialog = async () => {
-    // Precargar valores actuales como punto de partida
     setExportFiltros({
       estados: filterEstado && filterEstado !== '_all' ? [filterEstado] : [],
       marca_id: '',
@@ -127,28 +138,34 @@ export const SeguimientoProduccion = () => {
     });
     setExportDialogOpen(true);
 
-    // Catálogos (lazy: solo la primera vez)
-    if (exportCatalogos.marcas.length === 0) {
-      try {
-        const safe = (p) => p.catch(() => ({ data: [] }));
-        const [m, t, e, te] = await Promise.all([
-          safe(axios.get(`${API}/marcas`)),
-          safe(axios.get(`${API}/tipos`)),
-          safe(axios.get(`${API}/entalles`)),
-          safe(axios.get(`${API}/telas`)),
-        ]);
-        setExportCatalogos({
-          marcas: m?.data || [],
-          tipos: t?.data || [],
-          entalles: e?.data || [],
-          telas: te?.data || [],
-          estados: filtros?.estados || [],
-        });
-      } catch { /* ignore */ }
-    } else {
-      // refrescar lista de estados (puede haber cambiado con datos nuevos)
-      setExportCatalogos(prev => ({ ...prev, estados: filtros?.estados || prev.estados }));
-    }
+    // Catálogos: intenta refrescar SIEMPRE (no solo la primera vez), por si
+    // el endpoint /filtros no había respondido cuando abrió el modal antes.
+    try {
+      const safe = (p) => p.catch(() => ({ data: [] }));
+      const requests = [
+        safe(axios.get(`${API}/marcas`)),
+        safe(axios.get(`${API}/tipos`)),
+        safe(axios.get(`${API}/entalles`)),
+        safe(axios.get(`${API}/telas`)),
+      ];
+      // Si filtros (cargado en fetchAll) no trae estados, pedirlos directo.
+      if (!filtros?.estados?.length) {
+        requests.push(safe(axios.get(`${API}/reportes-produccion/filtros`)));
+      }
+      const responses = await Promise.all(requests);
+      const [m, t, e, te, f] = responses;
+      const estadosResueltos =
+        (filtros?.estados?.length ? filtros.estados : null)
+        || (f?.data?.estados?.length ? f.data.estados : null)
+        || ESTADOS_FALLBACK;
+      setExportCatalogos({
+        marcas: m?.data?.length ? m.data : (exportCatalogos.marcas || []),
+        tipos: t?.data?.length ? t.data : (exportCatalogos.tipos || []),
+        entalles: e?.data?.length ? e.data : (exportCatalogos.entalles || []),
+        telas: te?.data?.length ? te.data : (exportCatalogos.telas || []),
+        estados: estadosResueltos,
+      });
+    } catch { /* ignore — si todo falla, el render usa ESTADOS_FALLBACK */ }
   };
 
   // Descarga el Excel respetando los filtros elegidos en el modal
@@ -937,10 +954,11 @@ export const SeguimientoProduccion = () => {
                 Estados / Etapas a incluir
               </Label>
               <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2 p-2 border rounded-md bg-muted/30 max-h-48 overflow-y-auto">
-                {(exportCatalogos.estados || []).length === 0 ? (
-                  <span className="text-xs text-muted-foreground col-span-full">Cargando estados…</span>
-                ) : (
-                  exportCatalogos.estados.map((e) => (
+                {(() => {
+                  const lista = (exportCatalogos.estados && exportCatalogos.estados.length)
+                    ? exportCatalogos.estados
+                    : ESTADOS_FALLBACK;
+                  return lista.map((e) => (
                     <label key={e} className="flex items-center gap-2 cursor-pointer text-sm hover:bg-background rounded px-1.5 py-0.5">
                       <Checkbox
                         checked={exportFiltros.estados.includes(e)}
@@ -948,13 +966,18 @@ export const SeguimientoProduccion = () => {
                       />
                       <span className="truncate">{e}</span>
                     </label>
-                  ))
-                )}
+                  ));
+                })()}
               </div>
               <div className="flex gap-2 mt-1.5">
                 <button
                   type="button"
-                  onClick={() => setExportFiltros(prev => ({ ...prev, estados: [...(exportCatalogos.estados || [])] }))}
+                  onClick={() => {
+                    const lista = (exportCatalogos.estados && exportCatalogos.estados.length)
+                      ? exportCatalogos.estados
+                      : ESTADOS_FALLBACK;
+                    setExportFiltros(prev => ({ ...prev, estados: [...lista] }));
+                  }}
                   className="text-[10px] text-emerald-700 hover:underline"
                 >
                   Marcar todos
