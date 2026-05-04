@@ -14,6 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../components/ui/dialog';
 import IncidenciaAvances from '../components/registro/IncidenciaAvances';
+import { SearchableSelect } from '../components/SearchableSelect';
 import {
   Activity, Layers, AlertTriangle, PauseCircle, Clock, CheckCircle2,
   ExternalLink, ArrowRight, Filter, Shirt, Flame, CalendarClock, FileWarning,
@@ -241,17 +242,20 @@ export const SeguimientoProduccion = () => {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={filterModelo} onValueChange={setFilterModelo}>
-              <SelectTrigger className="w-[200px] h-8 text-xs">
-                <SelectValue placeholder="Modelo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_all">Todos los modelos</SelectItem>
-                {(filtros?.modelos || []).map(m => (
-                  <SelectItem key={m.id} value={m.id}>{m.nombre}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={filterModelo || '_all'}
+              onValueChange={(v) => setFilterModelo(v === '_all' ? '' : v)}
+              options={[
+                { id: '_all', nombre: 'Todos los modelos' },
+                ...((filtros?.modelos || []).map(m => ({ id: m.id, nombre: m.nombre }))),
+              ]}
+              placeholder="Modelo"
+              searchPlaceholder="Buscar modelo (ej. ASHFORD, polo, blue)…"
+              emptyMessage="Sin coincidencias"
+              className="w-[220px] h-8 text-xs"
+              testId="filtro-modelo-searchable"
+              popoverWidth="w-[280px]"
+            />
             <Select value={filterTipo} onValueChange={setFilterTipo}>
               <SelectTrigger className="w-[160px] h-8 text-xs">
                 <SelectValue placeholder="Tipo" />
