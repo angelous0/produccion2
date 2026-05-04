@@ -25,7 +25,13 @@ router = APIRouter(prefix="/api", tags=["transferencias-linea"])
 # ==================== MODELOS PYDANTIC ====================
 
 class TransferenciaCreate(BaseModel):
-    item_id: str
+    # `item_id` (legacy) o `item_origen_id` para identificar el item origen.
+    # `item_destino_id` es OBLIGATORIO en el modelo nuevo: como en `prod_inventario`
+    # cada (nombre, línea_negocio_id) suele ser un item distinto, el destino debe
+    # apuntar al `prod_inventario.id` de la línea destino — no al mismo item origen.
+    item_id: Optional[str] = None  # legacy, equivalente a item_origen_id
+    item_origen_id: Optional[str] = None
+    item_destino_id: Optional[str] = None
     linea_origen_id: int
     linea_destino_id: int
     cantidad: float
@@ -86,6 +92,69 @@ async def _calcular_stock_disponible_por_linea(conn, item_id: str, linea_negocio
     """, item_id, linea_negocio_id)
 
     return max(0, safe_float(stock_fifo) - safe_float(reservado))
+
+
+async def _items_compatibles_en_linea(conn, linea_negocio_id: int, unidad_medida: str = None, categoria: str = None, empresa_id: int = 7):
+    """Lista items de prod_inventario que pertenecen a una línea específica,
+    opcionalmente filtrados por unidad_medida y categoría (para que un item
+    candidato a destino sea "compatible" con el origen). Retorna también el
+    stock disponible y el valorizado actual.
+
+    Si en el catálogo `linea_negocio_id` está NULL, el item se considera
+    transversal (visible en cualquier línea). Si querés que destino solo
+    muestre items con la línea exacta, filtrá por `linea_negocio_id` IS NOT NULL.
+    """
+    where = ["i.empresa_id = $1"]
+    params = [empresa_id]
+    idx = 2
+    where.append(f"i.linea_negocio_id = ${idx}")
+    params.append(linea_negocio_id)
+    idx += 1
+    if unidad_medida:
+        where.append(f"COALESCE(i.unidad_medida, '') = ${idx}")
+        params.append(unidad_medida)
+        idx += 1
+    if categoria:
+        where.append(f"COALESCE(i.categoria, '') = ${idx}")
+        params.append(categoria)
+        idx += 1
+
+    sql = f"""
+        SELECT i.id, i.codigo, i.nombre, i.categoria, i.unidad_medida,
+               i.control_por_rollos, i.stock_actual, i.costo_promedio,
+               COALESCE(SUM(ing.cantidad_disponible) FILTER (WHERE ing.linea_negocio_id = $2), 0) AS stock_en_linea
+        FROM produccion.prod_inventario i
+        LEFT JOIN produccion.prod_inventario_ingresos ing ON ing.item_id = i.id
+        WHERE {" AND ".join(where)}
+        GROUP BY i.id
+        ORDER BY i.nombre
+    """
+    rows = await conn.fetch(sql, *params)
+    return [
+        {
+            "id": r['id'],
+            "codigo": r['codigo'],
+            "nombre": r['nombre'],
+            "categoria": r['categoria'],
+            "unidad_medida": r['unidad_medida'],
+            "control_por_rollos": r['control_por_rollos'],
+            "stock_actual": safe_float(r['stock_actual']),
+            "costo_promedio": safe_float(r['costo_promedio']),
+            "stock_en_linea": safe_float(r['stock_en_linea']),
+            "valorizado": round(safe_float(r['stock_en_linea']) * safe_float(r['costo_promedio']), 4),
+        }
+        for r in rows
+    ]
+
+
+async def _recalcular_costo_promedio(conn, item_id: str):
+    """Recalcula `costo_promedio` de un item desde sus capas FIFO disponibles."""
+    await conn.execute("""
+        UPDATE produccion.prod_inventario SET costo_promedio = COALESCE((
+            SELECT SUM(cantidad_disponible * costo_unitario) / NULLIF(SUM(cantidad_disponible), 0)
+            FROM produccion.prod_inventario_ingresos WHERE item_id = $1 AND cantidad_disponible > 0
+        ), 0) WHERE id = $1
+    """, item_id)
 
 
 async def _estimar_capas_fifo(conn, item_id: str, linea_negocio_id: int, cantidad: float):
@@ -189,6 +258,14 @@ async def init_transferencias_tables():
         ]:
             await conn.execute(alter_sql)
 
+        # Migración: agregar `item_destino_id` a transferencias.
+        # En el modelo viejo se asumía que `item_id` era el mismo en origen y destino;
+        # eso era incorrecto cuando el catálogo tiene un item por (nombre, línea).
+        await conn.execute("""
+            ALTER TABLE produccion.prod_transferencias_linea
+            ADD COLUMN IF NOT EXISTS item_destino_id VARCHAR
+        """)
+
 
 # ==================== ENDPOINTS ====================
 
@@ -202,12 +279,12 @@ async def items_con_stock_en_linea(
     async with pool.acquire() as conn:
         rows = await conn.fetch("""
             SELECT DISTINCT i.id, i.codigo, i.nombre, i.categoria, i.unidad_medida,
-                   i.control_por_rollos,
+                   i.control_por_rollos, i.costo_promedio,
                    COALESCE(SUM(ing.cantidad_disponible), 0) as stock_en_linea
             FROM produccion.prod_inventario i
             JOIN produccion.prod_inventario_ingresos ing
                 ON ing.item_id = i.id AND ing.linea_negocio_id = $1 AND ing.cantidad_disponible > 0
-            GROUP BY i.id, i.codigo, i.nombre, i.categoria, i.unidad_medida, i.control_por_rollos
+            GROUP BY i.id, i.codigo, i.nombre, i.categoria, i.unidad_medida, i.control_por_rollos, i.costo_promedio
             HAVING SUM(ing.cantidad_disponible) > 0
             ORDER BY i.nombre
         """, linea_negocio_id)
@@ -229,6 +306,7 @@ async def items_con_stock_en_linea(
             reservado = safe_float(reservado_row)
             disponible = max(0, stock_bruto - reservado)
             if disponible > 0:
+                costo_prom = safe_float(r['costo_promedio'])
                 result.append({
                     "id": r['id'],
                     "codigo": r['codigo'],
@@ -239,8 +317,26 @@ async def items_con_stock_en_linea(
                     "stock_en_linea": stock_bruto,
                     "reservado": reservado,
                     "stock_disponible": disponible,
+                    "costo_promedio": costo_prom,
+                    "valorizado_disponible": round(disponible * costo_prom, 4),
                 })
         return result
+
+
+@router.get("/transferencias-linea/items-en-linea")
+async def items_en_linea(
+    linea_negocio_id: int = Query(...),
+    unidad_medida: Optional[str] = Query(None, description="Filtrar por unidad de medida (compatibilidad)"),
+    categoria: Optional[str] = Query(None, description="Filtrar por categoría (compatibilidad)"),
+    user=Depends(get_current_user),
+):
+    """Lista TODOS los items registrados en una línea (con o sin stock).
+    Se usa para poblar el selector de "item destino" en una transferencia,
+    filtrando opcionalmente por unidad_medida y categoría del item origen
+    para que solo aparezcan items compatibles."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await _items_compatibles_en_linea(conn, linea_negocio_id, unidad_medida, categoria)
 
 
 @router.get("/transferencias-linea/estimar-costo")
@@ -323,10 +419,12 @@ async def listar_transferencias(
         rows = await conn.fetch(f"""
             SELECT t.*,
                 i.nombre as item_nombre, i.codigo as item_codigo, i.unidad_medida,
+                idest.nombre as item_destino_nombre, idest.codigo as item_destino_codigo,
                 lo.nombre as linea_origen_nombre, lo.codigo as linea_origen_codigo,
                 ld.nombre as linea_destino_nombre, ld.codigo as linea_destino_codigo
             FROM produccion.prod_transferencias_linea t
             LEFT JOIN produccion.prod_inventario i ON t.item_id = i.id
+            LEFT JOIN produccion.prod_inventario idest ON t.item_destino_id = idest.id
             LEFT JOIN finanzas2.cont_linea_negocio lo ON t.linea_origen_id = lo.id
             LEFT JOIN finanzas2.cont_linea_negocio ld ON t.linea_destino_id = ld.id
             WHERE {where}
@@ -360,10 +458,12 @@ async def detalle_transferencia(
         row = await conn.fetchrow("""
             SELECT t.*,
                 i.nombre as item_nombre, i.codigo as item_codigo, i.unidad_medida,
+                idest.nombre as item_destino_nombre, idest.codigo as item_destino_codigo,
                 lo.nombre as linea_origen_nombre, lo.codigo as linea_origen_codigo,
                 ld.nombre as linea_destino_nombre, ld.codigo as linea_destino_codigo
             FROM produccion.prod_transferencias_linea t
             LEFT JOIN produccion.prod_inventario i ON t.item_id = i.id
+            LEFT JOIN produccion.prod_inventario idest ON t.item_destino_id = idest.id
             LEFT JOIN finanzas2.cont_linea_negocio lo ON t.linea_origen_id = lo.id
             LEFT JOIN finanzas2.cont_linea_negocio ld ON t.linea_destino_id = ld.id
             WHERE t.id = $1
@@ -410,30 +510,89 @@ async def crear_transferencia(
     input: TransferenciaCreate,
     user=Depends(get_current_user),
 ):
-    """Crea un borrador de transferencia."""
+    """Crea un borrador de transferencia.
+
+    Requiere `item_origen_id` (o el legacy `item_id`) y `item_destino_id`.
+    Valida que ambos items existan, pertenezcan a sus líneas declaradas y
+    tengan misma `unidad_medida` y `categoria` (compatibilidad). El usuario
+    elige el item destino MANUALMENTE; el sistema no crea items nuevos.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # Validaciones
+        # Validaciones de líneas
         if input.linea_origen_id == input.linea_destino_id:
             raise HTTPException(status_code=400, detail="La linea origen y destino no pueden ser la misma")
+        if input.cantidad <= 0:
+            raise HTTPException(status_code=400, detail="La cantidad debe ser mayor a 0")
 
-        item = await conn.fetchrow("SELECT id, nombre, codigo FROM produccion.prod_inventario WHERE id = $1", input.item_id)
-        if not item:
-            raise HTTPException(status_code=404, detail="Item no encontrado")
+        item_origen_id = input.item_origen_id or input.item_id
+        item_destino_id = input.item_destino_id
+        if not item_origen_id:
+            raise HTTPException(status_code=400, detail="Falta `item_origen_id`")
+        if not item_destino_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Falta `item_destino_id`. Selecciona el item de la línea destino al cual transferir."
+            )
+        if item_origen_id == item_destino_id:
+            raise HTTPException(
+                status_code=400,
+                detail="El item destino debe ser distinto al de origen (cada item está atado a una línea)."
+            )
 
+        item_origen = await conn.fetchrow(
+            "SELECT id, nombre, codigo, unidad_medida, categoria, linea_negocio_id, empresa_id "
+            "FROM produccion.prod_inventario WHERE id = $1", item_origen_id
+        )
+        if not item_origen:
+            raise HTTPException(status_code=404, detail="Item origen no encontrado")
+
+        item_destino = await conn.fetchrow(
+            "SELECT id, nombre, codigo, unidad_medida, categoria, linea_negocio_id, empresa_id "
+            "FROM produccion.prod_inventario WHERE id = $1", item_destino_id
+        )
+        if not item_destino:
+            raise HTTPException(status_code=404, detail="Item destino no encontrado")
+
+        # Líneas de negocio existen
         lo = await conn.fetchrow("SELECT id, nombre FROM finanzas2.cont_linea_negocio WHERE id = $1", input.linea_origen_id)
         if not lo:
             raise HTTPException(status_code=404, detail="Linea de negocio origen no encontrada")
-
         ld = await conn.fetchrow("SELECT id, nombre FROM finanzas2.cont_linea_negocio WHERE id = $1", input.linea_destino_id)
         if not ld:
             raise HTTPException(status_code=404, detail="Linea de negocio destino no encontrada")
 
-        if input.cantidad <= 0:
-            raise HTTPException(status_code=400, detail="La cantidad debe ser mayor a 0")
+        # Validar que cada item pertenece a su línea declarada (si tiene linea_negocio_id en catálogo)
+        if item_origen['linea_negocio_id'] not in (None, input.linea_origen_id):
+            raise HTTPException(
+                status_code=400,
+                detail=f"El item origen '{item_origen['codigo']}' no pertenece a la línea origen '{lo['nombre']}'. "
+                       f"En el catálogo está registrado en la línea {item_origen['linea_negocio_id']}."
+            )
+        if item_destino['linea_negocio_id'] not in (None, input.linea_destino_id):
+            raise HTTPException(
+                status_code=400,
+                detail=f"El item destino '{item_destino['codigo']}' no pertenece a la línea destino '{ld['nombre']}'. "
+                       f"En el catálogo está registrado en la línea {item_destino['linea_negocio_id']}."
+            )
+
+        # Validar compatibilidad: misma unidad_medida y misma categoria.
+        # No exigimos mismo nombre — eso permite "equivalentes manuales".
+        if (item_origen['unidad_medida'] or '') != (item_destino['unidad_medida'] or ''):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Items incompatibles: unidad de medida distinta "
+                       f"({item_origen['unidad_medida']} vs {item_destino['unidad_medida']})."
+            )
+        if (item_origen['categoria'] or '') != (item_destino['categoria'] or ''):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Items incompatibles: categoría distinta "
+                       f"({item_origen['categoria']} vs {item_destino['categoria']})."
+            )
 
         # Validar stock disponible por linea (FIFO real - reservas)
-        stock_disponible = await _calcular_stock_disponible_por_linea(conn, input.item_id, input.linea_origen_id)
+        stock_disponible = await _calcular_stock_disponible_por_linea(conn, item_origen_id, input.linea_origen_id)
         if input.cantidad > stock_disponible:
             raise HTTPException(
                 status_code=400,
@@ -447,22 +606,24 @@ async def crear_transferencia(
 
         await conn.execute("""
             INSERT INTO produccion.prod_transferencias_linea
-            (id, codigo, item_id, linea_origen_id, linea_destino_id, cantidad, estado,
+            (id, codigo, item_id, item_destino_id, linea_origen_id, linea_destino_id, cantidad, estado,
              motivo, observaciones, referencia_externa, creado_por, fecha_creacion, empresa_id)
-            VALUES ($1, $2, $3, $4, $5, $6, 'BORRADOR', $7, $8, $9, $10, $11, 7)
-        """, transferencia_id, codigo, input.item_id, input.linea_origen_id,
-            input.linea_destino_id, input.cantidad, input.motivo,
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'BORRADOR', $8, $9, $10, $11, $12, 7)
+        """, transferencia_id, codigo, item_origen_id, item_destino_id,
+            input.linea_origen_id, input.linea_destino_id, input.cantidad, input.motivo,
             input.observaciones, input.referencia_externa,
             user.get('nombre_completo', user.get('username', 'sistema')), ahora)
 
         # Estimar costo para respuesta
-        estimacion = await _estimar_capas_fifo(conn, input.item_id, input.linea_origen_id, input.cantidad)
+        estimacion = await _estimar_capas_fifo(conn, item_origen_id, input.linea_origen_id, input.cantidad)
 
         return {
             "id": transferencia_id,
             "codigo": codigo,
             "estado": "BORRADOR",
             "cantidad": input.cantidad,
+            "item_origen": {"id": item_origen['id'], "codigo": item_origen['codigo'], "nombre": item_origen['nombre']},
+            "item_destino": {"id": item_destino['id'], "codigo": item_destino['codigo'], "nombre": item_destino['nombre']},
             "stock_disponible_linea": stock_disponible,
             "estimacion_costo": estimacion,
             "message": f"Borrador de transferencia {codigo} creado exitosamente"
@@ -495,20 +656,55 @@ async def confirmar_transferencia(
         if transf['estado'] != 'BORRADOR':
             raise HTTPException(status_code=400, detail=f"Solo se puede confirmar un borrador. Estado actual: {transf['estado']}")
 
-        item_id = transf['item_id']
+        item_origen_id = transf['item_id']
+        # Para borradores creados con el modelo nuevo, `item_destino_id` viene seteado.
+        # Para borradores legacy (sin item_destino_id) intentamos auto-resolver: buscar
+        # un item en la línea destino con mismo nombre, unidad y categoría.
+        item_destino_id = transf.get('item_destino_id') if isinstance(transf, dict) else transf['item_destino_id']
         linea_origen_id = transf['linea_origen_id']
         linea_destino_id = transf['linea_destino_id']
         cantidad = safe_float(transf['cantidad'])
 
-        # Validar item
-        item = await conn.fetchrow("SELECT id, nombre FROM produccion.prod_inventario WHERE id = $1", item_id)
-        if not item:
-            raise HTTPException(status_code=404, detail="Item no encontrado")
+        # Validar items
+        item_origen = await conn.fetchrow(
+            "SELECT id, nombre, codigo, unidad_medida, categoria FROM produccion.prod_inventario WHERE id = $1",
+            item_origen_id
+        )
+        if not item_origen:
+            raise HTTPException(status_code=404, detail="Item origen no encontrado")
+
+        if not item_destino_id:
+            # Modelo legacy: intentar auto-resolver con match estricto (mismo nombre + unidad + categoria + línea destino).
+            row_dest = await conn.fetchrow("""
+                SELECT id FROM produccion.prod_inventario
+                WHERE empresa_id = 7
+                  AND linea_negocio_id = $1
+                  AND nombre = $2
+                  AND COALESCE(unidad_medida, '') = COALESCE($3, '')
+                  AND COALESCE(categoria, '') = COALESCE($4, '')
+                  AND id <> $5
+                LIMIT 1
+            """, linea_destino_id, item_origen['nombre'], item_origen['unidad_medida'], item_origen['categoria'], item_origen_id)
+            if not row_dest:
+                raise HTTPException(
+                    status_code=400,
+                    detail=("Esta transferencia se creó con el modelo viejo y no tiene `item_destino_id`. "
+                            "Tampoco se encontró un item compatible automáticamente en la línea destino. "
+                            "Cancela este borrador y crea uno nuevo seleccionando el item destino manualmente.")
+                )
+            item_destino_id = row_dest['id']
+
+        item_destino = await conn.fetchrow(
+            "SELECT id, nombre, codigo, unidad_medida, categoria FROM produccion.prod_inventario WHERE id = $1",
+            item_destino_id
+        )
+        if not item_destino:
+            raise HTTPException(status_code=404, detail="Item destino no encontrado")
 
         # TRANSACCION ATOMICA
         async with conn.transaction():
             # 1. Recalcular stock disponible real (dentro de la tx para evitar race conditions)
-            stock_disponible = await _calcular_stock_disponible_por_linea(conn, item_id, linea_origen_id)
+            stock_disponible = await _calcular_stock_disponible_por_linea(conn, item_origen_id, linea_origen_id)
             if cantidad > stock_disponible:
                 raise HTTPException(
                     status_code=400,
@@ -522,7 +718,7 @@ async def confirmar_transferencia(
                 WHERE item_id = $1 AND linea_negocio_id = $2 AND cantidad_disponible > 0
                 ORDER BY fecha ASC
                 FOR UPDATE
-            """, item_id, linea_origen_id)
+            """, item_origen_id, linea_origen_id)
 
             detalle_fifo_salida = []
             detalles_trazabilidad = []
@@ -546,7 +742,9 @@ async def confirmar_transferencia(
                     WHERE id = $2
                 """, consumir, ing['id'])
 
-                # 4. Crear nuevo ingreso en linea destino (opcion b: 1 ingreso por capa)
+                # 4. Crear nuevo ingreso en linea destino, atado al ITEM DESTINO (no origen)
+                #    Esto es la diferencia clave con el modelo viejo: respeta el catálogo
+                #    donde cada (nombre, línea) suele ser un item distinto.
                 nuevo_ingreso_id = str(uuid.uuid4())
                 await conn.execute("""
                     INSERT INTO produccion.prod_inventario_ingresos
@@ -554,9 +752,9 @@ async def confirmar_transferencia(
                      numero_documento, observaciones, fecha, empresa_id, linea_negocio_id,
                      fin_origen_tipo, fin_origen_id)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 7, $10, 'TRANSFERENCIA', $11)
-                """, nuevo_ingreso_id, item_id, consumir, consumir, costo_unitario,
+                """, nuevo_ingreso_id, item_destino_id, consumir, consumir, costo_unitario,
                     ing['proveedor'] or '', ing['numero_documento'] or '',
-                    f"Transferencia {transf['codigo']} desde linea {linea_origen_id}",
+                    f"Transferencia {transf['codigo']} desde linea {linea_origen_id} (item {item_origen['codigo']})",
                     ahora, linea_destino_id, transferencia_id)
 
                 detalle_fifo_salida.append({
@@ -576,49 +774,51 @@ async def confirmar_transferencia(
 
                 restante -= consumir
 
-            # 3. Crear salida en prod_inventario_salidas con tipo TRANSFERENCIA
+            # 3. Crear salida en prod_inventario_salidas con tipo TRANSFERENCIA (atada al item origen)
             salida_id = str(uuid.uuid4())
             await conn.execute("""
                 INSERT INTO produccion.prod_inventario_salidas
                 (id, item_id, cantidad, registro_id, observaciones, costo_total,
                  detalle_fifo, fecha, empresa_id, linea_negocio_id, tipo, transferencia_id)
                 VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, 7, $8, 'TRANSFERENCIA', $9)
-            """, salida_id, item_id, cantidad,
-                f"Transferencia {transf['codigo']} hacia linea {linea_destino_id}",
+            """, salida_id, item_origen_id, cantidad,
+                f"Transferencia {transf['codigo']} hacia linea {linea_destino_id} (item destino {item_destino['codigo']})",
                 costo_total, json.dumps(detalle_fifo_salida), ahora,
                 linea_origen_id, transferencia_id)
 
-            # stock_actual: la salida resta y los ingresos suman → neto 0
-            # Hacemos ambas operaciones para consistencia con el flujo existente
+            # stock_actual: ahora SÍ se actualiza correctamente — origen baja, destino sube.
             await conn.execute("""
                 UPDATE produccion.prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2
-            """, cantidad, item_id)
+            """, cantidad, item_origen_id)
             await conn.execute("""
                 UPDATE produccion.prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2
-            """, cantidad, item_id)
+            """, cantidad, item_destino_id)
 
-            # 6. Actualizar transferencia a CONFIRMADO
+            # 6. Actualizar transferencia a CONFIRMADO (asegurando item_destino_id por si se auto-resolvió)
             await conn.execute("""
                 UPDATE produccion.prod_transferencias_linea
                 SET estado = 'CONFIRMADO',
-                    costo_total_transferido = $1,
-                    confirmado_por = $2,
-                    fecha_confirmacion = $3
-                WHERE id = $4
-            """, costo_total, user.get('nombre', 'sistema'), ahora, transferencia_id)
+                    item_destino_id = $1,
+                    costo_total_transferido = $2,
+                    confirmado_por = $3,
+                    fecha_confirmacion = $4
+                WHERE id = $5
+            """, item_destino_id, costo_total, user.get('nombre', 'sistema'), ahora, transferencia_id)
 
-            # Actualizar costo promedio del item
-            await conn.execute("""
-                UPDATE produccion.prod_inventario SET costo_promedio = COALESCE((
-                    SELECT SUM(cantidad_disponible * costo_unitario) / NULLIF(SUM(cantidad_disponible), 0)
-                    FROM produccion.prod_inventario_ingresos WHERE item_id = $1 AND cantidad_disponible > 0
-                ), 0) WHERE id = $1
-            """, item_id)
+            # Recalcular costo promedio de AMBOS items (origen baja stock, destino sube)
+            await _recalcular_costo_promedio(conn, item_origen_id)
+            await _recalcular_costo_promedio(conn, item_destino_id)
 
             # Auditoria (dentro de transaccion - atomico)
             await audit_log(conn, get_usuario(user), "CONFIRM", "inventario", "prod_transferencias_linea", transferencia_id,
                 datos_antes={"estado": "BORRADOR", "cantidad": cantidad},
-                datos_despues={"estado": "CONFIRMADO", "costo_total": round(costo_total, 4), "capas_consumidas": len(detalle_fifo_salida)},
+                datos_despues={
+                    "estado": "CONFIRMADO",
+                    "costo_total": round(costo_total, 4),
+                    "capas_consumidas": len(detalle_fifo_salida),
+                    "item_origen": item_origen['codigo'],
+                    "item_destino": item_destino['codigo'],
+                },
                 linea_negocio_id=linea_origen_id, referencia=transf['codigo'])
 
         return {
