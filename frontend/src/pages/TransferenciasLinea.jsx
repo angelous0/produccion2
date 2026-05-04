@@ -39,6 +39,7 @@ import {
   X,
   Eye,
   ArrowRight,
+  ArrowLeftRight,
   Package,
   Calculator,
   AlertTriangle,
@@ -46,6 +47,7 @@ import {
   ChevronRight,
   Layers,
   Send,
+  Trash2,
 } from "lucide-react";
 
 import { formatCurrency, formatNumber } from "../lib/utils";
@@ -57,6 +59,7 @@ const ESTADO_BADGE = {
   BORRADOR: { variant: "outline", className: "border-yellow-500 text-yellow-600 bg-yellow-50" },
   CONFIRMADO: { variant: "outline", className: "border-green-500 text-green-600 bg-green-50" },
   CANCELADO: { variant: "outline", className: "border-red-500 text-red-600 bg-red-50" },
+  REVERSADO: { variant: "outline", className: "border-orange-500 text-orange-600 bg-orange-50" },
 };
 
 // ==================== COMPONENTE PRINCIPAL ====================
@@ -75,19 +78,21 @@ export const TransferenciasLinea = () => {
   const [lineaOrigenId, setLineaOrigenId] = useState("");
   const [lineaDestinoId, setLineaDestinoId] = useState("");
   const [itemsOrigen, setItemsOrigen] = useState([]);
-  const [selectedItemId, setSelectedItemId] = useState("");
+  const [itemsDestino, setItemsDestino] = useState([]);          // items "compatibles" en línea destino
+  const [selectedItemId, setSelectedItemId] = useState("");      // item origen
+  const [selectedItemDestinoId, setSelectedItemDestinoId] = useState(""); // item destino
   const [cantidad, setCantidad] = useState("");
   const [motivo, setMotivo] = useState("");
   const [observaciones, setObservaciones] = useState("");
 
   // --- Loading states ---
   const [loadingItemsOrigen, setLoadingItemsOrigen] = useState(false);
+  const [loadingItemsDestino, setLoadingItemsDestino] = useState(false);
   const [loadingEstimacion, setLoadingEstimacion] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // --- Derived data ---
   const [estimacion, setEstimacion] = useState(null);
-  const [stockDestinoInfo, setStockDestinoInfo] = useState(null);
 
   // --- Modals ---
   const [showDetalle, setShowDetalle] = useState(null);
@@ -128,14 +133,12 @@ export const TransferenciasLinea = () => {
       setItemsOrigen([]);
       setSelectedItemId("");
       setEstimacion(null);
-      setStockDestinoInfo(null);
       return;
     }
     const fetchItems = async () => {
       setLoadingItemsOrigen(true);
       setSelectedItemId("");
       setEstimacion(null);
-      setStockDestinoInfo(null);
       try {
         const { data } = await axios.get(`${API}/transferencias-linea/items-con-stock?linea_negocio_id=${lineaOrigenId}`);
         setItemsOrigen(data || []);
@@ -148,32 +151,46 @@ export const TransferenciasLinea = () => {
     fetchItems();
   }, [lineaOrigenId]);
 
-  // ---- When item or destination changes, fetch stock info in destination ----
+  const selectedItem = itemsOrigen.find(i => i.id === selectedItemId);
+
+  // ---- Cargar items compatibles en línea destino cuando cambia (línea destino o item origen) ----
+  // El backend filtra por unidad_medida + categoria del item origen para mostrar
+  // solo los compatibles. Si la lista viene vacía, mostramos un banner para que
+  // el usuario cree el item en /inventario.
   useEffect(() => {
-    if (!selectedItemId || !lineaDestinoId) {
-      setStockDestinoInfo(null);
+    if (!lineaDestinoId || !selectedItem) {
+      setItemsDestino([]);
+      setSelectedItemDestinoId("");
       return;
     }
-    const fetchStockDestino = async () => {
+    const fetchDestino = async () => {
+      setLoadingItemsDestino(true);
+      setSelectedItemDestinoId("");
       try {
-        const { data } = await axios.get(`${API}/transferencias-linea/stock-por-linea/${selectedItemId}`);
-        const lineaInfo = data.lineas?.find(l => String(l.linea_negocio_id) === String(lineaDestinoId));
-        setStockDestinoInfo({
-          item_nombre: data.item_nombre,
-          unidad_medida: data.unidad_medida,
-          stock_actual_destino: lineaInfo ? lineaInfo.stock_disponible : 0,
-        });
+        const params = new URLSearchParams({ linea_negocio_id: lineaDestinoId });
+        if (selectedItem.unidad_medida) params.set("unidad_medida", selectedItem.unidad_medida);
+        if (selectedItem.categoria) params.set("categoria", selectedItem.categoria);
+        const { data } = await axios.get(`${API}/transferencias-linea/items-en-linea?${params}`);
+        // Excluir el mismo item origen por si aparece (no debería, pero defensivo)
+        const items = (data || []).filter(i => i.id !== selectedItem.id);
+        setItemsDestino(items);
       } catch (e) {
-        setStockDestinoInfo(null);
+        setItemsDestino([]);
+      } finally {
+        setLoadingItemsDestino(false);
       }
     };
-    fetchStockDestino();
-  }, [selectedItemId, lineaDestinoId]);
+    fetchDestino();
+    // Listamos las props específicas usadas para evitar re-fetches cuando solo
+    // cambia la referencia del objeto. ESLint sugiere incluir `selectedItem`
+    // entero pero eso causaría loops innecesarios.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineaDestinoId, selectedItem?.id, selectedItem?.unidad_medida, selectedItem?.categoria]);
 
   // ---- Reset estimacion on key changes ----
   useEffect(() => { setEstimacion(null); }, [selectedItemId, lineaOrigenId, cantidad]);
 
-  const selectedItem = itemsOrigen.find(i => i.id === selectedItemId);
+  const selectedItemDestino = itemsDestino.find(i => i.id === selectedItemDestinoId);
 
   // ---- Estimar costo FIFO ----
   const handleEstimar = async () => {
@@ -196,8 +213,8 @@ export const TransferenciasLinea = () => {
 
   // ---- Crear transferencia ----
   const handleCrear = async () => {
-    if (!selectedItemId || !lineaOrigenId || !lineaDestinoId || !cantidad) {
-      toast.error("Completa todos los campos obligatorios");
+    if (!selectedItemId || !selectedItemDestinoId || !lineaOrigenId || !lineaDestinoId || !cantidad) {
+      toast.error("Completa todos los campos obligatorios (incluido el item destino)");
       return;
     }
     if (lineaOrigenId === lineaDestinoId) {
@@ -212,7 +229,8 @@ export const TransferenciasLinea = () => {
     setSaving(true);
     try {
       await axios.post(`${API}/transferencias-linea`, {
-        item_id: selectedItemId,
+        item_origen_id: selectedItemId,
+        item_destino_id: selectedItemDestinoId,
         linea_origen_id: parseInt(lineaOrigenId),
         linea_destino_id: parseInt(lineaDestinoId),
         cantidad: cantidadNum,
@@ -233,12 +251,13 @@ export const TransferenciasLinea = () => {
     setLineaOrigenId("");
     setLineaDestinoId("");
     setSelectedItemId("");
+    setSelectedItemDestinoId("");
     setCantidad("");
     setMotivo("");
     setObservaciones("");
     setEstimacion(null);
-    setStockDestinoInfo(null);
     setItemsOrigen([]);
+    setItemsDestino([]);
   };
 
   const handleConfirmar = async (id) => {
@@ -264,6 +283,40 @@ export const TransferenciasLinea = () => {
     }
   };
 
+  const handleReversar = async (id, codigo) => {
+    const motivo = window.prompt(
+      `Reversar transferencia ${codigo}?\n\nEsto devolverá el stock a la línea origen.\n\nMotivo del reverso:`
+    );
+    if (motivo === null) return; // canceló el prompt
+    try {
+      const { data } = await axios.post(`${API}/transferencias-linea/${id}/reversar`, {
+        motivo_reverso: motivo || "",
+      });
+      toast.success(data.message || "Transferencia reversada");
+      setShowDetalle(null);
+      fetchTransferencias();
+    } catch (e) {
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : "Error al reversar");
+    }
+  };
+
+  const handleEliminar = async (id, codigo, estado) => {
+    if (!window.confirm(
+      `¿Eliminar definitivamente la transferencia ${codigo}?\n\n` +
+      `Estado actual: ${estado}\n\n` +
+      `Esta acción borra todos los registros relacionados (detalles, ingresos, salidas, contabilidad). ` +
+      `No se puede deshacer.`
+    )) return;
+    try {
+      const { data } = await axios.delete(`${API}/transferencias-linea/${id}`);
+      toast.success(data.message || "Transferencia eliminada");
+      setShowDetalle(null);
+      fetchTransferencias();
+    } catch (e) {
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : "Error al eliminar");
+    }
+  };
+
   const totalPages = Math.ceil(total / limit);
 
   const filteredTransferencias = transferencias.filter((t) => {
@@ -279,7 +332,10 @@ export const TransferenciasLinea = () => {
   });
 
   const cantidadExcede = selectedItem && parseFloat(cantidad || 0) > selectedItem.stock_disponible;
-  const canSubmit = selectedItemId && lineaOrigenId && lineaDestinoId && cantidad && parseFloat(cantidad) > 0 && lineaOrigenId !== lineaDestinoId && !cantidadExcede;
+  const canSubmit = selectedItemId && selectedItemDestinoId && lineaOrigenId && lineaDestinoId
+    && cantidad && parseFloat(cantidad) > 0 && lineaOrigenId !== lineaDestinoId && !cantidadExcede;
+  const cantidadNum = parseFloat(cantidad || 0) || 0;
+  const valorizadoTransferencia = selectedItem ? cantidadNum * (selectedItem.costo_promedio || 0) : 0;
 
   return (
     <div className="space-y-6" data-testid="transferencias-linea-page">
@@ -382,6 +438,16 @@ export const TransferenciasLinea = () => {
                         <p className="font-mono font-bold text-blue-700">{formatNumber(selectedItem.stock_disponible)}</p>
                       </div>
                     </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Costo prom.</span>
+                        <p className="font-mono font-medium">{formatCurrency(selectedItem.costo_promedio || 0)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Valorizado disp.</span>
+                        <p className="font-mono font-medium text-blue-700">{formatCurrency(selectedItem.valorizado_disponible || 0)}</p>
+                      </div>
+                    </div>
                     <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
                       <span>Unidad: <strong>{selectedItem.unidad_medida}</strong></span>
                       <span>Tipo: <strong>{selectedItem.control_por_rollos ? "Rollo" : "Normal"}</strong></span>
@@ -455,33 +521,95 @@ export const TransferenciasLinea = () => {
                 )}
               </div>
 
-              {/* Stock preview en destino */}
+              {/* Item destino selector — sólo si origen + destino están elegidos */}
               {lineaDestinoId && selectedItem && (
+                <div>
+                  <Label className="text-xs font-medium">
+                    Item destino * <span className="text-muted-foreground font-normal">(en línea destino, misma unidad y categoría)</span>
+                  </Label>
+                  {loadingItemsDestino ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Buscando items compatibles...
+                    </div>
+                  ) : itemsDestino.length === 0 ? (
+                    <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3 text-xs space-y-1.5">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-yellow-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-yellow-800">No existe ningún item compatible en esta línea</p>
+                          <p className="text-yellow-700 mt-0.5">
+                            Necesita ser un item con misma <strong>unidad ({selectedItem.unidad_medida})</strong> y misma{" "}
+                            <strong>categoría ({selectedItem.categoria})</strong>. Crea el item en{" "}
+                            <a href="/inventario" className="underline font-medium hover:text-yellow-900" data-testid="link-crear-item-destino">
+                              Inventario
+                            </a>{" "}
+                            asignándolo a esta línea destino antes de transferir.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <Select value={selectedItemDestinoId} onValueChange={setSelectedItemDestinoId}>
+                      <SelectTrigger data-testid="select-item-destino">
+                        <SelectValue placeholder="Seleccionar item destino..." />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {itemsDestino.map((i) => (
+                          <SelectItem key={i.id} value={i.id}>
+                            <span className="font-mono text-xs">{i.codigo}</span>
+                            <span className="ml-2">{i.nombre}</span>
+                            <span className="ml-2 text-muted-foreground text-xs">(stock: {formatNumber(i.stock_en_linea)})</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              )}
+
+              {/* Preview de stock + valorizado en destino */}
+              {selectedItemDestino && (
                 <Card className="bg-green-50/50 border-green-200">
                   <CardContent className="py-3 px-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Package className="h-4 w-4 text-green-600" />
                       <span className="text-sm font-medium text-green-800">Preview en Destino</span>
                     </div>
+                    <p className="text-xs font-mono mb-2">
+                      <span className="font-semibold">{selectedItemDestino.codigo}</span>{" "}
+                      <span className="text-muted-foreground">— {selectedItemDestino.nombre}</span>
+                    </p>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div>
-                        <span className="text-muted-foreground">Stock actual destino</span>
-                        <p className="font-mono font-medium">
-                          {stockDestinoInfo ? formatNumber(stockDestinoInfo.stock_actual_destino) : "0.00"}
+                        <span className="text-muted-foreground">Stock actual</span>
+                        <p className="font-mono font-medium">{formatNumber(selectedItemDestino.stock_en_linea)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Después de transferir</span>
+                        <p className="font-mono font-bold text-green-700">
+                          {formatNumber((selectedItemDestino.stock_en_linea || 0) + cantidadNum)}
                         </p>
                       </div>
                       <div>
-                        <span className="text-muted-foreground">Despues de transferir</span>
-                        <p className="font-mono font-bold text-green-700">
-                          {stockDestinoInfo
-                            ? formatNumber((stockDestinoInfo.stock_actual_destino || 0) + parseFloat(cantidad || 0))
-                            : formatNumber(parseFloat(cantidad || 0))}
-                        </p>
+                        <span className="text-muted-foreground">Costo prom. actual</span>
+                        <p className="font-mono font-medium">{formatCurrency(selectedItemDestino.costo_promedio || 0)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Valorizado a transferir</span>
+                        <p className="font-mono font-bold text-green-700">{formatCurrency(valorizadoTransferencia)}</p>
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {selectedItem.codigo} - {selectedItem.nombre}
-                    </p>
+                    {selectedItemDestino.nombre !== selectedItem.nombre && (
+                      <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-1.5 flex items-start gap-1.5">
+                        <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                        <span>
+                          <strong>Equivalente manual:</strong> origen y destino tienen nombres distintos
+                          (<em>{selectedItem.nombre}</em> → <em>{selectedItemDestino.nombre}</em>).
+                          El stock se moverá igualmente al ser de misma categoría y unidad.
+                        </span>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}
@@ -692,7 +820,20 @@ export const TransferenciasLinea = () => {
                           {t.costo_total_transferido > 0 ? formatCurrency(t.costo_total_transferido) : "-"}
                         </TableCell>
                         <TableCell>
-                          <Badge className={badge.className} variant={badge.variant}>{t.estado}</Badge>
+                          <div className="flex flex-col gap-0.5 items-start">
+                            <Badge className={badge.className} variant={badge.variant}>{t.estado}</Badge>
+                            {t.estado === "CONFIRMADO" && (
+                              t.verificada ? (
+                                <span className="text-[10px] text-emerald-700 inline-flex items-center gap-0.5">
+                                  <Check className="h-2.5 w-2.5" /> Verificada
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-amber-700 inline-flex items-center gap-0.5">
+                                  <AlertTriangle className="h-2.5 w-2.5" /> Pendiente verif.
+                                </span>
+                              )
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-xs">{formatDate(t.fecha_creacion)}</TableCell>
                         <TableCell className="text-center">
@@ -711,6 +852,26 @@ export const TransferenciasLinea = () => {
                                 data-testid={`btn-confirmar-${t.codigo}`}
                               >
                                 <Check className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {t.estado === "CONFIRMADO" && (
+                              <Button
+                                variant="ghost" size="icon" className="h-7 w-7 text-orange-600"
+                                onClick={() => handleReversar(t.id, t.codigo)}
+                                title="Reversar (devolver stock al origen)"
+                                data-testid={`btn-reversar-${t.codigo}`}
+                              >
+                                <ArrowLeftRight className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {(t.estado === "CANCELADO" || t.estado === "REVERSADO") && (
+                              <Button
+                                variant="ghost" size="icon" className="h-7 w-7 text-red-600"
+                                onClick={() => handleEliminar(t.id, t.codigo, t.estado)}
+                                title="Eliminar definitivamente (cascada)"
+                                data-testid={`btn-eliminar-${t.codigo}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             )}
                           </div>
