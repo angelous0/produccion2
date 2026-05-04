@@ -584,15 +584,11 @@ async def get_disponibilidad_item(conn, item_id: str) -> dict:
     }
 
 
-@router.get("/inventario/{item_id}/disponibilidad")
-async def get_disponibilidad_inventario(item_id: str):
-    """Obtiene la disponibilidad real de un item (stock - reservas activas)"""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        result = await get_disponibilidad_item(conn, item_id)
-        if not result:
-            raise HTTPException(status_code=404, detail="Item no encontrado")
-        return result
+# NOTA: El endpoint HTTP `GET /inventario/{item_id}/disponibilidad` se eliminó
+# de este archivo porque estaba DUPLICADO. La fuente de verdad pública vive
+# en `routes/inventario_main.py` (con `Depends(get_current_user)` y auth JWT).
+# El helper `get_disponibilidad_item(conn, item_id)` (arriba) sigue acá porque
+# lo usa internamente `crear_reserva` (línea ~640) — no eliminar.
 
 
 @router.post("/registros/{registro_id}/reservas")
