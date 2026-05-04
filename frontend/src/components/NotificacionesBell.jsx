@@ -36,7 +36,10 @@ export const NotificacionesBell = () => {
 
   useEffect(() => {
     fetchAlertas();
-    const interval = setInterval(fetchAlertas, 60000);
+    // Polling cada 3 min (antes 60s). Las alertas del día no cambian tan
+    // rápido y bajar la frecuencia reduce 3× la carga sobre el backend
+    // cuando hay múltiples tabs abiertas.
+    const interval = setInterval(fetchAlertas, 180000);
     return () => clearInterval(interval);
   }, []);
 

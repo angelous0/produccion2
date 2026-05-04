@@ -393,12 +393,13 @@ export const Layout = () => {
     axios.get(`${API}/configuracion/modo-migracion`)
       .then(r => setModoMigracion(r.data?.activo || false))
       .catch(() => {});
-    // Re-check cada 60s
+    // Re-check cada 5 min (antes 60s). Es un toggle administrativo que
+    // cambia muy poco; no necesita polling agresivo. Reduce 5× la carga.
     const interval = setInterval(() => {
       axios.get(`${API}/configuracion/modo-migracion`)
         .then(r => setModoMigracion(r.data?.activo || false))
         .catch(() => {});
-    }, 60000);
+    }, 300000);
     return () => clearInterval(interval);
   }, []);
 

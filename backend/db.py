@@ -22,14 +22,28 @@ pool = None
 async def get_pool():
     global pool
     if pool is None or pool._closed:
+        # Pool tuneado para evitar saturación con polling del frontend.
+        # max_size 25 (antes 10): el dashboard hace muchos GETs en paralelo
+        #   (en-proceso, wip-etapa, atrasados, filtros, alertas, etc.),
+        #   y con múltiples tabs abiertas el pool de 10 se saturaba.
+        # min_size 5: arranca con conexiones listas, evita latencia inicial.
+        # command_timeout 60s: una query lenta no cuelga la conexión para
+        #   siempre; se libera y el cliente recibe timeout limpio.
         pool = await asyncpg.create_pool(
             DATABASE_URL,
-            min_size=2,
-            max_size=10,
+            min_size=5,
+            max_size=25,
             timeout=60,
-            command_timeout=30,
+            command_timeout=60,
             max_inactive_connection_lifetime=30,
-            server_settings={"search_path": "produccion,public"},
+            server_settings={
+                "search_path": "produccion,public",
+                # lock_timeout en cada conexión: si una query queda esperando
+                # un lock (típico durante deploy con migraciones), no cuelga
+                # más de 5 segundos.
+                "lock_timeout": "5000",
+                "idle_in_transaction_session_timeout": "60000",
+            },
         )
     return pool
 
