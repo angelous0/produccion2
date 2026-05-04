@@ -11,19 +11,33 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '../components/ui/table';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '../components/ui/dialog';
+import { Checkbox } from '../components/ui/checkbox';
+import { Label } from '../components/ui/label';
 import IncidenciaAvances from '../components/registro/IncidenciaAvances';
 import { SearchableSelect } from '../components/SearchableSelect';
 import {
   Activity, Layers, AlertTriangle, PauseCircle, Clock, CheckCircle2,
   ExternalLink, ArrowRight, Filter, Shirt, Flame, CalendarClock, FileWarning,
-  MessageSquare,
+  MessageSquare, Download,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatDate } from '../lib/dateUtils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+// Estados/etapas conocidos del flujo de producción (orden lógico).
+// Se usa como fallback en el modal de export si el endpoint /filtros
+// todavía no respondió. La lista real viene del backend cuando carga.
+const ESTADOS_FALLBACK = [
+  'Para Corte', 'Corte',
+  'Para Costura', 'Costura',
+  'Para Atraque', 'Atraque',
+  'Para Lavandería', 'Lavandería',
+  'Para Acabado', 'Acabado',
+  'Almacén PT', 'Tienda',
+];
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
 export const SeguimientoProduccion = () => {
@@ -41,6 +55,19 @@ export const SeguimientoProduccion = () => {
   const [incidenciaSeleccionada, setIncidenciaSeleccionada] = useState(null); // para el modal de detalle/avances
   const [filtros, setFiltros] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [descargandoExcel, setDescargandoExcel] = useState(false);
+
+  // Modal de filtros para el export
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportCatalogos, setExportCatalogos] = useState({ marcas: [], tipos: [], entalles: [], telas: [], estados: [] });
+  const [exportFiltros, setExportFiltros] = useState({
+    estados: [],     // array de estados a incluir (vacío = todos)
+    marca_id: '',    // string (vacío = todas)
+    tipo_id: '',
+    entalle_id: '',
+    tela_id: '',
+    incluir_tallas: false,  // si true → 2da hoja "Detalle por Talla"
+  });
 
   // Filters
   const [filterEstado, setFilterEstado] = useState('');
@@ -100,6 +127,97 @@ export const SeguimientoProduccion = () => {
       setIncidenciasData(res.data);
     } catch { /* ignore */ }
   }, [incidenciasFiltro]);
+
+  // Abre el modal y precarga catálogos (marcas, tipos, entalles, telas, estados).
+  // Pre-rellena los filtros del modal con los filtros activos de la página.
+  const openExportDialog = async () => {
+    setExportFiltros({
+      estados: filterEstado && filterEstado !== '_all' ? [filterEstado] : [],
+      marca_id: '',
+      tipo_id: filterTipo && filterTipo !== '_all' ? filterTipo : '',
+      entalle_id: '',
+      tela_id: '',
+      incluir_tallas: false,
+    });
+    setExportDialogOpen(true);
+
+    // Catálogos: intenta refrescar SIEMPRE (no solo la primera vez), por si
+    // el endpoint /filtros no había respondido cuando abrió el modal antes.
+    try {
+      const safe = (p) => p.catch(() => ({ data: [] }));
+      const requests = [
+        safe(axios.get(`${API}/marcas`)),
+        safe(axios.get(`${API}/tipos`)),
+        safe(axios.get(`${API}/entalles`)),
+        safe(axios.get(`${API}/telas`)),
+      ];
+      // Si filtros (cargado en fetchAll) no trae estados, pedirlos directo.
+      if (!filtros?.estados?.length) {
+        requests.push(safe(axios.get(`${API}/reportes-produccion/filtros`)));
+      }
+      const responses = await Promise.all(requests);
+      const [m, t, e, te, f] = responses;
+      const estadosResueltos =
+        (filtros?.estados?.length ? filtros.estados : null)
+        || (f?.data?.estados?.length ? f.data.estados : null)
+        || ESTADOS_FALLBACK;
+      setExportCatalogos({
+        marcas: m?.data?.length ? m.data : (exportCatalogos.marcas || []),
+        tipos: t?.data?.length ? t.data : (exportCatalogos.tipos || []),
+        entalles: e?.data?.length ? e.data : (exportCatalogos.entalles || []),
+        telas: te?.data?.length ? te.data : (exportCatalogos.telas || []),
+        estados: estadosResueltos,
+      });
+    } catch { /* ignore — si todo falla, el render usa ESTADOS_FALLBACK */ }
+  };
+
+  // Descarga el Excel respetando los filtros elegidos en el modal
+  const handleDownloadEnProcesoXLSX = async () => {
+    setDescargandoExcel(true);
+    try {
+      const params = new URLSearchParams();
+      if (exportFiltros.tipo_id)    params.append('tipo_id', exportFiltros.tipo_id);
+      if (exportFiltros.marca_id)   params.append('marca_id', exportFiltros.marca_id);
+      if (exportFiltros.entalle_id) params.append('entalle_id', exportFiltros.entalle_id);
+      if (exportFiltros.tela_id)    params.append('tela_id', exportFiltros.tela_id);
+      (exportFiltros.estados || []).forEach(e => params.append('estados', e));
+      if (exportFiltros.incluir_tallas) params.append('incluir_tallas', 'true');
+
+      const res = await axios.get(
+        `${API}/reportes-produccion/en-proceso/export-xlsx?${params}`,
+        { responseType: 'blob' }
+      );
+      const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const fecha = new Date().toISOString().slice(0, 10);
+      link.setAttribute('download', `en-proceso_${fecha}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setExportDialogOpen(false);
+    } catch (err) {
+      console.error('Error descargando Excel:', err);
+      alert('No se pudo descargar el Excel. Revisa la consola.');
+    } finally {
+      setDescargandoExcel(false);
+    }
+  };
+
+  // Helper para los checkboxes de estados
+  const toggleEstadoEnExport = (estado) => {
+    setExportFiltros(prev => {
+      const exists = prev.estados.includes(estado);
+      return {
+        ...prev,
+        estados: exists ? prev.estados.filter(e => e !== estado) : [...prev.estados, estado],
+      };
+    });
+  };
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
   useEffect(() => { fetchParalizados(); }, [fetchParalizados]);
@@ -172,9 +290,23 @@ export const SeguimientoProduccion = () => {
 
   return (
     <div className="space-y-4" data-testid="seguimiento-produccion">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Seguimiento de Produccion</h2>
-        <p className="text-sm text-muted-foreground">Monitoreo de lotes, etapas y cumplimiento</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Seguimiento de Produccion</h2>
+          <p className="text-sm text-muted-foreground">Monitoreo de lotes, etapas y cumplimiento</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={openExportDialog}
+          disabled={descargandoExcel}
+          data-testid="btn-descargar-en-proceso-xlsx"
+          title="Abrir filtros para descargar Excel"
+          className="shrink-0"
+        >
+          <Download className={`h-3.5 w-3.5 mr-1.5 ${descargandoExcel ? 'animate-pulse' : ''}`} />
+          Descargar Excel
+        </Button>
       </div>
 
       {/* SECCION 1: KPIs */}
@@ -805,6 +937,183 @@ export const SeguimientoProduccion = () => {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de filtros para Descargar Excel — Lotes en proceso */}
+      <Dialog open={exportDialogOpen} onOpenChange={(open) => !descargandoExcel && setExportDialogOpen(open)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="h-4 w-4 text-emerald-600" />
+              Descargar Excel — Lotes en proceso
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Elegí los filtros que querés aplicar. Si dejás un filtro vacío, se incluyen todos los valores.
+              Para estados, podés marcar varios — si no marcás ninguno, se incluyen todos.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Estados — multi-checkbox */}
+            <div>
+              <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Estados / Etapas a incluir
+              </Label>
+              <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2 p-2 border rounded-md bg-muted/30 max-h-48 overflow-y-auto">
+                {(() => {
+                  const lista = (exportCatalogos.estados && exportCatalogos.estados.length)
+                    ? exportCatalogos.estados
+                    : ESTADOS_FALLBACK;
+                  return lista.map((e) => (
+                    <label key={e} className="flex items-center gap-2 cursor-pointer text-sm hover:bg-background rounded px-1.5 py-0.5">
+                      <Checkbox
+                        checked={exportFiltros.estados.includes(e)}
+                        onCheckedChange={() => toggleEstadoEnExport(e)}
+                      />
+                      <span className="truncate">{e}</span>
+                    </label>
+                  ));
+                })()}
+              </div>
+              <div className="flex gap-2 mt-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const lista = (exportCatalogos.estados && exportCatalogos.estados.length)
+                      ? exportCatalogos.estados
+                      : ESTADOS_FALLBACK;
+                    setExportFiltros(prev => ({ ...prev, estados: [...lista] }));
+                  }}
+                  className="text-[10px] text-emerald-700 hover:underline"
+                >
+                  Marcar todos
+                </button>
+                <span className="text-[10px] text-muted-foreground">·</span>
+                <button
+                  type="button"
+                  onClick={() => setExportFiltros(prev => ({ ...prev, estados: [] }))}
+                  className="text-[10px] text-muted-foreground hover:underline"
+                >
+                  Limpiar
+                </button>
+                <span className="text-[10px] text-muted-foreground ml-auto">
+                  {exportFiltros.estados.length === 0
+                    ? '→ se incluyen todos'
+                    : `${exportFiltros.estados.length} estado(s) seleccionados`}
+                </span>
+              </div>
+            </div>
+
+            {/* Marca, Tipo, Entalle, Tela — selects single */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Marca</Label>
+                <Select
+                  value={exportFiltros.marca_id || '_all'}
+                  onValueChange={(v) => setExportFiltros(prev => ({ ...prev, marca_id: v === '_all' ? '' : v }))}
+                >
+                  <SelectTrigger className="h-9 mt-1.5 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todas las marcas</SelectItem>
+                    {(exportCatalogos.marcas || []).map(m => (
+                      <SelectItem key={m.id} value={m.id}>{m.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Tipo</Label>
+                <Select
+                  value={exportFiltros.tipo_id || '_all'}
+                  onValueChange={(v) => setExportFiltros(prev => ({ ...prev, tipo_id: v === '_all' ? '' : v }))}
+                >
+                  <SelectTrigger className="h-9 mt-1.5 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todos los tipos</SelectItem>
+                    {(exportCatalogos.tipos || []).map(t => (
+                      <SelectItem key={t.id} value={t.id}>{t.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Entalle</Label>
+                <Select
+                  value={exportFiltros.entalle_id || '_all'}
+                  onValueChange={(v) => setExportFiltros(prev => ({ ...prev, entalle_id: v === '_all' ? '' : v }))}
+                >
+                  <SelectTrigger className="h-9 mt-1.5 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todos los entalles</SelectItem>
+                    {(exportCatalogos.entalles || []).map(en => (
+                      <SelectItem key={en.id} value={en.id}>{en.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Tela</Label>
+                <Select
+                  value={exportFiltros.tela_id || '_all'}
+                  onValueChange={(v) => setExportFiltros(prev => ({ ...prev, tela_id: v === '_all' ? '' : v }))}
+                >
+                  <SelectTrigger className="h-9 mt-1.5 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todas las telas</SelectItem>
+                    {(exportCatalogos.telas || []).map(te => (
+                      <SelectItem key={te.id} value={te.id}>{te.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-muted-foreground">
+              💡 Los filtros buscan tanto en modelos del catálogo como en registros con modelo manual (cuando guardan el mismo nombre).
+            </p>
+
+            {/* Opción extra: detalle por talla */}
+            <div className="border-t pt-3">
+              <label className="flex items-start gap-2 cursor-pointer hover:bg-muted/30 rounded p-2 -m-2">
+                <Checkbox
+                  checked={exportFiltros.incluir_tallas}
+                  onCheckedChange={(v) => setExportFiltros(prev => ({ ...prev, incluir_tallas: !!v }))}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="text-sm font-medium">Incluir detalle por talla</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Agrega una <strong>segunda hoja</strong> al Excel con la curva de tallas de cada lote
+                    (S, M, L, XL, 26, 28, 30, …) y el total por fila.
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setExportDialogOpen(false)}
+              disabled={descargandoExcel}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleDownloadEnProcesoXLSX}
+              disabled={descargandoExcel}
+              className="gap-1.5"
+            >
+              <Download className={`h-3.5 w-3.5 ${descargandoExcel ? 'animate-pulse' : ''}`} />
+              {descargandoExcel ? 'Generando…' : 'Generar y Descargar'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

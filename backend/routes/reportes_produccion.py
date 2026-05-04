@@ -4,7 +4,7 @@ Dashboard KPIs, En Proceso, WIP por Etapa, Atrasados, Trazabilidad,
 Cumplimiento de Ruta, Balance Terceros, Lotes Fraccionados.
 """
 from fastapi import APIRouter, HTTPException, Depends, Query
-from typing import Optional
+from typing import Optional, List
 from datetime import date, datetime, timezone
 import json
 
@@ -231,6 +231,325 @@ async def produccion_en_proceso(
             registros.append(d)
 
         return {"registros": registros, "total": len(registros)}
+
+
+# ==================== 2.5 EXPORT XLSX DE EN-PROCESO ====================
+
+@router.get("/en-proceso/export-xlsx")
+async def export_en_proceso_xlsx(
+    empresa_id: int = Query(7),
+    tipo_id: Optional[str] = Query(None, description="Filtra por tipo (catálogo o modelo_manual)"),
+    marca_id: Optional[str] = Query(None, description="Filtra por marca (catálogo o modelo_manual)"),
+    entalle_id: Optional[str] = Query(None, description="Filtra por entalle (catálogo o modelo_manual)"),
+    tela_id: Optional[str] = Query(None, description="Filtra por tela (catálogo o modelo_manual)"),
+    estados: Optional[List[str]] = Query(None, description="Lista de estados/etapas a incluir (repetible)"),
+    estado: Optional[str] = Query(None, description="(Deprecated) usar 'estados' en su lugar"),
+    incluir_tallas: bool = Query(False, description="Si True, agrega una segunda hoja con detalle por talla"),
+    current_user: dict = Depends(get_current_user),
+):
+    """Descarga Excel con los lotes en proceso. Columnas:
+       N° Corte, Marca, Tipo, Entalle, Tela, Fecha Inicio, Estado,
+       Último Movimiento, Días sin Movimiento, Modelo, Urgente.
+
+    Fecha Inicio: usa r.fecha_inicio_real; si no, fecha del primer movimiento
+    de Corte; si no, fecha_creacion.
+
+    Filtros opcionales:
+      - tipo_id, marca_id, entalle_id, tela_id: matchea contra el catálogo
+        (`prod_modelos.X_id`) Y contra el JSONB de modelo_manual cuando guarda
+        `<X>_id` o `<X>_texto` (en este último caso se compara con el `nombre`
+        del catálogo correspondiente).
+      - estados: lista de estados a incluir; si no se envía, NO se filtra por
+        estado (se toman todos los activos).
+      - estado: parámetro singular legacy, sigue funcionando por compatibilidad.
+    """
+    from io import BytesIO
+    from fastapi.responses import StreamingResponse
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Resolver textos de catálogo para matchear contra modelo_manual JSONB
+        # (los registros manuales guardan el nombre como texto, no el UUID).
+        async def _nombre_catalogo(tabla: str, _id: str) -> Optional[str]:
+            if not _id:
+                return None
+            row = await conn.fetchrow(f"SELECT nombre FROM {tabla} WHERE id = $1", _id)
+            return row["nombre"] if row else None
+
+        marca_txt   = await _nombre_catalogo("prod_marcas",   marca_id)
+        tipo_txt    = await _nombre_catalogo("prod_tipos",    tipo_id)
+        entalle_txt = await _nombre_catalogo("prod_entalles", entalle_id)
+        tela_txt    = await _nombre_catalogo("prod_telas",    tela_id)
+
+        conds = ["r.estado_op IN ('ABIERTA', 'EN_PROCESO')",
+                 "r.dividido_desde_registro_id IS NULL"]
+        params: list = []
+
+        def _add_filter_id_or_texto(_id: str, _txt: Optional[str], col_id: str, json_key_id: str, json_key_texto: str):
+            """Match contra (modelo del catálogo OR JSONB id OR JSONB texto)."""
+            params.append(_id)
+            idx_id = len(params)
+            parts = [f"{col_id} = ${idx_id}", f"r.modelo_manual->>'{json_key_id}' = ${idx_id}"]
+            if _txt:
+                params.append(_txt)
+                idx_txt = len(params)
+                parts.append(f"r.modelo_manual->>'{json_key_texto}' = ${idx_txt}")
+            conds.append("(" + " OR ".join(parts) + ")")
+
+        if tipo_id:
+            _add_filter_id_or_texto(tipo_id, tipo_txt, "m.tipo_id", "tipo_id", "tipo_texto")
+        if marca_id:
+            _add_filter_id_or_texto(marca_id, marca_txt, "m.marca_id", "marca_id", "marca_texto")
+        if entalle_id:
+            _add_filter_id_or_texto(entalle_id, entalle_txt, "m.entalle_id", "entalle_id", "entalle_texto")
+        if tela_id:
+            _add_filter_id_or_texto(tela_id, tela_txt, "m.tela_id", "tela_id", "tela_texto")
+
+        # Estados: lista (preferida) O singular (legacy)
+        estados_efectivos: list = []
+        if estados:
+            estados_efectivos = [e for e in estados if e]
+        elif estado:
+            estados_efectivos = [estado]
+        if estados_efectivos:
+            params.append(estados_efectivos)
+            conds.append(f"r.estado = ANY(${len(params)}::text[])")
+
+        where_sql = " AND ".join(conds)
+
+        rows = await conn.fetch(f"""
+            WITH ultimo_mov AS (
+                SELECT mp.registro_id,
+                       MAX(GREATEST(
+                           COALESCE(mp.fecha_fin, '1900-01-01'::date),
+                           COALESCE(mp.fecha_inicio, '1900-01-01'::date),
+                           COALESCE(mp.avance_updated_at::date, '1900-01-01'::date),
+                           mp.created_at::date
+                       )) AS fecha_ultimo_mov
+                  FROM prod_movimientos_produccion mp
+                 GROUP BY mp.registro_id
+            ),
+            fecha_corte AS (
+                SELECT mp.registro_id, MIN(mp.fecha_inicio) AS fecha_corte
+                  FROM prod_movimientos_produccion mp
+                  JOIN prod_servicios_produccion s ON s.id = mp.servicio_id
+                 WHERE LOWER(s.nombre) LIKE '%corte%'
+                 GROUP BY mp.registro_id
+            )
+            SELECT
+                r.id::text AS registro_id,
+                r.n_corte,
+                COALESCE(ma.nombre, r.modelo_manual->>'marca_texto', '')   AS marca,
+                COALESCE(tp.nombre, r.modelo_manual->>'tipo_texto', '')    AS tipo,
+                COALESCE(en.nombre, r.modelo_manual->>'entalle_texto', '') AS entalle,
+                COALESCE(te.nombre, r.modelo_manual->>'tela_texto', '')    AS tela,
+                COALESCE(hi.nombre, r.modelo_manual->>'hilo_texto', '')    AS hilo,
+                COALESCE(
+                    (SELECT SUM(rt.cantidad_real)
+                       FROM prod_registro_tallas rt
+                      WHERE rt.registro_id = r.id),
+                    0
+                )::int AS cantidad_prendas,
+                COALESCE(r.fecha_inicio_real, fc.fecha_corte, r.fecha_creacion::date) AS fecha_inicio,
+                r.estado,
+                um.fecha_ultimo_mov,
+                CASE WHEN um.fecha_ultimo_mov IS NOT NULL
+                     THEN (CURRENT_DATE - um.fecha_ultimo_mov)
+                     ELSE NULL END AS dias_sin_mov,
+                COALESCE(mod.nombre, r.modelo_manual->>'nombre_modelo', '') AS modelo,
+                r.urgente
+              FROM prod_registros r
+              LEFT JOIN prod_modelos mod ON mod.id = r.modelo_id
+              LEFT JOIN prod_marcas ma   ON ma.id  = mod.marca_id
+              LEFT JOIN prod_tipos tp    ON tp.id  = mod.tipo_id
+              LEFT JOIN prod_entalles en ON en.id  = mod.entalle_id
+              LEFT JOIN prod_telas te    ON te.id  = mod.tela_id
+              LEFT JOIN prod_hilos_especificos hi ON hi.id = r.hilo_especifico_id
+              LEFT JOIN ultimo_mov um    ON um.registro_id = r.id
+              LEFT JOIN fecha_corte fc   ON fc.registro_id = r.id
+              -- alias 'm' usado por filtros de tipo_id si aplica:
+              LEFT JOIN prod_modelos m   ON m.id = r.modelo_id
+             WHERE {where_sql}
+             ORDER BY um.fecha_ultimo_mov ASC NULLS LAST, r.n_corte
+        """, *params)
+
+    # ──────────────────────────────────────────────────────────────
+    # Construcción del XLSX
+    # ──────────────────────────────────────────────────────────────
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "En Proceso"
+
+    headers = [
+        "N° Corte", "Marca", "Tipo", "Entalle", "Tela", "Hilo",
+        "Cantidad", "Fecha Inicio", "Estado", "Último Movimiento", "Días sin Mov.",
+        "Modelo", "Urgente",
+    ]
+
+    header_fill = PatternFill(start_color="1F2937", end_color="1F2937", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    thin = Side(border_style="thin", color="D1D5DB")
+    border_all = Border(top=thin, bottom=thin, left=thin, right=thin)
+
+    for col_idx, h in enumerate(headers, start=1):
+        c = ws.cell(row=1, column=col_idx, value=h)
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = border_all
+
+    # Anchos por columna (heurística por contenido típico)
+    widths = [12, 18, 14, 18, 18, 14, 10, 13, 18, 18, 14, 22, 10]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
+
+    for row_idx, r in enumerate(rows, start=2):
+        ws.cell(row=row_idx, column=1, value=r["n_corte"])
+        ws.cell(row=row_idx, column=2, value=r["marca"])
+        ws.cell(row=row_idx, column=3, value=r["tipo"])
+        ws.cell(row=row_idx, column=4, value=r["entalle"])
+        ws.cell(row=row_idx, column=5, value=r["tela"])
+        ws.cell(row=row_idx, column=6, value=r["hilo"])
+        ws.cell(row=row_idx, column=7, value=int(r["cantidad_prendas"] or 0))
+        ws.cell(row=row_idx, column=8, value=r["fecha_inicio"])
+        ws.cell(row=row_idx, column=9, value=r["estado"])
+        ws.cell(row=row_idx, column=10, value=r["fecha_ultimo_mov"])
+        dias = r["dias_sin_mov"]
+        ws.cell(row=row_idx, column=11, value=int(dias) if dias is not None else None)
+        ws.cell(row=row_idx, column=12, value=r["modelo"])
+        ws.cell(row=row_idx, column=13, value="SÍ" if r["urgente"] else "")
+
+    # Freeze de la fila de cabeceras + filtro automático
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+
+    # ──────────────────────────────────────────────────────────────
+    # Hoja 2 (opcional): Detalle por Talla — formato pivot
+    # ──────────────────────────────────────────────────────────────
+    if incluir_tallas and rows:
+        # Usamos registro_id (UUID único) como clave del pivot, NO n_corte —
+        # n_corte puede repetirse entre dos registros activos distintos.
+        registro_ids = [r["registro_id"] for r in rows]
+        async with pool.acquire() as conn2:
+            tallas_rows = await conn2.fetch("""
+                SELECT rt.registro_id::text AS registro_id,
+                       COALESCE(t.nombre, '?') AS talla,
+                       SUM(rt.cantidad_real)::int AS cantidad
+                  FROM prod_registro_tallas rt
+                  LEFT JOIN prod_tallas_catalogo t ON t.id = rt.talla_id
+                 WHERE rt.registro_id::text = ANY($1::text[])
+                 GROUP BY rt.registro_id, t.nombre
+            """, registro_ids)
+
+        # Pivot en memoria: { registro_id: { talla: cantidad } }
+        pivot: dict = {}
+        tallas_set = set()
+        for tr in tallas_rows:
+            rid = tr["registro_id"]
+            t = tr["talla"]
+            pivot.setdefault(rid, {})[t] = int(tr["cantidad"] or 0)
+            tallas_set.add(t)
+
+        # Ordenar tallas: primero las numéricas asc, después las de letras (S, M, L, XL)
+        ORDEN_LETRAS = {"XS": 1, "S": 2, "M": 3, "L": 4, "XL": 5, "XXL": 6, "XXXL": 7}
+        def _talla_key(t: str):
+            try:
+                return (0, int(t), t)  # numérica
+            except (ValueError, TypeError):
+                return (1, ORDEN_LETRAS.get(t.upper(), 99), t)
+        tallas_ordenadas = sorted(tallas_set, key=_talla_key)
+
+        ws2 = wb.create_sheet("Detalle por Talla")
+
+        headers2 = ["N° Corte", "Marca", "Tipo", "Entalle", "Tela", "Hilo", "Modelo"] + tallas_ordenadas + ["Total"]
+        for col_idx, h in enumerate(headers2, start=1):
+            c = ws2.cell(row=1, column=col_idx, value=h)
+            c.fill = header_fill
+            c.font = header_font
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.border = border_all
+        # Anchos: 7 cols descriptivas + cada talla 8px + Total 10
+        widths2 = [12, 18, 14, 18, 18, 14, 22] + [8] * len(tallas_ordenadas) + [10]
+        for i, w in enumerate(widths2, start=1):
+            ws2.column_dimensions[ws2.cell(row=1, column=i).column_letter].width = w
+
+        for row_idx, r in enumerate(rows, start=2):
+            ws2.cell(row=row_idx, column=1, value=r["n_corte"])
+            ws2.cell(row=row_idx, column=2, value=r["marca"])
+            ws2.cell(row=row_idx, column=3, value=r["tipo"])
+            ws2.cell(row=row_idx, column=4, value=r["entalle"])
+            ws2.cell(row=row_idx, column=5, value=r["tela"])
+            ws2.cell(row=row_idx, column=6, value=r["hilo"])
+            ws2.cell(row=row_idx, column=7, value=r["modelo"])
+            por_talla = pivot.get(r["registro_id"], {})
+            total_fila = 0
+            for j, t in enumerate(tallas_ordenadas, start=8):
+                v = por_talla.get(t, 0)
+                if v:
+                    ws2.cell(row=row_idx, column=j, value=v)
+                    total_fila += v
+            ws2.cell(row=row_idx, column=7 + len(tallas_ordenadas) + 1,
+                     value=total_fila or None)
+
+        ws2.freeze_panes = "H2"  # freeze hasta col G (Modelo), las tallas hacen scroll
+        ws2.auto_filter.ref = ws2.dimensions
+
+        # ──────────────────────────────────────────────────────────────
+        # Hoja 3: Tallas en filas (formato "long" — ideal para tabla dinámica)
+        # Una fila por (lote × talla con cantidad > 0).
+        # Columnas: N° Corte | Marca | Tipo | Modelo | Estado | Talla | Cantidad
+        # ──────────────────────────────────────────────────────────────
+        ws3 = wb.create_sheet("Tallas en Filas")
+
+        headers3 = ["N° Corte", "Marca", "Tipo", "Entalle", "Tela", "Hilo", "Modelo", "Estado", "Talla", "Cantidad"]
+        for col_idx, h in enumerate(headers3, start=1):
+            c = ws3.cell(row=1, column=col_idx, value=h)
+            c.fill = header_fill
+            c.font = header_font
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.border = border_all
+        widths3 = [12, 18, 14, 18, 18, 14, 22, 18, 8, 10]
+        for i, w in enumerate(widths3, start=1):
+            ws3.column_dimensions[ws3.cell(row=1, column=i).column_letter].width = w
+
+        long_row = 2
+        # Recorre en el mismo orden de la hoja 1 (rows), y dentro de cada lote,
+        # las tallas en orden global (numéricas asc, luego letras).
+        # Usa registro_id como clave (n_corte puede repetirse entre lotes).
+        for r in rows:
+            por_talla = pivot.get(r["registro_id"], {})
+            for t in tallas_ordenadas:
+                v = por_talla.get(t, 0)
+                if not v:
+                    continue
+                ws3.cell(row=long_row, column=1, value=r["n_corte"])
+                ws3.cell(row=long_row, column=2, value=r["marca"])
+                ws3.cell(row=long_row, column=3, value=r["tipo"])
+                ws3.cell(row=long_row, column=4, value=r["entalle"])
+                ws3.cell(row=long_row, column=5, value=r["tela"])
+                ws3.cell(row=long_row, column=6, value=r["hilo"])
+                ws3.cell(row=long_row, column=7, value=r["modelo"])
+                ws3.cell(row=long_row, column=8, value=r["estado"])
+                ws3.cell(row=long_row, column=9, value=t)
+                ws3.cell(row=long_row, column=10, value=int(v))
+                long_row += 1
+
+        ws3.freeze_panes = "A2"
+        ws3.auto_filter.ref = ws3.dimensions
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    fecha_str = datetime.now().strftime("%Y-%m-%d")
+    filename = f"en-proceso_{fecha_str}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ==================== 3. WIP POR ETAPA ====================
