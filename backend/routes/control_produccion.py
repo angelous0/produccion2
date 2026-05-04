@@ -152,7 +152,8 @@ async def get_incidencias(registro_id: str):
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """SELECT i.*, m.nombre as motivo_nombre,
-                      p.activa as paralizacion_activa, p.fecha_inicio as paralizacion_inicio, p.fecha_fin as paralizacion_fin
+                      p.activa as paralizacion_activa, p.fecha_inicio as paralizacion_inicio, p.fecha_fin as paralizacion_fin,
+                      (SELECT COUNT(*) FROM prod_incidencia_avance WHERE incidencia_id = i.id) AS avances_count
                FROM prod_incidencia i
                LEFT JOIN prod_motivos_incidencia m ON i.tipo = m.id
                LEFT JOIN prod_paralizacion p ON i.paralizacion_id = p.id

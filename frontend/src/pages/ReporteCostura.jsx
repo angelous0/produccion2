@@ -8,6 +8,7 @@ import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Separator } from '../components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
 import { toast } from 'sonner';
@@ -231,6 +232,96 @@ const PlazoEditor = ({ movimientoId, fechaInicio, fechaEsperada, onSaved }) => {
       </Button>
       <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setEditing(false)}><X className="h-3 w-3" /></Button>
     </div>
+  );
+};
+
+/**
+ * Botón "+ Avance" que abre un Popover con un mini-form para agregar un avance
+ * a una incidencia inline, sin tener que abrir el dialog completo del historial.
+ * Se usa dentro de las cards de incidencias del Reporte Operativo.
+ *
+ * Props:
+ *  - incidenciaId: id de la incidencia
+ *  - avancesCount: número actual de avances (para mostrarlo en el botón)
+ *  - onAdded: callback que se invoca tras guardar exitosamente, para que el
+ *             padre refresque las incidencias del registro.
+ */
+const QuickAvanceInline = ({ incidenciaId, avancesCount = 0, onAdded }) => {
+  const [open, setOpen] = useState(false);
+  const [texto, setTexto] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleGuardar = async () => {
+    const t = texto.trim();
+    if (!t) return;
+    setSaving(true);
+    try {
+      await axios.post(`${API}/api/incidencias/${incidenciaId}/avances`, {
+        comentario: t,
+        fecha: null, // null => backend usa NOW()
+      });
+      toast.success('Avance agregado');
+      setTexto('');
+      setOpen(false);
+      if (onAdded) await onAdded();
+    } catch {
+      toast.error('Error al agregar avance');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) setTexto(''); }}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button" variant="outline" size="sm" className="h-7 text-xs shrink-0"
+          title="Agregar avance a esta incidencia"
+          data-testid={`btn-quick-avance-${incidenciaId}`}
+        >
+          <Plus className="h-3 w-3 mr-1" /> Avance
+          {avancesCount > 0 && <span className="ml-1 text-[10px] text-muted-foreground">({avancesCount})</span>}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 p-3" align="end" data-testid={`quick-avance-form-${incidenciaId}`}>
+        <div className="space-y-2">
+          <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Nuevo avance
+          </p>
+          <Textarea
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder="Describir el avance (ej: 'Hablado con el proveedor, llega mañana')..."
+            rows={3}
+            className="text-xs resize-y"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleGuardar();
+            }}
+          />
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] text-muted-foreground">Ctrl+Enter para guardar</span>
+            <div className="flex gap-1.5">
+              <Button
+                type="button" variant="ghost" size="sm" className="h-7 text-xs"
+                onClick={() => { setOpen(false); setTexto(''); }}
+                disabled={saving}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button" size="sm" className="h-7 text-xs"
+                onClick={handleGuardar}
+                disabled={saving || !texto.trim()}
+                data-testid={`btn-quick-avance-guardar-${incidenciaId}`}
+              >
+                {saving ? <RefreshCw className="h-3 w-3 animate-spin" /> : <><Check className="h-3 w-3 mr-1" /> Guardar</>}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 };
 
@@ -1069,12 +1160,17 @@ export const ReporteCostura = () => {
                                       {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
                                     </p>
                                   </div>
+                                  <QuickAvanceInline
+                                    incidenciaId={inc.id}
+                                    avancesCount={inc.avances_count || 0}
+                                    onAdded={() => fetchIncidencias(item.registro_id)}
+                                  />
                                   <Button
                                     type="button" variant="outline" size="sm" className="h-7 text-xs shrink-0"
                                     onClick={() => setAvancesDialog({ ...inc, n_corte: item.n_corte })}
-                                    title="Ver historial de avances"
+                                    title="Ver historial completo de avances"
                                   >
-                                    <MessageSquare className="h-3 w-3 mr-1" /> Avances
+                                    <MessageSquare className="h-3 w-3 mr-1" /> Historial
                                   </Button>
                                   <Button
                                     type="button" variant="outline" size="sm" className="h-7 text-xs text-green-700 border-green-300 hover:bg-green-50 shrink-0"
@@ -1282,6 +1378,18 @@ export const ReporteCostura = () => {
                                               {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
                                             </p>
                                           </div>
+                                          <QuickAvanceInline
+                                            incidenciaId={inc.id}
+                                            avancesCount={inc.avances_count || 0}
+                                            onAdded={() => fetchIncidencias(item.registro_id)}
+                                          />
+                                          <Button
+                                            type="button" variant="outline" size="sm" className="h-7 text-xs shrink-0"
+                                            onClick={() => setAvancesDialog({ ...inc, n_corte: item.n_corte })}
+                                            title="Ver historial completo de avances"
+                                          >
+                                            <MessageSquare className="h-3 w-3 mr-1" /> Historial
+                                          </Button>
                                           <Button
                                             type="button" variant="outline" size="sm" className="h-7 text-xs text-green-700 border-green-300 hover:bg-green-50 shrink-0"
                                             onClick={() => setResolverDialog({ id: inc.id, registro_id: item.registro_id, motivo: inc.motivo_nombre || inc.tipo, comentario: inc.comentario })}
