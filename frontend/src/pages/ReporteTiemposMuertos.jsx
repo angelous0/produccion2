@@ -176,6 +176,27 @@ export const ReporteTiemposMuertos = () => {
 
   const resumen = data?.resumen || {};
 
+  // KPIs reactivos al filtro actual (búsqueda + estado).
+  // Replican la lógica del backend en /tiempos-muertos:
+  //   - en_espera: items con flag en_espera === true
+  //   - dias_perdidos: suma de dias_parado de los items en espera
+  //   - sin_motivo: items en espera con inc_abiertas === 0
+  //   - criticos: items con nivel === 'critico'
+  const kpisFiltrados = useMemo(() => {
+    const k = { total: filtered.length, en_espera: 0, criticos: 0, sin_motivo: 0, dias_perdidos: 0 };
+    for (const item of filtered) {
+      if (item.en_espera) {
+        k.en_espera += 1;
+        k.dias_perdidos += item.dias_parado || 0;
+        if ((item.inc_abiertas || 0) === 0) k.sin_motivo += 1;
+      }
+      if (item.nivel === 'critico') k.criticos += 1;
+    }
+    return k;
+  }, [filtered]);
+
+  const filtroActivo = (busqueda.trim() !== '') || (filtroEstado !== '__all');
+
   const handleExportExcel = async () => {
     if (!filtered.length) return;
     const XLSX = (await import('xlsx')).default || await import('xlsx');
@@ -377,13 +398,21 @@ export const ReporteTiemposMuertos = () => {
         </div>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <KpiCard label="Lotes parados" value={resumen.total || 0} icon={Timer} />
-        <KpiCard label="En espera" value={resumen.en_espera || 0} icon={PauseCircle} danger />
-        <KpiCard label="Críticos (7+ días)" value={resumen.criticos || 0} icon={AlertTriangle} danger />
-        <KpiCard label="Sin motivo" value={resumen.sin_motivo || 0} icon={MessageSquareWarning} danger />
-        <KpiCard label="Días acumulados" value={resumen.dias_perdidos || 0} icon={Clock} danger />
+      {/* KPIs (reactivos al filtro) */}
+      <div>
+        {filtroActivo && (
+          <div className="text-[10px] text-muted-foreground mb-1.5 flex items-center gap-1.5" data-testid="kpis-filtrados-hint">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" />
+            Indicadores filtrados ({kpisFiltrados.total} de {resumen.total || 0})
+          </div>
+        )}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <KpiCard label="Lotes parados" value={kpisFiltrados.total} icon={Timer} />
+          <KpiCard label="En espera" value={kpisFiltrados.en_espera} icon={PauseCircle} danger />
+          <KpiCard label="Críticos (7+ días)" value={kpisFiltrados.criticos} icon={AlertTriangle} danger />
+          <KpiCard label="Sin motivo" value={kpisFiltrados.sin_motivo} icon={MessageSquareWarning} danger />
+          <KpiCard label="Días acumulados" value={kpisFiltrados.dias_perdidos} icon={Clock} danger />
+        </div>
       </div>
 
       {/* Búsqueda + filtro por estado */}
@@ -438,6 +467,7 @@ export const ReporteTiemposMuertos = () => {
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-muted/60 border-b">
+                  <th className="text-center p-2.5 font-medium text-muted-foreground w-10">#</th>
                   <th className="text-left p-2.5 font-medium text-muted-foreground">Corte</th>
                   <th className="text-left p-2.5 font-medium text-muted-foreground">Modelo</th>
                   <th className="text-left p-2.5 font-medium text-muted-foreground">Marca</th>
@@ -468,6 +498,7 @@ export const ReporteTiemposMuertos = () => {
                   const cfg = NIVEL_CONFIG[item.nivel] || NIVEL_CONFIG.ok;
                   return (
                     <tr key={`${item.registro_id}-${idx}`} className={`border-t hover:bg-muted/30 transition-colors ${cfg.rowClass}`} data-testid={`tm-row-${item.n_corte}`}>
+                      <td className="p-2.5 text-center text-muted-foreground font-mono text-[11px] tabular-nums">{idx + 1}</td>
                       <td className="p-2.5 font-mono font-semibold whitespace-nowrap">
                         {item.n_corte}
                         {item.urgente && <span className="ml-1 text-[9px] text-red-600 font-bold">URG</span>}
