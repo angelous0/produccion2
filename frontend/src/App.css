@@ -1508,17 +1508,16 @@ main::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 
    Bloquea interacciones de escritura en toda la app sin romper la navegación.
    ========================================================================= */
 
-/* Inputs, textareas, selects: se ven pero no reaccionan al click */
-html.readonly-mode input:not([type="checkbox"]):not([type="radio"]):not([type="search"]),
-html.readonly-mode textarea,
-html.readonly-mode select,
-html.readonly-mode [role="combobox"],
-html.readonly-mode button[role="combobox"] {
-  pointer-events: none !important;
-  opacity: 0.65 !important;
-  cursor: not-allowed !important;
-  user-select: text !important;  /* aún permite seleccionar texto para copiar */
-}
+/* Inputs/textareas/selects/comboboxes se mantienen interactivos en lectura.
+   Razón: los reportes usan estos controles para FILTRAR (búsquedas, dropdowns
+   de estado, fechas, modelo, etc.) y un usuario lectura debe poder filtrar y
+   descargar el reporte resultante. La protección real contra escritura está
+   garantizada por:
+     1. Los botones de guardar/crear/editar/eliminar están ocultos (más abajo).
+     2. El backend rechaza con 403 cualquier escritura para rol=lectura.
+   Si el usuario lectura abre un formulario de edición y modifica un input,
+   no podrá guardar (el botón no existe) y la próxima recarga descarta los
+   cambios — son cambios solo en memoria del navegador. */
 html.readonly-mode input[type="checkbox"],
 html.readonly-mode input[type="radio"] {
   pointer-events: none !important;
@@ -1595,9 +1594,6 @@ html.readonly-mode [data-testid="menu-logout"] {
    etc.) no se abren porque los botones que los disparan están ocultos. Si por
    algún flujo llegan a abrirse, el backend rechaza con 403. */
 
-/* Indicador sutil de readonly en campos editables */
-html.readonly-mode input:not([type="checkbox"]):not([type="radio"]):not([type="search"]):focus,
-html.readonly-mode textarea:focus {
-  outline: none !important;
-  box-shadow: none !important;
-}
+/* (sin overrides de focus: los inputs son interactivos para permitir filtros
+   en reportes y búsquedas; cualquier escritura queda neutralizada porque los
+   botones de guardar/crear/editar están ocultos y el backend rechaza con 403). */
