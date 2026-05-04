@@ -2345,6 +2345,36 @@ async def reporte_tiempos_muertos(
         """)
         motivo_map = {r["registro_id"]: r["motivo_nombre"] for r in motivo_rows}
 
+        # Lotes "antiguos": en flujo activo pero SIN ningún movimiento con fecha_fin.
+        # Suelen ser cargas históricas donde el operativo registró cantidades pero
+        # no las fechas. Sin fecha no podemos calcular días parado, así que los
+        # marcamos como nivel='antiguo'.
+        rows_antiguos = await conn.fetch("""
+            SELECT
+                r.id AS registro_id,
+                r.n_corte,
+                r.estado AS estado_actual,
+                r.urgente,
+                COALESCE(mod.nombre, r.modelo_manual->>'nombre_modelo') AS modelo_nombre,
+                COALESCE(marca.nombre, r.modelo_manual->>'marca_texto') AS marca_nombre,
+                COALESCE(tp.nombre, r.modelo_manual->>'tipo_texto', '') AS tipo_nombre,
+                COALESCE(en.nombre, r.modelo_manual->>'entalle_texto', '') AS entalle_nombre,
+                COALESCE(te.nombre, r.modelo_manual->>'tela_texto', '') AS tela_nombre,
+                COALESCE(he.nombre, r.modelo_manual->>'hilo_especifico_texto', '') AS hilo_especifico_nombre
+            FROM produccion.prod_registros r
+            LEFT JOIN produccion.prod_modelos mod ON mod.id = r.modelo_id
+            LEFT JOIN produccion.prod_marcas marca ON marca.id = mod.marca_id
+            LEFT JOIN produccion.prod_tipos tp ON tp.id = mod.tipo_id
+            LEFT JOIN produccion.prod_entalles en ON en.id = mod.entalle_id
+            LEFT JOIN produccion.prod_telas te ON te.id = mod.tela_id
+            LEFT JOIN produccion.prod_hilos_especificos he ON he.id = COALESCE(mod.hilo_especifico_id, r.hilo_especifico_id)
+            WHERE r.estado NOT IN ('Almacén PT', 'Tienda')
+              AND NOT EXISTS (
+                  SELECT 1 FROM produccion.prod_movimientos_produccion m
+                  WHERE m.registro_id = r.id AND m.fecha_fin IS NOT NULL
+              )
+        """)
+
         items = []
         resumen = {"total": 0, "en_espera": 0, "criticos": 0, "dias_perdidos": 0, "sin_motivo": 0}
 
@@ -2402,10 +2432,48 @@ async def reporte_tiempos_muertos(
             if nivel == 'critico':
                 resumen["criticos"] += 1
 
+        # Lotes antiguos sin fecha — cuentan en total y en_espera (están parados),
+        # pero no aportan días porque no podemos calcularlos.
+        for row in rows_antiguos:
+            reg_id = row["registro_id"]
+            inc_info = inc_map.get(reg_id, {"abiertas": 0, "total": 0})
+            motivo = motivo_map.get(reg_id, None)
+
+            items.append({
+                "registro_id": str(reg_id),
+                "n_corte": row["n_corte"],
+                "urgente": row["urgente"],
+                "modelo": row["modelo_nombre"],
+                "marca": row["marca_nombre"],
+                "tipo": row["tipo_nombre"],
+                "entalle": row["entalle_nombre"],
+                "tela": row["tela_nombre"],
+                "hilo_especifico": row["hilo_especifico_nombre"],
+                "ultimo_servicio": None,
+                "ultima_persona": None,
+                "fecha_termino": None,
+                "estado_actual": row["estado_actual"],
+                "dias_parado": None,
+                "en_espera": True,
+                "nivel": "antiguo",
+                "inc_abiertas": inc_info["abiertas"],
+                "inc_total": inc_info["total"],
+                "motivo": motivo,
+            })
+
+            resumen["en_espera"] += 1
+            if inc_info["abiertas"] == 0:
+                resumen["sin_motivo"] += 1
+
         resumen["total"] = len(items)
 
-        # Ordenar: en espera primero, luego por días desc
-        items.sort(key=lambda a: (0 if a["en_espera"] else 1, -a["dias_parado"]))
+        # Ordenar: en espera primero, luego por días desc.
+        # Los antiguos (dias_parado=None) van al final del bloque "en_espera".
+        items.sort(key=lambda a: (
+            0 if a["en_espera"] else 1,
+            0 if a["dias_parado"] is not None else 1,
+            -(a["dias_parado"] or 0),
+        ))
 
         return {"items": items, "resumen": resumen}
 

@@ -27,6 +27,10 @@ const NIVEL_CONFIG = {
   critico:  { label: 'Crítico',   color: 'bg-red-100 text-red-800 border-red-200', rowClass: 'bg-red-50/50' },
   atencion: { label: 'Atención',  color: 'bg-amber-100 text-amber-800 border-amber-200', rowClass: 'bg-amber-50/50' },
   espera:   { label: 'En espera', color: 'bg-blue-100 text-blue-800 border-blue-200', rowClass: '' },
+  // "Antiguo": el lote está en flujo activo pero ningún movimiento tiene fecha_fin
+  // cargada, así que no se pueden calcular días parado. Usualmente son cargas
+  // históricas. Se muestra en gris para distinguirlo de los lotes con datos completos.
+  antiguo:  { label: 'Antiguo',   color: 'bg-zinc-200 text-zinc-700 border-zinc-300', rowClass: 'bg-zinc-50/50' },
   ok:       { label: 'OK',        color: 'bg-transparent text-muted-foreground border-transparent', rowClass: '' },
 };
 
@@ -170,11 +174,41 @@ export const ReporteTiemposMuertos = () => {
     if (filtroEstado && filtroEstado !== '__all') {
       items = items.filter(b => b.estado_actual === filtroEstado);
     }
-    items = [...items].sort((a, b) => sortDesc ? b.dias_parado - a.dias_parado : a.dias_parado - b.dias_parado);
+    // Los lotes "antiguos" (sin fecha) siempre van al final, independientemente
+    // del orden ascendente/descendente, porque no tienen días para comparar.
+    items = [...items].sort((a, b) => {
+      const aNull = a.dias_parado == null;
+      const bNull = b.dias_parado == null;
+      if (aNull && bNull) return 0;
+      if (aNull) return 1;
+      if (bNull) return -1;
+      return sortDesc ? b.dias_parado - a.dias_parado : a.dias_parado - b.dias_parado;
+    });
     return items;
   }, [data, busqueda, filtroEstado, sortDesc]);
 
   const resumen = data?.resumen || {};
+
+  // KPIs reactivos al filtro actual (búsqueda + estado).
+  // Replican la lógica del backend en /tiempos-muertos:
+  //   - en_espera: items con flag en_espera === true
+  //   - dias_perdidos: suma de dias_parado de los items en espera
+  //   - sin_motivo: items en espera con inc_abiertas === 0
+  //   - criticos: items con nivel === 'critico'
+  const kpisFiltrados = useMemo(() => {
+    const k = { total: filtered.length, en_espera: 0, criticos: 0, sin_motivo: 0, dias_perdidos: 0 };
+    for (const item of filtered) {
+      if (item.en_espera) {
+        k.en_espera += 1;
+        k.dias_perdidos += item.dias_parado || 0;
+        if ((item.inc_abiertas || 0) === 0) k.sin_motivo += 1;
+      }
+      if (item.nivel === 'critico') k.criticos += 1;
+    }
+    return k;
+  }, [filtered]);
+
+  const filtroActivo = (busqueda.trim() !== '') || (filtroEstado !== '__all');
 
   const handleExportExcel = async () => {
     if (!filtered.length) return;
@@ -189,10 +223,10 @@ export const ReporteTiemposMuertos = () => {
         r.entalle || '',
         r.tela || '',
         r.hilo_especifico || '',
-        formatDate(r.fecha_termino),
+        r.fecha_termino ? formatDate(r.fecha_termino) : 'Sin fecha',
         r.estado_actual,
         r.motivo || 'Sin motivo',
-        r.dias_parado,
+        r.dias_parado == null ? 'Antiguo' : r.dias_parado,
         r.inc_abiertas || 0,
         (NIVEL_CONFIG[r.nivel] || NIVEL_CONFIG.ok).label,
       ]),
@@ -220,17 +254,17 @@ export const ReporteTiemposMuertos = () => {
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(120);
-    doc.text(`Generado: ${new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' })}  |  Lotes: ${filtered.length}  |  Días acumulados: ${resumen.dias_perdidos || 0}`, 14, 20);
+    doc.text(`Generado: ${new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' })}  |  Lotes: ${filtered.length}  |  Días acumulados: ${kpisFiltrados.dias_perdidos}`, 14, 20);
     doc.setTextColor(0);
 
-    // KPI bar
+    // KPI bar (reactivos al filtro actual)
     const kpiY = 24;
     const kpiItems = [
-      { label: 'Lotes Parados', val: resumen.total || 0 },
-      { label: 'En Espera', val: resumen.en_espera || 0, danger: true },
-      { label: 'Críticos (7+d)', val: resumen.criticos || 0, danger: true },
-      { label: 'Sin Motivo', val: resumen.sin_motivo || 0, danger: true },
-      { label: 'Días Acumulados', val: resumen.dias_perdidos || 0, danger: true },
+      { label: 'Lotes Parados', val: kpisFiltrados.total },
+      { label: 'En Espera', val: kpisFiltrados.en_espera, danger: true },
+      { label: 'Críticos (7+d)', val: kpisFiltrados.criticos, danger: true },
+      { label: 'Sin Motivo', val: kpisFiltrados.sin_motivo, danger: true },
+      { label: 'Días Acumulados', val: kpisFiltrados.dias_perdidos, danger: true },
     ];
     const kpiW = (pageW - 28) / kpiItems.length;
     kpiItems.forEach((k, i) => {
@@ -248,8 +282,8 @@ export const ReporteTiemposMuertos = () => {
     });
     doc.setTextColor(0);
 
-    const nivelColors = { critico: [254,226,226], atencion: [254,243,199], espera: [219,234,254] };
-    const nivelTextColors = { critico: [153,27,27], atencion: [146,64,14], espera: [30,64,175] };
+    const nivelColors = { critico: [254,226,226], atencion: [254,243,199], espera: [219,234,254], antiguo: [228,228,231] };
+    const nivelTextColors = { critico: [153,27,27], atencion: [146,64,14], espera: [30,64,175], antiguo: [82,82,91] };
 
     const headers = [['Corte', 'Modelo', 'Marca', 'Tipo', 'Entalle', 'Tela', 'Hilo Esp.', 'Terminó', 'Estado', 'Motivo', 'Días', 'Inc.', 'Nivel']];
     const body = filtered.map(r => [
@@ -260,10 +294,10 @@ export const ReporteTiemposMuertos = () => {
       r.entalle || '',
       r.tela || '',
       r.hilo_especifico || '',
-      formatDate(r.fecha_termino),
+      r.fecha_termino ? formatDate(r.fecha_termino) : '—',
       r.estado_actual,
       r.motivo || '-',
-      String(r.dias_parado),
+      r.dias_parado == null ? '—' : String(r.dias_parado),
       r.inc_abiertas > 0 ? String(r.inc_abiertas) : '-',
       (NIVEL_CONFIG[r.nivel] || NIVEL_CONFIG.ok).label,
     ]);
@@ -307,8 +341,8 @@ export const ReporteTiemposMuertos = () => {
           data.cell.styles.fontStyle = 'italic';
         }
 
-        // Días parado: color by severity
-        if (data.column.index === 10) {
+        // Días parado: color by severity (los antiguos tienen null y se quedan sin tinte)
+        if (data.column.index === 10 && row.dias_parado != null) {
           if (row.dias_parado >= 7) {
             data.cell.styles.fillColor = [254, 226, 226];
             data.cell.styles.textColor = [153, 27, 27];
@@ -377,13 +411,21 @@ export const ReporteTiemposMuertos = () => {
         </div>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <KpiCard label="Lotes parados" value={resumen.total || 0} icon={Timer} />
-        <KpiCard label="En espera" value={resumen.en_espera || 0} icon={PauseCircle} danger />
-        <KpiCard label="Críticos (7+ días)" value={resumen.criticos || 0} icon={AlertTriangle} danger />
-        <KpiCard label="Sin motivo" value={resumen.sin_motivo || 0} icon={MessageSquareWarning} danger />
-        <KpiCard label="Días acumulados" value={resumen.dias_perdidos || 0} icon={Clock} danger />
+      {/* KPIs (reactivos al filtro) */}
+      <div>
+        {filtroActivo && (
+          <div className="text-[10px] text-muted-foreground mb-1.5 flex items-center gap-1.5" data-testid="kpis-filtrados-hint">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary" />
+            Indicadores filtrados ({kpisFiltrados.total} de {resumen.total || 0})
+          </div>
+        )}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <KpiCard label="Lotes parados" value={kpisFiltrados.total} icon={Timer} />
+          <KpiCard label="En espera" value={kpisFiltrados.en_espera} icon={PauseCircle} danger />
+          <KpiCard label="Críticos (7+ días)" value={kpisFiltrados.criticos} icon={AlertTriangle} danger />
+          <KpiCard label="Sin motivo" value={kpisFiltrados.sin_motivo} icon={MessageSquareWarning} danger />
+          <KpiCard label="Días acumulados" value={kpisFiltrados.dias_perdidos} icon={Clock} danger />
+        </div>
       </div>
 
       {/* Búsqueda + filtro por estado */}
@@ -438,6 +480,7 @@ export const ReporteTiemposMuertos = () => {
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-muted/60 border-b">
+                  <th className="text-center p-2.5 font-medium text-muted-foreground w-10">#</th>
                   <th className="text-left p-2.5 font-medium text-muted-foreground">Corte</th>
                   <th className="text-left p-2.5 font-medium text-muted-foreground">Modelo</th>
                   <th className="text-left p-2.5 font-medium text-muted-foreground">Marca</th>
@@ -468,6 +511,7 @@ export const ReporteTiemposMuertos = () => {
                   const cfg = NIVEL_CONFIG[item.nivel] || NIVEL_CONFIG.ok;
                   return (
                     <tr key={`${item.registro_id}-${idx}`} className={`border-t hover:bg-muted/30 transition-colors ${cfg.rowClass}`} data-testid={`tm-row-${item.n_corte}`}>
+                      <td className="p-2.5 text-center text-muted-foreground font-mono text-[11px] tabular-nums">{idx + 1}</td>
                       <td className="p-2.5 font-mono font-semibold whitespace-nowrap">
                         {item.n_corte}
                         {item.urgente && <span className="ml-1 text-[9px] text-red-600 font-bold">URG</span>}
@@ -478,7 +522,9 @@ export const ReporteTiemposMuertos = () => {
                       <td className="p-2.5 whitespace-nowrap text-muted-foreground">{item.entalle || '-'}</td>
                       <td className="p-2.5 whitespace-nowrap text-muted-foreground">{item.tela || '-'}</td>
                       <td className="p-2.5 whitespace-nowrap text-muted-foreground">{item.hilo_especifico || '-'}</td>
-                      <td className="p-2.5 text-center whitespace-nowrap">{formatDate(item.fecha_termino)}</td>
+                      <td className="p-2.5 text-center whitespace-nowrap">
+                        {item.fecha_termino ? formatDate(item.fecha_termino) : <span className="text-muted-foreground">—</span>}
+                      </td>
                       <td className="p-2.5 whitespace-nowrap">
                         <Badge variant="outline" className="text-[10px]">{item.estado_actual}</Badge>
                       </td>
@@ -490,10 +536,11 @@ export const ReporteTiemposMuertos = () => {
                         )}
                       </td>
                       <td className={`p-2.5 text-center font-mono font-bold whitespace-nowrap ${
+                        item.dias_parado == null ? '' :
                         item.dias_parado >= 7 ? 'bg-red-100 text-red-700' :
                         item.dias_parado >= 3 ? 'bg-amber-100 text-amber-700' : ''
                       }`}>
-                        {item.dias_parado}
+                        {item.dias_parado == null ? <span className="text-muted-foreground font-normal">—</span> : item.dias_parado}
                       </td>
                       <td className="p-2.5 text-center whitespace-nowrap">
                         {item.inc_abiertas > 0 ? (
