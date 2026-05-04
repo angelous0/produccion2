@@ -39,6 +39,7 @@ import {
   X,
   Eye,
   ArrowRight,
+  ArrowLeftRight,
   Package,
   Calculator,
   AlertTriangle,
@@ -46,6 +47,7 @@ import {
   ChevronRight,
   Layers,
   Send,
+  Trash2,
 } from "lucide-react";
 
 import { formatCurrency, formatNumber } from "../lib/utils";
@@ -57,6 +59,7 @@ const ESTADO_BADGE = {
   BORRADOR: { variant: "outline", className: "border-yellow-500 text-yellow-600 bg-yellow-50" },
   CONFIRMADO: { variant: "outline", className: "border-green-500 text-green-600 bg-green-50" },
   CANCELADO: { variant: "outline", className: "border-red-500 text-red-600 bg-red-50" },
+  REVERSADO: { variant: "outline", className: "border-orange-500 text-orange-600 bg-orange-50" },
 };
 
 // ==================== COMPONENTE PRINCIPAL ====================
@@ -277,6 +280,40 @@ export const TransferenciasLinea = () => {
       fetchTransferencias();
     } catch (e) {
       toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : "Error al cancelar");
+    }
+  };
+
+  const handleReversar = async (id, codigo) => {
+    const motivo = window.prompt(
+      `Reversar transferencia ${codigo}?\n\nEsto devolverá el stock a la línea origen.\n\nMotivo del reverso:`
+    );
+    if (motivo === null) return; // canceló el prompt
+    try {
+      const { data } = await axios.post(`${API}/transferencias-linea/${id}/reversar`, {
+        motivo_reverso: motivo || "",
+      });
+      toast.success(data.message || "Transferencia reversada");
+      setShowDetalle(null);
+      fetchTransferencias();
+    } catch (e) {
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : "Error al reversar");
+    }
+  };
+
+  const handleEliminar = async (id, codigo, estado) => {
+    if (!window.confirm(
+      `¿Eliminar definitivamente la transferencia ${codigo}?\n\n` +
+      `Estado actual: ${estado}\n\n` +
+      `Esta acción borra todos los registros relacionados (detalles, ingresos, salidas, contabilidad). ` +
+      `No se puede deshacer.`
+    )) return;
+    try {
+      const { data } = await axios.delete(`${API}/transferencias-linea/${id}`);
+      toast.success(data.message || "Transferencia eliminada");
+      setShowDetalle(null);
+      fetchTransferencias();
+    } catch (e) {
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : "Error al eliminar");
     }
   };
 
@@ -783,7 +820,20 @@ export const TransferenciasLinea = () => {
                           {t.costo_total_transferido > 0 ? formatCurrency(t.costo_total_transferido) : "-"}
                         </TableCell>
                         <TableCell>
-                          <Badge className={badge.className} variant={badge.variant}>{t.estado}</Badge>
+                          <div className="flex flex-col gap-0.5 items-start">
+                            <Badge className={badge.className} variant={badge.variant}>{t.estado}</Badge>
+                            {t.estado === "CONFIRMADO" && (
+                              t.verificada ? (
+                                <span className="text-[10px] text-emerald-700 inline-flex items-center gap-0.5">
+                                  <Check className="h-2.5 w-2.5" /> Verificada
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-amber-700 inline-flex items-center gap-0.5">
+                                  <AlertTriangle className="h-2.5 w-2.5" /> Pendiente verif.
+                                </span>
+                              )
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-xs">{formatDate(t.fecha_creacion)}</TableCell>
                         <TableCell className="text-center">
@@ -802,6 +852,26 @@ export const TransferenciasLinea = () => {
                                 data-testid={`btn-confirmar-${t.codigo}`}
                               >
                                 <Check className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {t.estado === "CONFIRMADO" && (
+                              <Button
+                                variant="ghost" size="icon" className="h-7 w-7 text-orange-600"
+                                onClick={() => handleReversar(t.id, t.codigo)}
+                                title="Reversar (devolver stock al origen)"
+                                data-testid={`btn-reversar-${t.codigo}`}
+                              >
+                                <ArrowLeftRight className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {(t.estado === "CANCELADO" || t.estado === "REVERSADO") && (
+                              <Button
+                                variant="ghost" size="icon" className="h-7 w-7 text-red-600"
+                                onClick={() => handleEliminar(t.id, t.codigo, t.estado)}
+                                title="Eliminar definitivamente (cascada)"
+                                data-testid={`btn-eliminar-${t.codigo}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             )}
                           </div>

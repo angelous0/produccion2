@@ -44,6 +44,10 @@ class TransferenciaCancel(BaseModel):
     motivo_cancelacion: str = ""
 
 
+class TransferenciaReverso(BaseModel):
+    motivo_reverso: str = ""
+
+
 # ==================== HELPERS ====================
 
 def safe_float(v):
@@ -266,6 +270,52 @@ async def init_transferencias_tables():
             ADD COLUMN IF NOT EXISTS item_destino_id VARCHAR
         """)
 
+        # Migración: columnas para verificación contable + reverso.
+        # `verificada` es un flag que setea el contador desde finanzas; no bloquea
+        # el movimiento de stock pero da visibilidad de qué falta revisar.
+        # `reversada_at` registra cuándo se revirtió la operación (devolvió stock).
+        for alter_sql in [
+            "ALTER TABLE produccion.prod_transferencias_linea ADD COLUMN IF NOT EXISTS verificada BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE produccion.prod_transferencias_linea ADD COLUMN IF NOT EXISTS verificada_at TIMESTAMP",
+            "ALTER TABLE produccion.prod_transferencias_linea ADD COLUMN IF NOT EXISTS verificada_por VARCHAR",
+            "ALTER TABLE produccion.prod_transferencias_linea ADD COLUMN IF NOT EXISTS observaciones_verificacion TEXT",
+            "ALTER TABLE produccion.prod_transferencias_linea ADD COLUMN IF NOT EXISTS reversada_at TIMESTAMP",
+            "ALTER TABLE produccion.prod_transferencias_linea ADD COLUMN IF NOT EXISTS reversada_por VARCHAR",
+            "ALTER TABLE produccion.prod_transferencias_linea ADD COLUMN IF NOT EXISTS motivo_reverso TEXT",
+        ]:
+            await conn.execute(alter_sql)
+
+        # Tabla espejo en finanzas2 (vista contable de la transferencia).
+        # Se inserta al confirmar y se actualiza al reversar/verificar.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS finanzas2.cont_transferencia_linea (
+                id SERIAL PRIMARY KEY,
+                empresa_id INT NOT NULL,
+                transferencia_prod_id VARCHAR NOT NULL UNIQUE,
+                codigo VARCHAR NOT NULL,
+                fecha DATE NOT NULL,
+                linea_origen_id INT NOT NULL,
+                linea_destino_id INT NOT NULL,
+                item_origen_codigo VARCHAR,
+                item_origen_nombre VARCHAR,
+                item_destino_codigo VARCHAR,
+                item_destino_nombre VARCHAR,
+                cantidad NUMERIC NOT NULL,
+                unidad_medida VARCHAR,
+                costo_unitario_promedio NUMERIC NOT NULL,
+                costo_total NUMERIC NOT NULL,
+                estado VARCHAR NOT NULL DEFAULT 'CONFIRMADO',
+                verificada BOOLEAN DEFAULT FALSE,
+                verificada_at TIMESTAMP,
+                verificada_por VARCHAR,
+                observaciones_verificacion TEXT,
+                motivo TEXT,
+                observaciones TEXT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+
 
 # ==================== ENDPOINTS ====================
 
@@ -436,7 +486,8 @@ async def listar_transferencias(
         for r in rows:
             d = dict(r)
             # Convertir timestamps a string
-            for key in ('fecha_creacion', 'fecha_confirmacion', 'cancelado_at'):
+            for key in ('fecha_creacion', 'fecha_confirmacion', 'cancelado_at',
+                        'verificada_at', 'reversada_at'):
                 if d.get(key):
                     d[key] = d[key].isoformat() + "Z"
             # Convertir Decimals a float
@@ -473,7 +524,8 @@ async def detalle_transferencia(
             raise HTTPException(status_code=404, detail="Transferencia no encontrada")
 
         d = dict(row)
-        for key in ('fecha_creacion', 'fecha_confirmacion', 'cancelado_at'):
+        for key in ('fecha_creacion', 'fecha_confirmacion', 'cancelado_at',
+                    'verificada_at', 'reversada_at'):
             if d.get(key):
                 d[key] = d[key].isoformat() + "Z"
         for key in ('cantidad', 'costo_total_transferido'):
@@ -809,6 +861,35 @@ async def confirmar_transferencia(
             await _recalcular_costo_promedio(conn, item_origen_id)
             await _recalcular_costo_promedio(conn, item_destino_id)
 
+            # 7. Espejo contable en finanzas2.cont_transferencia_linea
+            #    Se crea PENDIENTE de verificación. El contador la aprueba luego
+            #    desde el módulo finanzas (POST /finanzas/transferencias-linea/{id}/verificar).
+            costo_unit_prom = costo_total / cantidad if cantidad > 0 else 0
+            empresa_id_transf = transf.get('empresa_id') if isinstance(transf, dict) else (transf['empresa_id'] or 7)
+            await conn.execute("""
+                INSERT INTO finanzas2.cont_transferencia_linea (
+                    empresa_id, transferencia_prod_id, codigo, fecha,
+                    linea_origen_id, linea_destino_id,
+                    item_origen_codigo, item_origen_nombre,
+                    item_destino_codigo, item_destino_nombre,
+                    cantidad, unidad_medida, costo_unitario_promedio, costo_total,
+                    estado, verificada, motivo, observaciones, created_at, updated_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+                          'CONFIRMADO', FALSE, $15, $16, $17, $17)
+                ON CONFLICT (transferencia_prod_id) DO UPDATE SET
+                    estado = 'CONFIRMADO', cantidad = EXCLUDED.cantidad,
+                    costo_unitario_promedio = EXCLUDED.costo_unitario_promedio,
+                    costo_total = EXCLUDED.costo_total, updated_at = EXCLUDED.updated_at
+            """, empresa_id_transf, transferencia_id, transf['codigo'], ahora.date(),
+                linea_origen_id, linea_destino_id,
+                item_origen['codigo'], item_origen['nombre'],
+                item_destino['codigo'], item_destino['nombre'],
+                cantidad,
+                # unidad_medida: tomamos del catalog (en el origen, ya fue validado igual al destino)
+                (await conn.fetchval("SELECT unidad_medida FROM produccion.prod_inventario WHERE id = $1", item_origen_id)) or '',
+                round(costo_unit_prom, 6), round(costo_total, 4),
+                transf['motivo'] or '', transf['observaciones'] or '', ahora)
+
             # Auditoria (dentro de transaccion - atomico)
             await audit_log(conn, get_usuario(user), "CONFIRM", "inventario", "prod_transferencias_linea", transferencia_id,
                 datos_antes={"estado": "BORRADOR", "cantidad": cantidad},
@@ -871,6 +952,221 @@ async def cancelar_transferencia(
             "codigo": transf['codigo'],
             "estado": "CANCELADO",
             "message": f"Transferencia {transf['codigo']} cancelada"
+        }
+
+
+@router.post("/transferencias-linea/{transferencia_id}/reversar")
+async def reversar_transferencia(
+    transferencia_id: str,
+    input: TransferenciaReverso,
+    user=Depends(get_current_user),
+):
+    """Reversa una transferencia CONFIRMADA, devolviendo el stock al origen.
+
+    Reglas:
+    - Solo aplicable a transferencias CONFIRMADAS (verificadas o no).
+    - Las capas creadas en destino deben tener cantidad_disponible >= cantidad
+      original (i.e. nadie consumió aún ese stock). Si parte ya se consumió,
+      el reverso falla y hay que hacer un ajuste manual.
+    - Marca la transferencia como REVERSADA y notifica a finanzas.
+    - Devuelve `cantidad_disponible` a las capas FIFO consumidas en origen
+      (recompone el stock origen exactamente como estaba antes).
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        transf = await conn.fetchrow("""
+            SELECT * FROM produccion.prod_transferencias_linea WHERE id = $1
+        """, transferencia_id)
+        if not transf:
+            raise HTTPException(status_code=404, detail="Transferencia no encontrada")
+        if transf['estado'] != 'CONFIRMADO':
+            raise HTTPException(
+                status_code=400,
+                detail=f"Solo se puede reversar una transferencia CONFIRMADA. Estado actual: {transf['estado']}"
+            )
+
+        item_origen_id = transf['item_id']
+        item_destino_id = transf['item_destino_id']
+        cantidad_total = safe_float(transf['cantidad'])
+        if not item_destino_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Esta transferencia no tiene item_destino_id (modelo legacy). No se puede reversar automáticamente."
+            )
+
+        # TRANSACCION ATOMICA
+        async with conn.transaction():
+            # 1. Validar que las capas creadas en destino tengan cantidad_disponible
+            #    suficiente (nadie consumió ese stock todavía).
+            detalles = await conn.fetch("""
+                SELECT td.*, ing.cantidad_disponible AS disp_destino
+                FROM produccion.prod_transferencias_linea_detalle td
+                LEFT JOIN produccion.prod_inventario_ingresos ing ON ing.id = td.ingreso_destino_id
+                WHERE td.transferencia_id = $1
+            """, transferencia_id)
+
+            if not detalles:
+                raise HTTPException(status_code=500, detail="No se encontraron detalles de la transferencia para reversar")
+
+            for det in detalles:
+                cant_det = safe_float(det['cantidad'])
+                disp = safe_float(det['disp_destino'])
+                if disp < cant_det:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(f"No se puede reversar: la capa destino {det['ingreso_destino_id']} "
+                                f"tiene solo {disp} disponible (necesario: {cant_det}). "
+                                "Parte del stock ya fue consumido en producción.")
+                    )
+
+            ahora = datetime.now(timezone.utc).replace(tzinfo=None)
+            linea_origen_id = transf['linea_origen_id']
+            linea_destino_id = transf['linea_destino_id']
+
+            # 2. Por cada capa: descontar de destino, restaurar en origen
+            for det in detalles:
+                cant_det = safe_float(det['cantidad'])
+                # Descontar de la capa destino
+                await conn.execute("""
+                    UPDATE produccion.prod_inventario_ingresos
+                    SET cantidad_disponible = cantidad_disponible - $1
+                    WHERE id = $2
+                """, cant_det, det['ingreso_destino_id'])
+
+                # Restaurar en la capa origen original
+                await conn.execute("""
+                    UPDATE produccion.prod_inventario_ingresos
+                    SET cantidad_disponible = cantidad_disponible + $1
+                    WHERE id = $2
+                """, cant_det, det['ingreso_origen_id'])
+
+            # 3. Crear salida "REVERSO" en destino y entrada "REVERSO" virtual en origen
+            #    Mantenemos los registros de la transferencia original (no se borran)
+            #    pero marcamos el reverso con un movimiento espejo para auditoría.
+            salida_reverso_id = str(uuid.uuid4())
+            await conn.execute("""
+                INSERT INTO produccion.prod_inventario_salidas
+                (id, item_id, cantidad, registro_id, observaciones, costo_total,
+                 detalle_fifo, fecha, empresa_id, linea_negocio_id, tipo, transferencia_id)
+                VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, 7, $8, 'TRANSFERENCIA_REVERSO', $9)
+            """, salida_reverso_id, item_destino_id, cantidad_total,
+                f"REVERSO de transferencia {transf['codigo']}: {input.motivo_reverso or 'sin motivo'}",
+                safe_float(transf['costo_total_transferido']), json.dumps([]),
+                ahora, linea_destino_id, transferencia_id)
+
+            # 4. Ajustar stock_actual: destino baja, origen sube
+            await conn.execute("UPDATE produccion.prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2",
+                cantidad_total, item_destino_id)
+            await conn.execute("UPDATE produccion.prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
+                cantidad_total, item_origen_id)
+
+            # 5. Recalcular costo promedio de ambos
+            await _recalcular_costo_promedio(conn, item_origen_id)
+            await _recalcular_costo_promedio(conn, item_destino_id)
+
+            # 6. Marcar transferencia como REVERSADA
+            await conn.execute("""
+                UPDATE produccion.prod_transferencias_linea
+                SET estado = 'REVERSADO',
+                    reversada_at = $1,
+                    reversada_por = $2,
+                    motivo_reverso = $3
+                WHERE id = $4
+            """, ahora, user.get('nombre_completo', user.get('username', 'sistema')),
+                input.motivo_reverso, transferencia_id)
+
+            # 7. Reflejar en finanzas2.cont_transferencia_linea
+            await conn.execute("""
+                UPDATE finanzas2.cont_transferencia_linea
+                SET estado = 'REVERSADA', updated_at = $1
+                WHERE transferencia_prod_id = $2
+            """, ahora, transferencia_id)
+
+            # Auditoria
+            await audit_log(conn, get_usuario(user), "REVERSE", "inventario", "prod_transferencias_linea", transferencia_id,
+                datos_antes={"estado": "CONFIRMADO", "cantidad": cantidad_total},
+                datos_despues={"estado": "REVERSADO", "motivo": input.motivo_reverso or ""},
+                linea_negocio_id=linea_origen_id, referencia=transf['codigo'])
+
+        return {
+            "id": transferencia_id,
+            "codigo": transf['codigo'],
+            "estado": "REVERSADO",
+            "message": f"Transferencia {transf['codigo']} reversada exitosamente. Stock devuelto a línea origen."
+        }
+
+
+@router.delete("/transferencias-linea/{transferencia_id}")
+async def eliminar_transferencia(
+    transferencia_id: str,
+    user=Depends(get_current_user),
+):
+    """Elimina físicamente una transferencia y todos sus rastros (cascada).
+
+    Solo permitido para transferencias en estado CANCELADO o REVERSADO (donde
+    ya no hay impacto contable activo). Borra:
+    - Detalles de trazabilidad (prod_transferencias_linea_detalle)
+    - Ingresos creados en destino (prod_inventario_ingresos con fin_origen_id)
+    - Salidas relacionadas (prod_inventario_salidas con transferencia_id)
+    - Registro contable en finanzas2.cont_transferencia_linea
+    - El registro principal en prod_transferencias_linea
+
+    No revierte stock — esa operación se hace con `/reversar`. Si la transferencia
+    estaba CONFIRMADA, hay que reversar primero antes de eliminar.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        transf = await conn.fetchrow("""
+            SELECT * FROM produccion.prod_transferencias_linea WHERE id = $1
+        """, transferencia_id)
+        if not transf:
+            raise HTTPException(status_code=404, detail="Transferencia no encontrada")
+        if transf['estado'] not in ('CANCELADO', 'REVERSADO'):
+            raise HTTPException(
+                status_code=400,
+                detail=(f"Solo se puede eliminar una transferencia CANCELADA o REVERSADA. "
+                        f"Estado actual: {transf['estado']}. Si estaba CONFIRMADA, reversála primero.")
+            )
+
+        async with conn.transaction():
+            # 1. Borrar detalles de trazabilidad
+            await conn.execute("""
+                DELETE FROM produccion.prod_transferencias_linea_detalle
+                WHERE transferencia_id = $1
+            """, transferencia_id)
+
+            # 2. Borrar ingresos creados en destino (los que el reverso ya descontó a 0)
+            await conn.execute("""
+                DELETE FROM produccion.prod_inventario_ingresos
+                WHERE fin_origen_tipo = 'TRANSFERENCIA' AND fin_origen_id = $1
+            """, transferencia_id)
+
+            # 3. Borrar salidas relacionadas (incluido el reverso)
+            await conn.execute("""
+                DELETE FROM produccion.prod_inventario_salidas
+                WHERE transferencia_id = $1
+            """, transferencia_id)
+
+            # 4. Borrar el espejo en finanzas
+            await conn.execute("""
+                DELETE FROM finanzas2.cont_transferencia_linea
+                WHERE transferencia_prod_id = $1
+            """, transferencia_id)
+
+            # 5. Borrar la transferencia principal
+            await conn.execute("""
+                DELETE FROM produccion.prod_transferencias_linea WHERE id = $1
+            """, transferencia_id)
+
+            # Auditoria
+            await audit_log(conn, get_usuario(user), "DELETE", "inventario", "prod_transferencias_linea", transferencia_id,
+                datos_antes={"codigo": transf['codigo'], "estado": transf['estado']},
+                datos_despues=None, referencia=transf['codigo'])
+
+        return {
+            "id": transferencia_id,
+            "codigo": transf['codigo'],
+            "message": f"Transferencia {transf['codigo']} eliminada en cascada"
         }
 
 
