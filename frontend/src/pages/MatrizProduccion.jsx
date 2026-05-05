@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Settings2, ChevronRight,
   ExternalLink, Eye, EyeOff, MoveLeft, MoveRight,
-  Merge, X, Palette,
+  Merge, X, Palette, ArrowDownWideNarrow, ArrowUpWideNarrow,
 } from 'lucide-react';
 
 import { formatDate } from '../lib/dateUtils';
@@ -30,11 +30,33 @@ function isOverdue(val) {
 }
 
 // ── Persistencia ──────────────────────────────────────────────
-function loadPrefs() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || null; } catch { return null; }
+const getPrefsScope = (rutaId) => rutaId || '__global__';
+
+function readPrefsStore() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!raw) return { version: 2, scopes: {} };
+    if (raw.scopes) return { version: 2, scopes: raw.scopes };
+    const scope = getPrefsScope(raw.ruta);
+    const prefs = { visible: raw.visible, order: raw.order, merged: raw.merged };
+    return { version: 2, scopes: { [scope]: prefs, __global__: prefs } };
+  } catch {
+    return { version: 2, scopes: {} };
+  }
 }
-function savePrefs(p) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); } catch {}
+
+function loadPrefs(scope) {
+  const store = readPrefsStore();
+  return store.scopes[scope] || store.scopes.__global__ || null;
+}
+
+function savePrefs(scope, prefs) {
+  try {
+    const store = readPrefsStore();
+    store.scopes[scope] = prefs;
+    store.scopes.__global__ = prefs;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  } catch {}
 }
 
 // ── FilterSelect ──────────────────────────────────────────────
@@ -259,6 +281,8 @@ export const MatrizProduccion = () => {
   const [visibleCols, setVisibleCols] = useState(null);
   const [colOrder, setColOrder] = useState(null);
   const [mergedCols, setMergedCols] = useState({}); // { targetCol: [absorbed1, absorbed2] }
+  const [totalSort, setTotalSort] = useState('desc'); // desc | asc
+  const prefsScope = getPrefsScope(filters.ruta_id);
 
   // ── Anchos de columna redimensionables (persistidos) ───────────
   const [colWidths, setColWidths] = useState(() => {
@@ -316,14 +340,23 @@ export const MatrizProduccion = () => {
       .then(res => {
         setData(res.data);
         const apiCols = res.data.columnas || [];
-        const saved = loadPrefs();
-        if (saved && saved.ruta === (filters.ruta_id || '__global__')) {
+        const saved = loadPrefs(prefsScope);
+        if (saved) {
           const sv = saved.visible?.filter(c => apiCols.includes(c));
           const so = saved.order?.filter(c => apiCols.includes(c));
           const miss = apiCols.filter(c => !so?.includes(c));
-          setVisibleCols(sv?.length ? sv : apiCols);
+          const validMerged = Object.fromEntries(
+            Object.entries(saved.merged || {})
+              .filter(([target]) => apiCols.includes(target))
+              .map(([target, cols]) => [
+                target,
+                (cols || []).filter(c => apiCols.includes(c)),
+              ])
+              .filter(([, cols]) => cols.length > 0)
+          );
+          setVisibleCols(sv?.length ? [...sv, ...miss] : apiCols);
           setColOrder(so?.length ? [...so, ...miss] : apiCols);
-          setMergedCols(saved.merged || {});
+          setMergedCols(validMerged);
         } else {
           setVisibleCols(apiCols);
           setColOrder(apiCols);
@@ -332,21 +365,20 @@ export const MatrizProduccion = () => {
       })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
-  }, [filters]);
+  }, [filters, prefsScope]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   // ── Guardar prefs ───────────────────────────────────────────
   useEffect(() => {
     if (visibleCols && colOrder) {
-      savePrefs({
-        ruta: filters.ruta_id || '__global__',
+      savePrefs(prefsScope, {
         visible: visibleCols,
         order: colOrder,
         merged: mergedCols,
       });
     }
-  }, [visibleCols, colOrder, mergedCols, filters.ruta_id]);
+  }, [visibleCols, colOrder, mergedCols, prefsScope]);
 
   // ── Columnas efectivas (post-merge) ─────────────────────────
   const allCols = data?.columnas || [];
@@ -372,7 +404,7 @@ export const MatrizProduccion = () => {
     return metrica === 'prendas' ? prn : reg;
   }, [metrica, mergedCols]);
 
-  const totalVal = (total) => total ? (metrica === 'prendas' ? total.prendas : total.registros) : 0;
+  const totalVal = useCallback((total) => total ? (metrica === 'prendas' ? total.prendas : total.registros) : 0, [metrica]);
 
   // ── Totales con merge ───────────────────────────────────────
   const colTotal = useCallback((col) => {
@@ -385,19 +417,114 @@ export const MatrizProduccion = () => {
     return metrica === 'prendas' ? prn : reg;
   }, [data, metrica, mergedCols]);
 
+  // ── Total de fila considerando SOLO las columnas visibles ────────────
+  // Cuando el usuario oculta una columna (ej: "Tienda"), los registros que
+  // están en ese estado no se cuentan en el total de fila ni en el total
+  // general — la "vista" es la fuente de verdad.
+  const filaTotalVisible = useCallback((fila) => {
+    let reg = 0, prn = 0;
+    effectiveCols.forEach(col => {
+      const cols = [col, ...(mergedCols[col] || [])];
+      cols.forEach(c => {
+        const v = fila.celdas?.[c];
+        if (v) { reg += v.registros; prn += v.prendas; }
+      });
+    });
+    return metrica === 'prendas' ? prn : reg;
+  }, [effectiveCols, mergedCols, metrica]);
+
+  // ── Estadísticas globales sobre lo VISIBLE (badges + total general) ──
+  const statsVisibles = useMemo(() => {
+    if (!data?.filas) return { items: 0, registros: 0, prendas: 0 };
+    let registros = 0, prendas = 0;
+    let itemsConVisible = 0;
+    data.filas.forEach(fila => {
+      let filaTieneVisible = false;
+      effectiveCols.forEach(col => {
+        const cols = [col, ...(mergedCols[col] || [])];
+        cols.forEach(c => {
+          const v = fila.celdas?.[c];
+          if (v) {
+            registros += v.registros;
+            prendas += v.prendas;
+            filaTieneVisible = true;
+          }
+        });
+      });
+      if (filaTieneVisible) itemsConVisible += 1;
+    });
+    return { items: itemsConVisible, registros, prendas };
+  }, [data, effectiveCols, mergedCols]);
+
+  // Total general según métrica seleccionada (registros o prendas), sobre lo visible.
+  const totalGeneralVisible = metrica === 'prendas' ? statsVisibles.prendas : statsVisibles.registros;
+  const hayColumnasOcultas = (allCols.length - effectiveCols.length - Object.values(mergedCols).flat().length) > 0;
+
+  const persistColumnPrefs = useCallback((next = {}) => {
+    savePrefs(prefsScope, {
+      visible: next.visible ?? visibleCols ?? [],
+      order: next.order ?? colOrder ?? [],
+      merged: next.merged ?? mergedCols ?? {},
+    });
+  }, [prefsScope, visibleCols, colOrder, mergedCols]);
+
+  const filasOrdenadas = useMemo(() => {
+    const filas = data?.filas || [];
+    if (totalSort === 'none') return filas;
+
+    const groups = new Map();
+    filas.forEach((fila, index) => {
+      const itemKey = fila.item || `${fila.marca}-${fila.tipo}-${fila.entalle}-${fila.tela}`;
+      if (!groups.has(itemKey)) {
+        groups.set(itemKey, { itemKey, index, total: 0, filas: [] });
+      }
+      const group = groups.get(itemKey);
+      // Ordenamos por el TOTAL VISIBLE (no el absoluto), así si el usuario
+      // oculta columnas, el ranking refleja la vista actual.
+      const value = filaTotalVisible(fila);
+      group.total += value;
+      group.filas.push({ fila, index, value });
+    });
+
+    const direction = totalSort === 'desc' ? -1 : 1;
+    return Array.from(groups.values())
+      .sort((a, b) => {
+        const byTotal = (a.total - b.total) * direction;
+        if (byTotal !== 0) return byTotal;
+        return a.itemKey.localeCompare(b.itemKey);
+      })
+      .flatMap(group => group.filas
+        .sort((a, b) => {
+          const byTotal = (a.value - b.value) * direction;
+          if (byTotal !== 0) return byTotal;
+          return (a.fila.hilo || '').localeCompare(b.fila.hilo || '') || a.index - b.index;
+        })
+        .map(({ fila }) => fila));
+  }, [data, totalSort, filaTotalVisible]);
+
   // ── Handlers ────────────────────────────────────────────────
   const setFilter = (k, v) => { setFilters(p => ({ ...p, [k]: v })); };
   const clearFilters = () => {
     setFilters({ ruta_id: '', marca_id: '', tipo_id: '', entalle_id: '', tela_id: '', hilo_id: '', modelo_id: '', estado: '', solo_atrasados: false, solo_activos: true, solo_fraccionados: false });
   };
-  const toggleCol = (c) => setVisibleCols(p => p?.includes(c) ? p.filter(x => x !== c) : [...(p || []), c]);
+  const showAllColumns = () => {
+    setVisibleCols(allCols);
+    persistColumnPrefs({ visible: allCols });
+  };
+  const toggleCol = (c) => setVisibleCols(p => {
+    const next = p?.includes(c) ? p.filter(x => x !== c) : [...(p || []), c];
+    persistColumnPrefs({ visible: next });
+    return next;
+  });
   const moveCol = (c, dir) => {
     setColOrder(p => {
       if (!p) return p;
       const i = p.indexOf(c);
       const j = dir === 'left' ? i - 1 : i + 1;
       if (i < 0 || j < 0 || j >= p.length) return p;
-      const a = [...p]; [a[i], a[j]] = [a[j], a[i]]; return a;
+      const a = [...p]; [a[i], a[j]] = [a[j], a[i]];
+      persistColumnPrefs({ order: a });
+      return a;
     });
   };
 
@@ -422,6 +549,7 @@ export const MatrizProduccion = () => {
           delete next[a];
         }
       });
+      persistColumnPrefs({ merged: next });
       return next;
     });
     setMergeSelection([]);
@@ -431,10 +559,16 @@ export const MatrizProduccion = () => {
     setMergedCols(prev => {
       const next = { ...prev };
       delete next[target];
+      persistColumnPrefs({ merged: next });
       return next;
     });
   };
-  const undoAllMerges = () => { setMergedCols({}); setMergeSelection([]); setMergeMode(false); };
+  const undoAllMerges = () => {
+    setMergedCols({});
+    persistColumnPrefs({ merged: {} });
+    setMergeSelection([]);
+    setMergeMode(false);
+  };
 
   // ── Modal: abrir con registros filtrados ────────────────────
   const openModal = (fila, col) => {
@@ -528,9 +662,20 @@ export const MatrizProduccion = () => {
         <div className="flex items-center gap-2">
           {data && !loading && (
             <div className="flex gap-1.5 text-xs">
-              <Badge variant="outline">{data.filas.length} items</Badge>
-              <Badge variant="outline">{data.total_general.registros} reg</Badge>
-              <Badge variant="outline">{data.total_general.prendas.toLocaleString()} prn</Badge>
+              <Badge variant="outline" title={hayColumnasOcultas ? `Sobre las ${effectiveCols.length} columnas visibles. Total general: ${data.filas.length} items` : ''}>
+                {statsVisibles.items} items
+              </Badge>
+              <Badge variant="outline" title={hayColumnasOcultas ? `Sobre las ${effectiveCols.length} columnas visibles. Total general: ${data.total_general.registros} reg` : ''}>
+                {statsVisibles.registros.toLocaleString()} reg
+              </Badge>
+              <Badge variant="outline" title={hayColumnasOcultas ? `Sobre las ${effectiveCols.length} columnas visibles. Total general: ${data.total_general.prendas.toLocaleString()} prn` : ''}>
+                {statsVisibles.prendas.toLocaleString()} prn
+              </Badge>
+              {hayColumnasOcultas && (
+                <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50" title="Hay columnas ocultas — los totales reflejan solo las visibles">
+                  filtrado
+                </Badge>
+              )}
             </div>
           )}
           <Badge variant="secondary" className="text-xs">{effectiveCols.length}/{allCols.length} col</Badge>
@@ -547,7 +692,7 @@ export const MatrizProduccion = () => {
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-medium">Configurar columnas</p>
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" className="text-xs h-6" onClick={() => setVisibleCols(allCols)}>Todas</Button>
+                    <Button variant="ghost" size="sm" className="text-xs h-6" onClick={showAllColumns}>Todas</Button>
                     {hasMerges && <Button variant="ghost" size="sm" className="text-xs h-6 text-destructive" onClick={undoAllMerges}>Deshacer fusiones</Button>}
                   </div>
                 </div>
@@ -617,12 +762,12 @@ export const MatrizProduccion = () => {
           ) : !data || data.filas.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Sin datos para los filtros seleccionados</div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="max-h-[calc(100vh-330px)] min-h-[320px] overflow-auto">
               <table className="w-full text-xs border-collapse" data-testid="matriz-table">
                 <thead>
                   <tr className="bg-muted/60">
                     <th
-                      className="text-left p-2.5 font-semibold sticky left-0 bg-muted/60 z-10 border-r relative"
+                      className="text-left p-2.5 font-semibold sticky top-0 left-0 bg-muted z-30 border-r border-b shadow-sm relative"
                       style={{ width: getColWidth('__item'), minWidth: getColWidth('__item'), maxWidth: getColWidth('__item') }}
                     >
                       Item
@@ -633,7 +778,7 @@ export const MatrizProduccion = () => {
                       />
                     </th>
                     <th
-                      className="text-left p-2.5 font-semibold sticky bg-muted/60 z-10 border-r relative"
+                      className="text-left p-2.5 font-semibold sticky top-0 bg-muted z-30 border-r border-b shadow-sm relative"
                       style={{ left: getColWidth('__item'), width: getColWidth('__hilo'), minWidth: getColWidth('__hilo'), maxWidth: getColWidth('__hilo') }}
                     >
                       Hilo
@@ -649,7 +794,7 @@ export const MatrizProduccion = () => {
                       return (
                         <th
                           key={col}
-                          className="text-center p-1.5 font-medium border-r relative align-middle"
+                          className="text-center p-1.5 font-medium sticky top-0 bg-muted z-20 border-r border-b shadow-sm relative align-middle"
                           style={{ width: w, minWidth: w, maxWidth: w }}
                         >
                           <div
@@ -677,10 +822,23 @@ export const MatrizProduccion = () => {
                       );
                     })}
                     <th
-                      className="text-center p-2.5 font-semibold bg-muted/40 relative"
+                      className="text-center p-2.5 font-semibold sticky top-0 bg-muted z-20 border-b shadow-sm relative"
                       style={{ width: getColWidth('__total'), minWidth: getColWidth('__total'), maxWidth: getColWidth('__total') }}
                     >
-                      Total
+                      <button
+                        type="button"
+                        className="mx-auto inline-flex items-center justify-center gap-1 rounded px-1.5 py-1 text-[11px] uppercase tracking-wider hover:bg-background/70"
+                        onClick={() => setTotalSort(prev => prev === 'desc' ? 'asc' : 'desc')}
+                        title="Ordenar por total manteniendo juntos los hilos del mismo item"
+                        data-testid="sort-total"
+                      >
+                        Total
+                        {totalSort === 'asc' ? (
+                          <ArrowUpWideNarrow className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowDownWideNarrow className={`h-3.5 w-3.5 ${totalSort === 'none' ? 'opacity-45' : ''}`} />
+                        )}
+                      </button>
                       <div
                         className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
                         onMouseDown={e => startResize(e, '__total')}
@@ -689,7 +847,7 @@ export const MatrizProduccion = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.filas.map((fila, idx) => {
+                  {filasOrdenadas.map((fila, idx) => {
                     const key = `${fila.marca}-${fila.tipo}-${fila.entalle}-${fila.tela}-${fila.hilo}`;
                     return (
                       <tr key={key} className="border-b hover:bg-muted/20 transition-colors" data-testid={`fila-${idx}`}>
@@ -742,8 +900,9 @@ export const MatrizProduccion = () => {
                             className="hover:text-primary hover:underline transition-colors cursor-pointer"
                             onClick={() => openModal(fila, null)}
                             data-testid={`total-${idx}`}
+                            title={hayColumnasOcultas ? `Total visible. Total absoluto: ${totalVal(fila.total).toLocaleString()}` : ''}
                           >
-                            {totalVal(fila.total).toLocaleString()}
+                            {filaTotalVisible(fila).toLocaleString()}
                           </button>
                         </td>
                       </tr>
@@ -774,8 +933,9 @@ export const MatrizProduccion = () => {
                     <td
                       className="text-center p-2.5 font-mono font-bold bg-muted/30"
                       style={{ width: getColWidth('__total'), minWidth: getColWidth('__total'), maxWidth: getColWidth('__total') }}
+                      title={hayColumnasOcultas ? `Total de columnas visibles. Total absoluto: ${totalVal(data.total_general).toLocaleString()}` : ''}
                     >
-                      {totalVal(data.total_general).toLocaleString()}
+                      {totalGeneralVisible.toLocaleString()}
                     </td>
                   </tr>
                 </tfoot>
