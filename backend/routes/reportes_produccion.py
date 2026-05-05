@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional, List
 from datetime import date, datetime, timezone
 import json
+import unicodedata
 
 router = APIRouter(prefix="/api/reportes-produccion", tags=["reportes-produccion"])
 
@@ -42,6 +43,23 @@ def safe_int(v):
         return int(v or 0)
     except (ValueError, TypeError):
         return 0
+
+
+def normalize_label(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    text = unicodedata.normalize("NFKD", value)
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    return " ".join(text.lower().split())
+
+
+ESTADOS_MATRIZ_ORDEN = [
+    "Para Corte", "Corte", "Para Estampado", "Estampado",
+    "Para Costura", "Costura", "Para Atraque", "Atraque",
+    "Para Lavandería", "Muestra Lavanderia", "Lavandería",
+    "Para Acabado", "Acabado", "Producto Terminado", "Almacén PT",
+    "Tienda",
+]
 
 
 # ==================== 1. DASHBOARD KPIs ====================
@@ -1241,8 +1259,7 @@ async def matriz_produccion(
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
-
-        # ── 1. Determinar columnas (estados) ──────────────────────
+        # ── 1. Determinar columnas base (estados de rutas) ─────────
         if ruta_id:
             ruta_row = await conn.fetchrow(
                 "SELECT etapas FROM prod_rutas_produccion WHERE id = $1", ruta_id
@@ -1276,8 +1293,36 @@ async def matriz_produccion(
             columnas = ["Sin estado"]
 
         # ── 2. Query principal: un registro por fila ──────────────
-        where_clauses = []
-        params = []
+        where_clauses = ["r.empresa_id = $1"]
+        params = [empresa_id]
+
+        async def catalog_nombre(tabla: str, valor_id: str) -> Optional[str]:
+            if not valor_id:
+                return None
+            row = await conn.fetchrow(f"SELECT nombre FROM {tabla} WHERE id = $1", valor_id)
+            return row["nombre"] if row else None
+
+        async def add_catalog_filter(
+            tabla: str,
+            selected_id: Optional[str],
+            catalog_col: str,
+            manual_id_key: str,
+            manual_text_key: str,
+        ):
+            if not selected_id:
+                return
+            params.append(selected_id)
+            id_idx = len(params)
+            parts = [
+                f"{catalog_col} = ${id_idx}",
+                f"r.modelo_manual->>'{manual_id_key}' = ${id_idx}",
+            ]
+            nombre = await catalog_nombre(tabla, selected_id)
+            if nombre:
+                params.append(nombre)
+                txt_idx = len(params)
+                parts.append(f"r.modelo_manual->>'{manual_text_key}' = ${txt_idx}")
+            where_clauses.append("(" + " OR ".join(parts) + ")")
 
         if solo_activos:
             where_clauses.append("r.estado_op IN ('ABIERTA','EN_PROCESO')")
@@ -1285,24 +1330,17 @@ async def matriz_produccion(
         if ruta_id:
             params.append(ruta_id)
             where_clauses.append(f"m.ruta_produccion_id = ${len(params)}")
-        if marca_id:
-            params.append(marca_id)
-            where_clauses.append(f"m.marca_id = ${len(params)}")
-        if tipo_id:
-            params.append(tipo_id)
-            where_clauses.append(f"m.tipo_id = ${len(params)}")
-        if entalle_id:
-            params.append(entalle_id)
-            where_clauses.append(f"m.entalle_id = ${len(params)}")
-        if tela_id:
-            params.append(tela_id)
-            where_clauses.append(f"m.tela_id = ${len(params)}")
-        if hilo_id:
-            params.append(hilo_id)
-            where_clauses.append(f"m.hilo_id = ${len(params)}")
+        await add_catalog_filter("prod_marcas", marca_id, "m.marca_id", "marca_id", "marca_texto")
+        await add_catalog_filter("prod_tipos", tipo_id, "m.tipo_id", "tipo_id", "tipo_texto")
+        await add_catalog_filter("prod_entalles", entalle_id, "m.entalle_id", "entalle_id", "entalle_texto")
+        await add_catalog_filter("prod_telas", tela_id, "m.tela_id", "tela_id", "tela_texto")
+        await add_catalog_filter("prod_hilos", hilo_id, "m.hilo_id", "hilo_id", "hilo_texto")
         if modelo_id:
             params.append(modelo_id)
-            where_clauses.append(f"r.modelo_id = ${len(params)}")
+            idx = len(params)
+            where_clauses.append(
+                f"(r.modelo_id = ${idx} OR m.nombre = ${idx} OR r.modelo_manual->>'nombre_modelo' = ${idx})"
+            )
         if estado:
             params.append(estado)
             where_clauses.append(f"r.estado = ${len(params)}")
@@ -1397,6 +1435,39 @@ async def matriz_produccion(
                 COALESCE(hi.nombre, mhi.nombre, r.modelo_manual->>'hilo_texto'),
                 r.n_corte
         """, *params)
+
+        # Alinear columnas con los estados reales del resultado. Las rutas pueden
+        # tener variantes sin tilde ("Lavanderia") mientras los registros guardan
+        # el estado con tilde ("Lavandería"). Si no se corrige aquí, el total sí
+        # cuenta esos registros pero la celda queda invisible en la UI.
+        estados_resultado = []
+        seen_estados = set()
+        for row in rows:
+            est = row["estado"] or "Sin estado"
+            if est not in seen_estados:
+                seen_estados.add(est)
+                estados_resultado.append(est)
+
+        estados_por_norm = {normalize_label(e): e for e in estados_resultado}
+        columnas_alineadas = []
+        seen_norm = set()
+        for col in columnas:
+            norm = normalize_label(col)
+            col_real = estados_por_norm.get(norm, col)
+            real_norm = normalize_label(col_real)
+            if real_norm and real_norm not in seen_norm:
+                columnas_alineadas.append(col_real)
+                seen_norm.add(real_norm)
+
+        orden_norm = {normalize_label(e): i for i, e in enumerate(ESTADOS_MATRIZ_ORDEN)}
+        extras = [
+            e for e in estados_resultado
+            if normalize_label(e) not in seen_norm
+        ]
+        extras.sort(key=lambda e: (orden_norm.get(normalize_label(e), 999), e))
+        columnas = columnas_alineadas + extras
+        if not columnas:
+            columnas = ["Sin estado"]
 
         # ── 3. Calcular prendas con fallback ──────────────────────
         def calc_prendas(row):
