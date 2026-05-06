@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 
 import { formatDate } from '../lib/dateUtils';
+import IncidenciaAvances from '../components/registro/IncidenciaAvances';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 
@@ -587,7 +588,7 @@ export const ReporteTiemposMuertos = () => {
 
       {/* Panel de incidencias */}
       <Dialog open={!!panelItem} onOpenChange={(open) => { if (!open) setPanelItem(null); }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <AlertTriangle className="h-4 w-4 text-amber-500" />
@@ -640,31 +641,37 @@ export const ReporteTiemposMuertos = () => {
                 </div>
               )}
 
-              {/* Incidencias abiertas */}
+              {/* Incidencias abiertas — con panel de avances integrado para
+                  hacer seguimiento de cómo va resolviéndose la incidencia. */}
               {incidencias.filter(i => i.estado === 'ABIERTA').length > 0 && (
                 <div className="space-y-2">
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Abiertas</p>
                   {incidencias.filter(i => i.estado === 'ABIERTA').map(inc => (
-                    <div key={inc.id} className="flex items-start gap-2 p-3 rounded-lg border bg-amber-50/80 border-amber-200">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <Badge variant="destructive" className="text-[10px]">ABIERTA</Badge>
-                          <span className="font-semibold text-xs">{inc.motivo_nombre || inc.tipo}</span>
-                          {inc.paraliza && <Badge variant="outline" className="text-[10px] border-red-300 text-red-600">Paraliza</Badge>}
+                    <div key={inc.id} className="p-3 rounded-lg border bg-amber-50/80 border-amber-200">
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <Badge variant="destructive" className="text-[10px]">ABIERTA</Badge>
+                            <span className="font-semibold text-xs">{inc.motivo_nombre || inc.tipo}</span>
+                            {inc.paraliza && <Badge variant="outline" className="text-[10px] border-red-300 text-red-600">Paraliza</Badge>}
+                          </div>
+                          {inc.comentario && <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap break-words">{inc.comentario}</p>}
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+                          </p>
                         </div>
-                        {inc.comentario && <p className="text-xs text-muted-foreground mt-1">{inc.comentario}</p>}
-                        <p className="text-[10px] text-muted-foreground mt-1">
-                          {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
-                        </p>
+                        <div className="flex gap-0.5 shrink-0">
+                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleResolver(inc.id)} title="Resolver">
+                            <Check className="h-3.5 w-3.5 text-green-600" />
+                          </Button>
+                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEliminar(inc.id)} title="Eliminar">
+                            <Trash2 className="h-3 w-3 text-destructive" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex gap-0.5 shrink-0">
-                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleResolver(inc.id)} title="Resolver">
-                          <Check className="h-3.5 w-3.5 text-green-600" />
-                        </Button>
-                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEliminar(inc.id)} title="Eliminar">
-                          <Trash2 className="h-3 w-3 text-destructive" />
-                        </Button>
-                      </div>
+                      {/* Panel de avances: agregar / editar / eliminar comentarios
+                          de seguimiento mientras la incidencia sigue abierta. */}
+                      <IncidenciaAvances incidenciaId={inc.id} canWrite />
                     </div>
                   ))}
                 </div>
@@ -685,23 +692,27 @@ export const ReporteTiemposMuertos = () => {
                   {showResueltas && (
                     <div className="space-y-2 mt-1">
                       {incidencias.filter(i => i.estado === 'RESUELTA').map(inc => (
-                        <div key={inc.id} className="flex items-start gap-2 p-2.5 rounded-lg border bg-muted/20 border-border">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <Badge variant="secondary" className="text-[10px]">RESUELTA</Badge>
-                              <span className="font-medium text-xs text-muted-foreground">{inc.motivo_nombre || inc.tipo}</span>
+                        <div key={inc.id} className="p-2.5 rounded-lg border bg-muted/20 border-border">
+                          <div className="flex items-start gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <Badge variant="secondary" className="text-[10px]">RESUELTA</Badge>
+                                <span className="font-medium text-xs text-muted-foreground">{inc.motivo_nombre || inc.tipo}</span>
+                              </div>
+                              {inc.comentario && <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap break-words">{inc.comentario}</p>}
+                              <p className="text-[10px] text-muted-foreground mt-1">
+                                {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+                                {inc.updated_at && (
+                                  <span className="text-green-600 ml-1">· Resuelta: {new Date(inc.updated_at).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</span>
+                                )}
+                              </p>
                             </div>
-                            {inc.comentario && <p className="text-xs text-muted-foreground mt-1">{inc.comentario}</p>}
-                            <p className="text-[10px] text-muted-foreground mt-1">
-                              {inc.fecha_hora ? new Date(inc.fecha_hora).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
-                              {inc.updated_at && (
-                                <span className="text-green-600 ml-1">· Resuelta: {new Date(inc.updated_at).toLocaleString('es-PE', { timeZone: 'America/Lima', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</span>
-                              )}
-                            </p>
+                            <Button type="button" variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => handleEliminar(inc.id)} title="Eliminar">
+                              <Trash2 className="h-3 w-3 text-destructive" />
+                            </Button>
                           </div>
-                          <Button type="button" variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => handleEliminar(inc.id)} title="Eliminar">
-                            <Trash2 className="h-3 w-3 text-destructive" />
-                          </Button>
+                          {/* Historial de avances (solo lectura — la incidencia ya está resuelta) */}
+                          <IncidenciaAvances incidenciaId={inc.id} canWrite={false} />
                         </div>
                       ))}
                     </div>
