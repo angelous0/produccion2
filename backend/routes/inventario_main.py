@@ -661,18 +661,46 @@ async def delete_item_inventario(item_id: str, _u=Depends(get_current_user)):
 
 @router.get("/inventario-ingresos")
 async def get_ingresos():
+    """
+    Lista los ingresos de inventario.
+
+    El campo `cantidad_disponible` que retorna ya incluye los ajustes de migración
+    (subtipo='ajuste_migracion'). Esos ajustes se generan al desactivar el modo
+    carga inicial y reflejan stock que NO está atado a un ingreso FIFO específico.
+    Para que la columna "Disponible" de la UI cuadre con el stock_actual del item,
+    aplicamos el ajuste neto de cada item al ingreso más antiguo de ese item.
+
+    También se expone `cantidad_disponible_fifo` con el valor crudo del FIFO
+    (sin el ajuste) por si se necesita para trazabilidad.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch("""
+            WITH first_ingreso AS (
+                SELECT DISTINCT ON (item_id) id, item_id
+                FROM prod_inventario_ingresos
+                ORDER BY item_id, fecha ASC, id ASC
+            ),
+            ajustes_migracion_netos AS (
+                SELECT item_id,
+                    SUM(CASE WHEN tipo='entrada' THEN cantidad ELSE -cantidad END) AS neto
+                FROM prod_inventario_ajustes
+                WHERE subtipo = 'ajuste_migracion'
+                GROUP BY item_id
+            )
             SELECT ing.*,
                 COALESCE(inv.nombre, '') as item_nombre,
                 COALESCE(inv.codigo, '') as item_codigo,
                 COALESCE(ln.nombre, '') as linea_negocio_nombre,
                 COALESCE(rol.cnt, 0) as rollos_count,
-                COALESCE(fac.qty_facturada, 0) as qty_facturada
+                COALESCE(fac.qty_facturada, 0) as qty_facturada,
+                CASE WHEN fi.id = ing.id THEN COALESCE(aj.neto, 0) ELSE 0 END
+                    AS ajuste_migracion_aplicado
             FROM prod_inventario_ingresos ing
             LEFT JOIN prod_inventario inv ON ing.item_id = inv.id
             LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = ing.linea_negocio_id
+            LEFT JOIN first_ingreso fi ON fi.item_id = ing.item_id
+            LEFT JOIN ajustes_migracion_netos aj ON aj.item_id = ing.item_id
             LEFT JOIN LATERAL (
                 SELECT COUNT(*) as cnt FROM prod_inventario_rollos WHERE ingreso_id = ing.id
             ) rol ON true
@@ -694,6 +722,12 @@ async def get_ingresos():
                 'PARCIAL' if qty_facturada > 0 else
                 'PENDIENTE'
             )
+            # Aplicar ajuste de migración a la cantidad disponible visible en la UI.
+            # El valor crudo del FIFO se conserva como `cantidad_disponible_fifo`.
+            disp_fifo = float(d.get('cantidad_disponible') or 0)
+            ajuste = float(d.get('ajuste_migracion_aplicado') or 0)
+            d['cantidad_disponible_fifo'] = disp_fifo
+            d['cantidad_disponible'] = disp_fifo + ajuste
             result.append(d)
         return result
 
@@ -768,6 +802,7 @@ class IngresoUpdateData(BaseModel):
     observaciones: str = ""
     costo_unitario: float = 0
     rollos: Optional[List[dict]] = None
+    cantidad: Optional[float] = None  # Solo aplica para items SIN rollos. Si se envía, ajusta cantidad y stock.
 
 
 @router.get("/inventario-ingresos/ultimo-costo/{item_id}")
@@ -817,6 +852,62 @@ async def update_ingreso(ingreso_id: str, input: IngresoUpdateData, _u=Depends(g
             """UPDATE prod_inventario_ingresos SET proveedor=$1, numero_documento=$2, observaciones=$3, costo_unitario=$4 WHERE id=$5""",
             input.proveedor, input.numero_documento, input.observaciones, input.costo_unitario, ingreso_id
         )
+
+        # === Edición de CANTIDAD para items SIN rollos ===
+        # Permitida solo cuando el item no se controla por rollos. Para items con rollos,
+        # la cantidad surge de la suma de los rollos (manejado en el bloque de abajo).
+        if (
+            input.cantidad is not None
+            and item and not item['control_por_rollos']
+        ):
+            nueva_cantidad = float(input.cantidad)
+            old_cantidad = float(ingreso['cantidad'])
+            old_disponible = float(ingreso['cantidad_disponible'])
+            consumido = old_cantidad - old_disponible  # lo que ya se descontó por salidas/transferencias
+
+            if nueva_cantidad < 0:
+                raise HTTPException(status_code=400, detail="La cantidad no puede ser negativa")
+
+            # No permitir bajar de lo ya consumido por salidas
+            if nueva_cantidad < consumido:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"No puedes bajar la cantidad a {nueva_cantidad}: ya se consumieron "
+                        f"{consumido} unidades por salidas/transferencias. Mínimo permitido: {consumido}"
+                    ),
+                )
+
+            # No permitir bajar de lo ya facturado en CxP
+            qty_facturada = await conn.fetchval(
+                """
+                SELECT COALESCE(SUM(cantidad_aplicada), 0)
+                FROM finanzas2.cont_factura_ingreso_mp WHERE ingreso_id = $1
+                """,
+                ingreso_id,
+            ) or 0
+            qty_facturada = float(qty_facturada)
+            if qty_facturada > 0 and nueva_cantidad < qty_facturada:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"No puedes bajar la cantidad a {nueva_cantidad}: ya se facturaron "
+                        f"{qty_facturada} unidades en finanzas. Mínimo permitido: {qty_facturada}"
+                    ),
+                )
+
+            diff = nueva_cantidad - old_cantidad
+            if diff != 0:
+                await conn.execute(
+                    """UPDATE prod_inventario_ingresos
+                       SET cantidad = $1, cantidad_disponible = cantidad_disponible + $2
+                       WHERE id = $3""",
+                    nueva_cantidad, diff, ingreso_id,
+                )
+                await conn.execute(
+                    "UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
+                    diff, ingreso['item_id'],
+                )
 
         # Si el item tiene control por rollos y se envían rollos, sincronizar
         if item and item['control_por_rollos'] and input.rollos is not None:

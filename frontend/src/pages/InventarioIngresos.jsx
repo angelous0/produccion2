@@ -27,10 +27,12 @@ import { toast } from 'sonner';
 import { formatDate } from '../lib/dateUtils';
 import { NumericInput } from '../components/ui/numeric-input';
 import { cn, formatCurrency } from '../lib/utils';
+import { useAuth } from '../context/AuthContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export const InventarioIngresos = () => {
+  const { isAdmin } = useAuth();
   const [ingresos, setIngresos] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -257,6 +259,13 @@ export const InventarioIngresos = () => {
             ancho: parseFloat(r.ancho) || 0,
             tono: r.tono,
           }));
+        } else if (isAdmin) {
+          // Solo admin puede editar cantidad de items SIN rollos
+          const nueva = parseFloat(formData.cantidad);
+          const original = parseFloat(editingIngreso.cantidad);
+          if (!Number.isNaN(nueva) && nueva !== original) {
+            updatePayload.cantidad = nueva;
+          }
         }
         await axios.put(`${API}/inventario-ingresos/${editingIngreso.id}`, updatePayload);
         toast.success('Ingreso actualizado correctamente');
@@ -444,7 +453,11 @@ export const InventarioIngresos = () => {
                             <Pencil className="h-4 w-4 text-blue-500" />
                           </Button>
                           {(() => {
-                            const tieneSalidas = ingreso.cantidad_disponible !== ingreso.cantidad;
+                            // Para evaluar "tieneSalidas" usamos el FIFO crudo (sin el ajuste de migración),
+                            // ya que `cantidad_disponible` retornada por el backend incluye ese ajuste para
+                            // mostrarse en la columna "Disponible". El backend DELETE valida sobre el FIFO real.
+                            const dispFifo = ingreso.cantidad_disponible_fifo ?? ingreso.cantidad_disponible;
+                            const tieneSalidas = dispFifo !== ingreso.cantidad;
                             const bloqueado = tieneSalidas && !modoMigracion;
                             return (
                               <Button
@@ -484,8 +497,12 @@ export const InventarioIngresos = () => {
           <DialogHeader>
             <DialogTitle>{editingIngreso ? 'Editar Ingreso' : 'Nuevo Ingreso'}</DialogTitle>
             <DialogDescription>
-              {editingIngreso 
-                ? (selectedItem?.control_por_rollos ? 'Modificar datos del ingreso y sus rollos' : 'Modificar datos del ingreso (item y cantidad no son editables)')
+              {editingIngreso
+                ? (selectedItem?.control_por_rollos
+                    ? 'Modificar datos del ingreso y sus rollos'
+                    : (isAdmin
+                        ? 'Modificar datos del ingreso (incluida la cantidad — solo admin)'
+                        : 'Modificar datos del ingreso (item y cantidad no son editables)'))
                 : 'Registrar una entrada de inventario'}
             </DialogDescription>
           </DialogHeader>
@@ -499,10 +516,42 @@ export const InventarioIngresos = () => {
                     <span className="font-medium text-sm">{selectedItem?.codigo} — {selectedItem?.nombre}</span>
                   </div>
                   {!selectedItem?.control_por_rollos && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Cantidad ingresada</span>
-                      <span className="font-mono font-semibold">{editingIngreso.cantidad}</span>
-                    </div>
+                    isAdmin ? (
+                      (() => {
+                        const dispFifo = editingIngreso.cantidad_disponible_fifo ?? editingIngreso.cantidad_disponible;
+                        const consumido = (parseFloat(editingIngreso.cantidad) || 0) - (parseFloat(dispFifo) || 0);
+                        const facturado = parseFloat(editingIngreso.qty_facturada) || 0;
+                        const minPermitido = Math.max(consumido, facturado);
+                        return (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between gap-3">
+                              <Label className="text-sm text-muted-foreground m-0">
+                                Cantidad ingresada <span className="text-amber-600 text-[10px]">(admin)</span>
+                              </Label>
+                              <NumericInput
+                                value={formData.cantidad}
+                                onChange={(v) => setFormData({ ...formData, cantidad: v })}
+                                className="w-32 h-8 text-right font-mono"
+                                data-testid="edit-cantidad"
+                              />
+                            </div>
+                            {minPermitido > 0 && (
+                              <p className="text-[11px] text-muted-foreground text-right">
+                                Mínimo permitido: <span className="font-mono font-semibold">{minPermitido}</span>{' '}
+                                {consumido > 0 && `(${consumido} consumidas)`}
+                                {consumido > 0 && facturado > 0 && ' · '}
+                                {facturado > 0 && `(${facturado} facturadas)`}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Cantidad ingresada</span>
+                        <span className="font-mono font-semibold">{editingIngreso.cantidad}</span>
+                      </div>
+                    )
                   )}
                 </div>
               ) : (
