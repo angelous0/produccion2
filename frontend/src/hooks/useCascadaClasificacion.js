@@ -54,15 +54,14 @@ export function useCascadaClasificacion({ marca_id, tipo_id, entalle_id, tela_ge
   }, []);
 
   // Tipos + géneros dependen de marca_id
-  useEffect(() => {
-    (async () => {
-      try {
-        const url = marca_id ? `${API}/tipos?marca_id=${marca_id}` : `${API}/tipos`;
-        const r = await axios.get(url);
-        setTipos(r.data || []);
-      } catch {}
-    })();
+  const fetchTipos = useCallback(async () => {
+    try {
+      const url = marca_id ? `${API}/tipos?marca_id=${marca_id}` : `${API}/tipos`;
+      const r = await axios.get(url);
+      setTipos(r.data || []);
+    } catch {}
   }, [marca_id]);
+  useEffect(() => { fetchTipos(); }, [fetchTipos]);
 
   useEffect(() => {
     (async () => {
@@ -75,15 +74,14 @@ export function useCascadaClasificacion({ marca_id, tipo_id, entalle_id, tela_ge
   }, [marca_id]);
 
   // Entalle, cuello, detalle, lavado dependen de tipo_id
-  useEffect(() => {
-    (async () => {
-      try {
-        const url = tipo_id ? `${API}/entalles?tipo_id=${tipo_id}` : `${API}/entalles`;
-        const r = await axios.get(url);
-        setEntalles(r.data || []);
-      } catch {}
-    })();
+  const fetchEntalles = useCallback(async () => {
+    try {
+      const url = tipo_id ? `${API}/entalles?tipo_id=${tipo_id}` : `${API}/entalles`;
+      const r = await axios.get(url);
+      setEntalles(r.data || []);
+    } catch {}
   }, [tipo_id]);
+  useEffect(() => { fetchEntalles(); }, [fetchEntalles]);
 
   useEffect(() => {
     (async () => {
@@ -116,15 +114,21 @@ export function useCascadaClasificacion({ marca_id, tipo_id, entalle_id, tela_ge
   }, [tipo_id]);
 
   // Telas: filtradas por entalle_id (server-side) + intersección con tela_general_id (client-side)
-  useEffect(() => {
-    (async () => {
-      try {
-        const url = entalle_id ? `${API}/telas?entalle_id=${entalle_id}` : `${API}/telas`;
-        const r = await axios.get(url);
-        setTelas(r.data || []);
-      } catch {}
-    })();
+  const fetchTelas = useCallback(async () => {
+    try {
+      const url = entalle_id ? `${API}/telas?entalle_id=${entalle_id}` : `${API}/telas`;
+      const r = await axios.get(url);
+      setTelas(r.data || []);
+    } catch {}
   }, [entalle_id]);
+  useEffect(() => { fetchTelas(); }, [fetchTelas]);
+
+  const fetchTelasGenerales = useCallback(async () => {
+    try {
+      const r = await axios.get(`${API}/telas-general`);
+      setTelasGenerales(r.data || []);
+    } catch {}
+  }, []);
 
   const telasFiltradas = useMemo(() => {
     if (!tela_general_id) return telas;
@@ -164,6 +168,11 @@ export function useCascadaClasificacion({ marca_id, tipo_id, entalle_id, tela_ge
     mostrarLavado,
     tipoNombre: tipoSeleccionado?.nombre || null,
     esIdValido,
+    // Funciones de recarga para refrescar el catálogo después de crear opciones inline
+    reloadTipos: fetchTipos,
+    reloadEntalles: fetchEntalles,
+    reloadTelas: fetchTelas,
+    reloadTelasGenerales: fetchTelasGenerales,
   };
 }
 

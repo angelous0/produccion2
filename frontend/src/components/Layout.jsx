@@ -82,6 +82,10 @@ import {
   WashingMachine,
   Layers3,
   ShieldAlert,
+  AlertOctagon,
+  Timer,
+  Trash2,
+  TrendingDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -155,6 +159,11 @@ const reportesItems = [
   { to: '/reportes/despachos-tienda', icon: Store, label: 'Despachos a Tienda' },
   { to: '/reportes/costos-produccion', icon: Receipt, label: 'Costos de Producción' },
   { to: '/reportes/movimientos-costos', icon: Receipt, label: 'Movimientos & Costos' },
+  { to: '/reportes/paralizados', icon: AlertOctagon, label: 'OPs Paralizadas' },
+  { to: '/reportes/tiempos-muertos', icon: Timer, label: 'Tiempos Muertos' },
+  { to: '/reportes/estados-item', icon: Layers, label: 'Estados por Item' },
+  { to: '/reportes/mermas', icon: Trash2, label: 'Mermas' },
+  { to: '/reportes/trazabilidad-kpis', icon: TrendingDown, label: 'KPIs Trazabilidad' },
 ];
 
 const catalogosItems = [

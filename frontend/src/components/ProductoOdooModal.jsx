@@ -10,6 +10,7 @@ import { Ban, Save, Loader2, Package, DollarSign, GitBranch } from 'lucide-react
 import { toast } from 'sonner';
 import useCascadaClasificacion from '../hooks/useCascadaClasificacion';
 import VariantesColorMapper from './VariantesColorMapper';
+import CreatableSelectField from './CreatableSelectField';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -47,12 +48,61 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
     generos, cuellos, detalles, lavados, hilos, categoriasColor,
     lineasNegocio,
     mostrarCuello, mostrarLavado, esIdValido,
+    reloadTipos, reloadEntalles, reloadTelas, reloadTelasGenerales,
   } = useCascadaClasificacion({
     marca_id: form.marca_id,
     tipo_id: form.tipo_id,
     entalle_id: form.entalle_id,
     tela_general_id: form.tela_general_id,
   });
+
+  // Handlers para crear catálogos inline (Tipo / Entalle / Tela General / Tela).
+  // Auto-asocian los IDs de cascada que correspondan según la relación.
+  const handleCreateTipo = async (nombre) => {
+    if (!form.marca_id) {
+      toast.error('Primero selecciona la marca');
+      throw new Error('Falta marca');
+    }
+    const { data } = await axios.post(`${API}/tipos`, {
+      nombre,
+      marca_ids: [form.marca_id],
+    });
+    await reloadTipos();
+    return data;
+  };
+
+  const handleCreateEntalle = async (nombre) => {
+    if (!form.tipo_id) {
+      toast.error('Primero selecciona el tipo');
+      throw new Error('Falta tipo');
+    }
+    const { data } = await axios.post(`${API}/entalles`, {
+      nombre,
+      tipo_ids: [form.tipo_id],
+    });
+    await reloadEntalles();
+    return data;
+  };
+
+  const handleCreateTelaGeneral = async (nombre) => {
+    const { data } = await axios.post(`${API}/telas-general`, { nombre });
+    await reloadTelasGenerales();
+    return data;
+  };
+
+  const handleCreateTela = async (nombre) => {
+    if (!form.entalle_id && !form.tela_general_id) {
+      toast.error('Primero selecciona entalle o tela general');
+      throw new Error('Falta entalle o tela general');
+    }
+    const { data } = await axios.post(`${API}/telas`, {
+      nombre,
+      entalle_ids: form.entalle_id ? [form.entalle_id] : [],
+      tela_general_id: form.tela_general_id || null,
+    });
+    await reloadTelas();
+    return data;
+  };
 
   // ── Limpieza automática de valores inválidos cuando cambia el padre ──
   // Si el valor actual ya no está en la lista filtrada, lo reseteo.
@@ -191,10 +241,36 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
         {/* Clasificación */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
           <SelectField label="Marca" requerido hint={producto.odoo_marca_texto} value={form.marca_id} onChange={v => setField('marca_id', v)} options={marcas} />
-          <SelectField label="Tipo" requerido hint={producto.odoo_tipo_texto} value={form.tipo_id} onChange={v => setField('tipo_id', v)} options={tipos} disabled={!form.marca_id} placeholder={!form.marca_id ? 'Primero elige marca' : 'Seleccionar'} />
-          <SelectField label="Tela General" value={form.tela_general_id} onChange={v => setField('tela_general_id', v)} options={telasGenerales} />
-          <SelectField label="Entalle" hint={producto.odoo_entalle_texto} value={form.entalle_id} onChange={v => setField('entalle_id', v)} options={entalles} disabled={!form.tipo_id} placeholder={!form.tipo_id ? 'Primero elige tipo' : 'Seleccionar'} />
-          <SelectField label="Tela" hint={producto.odoo_tela_texto} value={form.tela_id} onChange={v => setField('tela_id', v)} options={telas} disabled={!form.entalle_id && !form.tela_general_id} placeholder={!form.entalle_id && !form.tela_general_id ? 'Primero elige entalle o tela general' : 'Seleccionar'} />
+          <CreatableSelectField
+            label="Tipo" requerido hint={producto.odoo_tipo_texto}
+            value={form.tipo_id} onChange={v => setField('tipo_id', v)}
+            options={tipos}
+            disabled={!form.marca_id}
+            disabledHint="Primero elige marca"
+            onCreate={handleCreateTipo}
+          />
+          <CreatableSelectField
+            label="Tela General"
+            value={form.tela_general_id} onChange={v => setField('tela_general_id', v)}
+            options={telasGenerales}
+            onCreate={handleCreateTelaGeneral}
+          />
+          <CreatableSelectField
+            label="Entalle" hint={producto.odoo_entalle_texto}
+            value={form.entalle_id} onChange={v => setField('entalle_id', v)}
+            options={entalles}
+            disabled={!form.tipo_id}
+            disabledHint="Primero elige tipo"
+            onCreate={handleCreateEntalle}
+          />
+          <CreatableSelectField
+            label="Tela" hint={producto.odoo_tela_texto}
+            value={form.tela_id} onChange={v => setField('tela_id', v)}
+            options={telas}
+            disabled={!form.entalle_id && !form.tela_general_id}
+            disabledHint="Primero elige entalle o tela general"
+            onCreate={handleCreateTela}
+          />
           <SelectField label="Género" requerido value={form.genero_id} onChange={v => setField('genero_id', v)} options={generos} disabled={!form.marca_id} placeholder={!form.marca_id ? 'Primero elige marca' : 'Seleccionar'} />
           {mostrarCuello && (
             <SelectField label="Cuello" requerido value={form.cuello_id} onChange={v => setField('cuello_id', v)} options={cuellos} />
