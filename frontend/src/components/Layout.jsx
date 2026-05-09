@@ -65,7 +65,6 @@ import {
   ArrowRightLeft,
   ShieldCheck,
   TrendingUp,
-  Bell,
   Truck,
   CalendarDays,
   BarChart2,
@@ -139,7 +138,6 @@ const inventarioItems = [
 ];
 
 const reportesItems = [
-  { to: '/reportes/alertas', icon: Bell, label: 'Panel de Excepciones' },
   { to: '/reportes/validacion-registros', icon: ShieldAlert, label: 'Validación MP/Servicios' },
   { to: '/reportes/seguimiento', icon: Activity, label: 'Seguimiento' },
   { to: '/reportes/agenda-entregas', icon: CalendarDays, label: 'Agenda Entregas' },
