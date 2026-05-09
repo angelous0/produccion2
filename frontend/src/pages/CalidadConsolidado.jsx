@@ -14,16 +14,16 @@ export const CalidadConsolidado = () => {
     <div className="space-y-4" data-testid="calidad-consolidado">
       <div>
         <h2 className="text-2xl font-bold tracking-tight">Calidad</h2>
-        <p className="text-sm text-muted-foreground">Resumen, mermas, estados y control de fallados</p>
+        <p className="text-sm text-muted-foreground">Análisis de mermas, diferencias con servicio externo, estados y fallados</p>
       </div>
 
       <Tabs defaultValue={defaultTab} className="space-y-4">
         <TabsList className="h-9">
           <TabsTrigger value="resumen-calidad" className="text-xs gap-1.5" data-testid="tab-resumen-calidad">
-            <BarChart3 className="h-3.5 w-3.5" /> Resumen Calidad
+            <BarChart3 className="h-3.5 w-3.5" /> Análisis de Mermas
           </TabsTrigger>
           <TabsTrigger value="mermas" className="text-xs gap-1.5" data-testid="tab-mermas">
-            <Shield className="h-3.5 w-3.5" /> Mermas
+            <Shield className="h-3.5 w-3.5" /> Diferencias Servicio Externo
           </TabsTrigger>
           <TabsTrigger value="estados" className="text-xs gap-1.5" data-testid="tab-estados">
             <ListChecks className="h-3.5 w-3.5" /> Estados del Item

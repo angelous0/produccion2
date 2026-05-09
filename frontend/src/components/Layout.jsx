@@ -69,7 +69,6 @@ import {
   Truck,
   CalendarDays,
   BarChart2,
-  Wrench,
   Search,
   Building2,
   AlertTriangle,
@@ -82,9 +81,6 @@ import {
   WashingMachine,
   Layers3,
   ShieldAlert,
-  AlertOctagon,
-  Timer,
-  Trash2,
   TrendingDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -143,13 +139,12 @@ const inventarioItems = [
 ];
 
 const reportesItems = [
-  { to: '/reportes/alertas', icon: Bell, label: 'Alertas del Día' },
+  { to: '/reportes/alertas', icon: Bell, label: 'Panel de Excepciones' },
   { to: '/reportes/validacion-registros', icon: ShieldAlert, label: 'Validación MP/Servicios' },
   { to: '/reportes/seguimiento', icon: Activity, label: 'Seguimiento' },
   { to: '/reportes/agenda-entregas', icon: CalendarDays, label: 'Agenda Entregas' },
   { to: '/reportes/entregas', icon: Truck, label: 'Entregas' },
   { to: '/reportes/costo-lote', icon: BarChart2, label: 'Costo por Lote' },
-  { to: '/reportes/tendencia-fallados', icon: Wrench, label: 'Fallados y Arreglos' },
   { to: '/reportes/operativo', icon: Users, label: 'Operativo & Terceros' },
   { to: '/reportes/calidad', icon: Shield, label: 'Calidad' },
   { to: '/reportes/valorizacion', icon: Package, label: 'Valorizacion' },
@@ -157,12 +152,8 @@ const reportesItems = [
   { to: '/reportes/matriz', icon: Grid3X3, label: 'Matriz Dinamica' },
   { to: '/reportes/rendimiento-servicios', icon: TrendingUp, label: 'Rendimiento Servicios' },
   { to: '/reportes/despachos-tienda', icon: Store, label: 'Despachos a Tienda' },
-  { to: '/reportes/costos-produccion', icon: Receipt, label: 'Costos de Producción' },
+  { to: '/reportes/costos-produccion', icon: Receipt, label: 'Detalle por Talla e Insumo' },
   { to: '/reportes/movimientos-costos', icon: Receipt, label: 'Movimientos & Costos' },
-  { to: '/reportes/paralizados', icon: AlertOctagon, label: 'OPs Paralizadas' },
-  { to: '/reportes/tiempos-muertos', icon: Timer, label: 'Tiempos Muertos' },
-  { to: '/reportes/estados-item', icon: Layers, label: 'Estados por Item' },
-  { to: '/reportes/mermas', icon: Trash2, label: 'Mermas' },
   { to: '/reportes/trazabilidad-kpis', icon: TrendingDown, label: 'KPIs Trazabilidad' },
 ];
 

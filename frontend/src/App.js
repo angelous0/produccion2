@@ -15,8 +15,6 @@ import { Loader2 } from "lucide-react";
 const AgendaEntregas = lazy(() => import('./pages/AgendaEntregas'));
 const CostoPorLote = lazy(() => import('./pages/CostoPorLote'));
 const CostosProduccion = lazy(() => import('./pages/CostosProduccion'));
-const TendenciaFallados = lazy(() => import('./pages/TendenciaFallados'));
-const DashboardEjecutivo = lazy(() => import('./pages/DashboardEjecutivo'));
 const ReporteAlertas = lazy(() => import('./pages/ReporteAlertas'));
 const ReporteEntregas = lazy(() => import('./pages/ReporteEntregas'));
 const Usuarios = lazy(() => import("./pages/Usuarios").then(m => ({ default: m.Usuarios })));
@@ -76,10 +74,6 @@ const SalidasLibres = lazy(() => import("./pages/SalidasLibres").then(m => ({ de
 const Muestras = lazy(() => import("./pages/Muestras").then(m => ({ default: m.Muestras })));
 const MuestraDetalle = lazy(() => import("./pages/MuestraDetalle").then(m => ({ default: m.MuestraDetalle })));
 const ValidacionRegistros = lazy(() => import("./pages/ValidacionRegistros").then(m => ({ default: m.ValidacionRegistros })));
-const ReporteParalizados = lazy(() => import("./pages/ReporteParalizados").then(m => ({ default: m.ReporteParalizados })));
-const ReporteTiemposMuertos = lazy(() => import("./pages/ReporteTiemposMuertos"));
-const ReporteEstadosItem = lazy(() => import("./pages/ReporteEstadosItem"));
-const ReporteMermas = lazy(() => import("./pages/ReporteMermas").then(m => ({ default: m.ReporteMermas })));
 const ReporteTrazabilidadKPIs = lazy(() => import("./pages/ReporteTrazabilidadKPIs").then(m => ({ default: m.ReporteTrazabilidadKPIs })));
 
 const LazyFallback = () => (
@@ -199,13 +193,12 @@ function AppRoutes() {
         <Route path="reportes/lotes" element={<LazyWrap><LotesTrazabilidad /></LazyWrap>} />
         <Route path="reportes/valorizacion" element={<LazyWrap><ValorizacionConsolidado /></LazyWrap>} />
         <Route path="reportes/calidad" element={<LazyWrap><CalidadConsolidado /></LazyWrap>} />
-        <Route path="reportes/dashboard-ejecutivo" element={<LazyWrap><DashboardEjecutivo /></LazyWrap>} />
         <Route path="reportes/alertas" element={<LazyWrap><ReporteAlertas /></LazyWrap>} />
         
         <Route path="reportes/agenda-entregas" element={<LazyWrap><AgendaEntregas /></LazyWrap>} />
         <Route path="reportes/costo-lote" element={<LazyWrap><CostoPorLote /></LazyWrap>} />
         <Route path="reportes/costos-produccion" element={<LazyWrap><CostosProduccion /></LazyWrap>} />
-        <Route path="reportes/tendencia-fallados" element={<LazyWrap><TendenciaFallados /></LazyWrap>} />
+        <Route path="reportes/tendencia-fallados" element={<Navigate to="/reportes/calidad?tab=fallados" replace />} />
         <Route path="reportes/entregas" element={<LazyWrap><ReporteEntregas /></LazyWrap>} />
         <Route path="control-fallados" element={<Navigate to="/reportes/calidad?tab=fallados" replace />} />
         <Route path="reportes/matriz" element={<LazyWrap><MatrizProduccion /></LazyWrap>} />
@@ -213,11 +206,7 @@ function AppRoutes() {
         <Route path="reportes/despachos-tienda" element={<LazyWrap><ReporteDespachosTienda /></LazyWrap>} />
         <Route path="reportes/movimientos-costos" element={<LazyWrap><ReporteMovimientosCostos /></LazyWrap>} />
         <Route path="reportes/trazabilidad/:registroId" element={<LazyWrap><ReporteTrazabilidad /></LazyWrap>} />
-        {/* Reportes standalone (5) */}
-        <Route path="reportes/paralizados" element={<LazyWrap><ReporteParalizados /></LazyWrap>} />
-        <Route path="reportes/tiempos-muertos" element={<LazyWrap><ReporteTiemposMuertos /></LazyWrap>} />
-        <Route path="reportes/estados-item" element={<LazyWrap><ReporteEstadosItem /></LazyWrap>} />
-        <Route path="reportes/mermas" element={<LazyWrap><ReporteMermas /></LazyWrap>} />
+        {/* Reportes standalone restantes (los demás son tabs de hubs) */}
         <Route path="reportes/trazabilidad-kpis" element={<LazyWrap><ReporteTrazabilidadKPIs /></LazyWrap>} />
         {/* Legacy redirects */}
         <Route path="reportes/dashboard" element={<Navigate to="/" replace />} />
@@ -227,13 +216,17 @@ function AppRoutes() {
         <Route path="reportes/cumplimiento-ruta" element={<Navigate to="/reportes/seguimiento?tab=cumplimiento" replace />} />
         <Route path="reportes/balance-terceros" element={<Navigate to="/reportes/operativo?tab=balance" replace />} />
         <Route path="reportes/costura" element={<Navigate to="/reportes/operativo?tab=operativo" replace />} />
+        <Route path="reportes/tiempos-muertos" element={<Navigate to="/reportes/operativo?tab=tiempos" replace />} />
         <Route path="reportes/lotes-fraccionados" element={<Navigate to="/reportes/lotes" replace />} />
+        <Route path="reportes/paralizados" element={<Navigate to="/reportes/seguimiento?tab=paralizados" replace />} />
         <Route path="reportes/trazabilidad-general" element={<Navigate to="/reportes/lotes?tab=trazabilidad" replace />} />
         <Route path="reportes/mp-valorizado" element={<Navigate to="/reportes/valorizacion" replace />} />
         <Route path="reportes/wip" element={<Navigate to="/reportes/valorizacion?tab=wip" replace />} />
         <Route path="reportes/pt-valorizado" element={<Navigate to="/reportes/valorizacion?tab=pt" replace />} />
         <Route path="calidad/merma" element={<Navigate to="/reportes/calidad?tab=mermas" replace />} />
         <Route path="calidad/reporte-mermas" element={<Navigate to="/reportes/calidad?tab=resumen-calidad" replace />} />
+        <Route path="reportes/mermas" element={<Navigate to="/reportes/calidad?tab=resumen-calidad" replace />} />
+        <Route path="reportes/estados-item" element={<Navigate to="/reportes/calidad?tab=estados" replace />} />
         <Route path="reportes/validacion-registros" element={<LazyWrap><ValidacionRegistros /></LazyWrap>} />
       </Route>
       
