@@ -2167,6 +2167,7 @@ async def validacion_registros(
             LEFT JOIN prod_entalles ent ON ent.id = mod.entalle_id
             WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
               AND r.dividido_desde_registro_id IS NULL
+              AND r.fecha_creacion >= '2026-01-01'
               {linea_filter}
               AND (
                 tp.nombre ILIKE '%pantalon%' OR tp.nombre ILIKE '%pantalón%'
