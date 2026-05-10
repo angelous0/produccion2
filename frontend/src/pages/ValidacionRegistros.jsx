@@ -132,7 +132,7 @@ export function ValidacionRegistros() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Validación de Registros</h2>
           <p className="text-muted-foreground text-sm">
-            Pantalones, Shorts y Casacas — MP y servicios requeridos por etapa
+            Pantalones — MP y servicios requeridos por etapa
           </p>
         </div>
         <div className="flex gap-2">

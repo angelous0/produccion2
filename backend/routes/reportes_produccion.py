@@ -2145,6 +2145,9 @@ async def validacion_registros(
     async with pool.acquire() as conn:
         linea_filter = f"AND r.linea_negocio_id = {linea_negocio_id}" if linea_negocio_id else ""
 
+        # Por ahora solo se valida Pantalón (incluye Pantalón Denim, Pantalón
+        # Drill, Otros Pantalón). Polo y Casaca quedan fuera del reporte hasta
+        # que se definan sus reglas específicas.
         registros = await conn.fetch(f"""
             SELECT
                 r.id::text AS id,
@@ -2167,14 +2170,8 @@ async def validacion_registros(
               {linea_filter}
               AND (
                 tp.nombre ILIKE '%pantalon%' OR tp.nombre ILIKE '%pantalón%'
-                OR tp.nombre ILIKE '%short%'
-                OR tp.nombre ILIKE '%casaca%'
-                OR tp.nombre ILIKE '%polo%'
                 OR r.modelo_manual->>'tipo_texto' ILIKE '%pantalon%'
                 OR r.modelo_manual->>'tipo_texto' ILIKE '%pantalón%'
-                OR r.modelo_manual->>'tipo_texto' ILIKE '%short%'
-                OR r.modelo_manual->>'tipo_texto' ILIKE '%casaca%'
-                OR r.modelo_manual->>'tipo_texto' ILIKE '%polo%'
               )
         """)
 
@@ -2341,49 +2338,9 @@ async def validacion_registros(
 
             return faltantes
 
-        # ── Validador genérico (Polo / Casaca) — pendiente de afinar ───────
-        def validar_legacy(reg, stage_idx):
-            """Lógica anterior, sin distinguir fecha_inicio/fin. Se mantiene
-            mientras se definen las reglas específicas para Polo y Casaca."""
-            rid = reg["id"]
-            faltantes = []
-            if stage_idx >= 2:
-                if not has_mp(rid, "tocuyo"):
-                    faltantes.append("tocuyo")
-                if not has_tela_no_tocuyo(rid):
-                    faltantes.append("tela principal")
-                if not has_mp(rid, "cierre"):
-                    faltantes.append("Cierre")
-                if not has_tallas_mp(rid):
-                    faltantes.append("Tallas")
-                if not has_svc_iniciado(rid, "corte"):
-                    faltantes.append("servicio Corte")
-                if not has_svc_iniciado(rid, "estampado"):
-                    faltantes.append("Estampado")
-                if not has_svc_iniciado(rid, "bordado"):
-                    faltantes.append("Bordado")
-            if stage_idx >= 6:
-                if not has_svc_iniciado(rid, "costura"):
-                    faltantes.append("Costura")
-                if not has_svc_iniciado(rid, "atraque"):
-                    faltantes.append("Atraque")
-            if stage_idx >= 9:
-                if not has_svc_iniciado(rid, "lavand"):
-                    faltantes.append("Lavandería")
-            if stage_idx >= 10:
-                if not has_svc_iniciado(rid, "acabado"):
-                    faltantes.append("servicio Acabado")
-                if not has_mp(rid, "boton") and not has_mp(rid, "botón"):
-                    faltantes.append("Botón")
-                if not has_mp(rid, "colgante"):
-                    faltantes.append("Colgante")
-                if not has_mp(rid, "adhesivo"):
-                    faltantes.append("Adhesivo por talla")
-            return faltantes
-
-        def es_pantalon_o_short(tipo_nombre: str) -> bool:
-            t = (tipo_nombre or "").lower()
-            return "pantalon" in t or "pantalón" in t or "short" in t
+        # NOTA: validadores `validar_polo` y `validar_casaca` se agregarán
+        # cuando se definan sus reglas. Por ahora el endpoint solo procesa
+        # registros de Pantalón (ver filtro SQL arriba).
 
         groups: dict = {}
 
@@ -2393,11 +2350,7 @@ async def validacion_registros(
             if stage_idx < 2:
                 continue
 
-            if es_pantalon_o_short(reg["tipo_nombre"]):
-                faltantes = validar_pantalon(reg, stage_idx)
-            else:
-                # Polo y Casaca usan validador legacy hasta que se definan reglas
-                faltantes = validar_legacy(reg, stage_idx)
+            faltantes = validar_pantalon(reg, stage_idx)
 
             if faltantes:
                 groups.setdefault(estado, []).append({
