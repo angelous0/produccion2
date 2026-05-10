@@ -2130,7 +2130,17 @@ async def validacion_registros(
     user=Depends(get_current_user),
 ):
     """Valida que registros de pantalones/shorts/casacas tengan los MP y servicios
-    requeridos según su etapa actual de producción."""
+    requeridos según su etapa actual de producción.
+
+    Reglas por tipo:
+      - Pantalón / Pantalón Denim / Pantalón Drill / Otros Pantalón / Short:
+        ver `_validar_pantalon` (se aplica también a shorts por simetría operativa).
+      - Polo y Casaca: pendientes de definir (usan el catálogo genérico legacy).
+
+    Para Pantalón se distingue entre servicios "iniciados" (con `fecha_inicio`),
+    "en proceso" (fecha_inicio sin fecha_fin) y "terminados" (con `fecha_fin`),
+    así como entre costura interna vs externa (por `tipo_persona` del movimiento).
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         linea_filter = f"AND r.linea_negocio_id = {linea_negocio_id}" if linea_negocio_id else ""
@@ -2142,6 +2152,7 @@ async def validacion_registros(
                 r.estado,
                 COALESCE(mod.nombre, r.modelo_manual->>'nombre_modelo', '') AS modelo_nombre,
                 COALESCE(tp.nombre, r.modelo_manual->>'tipo_texto', '')    AS tipo_nombre,
+                COALESCE(ent.nombre, r.modelo_manual->>'entalle_texto', '') AS entalle_nombre,
                 COALESCE(
                     (SELECT SUM(rt.cantidad_real)
                      FROM prod_registro_tallas rt WHERE rt.registro_id = r.id),
@@ -2150,6 +2161,7 @@ async def validacion_registros(
             FROM prod_registros r
             LEFT JOIN prod_modelos mod ON mod.id = r.modelo_id
             LEFT JOIN prod_tipos tp    ON tp.id  = mod.tipo_id
+            LEFT JOIN prod_entalles ent ON ent.id = mod.entalle_id
             WHERE r.estado_op IN ('ABIERTA', 'EN_PROCESO')
               AND r.dividido_desde_registro_id IS NULL
               {linea_filter}
@@ -2157,10 +2169,12 @@ async def validacion_registros(
                 tp.nombre ILIKE '%pantalon%' OR tp.nombre ILIKE '%pantalón%'
                 OR tp.nombre ILIKE '%short%'
                 OR tp.nombre ILIKE '%casaca%'
+                OR tp.nombre ILIKE '%polo%'
                 OR r.modelo_manual->>'tipo_texto' ILIKE '%pantalon%'
                 OR r.modelo_manual->>'tipo_texto' ILIKE '%pantalón%'
                 OR r.modelo_manual->>'tipo_texto' ILIKE '%short%'
                 OR r.modelo_manual->>'tipo_texto' ILIKE '%casaca%'
+                OR r.modelo_manual->>'tipo_texto' ILIKE '%polo%'
               )
         """)
 
@@ -2180,11 +2194,17 @@ async def validacion_registros(
               AND req.cantidad_requerida > 0
         """, reg_ids)
 
+        # Movimientos con fecha_inicio / fecha_fin / tipo_persona para distinguir
+        # servicio iniciado vs en proceso vs terminado, y costura interna vs externa.
         mov_rows = await conn.fetch("""
-            SELECT m.registro_id::text AS registro_id,
-                   s.nombre            AS servicio_nombre
+            SELECT m.registro_id::text  AS registro_id,
+                   s.nombre             AS servicio_nombre,
+                   m.fecha_inicio,
+                   m.fecha_fin,
+                   p.tipo_persona       AS tipo_persona
             FROM prod_movimientos_produccion m
             JOIN prod_servicios_produccion s ON s.id = m.servicio_id
+            LEFT JOIN prod_personas_produccion p ON p.id = m.persona_id
             WHERE m.registro_id::text = ANY($1::text[])
         """, reg_ids)
 
@@ -2198,9 +2218,12 @@ async def validacion_registros(
 
         mov_by_reg: dict = {}
         for row in mov_rows:
-            mov_by_reg.setdefault(row["registro_id"], []).append(
-                (row["servicio_nombre"] or "").lower()
-            )
+            mov_by_reg.setdefault(row["registro_id"], []).append({
+                "servicio": (row["servicio_nombre"] or "").lower(),
+                "fecha_inicio": row["fecha_inicio"],
+                "fecha_fin": row["fecha_fin"],
+                "tipo_persona": (row["tipo_persona"] or "").upper(),
+            })
 
         STAGE_ORDER = {
             "Para Corte": 0, "Corte": 1,
@@ -2211,6 +2234,7 @@ async def validacion_registros(
             "Almacén PT": 11, "Tienda": 12,
         }
 
+        # ── Helpers de MP ──────────────────────────────────────────────────
         def has_mp(rid, kw):
             return any(kw in it["nombre"] for it in mp_by_reg.get(rid, []))
 
@@ -2226,56 +2250,77 @@ async def validacion_registros(
                 for it in mp_by_reg.get(rid, [])
             )
 
-        def has_svc(rid, kw):
-            return any(kw in s for s in mov_by_reg.get(rid, []))
+        # ── Helpers de movimientos / servicios ─────────────────────────────
+        def _movs(rid, kw):
+            """Movimientos del registro cuyo nombre de servicio contiene `kw`."""
+            return [m for m in mov_by_reg.get(rid, []) if kw in m["servicio"]]
 
-        groups: dict = {}
+        def has_svc_iniciado(rid, kw):
+            """Tiene al menos un movimiento del servicio con fecha_inicio."""
+            return any(m["fecha_inicio"] for m in _movs(rid, kw))
 
-        for reg in registros:
+        def has_svc_terminado(rid, kw):
+            """Tiene al menos un movimiento del servicio con fecha_fin (terminado)."""
+            return any(m["fecha_fin"] for m in _movs(rid, kw))
+
+        def has_svc_en_proceso(rid, kw):
+            """Tiene un movimiento con fecha_inicio pero sin fecha_fin."""
+            return any(m["fecha_inicio"] and not m["fecha_fin"] for m in _movs(rid, kw))
+
+        def costura_es_interna(rid):
+            """True si al menos un movimiento de Costura tiene persona INTERNA."""
+            return any(m["tipo_persona"] == "INTERNO" for m in _movs(rid, "costura"))
+
+        # ── Validador específico para Pantalón / Short ─────────────────────
+        def validar_pantalon(reg, stage_idx):
             rid = reg["id"]
-            estado = reg["estado"] or ""
-            stage_idx = STAGE_ORDER.get(estado, -1)
-
-            if stage_idx < 2:
-                continue
-
+            entalle = (reg["entalle_nombre"] or "").lower().strip()
             faltantes = []
 
-            # Materiales requeridos desde Para Costura
-            if not has_mp(rid, "tocuyo"):
-                faltantes.append("tocuyo")
-            if not has_tela_no_tocuyo(rid):
-                faltantes.append("tela principal")
-            if not has_mp(rid, "cierre"):
-                faltantes.append("Cierre")
-            if not has_tallas_mp(rid):
-                faltantes.append("Tallas")
+            # Para Costura (≥ 2): MP base + servicios pre-costura
+            if stage_idx >= 2:
+                if not has_mp(rid, "tocuyo"):
+                    faltantes.append("tocuyo")
+                if not has_tela_no_tocuyo(rid):
+                    faltantes.append("tela principal")
+                if not has_mp(rid, "cierre"):
+                    faltantes.append("Cierre")
+                if not has_tallas_mp(rid):
+                    faltantes.append("Tallas")
+                if not has_svc_iniciado(rid, "corte"):
+                    faltantes.append("servicio Corte")
+                if not has_svc_iniciado(rid, "bordado"):
+                    faltantes.append("Bordado")
+                # En esta empresa "Pretina" es el servicio Estampado
+                if not has_svc_iniciado(rid, "estampado"):
+                    faltantes.append("Estampado / Pretina")
 
-            # Servicios comunes desde Para Costura
-            if not has_svc(rid, "corte"):
-                faltantes.append("servicio Corte")
-            if not has_svc(rid, "estampado"):
-                faltantes.append("Estampado")
-            if not has_svc(rid, "bordado"):
-                faltantes.append("Bordado")
-            if not has_svc(rid, "pretina"):
-                faltantes.append("Pretina")
+            # Costura (= 3): debe estar en proceso (iniciado, sin terminar)
+            if stage_idx == 3:
+                if not has_svc_en_proceso(rid, "costura"):
+                    faltantes.append("Costura en proceso")
 
-            # Desde Para Lavandería: deben tener movimiento Costura y Atraque
+            # Para Lavandería en adelante (≥ 6): Costura terminada + Atraque
+            # (atraque solo si la costura fue interna; externa lo puede obviar)
             if stage_idx >= 6:
-                if not has_svc(rid, "costura"):
-                    faltantes.append("Costura")
-                if not has_svc(rid, "atraque"):
-                    faltantes.append("Atraque")
+                if not has_svc_terminado(rid, "costura"):
+                    faltantes.append("Costura terminada")
+                if costura_es_interna(rid) and not has_svc_iniciado(rid, "atraque"):
+                    faltantes.append("Atraque (costura interna)")
 
-            # Desde Para Acabado: deben tener servicio Lavandería
+            # Lavandería (= 8): servicio Lavandería en proceso
+            if stage_idx == 8:
+                if not has_svc_en_proceso(rid, "lavand"):
+                    faltantes.append("Lavandería en proceso")
+
+            # Para Acabado (≥ 9): Lavandería terminada
             if stage_idx >= 9:
-                if not has_svc(rid, "lavand"):
-                    faltantes.append("Lavandería")
+                if not has_svc_terminado(rid, "lavand"):
+                    faltantes.append("Lavandería terminada")
 
-            # Desde Acabado: servicio Acabado + avíos de acabado
+            # Acabado en adelante (≥ 10): servicio Acabado iniciado + avíos de cierre
             if stage_idx >= 10:
-                if not has_svc(rid, "acabado"):
+                if not has_svc_iniciado(rid, "acabado"):
                     faltantes.append("servicio Acabado")
                 if not has_mp(rid, "boton") and not has_mp(rid, "botón"):
                     faltantes.append("Botón")
@@ -2285,19 +2330,82 @@ async def validacion_registros(
                     faltantes.append("Hangtag Bolsillero")
                 if not has_mp(rid, "pretinero"):
                     faltantes.append("Hangtag Pretinero")
-                if not has_mp(rid, "entalle") and not has_mp(rid, "perfect"):
-                    faltantes.append("Hangtag Entalle")
+                # Hangtag de entalle: no aplica para Flare ni Mom
+                if entalle not in ("flare", "mom"):
+                    if not has_mp(rid, "entalle") and not has_mp(rid, "perfect"):
+                        faltantes.append("Hangtag Entalle")
                 if not has_mp(rid, "colgante"):
                     faltantes.append("Colgante")
                 if not has_mp(rid, "adhesivo"):
                     faltantes.append("Adhesivo por talla")
 
+            return faltantes
+
+        # ── Validador genérico (Polo / Casaca) — pendiente de afinar ───────
+        def validar_legacy(reg, stage_idx):
+            """Lógica anterior, sin distinguir fecha_inicio/fin. Se mantiene
+            mientras se definen las reglas específicas para Polo y Casaca."""
+            rid = reg["id"]
+            faltantes = []
+            if stage_idx >= 2:
+                if not has_mp(rid, "tocuyo"):
+                    faltantes.append("tocuyo")
+                if not has_tela_no_tocuyo(rid):
+                    faltantes.append("tela principal")
+                if not has_mp(rid, "cierre"):
+                    faltantes.append("Cierre")
+                if not has_tallas_mp(rid):
+                    faltantes.append("Tallas")
+                if not has_svc_iniciado(rid, "corte"):
+                    faltantes.append("servicio Corte")
+                if not has_svc_iniciado(rid, "estampado"):
+                    faltantes.append("Estampado")
+                if not has_svc_iniciado(rid, "bordado"):
+                    faltantes.append("Bordado")
+            if stage_idx >= 6:
+                if not has_svc_iniciado(rid, "costura"):
+                    faltantes.append("Costura")
+                if not has_svc_iniciado(rid, "atraque"):
+                    faltantes.append("Atraque")
+            if stage_idx >= 9:
+                if not has_svc_iniciado(rid, "lavand"):
+                    faltantes.append("Lavandería")
+            if stage_idx >= 10:
+                if not has_svc_iniciado(rid, "acabado"):
+                    faltantes.append("servicio Acabado")
+                if not has_mp(rid, "boton") and not has_mp(rid, "botón"):
+                    faltantes.append("Botón")
+                if not has_mp(rid, "colgante"):
+                    faltantes.append("Colgante")
+                if not has_mp(rid, "adhesivo"):
+                    faltantes.append("Adhesivo por talla")
+            return faltantes
+
+        def es_pantalon_o_short(tipo_nombre: str) -> bool:
+            t = (tipo_nombre or "").lower()
+            return "pantalon" in t or "pantalón" in t or "short" in t
+
+        groups: dict = {}
+
+        for reg in registros:
+            estado = reg["estado"] or ""
+            stage_idx = STAGE_ORDER.get(estado, -1)
+            if stage_idx < 2:
+                continue
+
+            if es_pantalon_o_short(reg["tipo_nombre"]):
+                faltantes = validar_pantalon(reg, stage_idx)
+            else:
+                # Polo y Casaca usan validador legacy hasta que se definan reglas
+                faltantes = validar_legacy(reg, stage_idx)
+
             if faltantes:
                 groups.setdefault(estado, []).append({
-                    "id": rid,
+                    "id": reg["id"],
                     "n_corte": reg["n_corte"],
                     "modelo": reg["modelo_nombre"],
                     "tipo": reg["tipo_nombre"],
+                    "entalle": reg["entalle_nombre"],
                     "total_prendas": safe_int(reg["total_prendas"]),
                     "faltantes": faltantes,
                 })
