@@ -66,7 +66,6 @@ import {
   ShieldCheck,
   TrendingUp,
   Truck,
-  CalendarDays,
   BarChart2,
   Search,
   Building2,
@@ -140,7 +139,6 @@ const inventarioItems = [
 const reportesItems = [
   { to: '/reportes/validacion-registros', icon: ShieldAlert, label: 'Validación MP/Servicios' },
   { to: '/reportes/seguimiento', icon: Activity, label: 'Seguimiento' },
-  { to: '/reportes/agenda-entregas', icon: CalendarDays, label: 'Agenda Entregas' },
   { to: '/reportes/entregas', icon: Truck, label: 'Entregas' },
   { to: '/reportes/costo-lote', icon: BarChart2, label: 'Costo por Lote' },
   { to: '/reportes/operativo', icon: Users, label: 'Operativo & Terceros' },

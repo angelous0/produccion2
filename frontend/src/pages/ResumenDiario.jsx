@@ -70,7 +70,7 @@ export default function ResumenDiario() {
           { label: 'Lotes Activos', value: data.activos, icon: Activity, cls: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950', onClick: () => navigate('/reportes/seguimiento') },
           { label: 'Prendas en Proceso', value: data.totalPrendas.toLocaleString(), icon: Package, cls: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950' },
           { label: 'Atrasados', value: data.atrasados, icon: AlertTriangle, cls: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950', onClick: () => navigate('/reportes/entregas') },
-          { label: 'Entregan en 7d', value: data.proximos7d, icon: Clock, cls: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950', onClick: () => navigate('/reportes/agenda-entregas') },
+          { label: 'Entregan en 7d', value: data.proximos7d, icon: Clock, cls: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950', onClick: () => navigate('/reportes/entregas') },
         ].map(k => (
           <div key={k.label} onClick={k.onClick} className={"rounded-xl border bg-card p-4 flex items-center gap-3 " + (k.onClick ? 'cursor-pointer hover:border-primary/40 transition-colors' : '')}>
             <div className={"flex items-center justify-center h-11 w-11 rounded-xl flex-shrink-0 " + k.bg}>
@@ -113,7 +113,7 @@ export default function ResumenDiario() {
         <div className="rounded-xl border bg-card overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
             <h3 className="text-sm font-bold flex items-center gap-2"><Clock className="h-4 w-4 text-amber-500" /> Proximas Entregas</h3>
-            <button onClick={() => navigate('/reportes/agenda-entregas')} className="text-xs text-primary hover:underline">Ver calendario</button>
+            <button onClick={() => navigate('/reportes/entregas')} className="text-xs text-primary hover:underline">Ver entregas</button>
           </div>
           {data.proximosLotes.length === 0 ? (
             <div className="flex items-center justify-center h-24 text-muted-foreground text-sm">Sin entregas proximas</div>
