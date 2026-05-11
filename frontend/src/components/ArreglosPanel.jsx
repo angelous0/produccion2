@@ -301,7 +301,9 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
     // diasHabilesHastaLimite < 0 ⇒ ya venció.
     const resueltoPrevio = rec + liq + pat + mer;
     const diasRestantes = diasHabilesHastaLimite(arreglo.fecha_limite);
-    const vencido = diasRestantes !== null && diasRestantes < 0;
+    // VENCE HOY (0) también activa el default — por defecto se asume cierre
+    // con A cobrar = cantidad. Si el proveedor entrega algo, el supervisor edita.
+    const vencido = diasRestantes !== null && diasRestantes <= 0;
     if (vencido && resueltoPrevio === 0) {
       // Ya pasó el plazo del proveedor y nadie marcó nada todavía:
       // el supervisor está marcando para facturar.
@@ -839,10 +841,11 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
               {(() => {
                 if (!selectedArreglo) return null;
                 const d = diasHabilesHastaLimite(selectedArreglo.fecha_limite);
-                if (d === null || d >= 0) return null;
+                if (d === null || d > 0) return null;
+                const label = d === 0 ? 'VENCE HOY' : `VENCIDO ${Math.abs(d)}d`;
                 return (
                   <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 border-red-200">
-                    VENCIDO {Math.abs(d)}d
+                    {label}
                   </span>
                 );
               })()}
