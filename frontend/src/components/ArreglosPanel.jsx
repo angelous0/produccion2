@@ -295,13 +295,16 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
     const liq = arreglo.cantidad_liquidacion || 0;
     const pat = arreglo.cantidad_pasa_a_tela || 0;
     const mer = arreglo.cantidad_merma || 0;
-    // Default inteligente cuando está VENCIDO: si el envío ya venció y no
-    // tiene resolución parcial guardada, el supervisor está marcando para
-    // facturar al proveedor. Pre-llenamos los 3 inputs con
-    // Recuperadas=0, A cobrar=cantidad enviada, Pasan a tela=0. Si el
-    // proveedor sí recuperó algo igual, el supervisor edita los valores.
+    // Default inteligente: el "vencimiento" es dinámico — la BD guarda
+    // estado='EN_ARREGLO' aunque fecha_limite ya haya pasado. Usamos el
+    // mismo countdown que pinta el badge "VENCIDO Xd" en la tarjeta:
+    // diasHabilesHastaLimite < 0 ⇒ ya venció.
     const resueltoPrevio = rec + liq + pat + mer;
-    if (arreglo.estado === 'VENCIDO' && resueltoPrevio === 0) {
+    const diasRestantes = diasHabilesHastaLimite(arreglo.fecha_limite);
+    const vencido = diasRestantes !== null && diasRestantes < 0;
+    if (vencido && resueltoPrevio === 0) {
+      // Ya pasó el plazo del proveedor y nadie marcó nada todavía:
+      // el supervisor está marcando para facturar.
       setResolucionForm({
         cantidad_recuperada: 0,
         cantidad_liquidacion: arreglo.cantidad,
@@ -309,6 +312,8 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
         cantidad_merma: 0,
       });
     } else {
+      // No vencido o ya hay resolución parcial: conservar lo que haya
+      // (todos 0 si nunca se tocó, parciales si los hay).
       setResolucionForm({
         cantidad_recuperada: rec,
         cantidad_liquidacion: liq,
@@ -831,11 +836,16 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
           <DialogHeader>
             <DialogTitle className="text-sm">
               Marcar entregado · {resCantidad} prendas
-              {selectedArreglo?.estado === 'VENCIDO' && (
-                <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 border-red-200">
-                  VENCIDO
-                </span>
-              )}
+              {(() => {
+                if (!selectedArreglo) return null;
+                const d = diasHabilesHastaLimite(selectedArreglo.fecha_limite);
+                if (d === null || d >= 0) return null;
+                return (
+                  <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 border-red-200">
+                    VENCIDO {Math.abs(d)}d
+                  </span>
+                );
+              })()}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
