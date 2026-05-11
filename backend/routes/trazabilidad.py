@@ -21,6 +21,22 @@ from auth_utils import get_current_user
 from helpers import row_to_dict
 
 DIAS_LIMITE_ARREGLO = 3
+DIAS_LIMITE_TELA_DESTRABAR = 5  # Si tela EVALUANDO lleva más, se pinta ámbar
+
+
+def add_workdays_no_sunday(start: date, days: int) -> date:
+    """Suma `days` días al calendario saltando domingos.
+
+    Ejemplo: viernes + 3 → miércoles (sábado cuenta, domingo se salta,
+    lunes-martes-miércoles).
+    """
+    current = start
+    added = 0
+    while added < days:
+        current += timedelta(days=1)
+        if current.weekday() != 6:  # 6 = domingo en Python (lunes=0)
+            added += 1
+    return current
 
 
 def safe_int(v):
@@ -57,10 +73,17 @@ async def init_trazabilidad_tables():
                 created_by VARCHAR
             )
         """)
-        # Columnas legacy que pueden existir - agregar created_by si no existe
+        # Columnas legacy / extensiones — todas con defaults sensatos para
+        # registros antiguos (causa='servicio', sin estado_tela ni fecha_cierre).
         for col_sql in [
             "ALTER TABLE prod_fallados ADD COLUMN IF NOT EXISTS created_by VARCHAR",
             "ALTER TABLE prod_fallados ADD COLUMN IF NOT EXISTS observacion TEXT",
+            "ALTER TABLE prod_fallados ADD COLUMN IF NOT EXISTS causa VARCHAR DEFAULT 'servicio'",
+            "ALTER TABLE prod_fallados ADD COLUMN IF NOT EXISTS estado_tela VARCHAR",
+            "ALTER TABLE prod_fallados ADD COLUMN IF NOT EXISTS fecha_cierre DATE",
+            "ALTER TABLE prod_fallados ADD COLUMN IF NOT EXISTS origen_arreglo_id VARCHAR",
+            # Backfill: cualquier fila vieja sin causa se considera 'servicio'.
+            "UPDATE prod_fallados SET causa = 'servicio' WHERE causa IS NULL",
         ]:
             try:
                 await conn.execute(col_sql)
@@ -86,6 +109,16 @@ async def init_trazabilidad_tables():
                 created_by VARCHAR
             )
         """)
+        # Extensión: cantidad que el servicio terminó pero pasó a evaluación
+        # de tela (Acabado decide después). Nullable / default 0 para datos
+        # antiguos que no tenían este flujo.
+        try:
+            await conn.execute(
+                "ALTER TABLE prod_registro_arreglos "
+                "ADD COLUMN IF NOT EXISTS cantidad_pasa_a_tela INT DEFAULT 0"
+            )
+        except Exception:
+            pass
 
         # Tabla legacy de arreglos (mantener para datos existentes)
         await conn.execute("""
@@ -123,11 +156,18 @@ class FalladoCreate(BaseModel):
     cantidad_detectada: int
     fecha_deteccion: Optional[str] = None
     observacion: str = ""
+    # Causa: 'servicio' (default, flujo legacy) o 'tela' (queda en evaluación
+    # interna de Acabado, no se envía a proveedor).
+    causa: Optional[str] = "servicio"
 
 class FalladoUpdate(BaseModel):
     cantidad_detectada: Optional[int] = None
     fecha_deteccion: Optional[str] = None
     observacion: Optional[str] = None
+
+class FalladoCerrarTela(BaseModel):
+    """Cierra un fallado causa='tela' con la decisión de Acabado."""
+    resolucion: str  # 'RECUPERADO' o 'LIQUIDADO'
 
 class ArregloCreate(BaseModel):
     cantidad: int
@@ -140,6 +180,7 @@ class ArregloResolucion(BaseModel):
     cantidad_recuperada: int = 0
     cantidad_liquidacion: int = 0
     cantidad_merma: int = 0
+    cantidad_pasa_a_tela: int = 0
 
 class ArregloUpdate(BaseModel):
     cantidad: Optional[int] = None
@@ -150,17 +191,24 @@ class ArregloUpdate(BaseModel):
     cantidad_recuperada: Optional[int] = None
     cantidad_liquidacion: Optional[int] = None
     cantidad_merma: Optional[int] = None
+    cantidad_pasa_a_tela: Optional[int] = None
 
 
 # ==================== HELPERS ====================
 
 def _calcular_estado_arreglo(arreglo_row):
-    """Calcula el estado real de un arreglo basado en sus datos."""
+    """Calcula el estado real de un arreglo basado en sus datos.
+
+    Resuelto = recuperadas + a cobrar al proveedor (liquidacion) + merma
+              + pasa_a_tela. Cuando suma >= cantidad enviada, el envío se
+    considera COMPLETADO (independientemente de cómo se distribuyó).
+    """
     rec = safe_int(arreglo_row.get("cantidad_recuperada", 0))
     liq = safe_int(arreglo_row.get("cantidad_liquidacion", 0))
     mer = safe_int(arreglo_row.get("cantidad_merma", 0))
+    pat = safe_int(arreglo_row.get("cantidad_pasa_a_tela", 0))
     cant = safe_int(arreglo_row.get("cantidad", 0))
-    resuelto = rec + liq + mer
+    resuelto = rec + liq + mer + pat
 
     if resuelto >= cant and cant > 0:
         return "COMPLETADO"
@@ -182,10 +230,39 @@ def _calcular_estado_arreglo(arreglo_row):
 
 
 async def _get_total_fallados(conn, registro_id: str) -> int:
-    """Fuente oficial: SUM(cantidad_detectada) de prod_fallados."""
+    """SUM(cantidad_detectada) de fallados causa='servicio' SIN origen_arreglo_id.
+
+    Estos son los que respaldan el cupo de envíos a arreglo. Los fallados
+    causa='tela' siguen un flujo paralelo (no van a proveedor) y los
+    derivados de un arreglo (origen_arreglo_id != NULL) son sólo
+    reclasificación, no prendas físicas nuevas.
+    """
     val = await conn.fetchval(
-        "SELECT COALESCE(SUM(cantidad_detectada), 0) FROM prod_fallados WHERE registro_id = $1",
-        registro_id
+        """
+        SELECT COALESCE(SUM(cantidad_detectada), 0)
+        FROM prod_fallados
+        WHERE registro_id = $1
+          AND origen_arreglo_id IS NULL
+          AND COALESCE(causa, 'servicio') = 'servicio'
+        """,
+        registro_id,
+    )
+    return safe_int(val)
+
+
+async def _get_total_fallados_originales(conn, registro_id: str) -> int:
+    """SUM de fallados originales (sin origen_arreglo_id), de cualquier causa.
+
+    Representa las prendas físicas detectadas como falladas. Se usa para
+    calcular `normal = producido - total_fallados_originales - merma - divididos`.
+    """
+    val = await conn.fetchval(
+        """
+        SELECT COALESCE(SUM(cantidad_detectada), 0)
+        FROM prod_fallados
+        WHERE registro_id = $1 AND origen_arreglo_id IS NULL
+        """,
+        registro_id,
     )
     return safe_int(val)
 
@@ -208,7 +285,9 @@ async def _get_arreglos_sum(conn, registro_id: str, exclude_id: str = None) -> i
 async def _actualizar_estados_arreglos(conn, registro_id: str):
     """Recalcula estados de todos los arreglos de un registro."""
     rows = await conn.fetch(
-        "SELECT id, cantidad, cantidad_recuperada, cantidad_liquidacion, cantidad_merma, fecha_limite FROM prod_registro_arreglos WHERE registro_id = $1",
+        "SELECT id, cantidad, cantidad_recuperada, cantidad_liquidacion, cantidad_merma, "
+        "COALESCE(cantidad_pasa_a_tela, 0) AS cantidad_pasa_a_tela, fecha_limite, estado "
+        "FROM prod_registro_arreglos WHERE registro_id = $1",
         registro_id
     )
     for r in rows:
@@ -235,6 +314,8 @@ async def get_fallados(
         query = """
             SELECT f.id, f.registro_id, f.cantidad_detectada, f.fecha_deteccion,
                    COALESCE(f.observacion, f.observaciones) as observacion,
+                   COALESCE(f.causa, 'servicio') AS causa,
+                   f.estado_tela, f.fecha_cierre, f.origen_arreglo_id,
                    f.created_at, f.created_by
             FROM prod_fallados f
             WHERE 1=1
@@ -248,7 +329,7 @@ async def get_fallados(
         result = []
         for r in rows:
             d = dict(r)
-            for f in ("fecha_deteccion", "created_at"):
+            for f in ("fecha_deteccion", "fecha_cierre", "created_at"):
                 if d.get(f): d[f] = str(d[f])
             result.append(d)
         return result
@@ -262,18 +343,72 @@ async def create_fallado(
     if input.cantidad_detectada <= 0:
         raise HTTPException(status_code=400, detail="La cantidad detectada debe ser mayor a 0")
 
+    causa = (input.causa or "servicio").lower().strip()
+    if causa not in ("servicio", "tela"):
+        raise HTTPException(status_code=400, detail="causa debe ser 'servicio' o 'tela'")
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         fid = str(uuid.uuid4())
         fecha = date.fromisoformat(input.fecha_deteccion[:10]) if input.fecha_deteccion else date.today()
         created_by = current_user.get("username", current_user.get("nombre", "sistema"))
 
-        await conn.execute("""
-            INSERT INTO prod_fallados (id, registro_id, cantidad_detectada, fecha_deteccion, observacion, created_by)
-            VALUES ($1, $2, $3, $4, $5, $6)
-        """, fid, input.registro_id, input.cantidad_detectada, fecha, input.observacion, created_by)
+        # Para causa='tela' arrancan en estado EVALUANDO. Para 'servicio' el
+        # campo estado_tela queda NULL (no aplica).
+        estado_tela = "EVALUANDO" if causa == "tela" else None
 
-        return {"id": fid, "message": "Fallado registrado"}
+        await conn.execute("""
+            INSERT INTO prod_fallados
+                (id, registro_id, cantidad_detectada, fecha_deteccion, observacion,
+                 created_by, causa, estado_tela)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        """, fid, input.registro_id, input.cantidad_detectada, fecha,
+            input.observacion, created_by, causa, estado_tela)
+
+        return {"id": fid, "message": "Fallado registrado", "causa": causa, "estado_tela": estado_tela}
+
+
+@router.post("/fallados/{fallado_id}/cerrar-tela")
+async def cerrar_fallado_tela(
+    fallado_id: str,
+    input: FalladoCerrarTela,
+    current_user: dict = Depends(get_current_user),
+):
+    """Cierra un fallado causa='tela' con la decisión de Acabado:
+    - RECUPERADO: la prenda vuelve al lote bueno.
+    - LIQUIDADO: la prenda sale del inventario.
+    """
+    resolucion = (input.resolucion or "").upper().strip()
+    if resolucion not in ("RECUPERADO", "LIQUIDADO"):
+        raise HTTPException(
+            status_code=400,
+            detail="resolucion debe ser 'RECUPERADO' o 'LIQUIDADO'",
+        )
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        existing = await conn.fetchrow(
+            "SELECT id, causa, estado_tela FROM prod_fallados WHERE id = $1",
+            fallado_id,
+        )
+        if not existing:
+            raise HTTPException(status_code=404, detail="Fallado no encontrado")
+        if (existing["causa"] or "servicio") != "tela":
+            raise HTTPException(
+                status_code=400,
+                detail="Solo se pueden cerrar fallados con causa='tela'",
+            )
+        if existing["estado_tela"] in ("RECUPERADO", "LIQUIDADO"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Este fallado ya fue cerrado como {existing['estado_tela']}",
+            )
+
+        await conn.execute(
+            "UPDATE prod_fallados SET estado_tela = $1, fecha_cierre = $2 WHERE id = $3",
+            resolucion, date.today(), fallado_id,
+        )
+        return {"message": f"Fallado cerrado como {resolucion}", "estado_tela": resolucion}
 
 
 @router.put("/fallados/{fallado_id}")
@@ -414,7 +549,8 @@ async def create_arreglo(
 
         aid = str(uuid.uuid4())
         fecha_envio = date.fromisoformat(input.fecha_envio[:10]) if input.fecha_envio else date.today()
-        fecha_limite = fecha_envio + timedelta(days=DIAS_LIMITE_ARREGLO)
+        # Plazo de 3 días hábiles (sin domingos). Si envío viernes → vence miércoles.
+        fecha_limite = add_workdays_no_sunday(fecha_envio, DIAS_LIMITE_ARREGLO)
         created_by = current_user.get("username", current_user.get("nombre", "sistema"))
 
         await conn.execute("""
@@ -453,17 +589,31 @@ async def update_arreglo(
         rec = input.cantidad_recuperada if input.cantidad_recuperada is not None else existing["cantidad_recuperada"]
         liq = input.cantidad_liquidacion if input.cantidad_liquidacion is not None else existing["cantidad_liquidacion"]
         mer = input.cantidad_merma if input.cantidad_merma is not None else existing["cantidad_merma"]
+        # Nuevo campo: "pasa a evaluación de tela". Si no estaba en BD
+        # (datos antiguos), arranca en 0 — no cambia el comportamiento previo.
+        prev_pat = safe_int(existing.get("cantidad_pasa_a_tela", 0) or 0)
+        pat = input.cantidad_pasa_a_tela if input.cantidad_pasa_a_tela is not None else prev_pat
 
         # Validar no negativos
-        for nombre, val in [("cantidad", cantidad_final), ("cantidad_recuperada", rec), ("cantidad_liquidacion", liq), ("cantidad_merma", mer)]:
+        for nombre, val in [
+            ("cantidad", cantidad_final),
+            ("cantidad_recuperada", rec),
+            ("cantidad_liquidacion", liq),
+            ("cantidad_merma", mer),
+            ("cantidad_pasa_a_tela", pat),
+        ]:
             if val < 0:
                 raise HTTPException(status_code=400, detail=f"{nombre} no puede ser negativo")
 
-        # Validar resolucion no exceda cantidad
-        if rec + liq + mer > cantidad_final:
+        # Validar resolución no exceda cantidad
+        suma = rec + liq + mer + pat
+        if suma > cantidad_final:
             raise HTTPException(
                 status_code=400,
-                detail=f"La resolucion ({rec} + {liq} + {mer} = {rec+liq+mer}) excede la cantidad del arreglo ({cantidad_final})"
+                detail=(
+                    f"La resolución ({rec} + {liq} + {mer} + {pat} = {suma}) "
+                    f"excede la cantidad del arreglo ({cantidad_final})"
+                ),
             )
 
         # Si se cambia la cantidad, validar contra total_fallados
@@ -486,6 +636,7 @@ async def update_arreglo(
             ("cantidad_recuperada", input.cantidad_recuperada),
             ("cantidad_liquidacion", input.cantidad_liquidacion),
             ("cantidad_merma", input.cantidad_merma),
+            ("cantidad_pasa_a_tela", input.cantidad_pasa_a_tela),
         ]:
             if val is not None:
                 params.append(val if val != "" else None)
@@ -495,7 +646,7 @@ async def update_arreglo(
             fe = date.fromisoformat(input.fecha_envio[:10])
             params.append(fe)
             sets.append(f"fecha_envio = ${len(params)}")
-            fl = fe + timedelta(days=DIAS_LIMITE_ARREGLO)
+            fl = add_workdays_no_sunday(fe, DIAS_LIMITE_ARREGLO)
             params.append(fl)
             sets.append(f"fecha_limite = ${len(params)}")
 
@@ -505,7 +656,11 @@ async def update_arreglo(
         if input.cantidad_recuperada is not None: temp["cantidad_recuperada"] = input.cantidad_recuperada
         if input.cantidad_liquidacion is not None: temp["cantidad_liquidacion"] = input.cantidad_liquidacion
         if input.cantidad_merma is not None: temp["cantidad_merma"] = input.cantidad_merma
-        if input.fecha_envio is not None: temp["fecha_limite"] = date.fromisoformat(input.fecha_envio[:10]) + timedelta(days=DIAS_LIMITE_ARREGLO)
+        if input.cantidad_pasa_a_tela is not None: temp["cantidad_pasa_a_tela"] = input.cantidad_pasa_a_tela
+        if input.fecha_envio is not None:
+            temp["fecha_limite"] = add_workdays_no_sunday(
+                date.fromisoformat(input.fecha_envio[:10]), DIAS_LIMITE_ARREGLO,
+            )
         nuevo_estado = _calcular_estado_arreglo(temp)
         params.append(nuevo_estado)
         sets.append(f"estado = ${len(params)}")
@@ -515,6 +670,37 @@ async def update_arreglo(
             await conn.execute(
                 f"UPDATE prod_registro_arreglos SET {', '.join(sets)} WHERE id = ${len(params)}",
                 *params
+            )
+
+        # === Auto-crear fallado tela si pasa_a_tela aumentó ===
+        # Cuando el servicio terminó y declaró que X prendas tienen defecto
+        # de tela (no de servicio), creamos automáticamente un fallado con
+        # causa='tela' en estado EVALUANDO, para que Acabado decida.
+        delta_pat = pat - prev_pat
+        if delta_pat > 0:
+            servicio_nombre = await conn.fetchval(
+                "SELECT sp.nombre FROM prod_servicios_produccion sp WHERE sp.id = $1",
+                existing.get("servicio_id"),
+            )
+            persona_nombre = await conn.fetchval(
+                "SELECT pp.nombre FROM prod_personas_produccion pp WHERE pp.id = $1",
+                existing.get("persona_id"),
+            )
+            origen_label = servicio_nombre or "servicio"
+            if persona_nombre:
+                origen_label = f"{origen_label} · {persona_nombre}"
+            nota = f"Viene de {origen_label} (envío {arreglo_id[:8]})"
+            created_by = current_user.get("username", current_user.get("nombre", "sistema"))
+
+            await conn.execute(
+                """
+                INSERT INTO prod_fallados
+                    (id, registro_id, cantidad_detectada, fecha_deteccion, observacion,
+                     created_by, causa, estado_tela, origen_arreglo_id)
+                VALUES ($1, $2, $3, $4, $5, $6, 'tela', 'EVALUANDO', $7)
+                """,
+                str(uuid.uuid4()), registro_id, delta_pat, date.today(), nota,
+                created_by, arreglo_id,
             )
 
         return {"message": "Arreglo actualizado", "estado": nuevo_estado}
@@ -583,25 +769,65 @@ async def resumen_cantidades(
             "SELECT COALESCE(SUM(cantidad), 0) FROM prod_mermas WHERE registro_id = $1", registro_id
         ))
 
-        # Fallados (fuente oficial)
+        # Fallados originales (sin origen_arreglo_id) — base para "normal".
+        # `total_fallados` cuenta solo causa='servicio' (los que respaldan arreglos);
+        # `total_fallados_originales` cuenta todos los originales (servicio + tela).
         total_fallados = await _get_total_fallados(conn, registro_id)
+        total_fallados_originales = await _get_total_fallados_originales(conn, registro_id)
 
-        # Arreglos V2
+        # Cifras del flujo "De tela" (causa='tela'), por estado.
+        tela_evaluando = safe_int(await conn.fetchval(
+            """
+            SELECT COALESCE(SUM(cantidad_detectada), 0) FROM prod_fallados
+            WHERE registro_id = $1 AND causa = 'tela' AND estado_tela = 'EVALUANDO'
+            """,
+            registro_id,
+        ))
+        tela_recuperado = safe_int(await conn.fetchval(
+            """
+            SELECT COALESCE(SUM(cantidad_detectada), 0) FROM prod_fallados
+            WHERE registro_id = $1 AND causa = 'tela' AND estado_tela = 'RECUPERADO'
+            """,
+            registro_id,
+        ))
+        tela_liquidado = safe_int(await conn.fetchval(
+            """
+            SELECT COALESCE(SUM(cantidad_detectada), 0) FROM prod_fallados
+            WHERE registro_id = $1 AND causa = 'tela' AND estado_tela = 'LIQUIDADO'
+            """,
+            registro_id,
+        ))
+
+        # Arreglos V2 (envíos a servicio)
         arreglos_rows = await conn.fetch(
-            "SELECT cantidad, cantidad_recuperada, cantidad_liquidacion, cantidad_merma, estado, fecha_limite FROM prod_registro_arreglos WHERE registro_id = $1",
-            registro_id
+            """
+            SELECT cantidad, cantidad_recuperada, cantidad_liquidacion,
+                   cantidad_merma, COALESCE(cantidad_pasa_a_tela, 0) AS cantidad_pasa_a_tela,
+                   estado, fecha_limite
+            FROM prod_registro_arreglos WHERE registro_id = $1
+            """,
+            registro_id,
         )
         total_en_arreglo = sum(safe_int(a["cantidad"]) for a in arreglos_rows)
         total_recuperado = sum(safe_int(a["cantidad_recuperada"]) for a in arreglos_rows)
         total_liquidacion = sum(safe_int(a["cantidad_liquidacion"]) for a in arreglos_rows)
         total_merma_arreglos = sum(safe_int(a["cantidad_merma"]) for a in arreglos_rows)
+        total_pasa_a_tela = sum(safe_int(a["cantidad_pasa_a_tela"]) for a in arreglos_rows)
 
-        # fallado_pendiente = TODO lo no resuelto (sin enviar + enviado sin resolver)
-        fallado_pendiente = total_fallados - total_recuperado - total_liquidacion - total_merma_arreglos
-        # sin_enviar = lo que aun no se ha mandado a arreglo
+        # Lo "resuelto" desde el lado del arreglo incluye también lo que pasó a tela
+        # (esas prendas ya salieron del arreglo, ahora viven en el flujo tela).
+        total_resuelto_arreglos = (
+            total_recuperado + total_liquidacion + total_merma_arreglos + total_pasa_a_tela
+        )
+        # Fallados servicio aún sin asignar a un arreglo
         sin_enviar = total_fallados - total_en_arreglo
-        # en_arreglo_sin_resolver = enviado pero aun no resuelto
-        en_arreglo_sin_resolver = total_en_arreglo - total_recuperado - total_liquidacion - total_merma_arreglos
+        # Arreglos enviados pero aún sin resolución completa
+        en_arreglo_sin_resolver = total_en_arreglo - total_resuelto_arreglos
+
+        # Compatibilidad: `fallado_pendiente` que la UI legacy usa.
+        # = sin_enviar + en_arreglo_sin_resolver (las prendas servicio que aún
+        # no tienen destino final), sin contar tela (eso se muestra aparte).
+        fallado_pendiente = sin_enviar + en_arreglo_sin_resolver
 
         # Arreglos vencidos
         arreglos_vencidos = 0
@@ -610,8 +836,8 @@ async def resumen_cantidades(
             if estado == "VENCIDO":
                 arreglos_vencidos += safe_int(a["cantidad"])
 
-        # Normal = total_producido - total_fallados - mermas - divididos
-        normal = total_producido - total_fallados - merma_total - total_hijos
+        # Normal = producido - todos los fallados originales - mermas directas - divididos
+        normal = total_producido - total_fallados_originales - merma_total - total_hijos
 
         # Alertas
         alertas = []
@@ -623,12 +849,24 @@ async def resumen_cantidades(
             alertas.append({"tipo": "PENDIENTE", "mensaje": f"{sin_enviar} fallados sin enviar a arreglo"})
         if en_arreglo_sin_resolver > 0:
             alertas.append({"tipo": "EN_PROCESO", "mensaje": f"{en_arreglo_sin_resolver} prendas en arreglo sin resolver"})
+        if tela_evaluando > 0:
+            alertas.append({"tipo": "EVALUANDO", "mensaje": f"{tela_evaluando} prendas en evaluación de tela"})
 
-        # Ecuacion: normal + recuperado + liquidacion + merma_total_all + fallado_pendiente + divididos = total_producido
+        # Ecuación extendida:
+        # buenas = normal + recuperado (servicio) + recuperado (tela)
+        # perdidas = liquidacion_servicio (cobrado al proveedor) + liquidado_tela + merma
+        # en_proceso = sin_enviar + en_arreglo_sin_resolver + tela_evaluando
+        # total = buenas + perdidas + en_proceso + divididos
         merma_total_all = merma_total + total_merma_arreglos
-        ecuacion_valida = (
-            max(normal, 0) + total_recuperado + total_liquidacion + merma_total_all + max(fallado_pendiente, 0) + total_hijos
-        ) == total_producido if total_producido > 0 else True
+        suma = (
+            max(normal, 0)
+            + total_recuperado + tela_recuperado
+            + total_liquidacion + tela_liquidado
+            + merma_total_all
+            + max(sin_enviar, 0) + max(en_arreglo_sin_resolver, 0) + tela_evaluando
+            + total_hijos
+        )
+        ecuacion_valida = suma == total_producido if total_producido > 0 else True
 
         return {
             "registro_id": registro_id,
@@ -637,16 +875,22 @@ async def resumen_cantidades(
             # Cifras principales
             "total_producido": total_producido,
             "normal": max(normal, 0),
-            "total_fallados": total_fallados,
-            "fallado_pendiente": max(fallado_pendiente, 0),
-            "recuperado": total_recuperado,
-            "liquidacion": total_liquidacion,
+            "total_fallados": total_fallados,                 # solo causa='servicio'
+            "total_fallados_originales": total_fallados_originales,  # servicio + tela orig
+            "fallado_pendiente": max(fallado_pendiente, 0),    # sin_enviar + en_arreglo_sin_resolver
+            "recuperado": total_recuperado,                    # del flujo servicio
+            "liquidacion": total_liquidacion,                  # cobrado al proveedor
             "merma": merma_total,
             "merma_arreglos": total_merma_arreglos,
             "divididos": total_hijos,
+            # Detalle flujo de tela
+            "tela_evaluando": tela_evaluando,
+            "tela_recuperado": tela_recuperado,
+            "tela_liquidado": tela_liquidado,
             # Arreglos detalle
             "arreglos_vencidos": arreglos_vencidos,
             "total_en_arreglo": total_en_arreglo,
+            "total_pasa_a_tela": total_pasa_a_tela,
             # Alertas
             "alertas": alertas,
             "ecuacion_valida": ecuacion_valida,
