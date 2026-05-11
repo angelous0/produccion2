@@ -1,13 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from './ui/table';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from './ui/select';
@@ -15,7 +11,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from './ui/dialog';
 import {
-  AlertTriangle, CheckCircle2, Clock, Plus, Pencil, Trash2, Wrench, Package, XCircle,
+  AlertTriangle, Plus, Trash2, Wrench,
   Scissors, Layers as LayersIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -30,6 +26,14 @@ const fmtDate = (d) => {
   return `${dd}/${m}/${y}`;
 };
 
+// DD/MM (compacto para las tarjetas)
+const fmtDM = (d) => {
+  if (!d) return '-';
+  const s = String(d).slice(0, 10);
+  const [, m, dd] = s.split('-');
+  return `${dd}/${m}`;
+};
+
 // ─── Helpers de fechas ────────────────────────────────────────────────────
 // Días naturales (negativo si fechaFutura ya pasó).
 const diasDesde = (fechaISO) => {
@@ -37,6 +41,25 @@ const diasDesde = (fechaISO) => {
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const f = new Date(String(fechaISO).slice(0, 10));
   return Math.floor((hoy - f) / 86400000);
+};
+
+// Días hábiles (sin domingos) entre dos fechas ISO. Devuelve null si falta una.
+const diasHabilesEntre = (fechaIniISO, fechaFinISO) => {
+  if (!fechaIniISO || !fechaFinISO) return null;
+  const a = new Date(String(fechaIniISO).slice(0, 10));
+  const b = new Date(String(fechaFinISO).slice(0, 10));
+  a.setHours(0, 0, 0, 0); b.setHours(0, 0, 0, 0);
+  if (a.getTime() === b.getTime()) return 0;
+  const adelante = a < b;
+  const inicio = adelante ? a : b;
+  const fin = adelante ? b : a;
+  let dias = 0;
+  const cur = new Date(inicio);
+  while (cur < fin) {
+    cur.setDate(cur.getDate() + 1);
+    if (cur.getDay() !== 0) dias += 1;
+  }
+  return adelante ? dias : -dias;
 };
 
 // Días hábiles SIN domingos restantes (positivo = quedan, 0 = hoy, negativo = vencido).
@@ -75,37 +98,6 @@ const countdownBadge = (fechaLimiteISO) => {
     return { label: 'QUEDA 1 DÍA', cls: 'bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-200 border-amber-300' };
   }
   return { label: `QUEDAN ${d} DÍAS`, cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200' };
-};
-
-const estadoBadge = (estado) => {
-  const map = {
-    EN_ARREGLO: { cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200', icon: <Clock className="h-3 w-3" /> },
-    PARCIAL: { cls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 border-blue-200', icon: <Wrench className="h-3 w-3" /> },
-    COMPLETADO: { cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200', icon: <CheckCircle2 className="h-3 w-3" /> },
-    VENCIDO: { cls: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 border-red-200', icon: <AlertTriangle className="h-3 w-3" /> },
-    EVALUANDO: { cls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 border-blue-200', icon: <Clock className="h-3 w-3" /> },
-  };
-  const { cls, icon } = map[estado] || map.EN_ARREGLO;
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cls}`}>
-      {icon} {estado}
-    </span>
-  );
-};
-
-const causaBadge = (causa) => {
-  if (causa === 'tela') {
-    return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200">
-        <LayersIcon className="h-2.5 w-2.5" /> Tela
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300 border border-violet-200">
-      <Scissors className="h-2.5 w-2.5" /> Servicio
-    </span>
-  );
 };
 
 export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => {
@@ -303,15 +295,18 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
     const liq = arreglo.cantidad_liquidacion || 0;
     const pat = arreglo.cantidad_pasa_a_tela || 0;
     const mer = arreglo.cantidad_merma || 0;
-    const sinResolver = arreglo.cantidad - rec - liq - pat - mer;
-    // Default inteligente: si está VENCIDO y aún no se resolvió, pre-llenar
-    // todo lo pendiente en "A cobrar al proveedor" porque ya pasó el plazo.
-    if (arreglo.estado === 'VENCIDO' && sinResolver > 0) {
+    // Default inteligente cuando está VENCIDO: si el envío ya venció y no
+    // tiene resolución parcial guardada, el supervisor está marcando para
+    // facturar al proveedor. Pre-llenamos los 3 inputs con
+    // Recuperadas=0, A cobrar=cantidad enviada, Pasan a tela=0. Si el
+    // proveedor sí recuperó algo igual, el supervisor edita los valores.
+    const resueltoPrevio = rec + liq + pat + mer;
+    if (arreglo.estado === 'VENCIDO' && resueltoPrevio === 0) {
       setResolucionForm({
-        cantidad_recuperada: rec,
-        cantidad_liquidacion: liq + sinResolver,
-        cantidad_pasa_a_tela: pat,
-        cantidad_merma: mer,
+        cantidad_recuperada: 0,
+        cantidad_liquidacion: arreglo.cantidad,
+        cantidad_pasa_a_tela: 0,
+        cantidad_merma: 0,
       });
     } else {
       setResolucionForm({
@@ -338,14 +333,16 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
 
   const r = resumen || {};
   const falladoPendiente = r.fallado_pendiente || 0;
-  // Para la columna "Detección de fallados" mostramos solo los originales
-  // (sin origen_arreglo_id); los derivados se ven en el panel "De tela".
+  // Originales (sin origen_arreglo_id) — sirven para calcular cupo de
+  // envíos a servicio. No se renderizan como lista propia.
   const falladosOriginales = (fallados || []).filter(f => !f.origen_arreglo_id);
-  // Panel "De tela": todos los fallados causa='tela' (originales + derivados)
-  // que aún están en EVALUANDO.
-  const falladosTelaEvaluando = (fallados || []).filter(
-    f => (f.causa || 'servicio') === 'tela' && f.estado_tela === 'EVALUANDO',
+  // Panel "De tela": TODOS los fallados causa='tela' (originales + derivados),
+  // incluyendo cerrados RECUPERADO/LIQUIDADO. Las tarjetas se pintan distinto
+  // según `estado_tela`.
+  const falladosTela = (fallados || []).filter(
+    f => (f.causa || 'servicio') === 'tela',
   );
+  const falladosTelaEvaluando = falladosTela.filter(f => f.estado_tela === 'EVALUANDO');
   // Cupo disponible para enviar a arreglo: solo los originales causa='servicio'.
   // El backend usa la misma regla (`_get_total_fallados`).
   const falladoServicioOriginal = falladosOriginales
@@ -354,317 +351,372 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
   const totalEnArreglo = r.total_en_arreglo || 0;
   const disponibleParaArreglo = Math.max(0, falladoServicioOriginal - totalEnArreglo);
 
+  // Contadores de los headers del grid: suma de pendientes (no cerrados).
+  const pzsServicioPendientes = (arreglos || [])
+    .filter(a => a.estado !== 'COMPLETADO')
+    .reduce((acc, a) => acc + (a.cantidad || 0), 0);
+  const pzsTelaPendientes = falladosTelaEvaluando
+    .reduce((acc, f) => acc + (f.cantidad_detectada || 0), 0);
+
   return (
     <div className="space-y-4" data-testid="arreglos-panel">
-      {/* BLOQUE 1: RESUMEN */}
-      <Card data-testid="bloque-resumen">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Package className="h-4 w-4" /> Resumen del Lote
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-            <MetricCard label="Total Producido" value={r.total_producido || 0} color="zinc" />
-            <MetricCard label="Normal (Bueno)" value={r.normal || 0} color="emerald" />
-            <MetricCard label="Fallado Pendiente" value={falladoPendiente} color={falladoPendiente > 0 ? 'amber' : 'zinc'} />
-            <MetricCard label="Recuperado" value={(r.recuperado || 0) + (r.tela_recuperado || 0)} color="blue" />
-            <MetricCard label="A Cobrar Prov." value={r.liquidacion || 0} color="orange" />
-            <MetricCard label="Merma" value={(r.merma || 0) + (r.merma_arreglos || 0)} color={(r.merma || 0) + (r.merma_arreglos || 0) > 0 ? 'red' : 'zinc'} />
-            {(r.tela_evaluando || 0) > 0 && (
-              <MetricCard label="Tela Evaluando" value={r.tela_evaluando} color="blue" />
-            )}
-            {(r.tela_liquidado || 0) > 0 && (
-              <MetricCard label="Tela Liquidado" value={r.tela_liquidado} color="orange" />
-            )}
-          </div>
-          {/* Alertas */}
-          {r.alertas && r.alertas.length > 0 && (
-            <div className="mt-3 space-y-1">
-              {r.alertas.map((a, i) => (
-                <div key={i} className={`flex items-center gap-2 text-xs px-2 py-1 rounded ${
-                  a.tipo === 'VENCIDO' ? 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400' :
-                  a.tipo === 'MERMA' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400' :
-                  'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400'
-                }`} data-testid={`alerta-${a.tipo.toLowerCase()}`}>
-                  <AlertTriangle className="h-3 w-3 shrink-0" />
-                  {a.mensaje}
-                </div>
-              ))}
-            </div>
-          )}
-          {/* Ecuación: buenas + recup + cobrado_prov + liq_tela + merma + en_proceso (+ divididos) = producido */}
-          <div className={`mt-3 text-[11px] font-mono px-3 py-1.5 rounded border ${r.ecuacion_valida ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400' : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-950/20 dark:text-red-400'}`} data-testid="ecuacion">
-            {r.normal || 0} buenas
-            {' + '}{(r.recuperado || 0) + (r.tela_recuperado || 0)} recup
-            {' + '}{r.liquidacion || 0} cobrar
-            {(r.tela_liquidado || 0) > 0 && ` + ${r.tela_liquidado} liq_tela`}
-            {' + '}{(r.merma || 0) + (r.merma_arreglos || 0)} merma
-            {' + '}{falladoPendiente + (r.tela_evaluando || 0)} proc
-            {r.divididos > 0 ? ` + ${r.divididos} div` : ''}
-            {' = '}{r.total_producido || 0}
-            {r.ecuacion_valida ? ' OK' : ' ERROR'}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Cabecera mínima — número de corte arriba */}
+      <div data-testid="bloque-resumen">
+        <p className="text-xs text-muted-foreground">Detección de fallados</p>
+      </div>
 
-      {/* BLOQUE FALLADOS — Detección manual (solo originales) */}
-      <Card data-testid="bloque-fallados">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <XCircle className="h-4 w-4 text-red-500" /> Detección de Fallados
-              {falladosOriginales.length > 0 && (
-                <Badge variant="secondary" className="text-[10px]">
-                  {falladosOriginales.reduce((a, f) => a + (f.cantidad_detectada || 0), 0)} prendas
-                </Badge>
-              )}
-            </CardTitle>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs"
-              onClick={() => {
-                setEditingFalladoId(null);
-                setFalladoForm({ cantidad_detectada: '', fecha_deteccion: '', observacion: '', causa: 'servicio' });
-                setFalladoDialogOpen(true);
-              }}
-              data-testid="btn-nuevo-fallado"
+      {/* Banners de alerta (solo si X > 0 — el backend ya los filtra) */}
+      {r.alertas && r.alertas.length > 0 && (
+        <div className="space-y-1">
+          {r.alertas.map((a, i) => (
+            <div
+              key={i}
+              className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-md border ${
+                a.tipo === 'VENCIDO'
+                  ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-950/30 dark:border-red-900 dark:text-red-300'
+                  : a.tipo === 'MERMA'
+                    ? 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/30 dark:border-amber-900 dark:text-amber-300'
+                    : a.tipo === 'EVALUANDO'
+                      ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900 dark:text-blue-300'
+                      : 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/30 dark:border-amber-900 dark:text-amber-300'
+              }`}
+              data-testid={`alerta-${a.tipo.toLowerCase()}`}
             >
-              <Plus className="h-3 w-3 mr-1" /> Registrar Fallado
-            </Button>
-          </div>
-        </CardHeader>
-        {falladosOriginales.length > 0 && (
-          <CardContent className="pt-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-xs">Cantidad</TableHead>
-                  <TableHead className="text-xs">Causa</TableHead>
-                  <TableHead className="text-xs">Fecha</TableHead>
-                  <TableHead className="text-xs">Observación</TableHead>
-                  <TableHead className="text-xs w-20">Acción</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {falladosOriginales.map(f => (
-                  <TableRow key={f.id}>
-                    <TableCell className="font-mono font-semibold">{f.cantidad_detectada}</TableCell>
-                    <TableCell>{causaBadge(f.causa || 'servicio')}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{fmtDate(f.fecha_deteccion)}</TableCell>
-                    <TableCell className="text-xs max-w-[200px] truncate">{f.observacion || '-'}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button type="button" size="icon" variant="ghost" className="h-6 w-6" onClick={() => {
-                          setEditingFalladoId(f.id);
-                          setFalladoForm({
-                            cantidad_detectada: f.cantidad_detectada,
-                            fecha_deteccion: f.fecha_deteccion?.slice(0,10) || '',
-                            observacion: f.observacion || '',
-                            causa: f.causa || 'servicio',
-                          });
-                          setFalladoDialogOpen(true);
-                        }} data-testid={`btn-edit-fallado-${f.id}`}>
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                        <Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-red-500 hover:text-red-700" onClick={() => handleDeleteFallado(f.id)} data-testid={`btn-delete-fallado-${f.id}`}>
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        )}
-      </Card>
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              {a.mensaje}
+            </div>
+          ))}
+        </div>
+      )}
 
-      {/* BLOQUE DE TELA — fallados causa='tela' en EVALUANDO */}
-      {falladosTelaEvaluando.length > 0 && (
-        <Card data-testid="bloque-de-tela" className="border-blue-200/60 dark:border-blue-800/60">
+      {/* Math row — verde si OK, rojo si no cuadra */}
+      <div
+        className={`text-[11px] font-mono px-3 py-2 rounded-md border ${
+          r.ecuacion_valida
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/20 dark:border-emerald-900 dark:text-emerald-400'
+            : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-950/20 dark:border-red-900 dark:text-red-400'
+        }`}
+        data-testid="ecuacion"
+      >
+        {r.ecuacion_valida ? '✓ ' : '✗ '}
+        {r.normal || 0} buenas
+        {' + '}{(r.recuperado || 0) + (r.tela_recuperado || 0)} recup
+        {' + '}{r.liquidacion || 0} cobrar
+        {(r.tela_liquidado || 0) > 0 && ` + ${r.tela_liquidado} liq_tela`}
+        {' + '}{(r.merma || 0) + (r.merma_arreglos || 0)} merma
+        {' + '}{falladoPendiente + (r.tela_evaluando || 0)} proc
+        {r.divididos > 0 ? ` + ${r.divididos} div` : ''}
+        {' = '}{r.total_producido || 0}
+      </div>
+
+      {/* Botón ancho: registrar fallado */}
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full h-10 text-sm font-medium border-blue-300 bg-blue-50/50 text-blue-700 hover:bg-blue-100 dark:bg-blue-950/30 dark:border-blue-900 dark:text-blue-300 dark:hover:bg-blue-950/50"
+        onClick={() => {
+          setEditingFalladoId(null);
+          setFalladoForm({ cantidad_detectada: '', fecha_deteccion: '', observacion: '', causa: 'servicio' });
+          setFalladoDialogOpen(true);
+        }}
+        data-testid="btn-nuevo-fallado"
+      >
+        <Plus className="h-4 w-4 mr-2" /> Registrar fallado
+      </Button>
+
+      {/* Grid 2 columnas: De servicio | De tela */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+
+        {/* ───────── COLUMNA IZQUIERDA: De servicio ───────── */}
+        <Card data-testid="col-de-servicio" className="min-h-[240px]">
           <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <LayersIcon className="h-4 w-4 text-blue-500" /> De Tela — Evaluación de Acabado
-                <Badge variant="secondary" className="text-[10px]">
-                  {falladosTelaEvaluando.reduce((a, f) => a + (f.cantidad_detectada || 0), 0)} pzs
-                </Badge>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Wrench className="h-4 w-4 text-violet-500" /> De servicio
+                <span
+                  className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                  data-testid="badge-servicio-pzs"
+                >
+                  {pzsServicioPendientes} pzs
+                </span>
               </CardTitle>
-              <span className="text-[10px] text-muted-foreground italic">
-                Recuperar = vuelve al lote bueno · Liquidar = sale del inventario
-              </span>
+              {disponibleParaArreglo > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-[11px] px-2"
+                  onClick={() => {
+                    setArregloForm({ cantidad: '', servicio_id: '', persona_id: '', fecha_envio: '', observacion: '' });
+                    setArregloDialogOpen(true);
+                  }}
+                  data-testid="btn-nuevo-arreglo"
+                  title={`${disponibleParaArreglo} disponibles para asignar`}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Envío
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent className="pt-0 space-y-2">
-            {falladosTelaEvaluando.map(f => {
-              const dias = diasDesde(f.fecha_deteccion);
-              const destrabar = (dias || 0) > DIAS_LIMITE_TELA_DESTRABAR;
-              return (
-                <div
-                  key={f.id}
-                  className={`flex items-center justify-between gap-3 p-3 rounded-md border ${destrabar
-                    ? 'bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800'
-                    : 'bg-blue-50/50 border-blue-200 dark:bg-blue-950/15 dark:border-blue-800/60'}`}
-                  data-testid={`tela-card-${f.id}`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-semibold text-base">{f.cantidad_detectada} pzs</span>
-                      {estadoBadge('EVALUANDO')}
-                      {destrabar && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-200 border-amber-300">
-                          LLEVA {dias}d
+            {arreglos.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-8" data-testid="empty-servicio">
+                Sin envíos a servicio
+              </p>
+            ) : (
+              arreglos.map(a => {
+                const rec = a.cantidad_recuperada || 0;
+                const liq = a.cantidad_liquidacion || 0;
+                const mer = a.cantidad_merma || 0;
+                const pat = a.cantidad_pasa_a_tela || 0;
+                const completado = a.estado === 'COMPLETADO';
+                const cb = completado ? null : countdownBadge(a.fecha_limite);
+                // Categoría visual según countdown
+                const isVencido = !completado && cb && (cb.label.startsWith('VENCIDO') || cb.label === 'VENCE HOY');
+                const isCriticoHoy = !completado && cb && cb.label === 'QUEDA 1 DÍA';
+                // Días hábiles que tomó la entrega (si está cerrado)
+                const diasEntrega = completado ? diasHabilesEntre(a.fecha_envio, a.fecha_limite) : null;
+
+                // Estilos según estado
+                let bg, borderLeft, txtCant;
+                if (completado) {
+                  bg = 'bg-muted/50 dark:bg-zinc-900/40';
+                  borderLeft = 'border-l-emerald-500';
+                  txtCant = '';
+                } else if (isVencido) {
+                  bg = 'bg-red-50 dark:bg-red-950/30';
+                  borderLeft = 'border-l-red-500';
+                  txtCant = 'text-red-700 dark:text-red-300';
+                } else if (isCriticoHoy) {
+                  bg = 'bg-amber-100 dark:bg-amber-900/40';
+                  borderLeft = 'border-l-amber-500';
+                  txtCant = 'text-amber-800 dark:text-amber-200';
+                } else {
+                  // Neutro: 2+ días
+                  bg = 'bg-muted/40 dark:bg-zinc-900/40';
+                  borderLeft = 'border-l-zinc-300 dark:border-l-zinc-700';
+                  txtCant = '';
+                }
+
+                // Badge derecha
+                const badge = completado
+                  ? { label: 'CERRADO', cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' }
+                  : cb;
+                const badgeBgCls = completado
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                  : isVencido
+                    ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                    : isCriticoHoy
+                      ? 'bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-200'
+                      : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300';
+
+                return (
+                  <div
+                    key={a.id}
+                    className={`relative p-3 rounded-md border border-l-4 ${bg} ${borderLeft}`}
+                    data-testid={`arreglo-card-${a.id}`}
+                  >
+                    {/* Eliminar (sólo si no completado) */}
+                    {!completado && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteArreglo(a.id)}
+                        className="absolute top-2 right-2 p-1 text-muted-foreground hover:text-red-600 rounded"
+                        data-testid={`btn-delete-arreglo-${a.id}`}
+                        title="Eliminar envío"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
+
+                    <div className="flex items-center justify-between gap-2 pr-6">
+                      <span className={`font-semibold text-base ${txtCant}`}>{a.cantidad} pzs</span>
+                      {badge && (
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md whitespace-nowrap ${badgeBgCls}`}>
+                          {badge.label}
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                      detectado hace {dias === null ? '-' : `${dias}d`}
-                      {f.origen_arreglo_id && <span className="ml-1 italic">· {f.observacion || 'derivado de servicio'}</span>}
-                      {!f.origen_arreglo_id && f.observacion && <span className="ml-1 italic">· {f.observacion}</span>}
-                    </p>
+
+                    <div className={`text-xs mt-0.5 ${txtCant || 'text-muted-foreground'}`}>
+                      {(a.servicio_nombre || '-')} · {(a.persona_nombre || '-')}
+                    </div>
+
+                    <div className={`text-[10px] mt-0.5 ${txtCant ? 'opacity-80' : 'text-muted-foreground'}`}>
+                      {completado
+                        ? (diasEntrega !== null && diasEntrega > 0
+                            ? `entregado en ${diasEntrega}d hábiles`
+                            : 'entregado')
+                        : `enviado ${fmtDM(a.fecha_envio)} · vence ${fmtDM(a.fecha_limite)}`}
+                    </div>
+
+                    {/* Mini resolución (sólo si ya hay valores parciales) */}
+                    {!completado && (rec + liq + mer + pat) > 0 && (
+                      <div className="text-[10px] mt-1 flex flex-wrap gap-2">
+                        {rec > 0 && <span className="text-emerald-600 dark:text-emerald-400">Rec:{rec}</span>}
+                        {liq > 0 && <span className="text-orange-600 dark:text-orange-400">Cobr:{liq}</span>}
+                        {pat > 0 && <span className="text-blue-600 dark:text-blue-400">Tela:{pat}</span>}
+                        {mer > 0 && <span className="text-red-600 dark:text-red-400">Mer:{mer}</span>}
+                      </div>
+                    )}
+
+                    {!completado && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full h-8 text-xs mt-2 bg-background/60"
+                        onClick={() => openResolucion(a)}
+                        data-testid={`btn-resolver-${a.id}`}
+                      >
+                        Marcar entregado →
+                      </Button>
+                    )}
                   </div>
-                  <div className="flex gap-2 shrink-0">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-8 text-xs"
-                      onClick={() => handleCerrarTela(f.id, 'RECUPERADO')}
-                      data-testid={`btn-tela-recuperar-${f.id}`}
-                    >
-                      Recuperar
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-8 text-xs"
-                      onClick={() => handleCerrarTela(f.id, 'LIQUIDADO')}
-                      data-testid={`btn-tela-liquidar-${f.id}`}
-                    >
-                      Liquidar
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </CardContent>
         </Card>
-      )}
 
-      {/* BLOQUE 2: ENVIOS A ARREGLO (De Servicio) */}
-      <Card data-testid="bloque-arreglos">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Wrench className="h-4 w-4 text-violet-500" /> Envíos a Arreglo
-              {arreglos.length > 0 && <Badge variant="secondary" className="text-[10px]">{arreglos.length} envíos</Badge>}
-            </CardTitle>
-            <Button type="button" size="sm" variant="outline" className="h-7 text-xs"
-              disabled={disponibleParaArreglo <= 0}
-              onClick={() => { setArregloForm({ cantidad: '', servicio_id: '', persona_id: '', fecha_envio: '', observacion: '' }); setArregloDialogOpen(true); }}
-              data-testid="btn-nuevo-arreglo"
-            >
-              <Plus className="h-3 w-3 mr-1" /> Nuevo Envío
-              {disponibleParaArreglo > 0 && <span className="ml-1 text-[10px] text-muted-foreground">({disponibleParaArreglo} disp.)</span>}
-            </Button>
-          </div>
-        </CardHeader>
-        {arreglos.length > 0 && (
-          <CardContent className="pt-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-xs">Cant.</TableHead>
-                  <TableHead className="text-xs">Servicio</TableHead>
-                  <TableHead className="text-xs">Persona</TableHead>
-                  <TableHead className="text-xs">Envío</TableHead>
-                  <TableHead className="text-xs">Límite</TableHead>
-                  <TableHead className="text-xs">Estado</TableHead>
-                  <TableHead className="text-xs">Resolución</TableHead>
-                  <TableHead className="text-xs w-32">Acción</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {arreglos.map(a => {
-                  const rec = a.cantidad_recuperada || 0;
-                  const liq = a.cantidad_liquidacion || 0;
-                  const mer = a.cantidad_merma || 0;
-                  const pat = a.cantidad_pasa_a_tela || 0;
-                  const total = rec + liq + mer + pat;
-                  const pct = a.cantidad > 0 ? Math.round(total / a.cantidad * 100) : 0;
-                  const cb = a.estado !== 'COMPLETADO' ? countdownBadge(a.fecha_limite) : null;
-                  return (
-                    <TableRow key={a.id} className={a.estado === 'VENCIDO' ? 'bg-red-50/50 dark:bg-red-950/10' : ''}>
-                      <TableCell className="font-mono font-semibold">{a.cantidad}</TableCell>
-                      <TableCell className="text-xs">{a.servicio_nombre || '-'}</TableCell>
-                      <TableCell className="text-xs">{a.persona_nombre || '-'}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{fmtDate(a.fecha_envio)}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        <div className="flex flex-col gap-0.5">
-                          <span>{fmtDate(a.fecha_limite)}</span>
-                          {cb && (
-                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold border w-fit ${cb.cls}`}>
-                              {cb.label}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>{estadoBadge(a.estado)}</TableCell>
-                      <TableCell>
-                        <div className="text-[10px] space-y-0.5">
-                          {total > 0 ? (
-                            <>
-                              <div className="flex flex-wrap gap-2">
-                                {rec > 0 && <span className="text-emerald-600">Rec:{rec}</span>}
-                                {liq > 0 && <span className="text-orange-600">Cobr:{liq}</span>}
-                                {pat > 0 && <span className="text-blue-600">Tela:{pat}</span>}
-                                {mer > 0 && <span className="text-red-600">Mer:{mer}</span>}
-                              </div>
-                              <div className="w-full bg-zinc-200 dark:bg-zinc-700 rounded-full h-1">
-                                <div className={`h-1 rounded-full ${pct >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-                              </div>
-                            </>
-                          ) : (
-                            <span className="text-muted-foreground">Sin resolver</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1 items-center">
-                          {a.estado !== 'COMPLETADO' && (
-                            <Button type="button" size="sm" variant="outline" className="h-7 text-[11px] px-2"
-                              onClick={() => openResolucion(a)}
-                              data-testid={`btn-resolver-${a.id}`}
-                              title="Marcar entregado"
-                            >
-                              Marcar entregado →
-                            </Button>
-                          )}
-                          {a.estado !== 'COMPLETADO' && (
-                            <Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-red-500 hover:text-red-700" onClick={() => handleDeleteArreglo(a.id)} data-testid={`btn-delete-arreglo-${a.id}`}>
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          )}
-                          {a.estado === 'COMPLETADO' && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+        {/* ───────── COLUMNA DERECHA: De tela ───────── */}
+        <Card data-testid="col-de-tela" className="min-h-[240px]">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <LayersIcon className="h-4 w-4 text-blue-500" /> De tela
+                <span
+                  className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"
+                  data-testid="badge-tela-pzs"
+                >
+                  {pzsTelaPendientes} pzs
+                </span>
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-2">
+            {falladosTela.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-8" data-testid="empty-tela">
+                Sin fallados de tela
+              </p>
+            ) : (
+              falladosTela.map(f => {
+                const dias = diasDesde(f.fecha_deteccion);
+                const estadoT = f.estado_tela || 'EVALUANDO';
+                const recuperado = estadoT === 'RECUPERADO';
+                const liquidado = estadoT === 'LIQUIDADO';
+                const cerrado = recuperado || liquidado;
+                const destrabar = !cerrado && (dias || 0) > DIAS_LIMITE_TELA_DESTRABAR;
+                const diasCierre = cerrado ? diasHabilesEntre(f.fecha_deteccion, f.fecha_cierre) : null;
+
+                // Estilos
+                let bg, borderLeft, txt;
+                if (recuperado) {
+                  bg = 'bg-muted/50 dark:bg-zinc-900/40';
+                  borderLeft = 'border-l-emerald-500';
+                  txt = '';
+                } else if (liquidado) {
+                  bg = 'bg-muted/50 dark:bg-zinc-900/40';
+                  borderLeft = 'border-l-red-500';
+                  txt = '';
+                } else if (destrabar) {
+                  bg = 'bg-amber-100 dark:bg-amber-900/40';
+                  borderLeft = 'border-l-amber-500';
+                  txt = 'text-amber-800 dark:text-amber-200';
+                } else {
+                  bg = 'bg-blue-50 dark:bg-blue-950/30';
+                  borderLeft = 'border-l-blue-300 dark:border-l-blue-800';
+                  txt = 'text-blue-700 dark:text-blue-300';
+                }
+
+                const badgeLbl = recuperado
+                  ? 'RECUPERADO'
+                  : liquidado
+                    ? 'LIQUIDADO'
+                    : destrabar
+                      ? `LLEVA ${dias}d`
+                      : 'EVALUANDO';
+                const badgeCls = recuperado
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                  : liquidado
+                    ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                    : destrabar
+                      ? 'bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-200'
+                      : 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300';
+
+                return (
+                  <div
+                    key={f.id}
+                    className={`relative p-3 rounded-md border border-l-4 ${bg} ${borderLeft}`}
+                    data-testid={`tela-card-${f.id}`}
+                  >
+                    {/* Eliminar (sólo si EVALUANDO; cerrados no se eliminan para preservar trazabilidad) */}
+                    {!cerrado && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteFallado(f.id)}
+                        className="absolute top-2 right-2 p-1 text-muted-foreground hover:text-red-600 rounded"
+                        data-testid={`btn-delete-fallado-${f.id}`}
+                        title="Eliminar fallado"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
+
+                    <div className="flex items-center justify-between gap-2 pr-6">
+                      <span className={`font-semibold text-base ${txt}`}>{f.cantidad_detectada} pzs</span>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md whitespace-nowrap ${badgeCls}`}>
+                        {badgeLbl}
+                      </span>
+                    </div>
+
+                    <div className={`text-xs mt-0.5 ${txt || 'text-muted-foreground'} flex items-center gap-1 flex-wrap`}>
+                      {cerrado
+                        ? (recuperado ? 'acabado recuperó' : 'acabado liquidó')
+                        : 'acabado pendiente'}
+                      {f.origen_arreglo_id && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-background/50 text-muted-foreground">
+                          {f.observacion && f.observacion.startsWith('Viene de')
+                            ? f.observacion.replace(/\s*\(envío.*\)\s*$/, '')
+                            : 'viene de servicio'}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className={`text-[10px] mt-0.5 ${txt ? 'opacity-80' : 'text-muted-foreground'}`}>
+                      {cerrado
+                        ? (diasCierre !== null ? `cerrado en ${diasCierre}d` : 'cerrado')
+                        : `detectado hace ${dias === null ? '-' : `${dias}d`}${destrabar ? ' · destrabar' : ''}`}
+                    </div>
+
+                    {!cerrado && (
+                      <div className="flex gap-2 mt-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="flex-1 h-8 text-xs bg-background/60"
+                          onClick={() => handleCerrarTela(f.id, 'RECUPERADO')}
+                          data-testid={`btn-tela-recuperar-${f.id}`}
+                        >
+                          Recuperar
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="flex-1 h-8 text-xs bg-background/60"
+                          onClick={() => handleCerrarTela(f.id, 'LIQUIDADO')}
+                          data-testid={`btn-tela-liquidar-${f.id}`}
+                        >
+                          Liquidar
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </CardContent>
-        )}
-        {arreglos.length === 0 && disponibleParaArreglo > 0 && (
-          <CardContent className="pt-0">
-            <p className="text-xs text-muted-foreground text-center py-4">No hay envíos a arreglo. Usa "Nuevo Envío" para asignar prendas falladas.</p>
-          </CardContent>
-        )}
-      </Card>
+        </Card>
+      </div>
 
       {/* DIALOG: Fallado */}
       <Dialog open={falladoDialogOpen} onOpenChange={setFalladoDialogOpen}>
@@ -837,19 +889,3 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
   );
 };
 
-const MetricCard = ({ label, value, color = 'zinc' }) => {
-  const colorMap = {
-    zinc: 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800',
-    emerald: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800',
-    amber: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800',
-    red: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800',
-    blue: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800',
-    orange: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800',
-  };
-  return (
-    <div className={`rounded-lg border p-2 text-center ${colorMap[color] || colorMap.zinc}`} data-testid={`metric-${label.toLowerCase().replace(/\s/g, '-')}`}>
-      <p className="text-[9px] uppercase tracking-wider text-muted-foreground truncate">{label}</p>
-      <p className="text-lg font-bold font-mono">{value}</p>
-    </div>
-  );
-};
