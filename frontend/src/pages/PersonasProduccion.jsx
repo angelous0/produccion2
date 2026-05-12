@@ -31,6 +31,7 @@ import {
 import { Plus, Pencil, Trash2, Users, Phone, CheckCircle, XCircle, GripVertical, DollarSign, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
+import { usePermissions } from '../hooks/usePermissions';
 import {
   DndContext,
   closestCenter,
@@ -109,7 +110,7 @@ const ServiciosTarifaCell = ({ servicios }) => {
 };
 
 // Componente de fila sorteable
-const SortableRow = ({ persona, onEdit, onDelete, onToggleActivo }) => {
+const SortableRow = ({ persona, onEdit, onDelete, onToggleActivo, canEdit, canDelete, showActions }) => {
   const {
     attributes,
     listeners,
@@ -117,7 +118,7 @@ const SortableRow = ({ persona, onEdit, onDelete, onToggleActivo }) => {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: persona.id });
+  } = useSortable({ id: persona.id, disabled: !canEdit });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -134,14 +135,16 @@ const SortableRow = ({ persona, onEdit, onDelete, onToggleActivo }) => {
     >
       <td className="p-3">
         <div className="flex items-center gap-2">
-          <button
-            {...attributes}
-            {...listeners}
-            className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
-            data-testid={`drag-handle-${persona.id}`}
-          >
-            <GripVertical className="h-4 w-4 text-muted-foreground" />
-          </button>
+          {canEdit && (
+            <button
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
+              data-testid={`drag-handle-${persona.id}`}
+            >
+              <GripVertical className="h-4 w-4 text-muted-foreground" />
+            </button>
+          )}
           <span className="font-medium">{persona.nombre}</span>
         </div>
       </td>
@@ -170,34 +173,42 @@ const SortableRow = ({ persona, onEdit, onDelete, onToggleActivo }) => {
         <Switch
           checked={persona.activo !== false}
           onCheckedChange={() => onToggleActivo(persona)}
+          disabled={!canEdit}
           data-testid={`toggle-activo-${persona.id}`}
         />
       </td>
-      <td className="p-3 text-right">
-        <div className="flex justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onEdit(persona)}
-            data-testid={`edit-persona-${persona.id}`}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onDelete(persona.id)}
-            data-testid={`delete-persona-${persona.id}`}
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        </div>
-      </td>
+      {showActions && (
+        <td className="p-3 text-right">
+          <div className="flex justify-end gap-1">
+            {canEdit && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onEdit(persona)}
+                data-testid={`edit-persona-${persona.id}`}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+            {canDelete && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onDelete(persona.id)}
+                data-testid={`delete-persona-${persona.id}`}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            )}
+          </div>
+        </td>
+      )}
     </tr>
   );
 };
 
 export const PersonasProduccion = () => {
+  const { canCreate, canEdit, canDelete } = usePermissions('personas_produccion');
   const [personas, setPersonas] = useState([]);
   const [servicios, setServicios] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -246,6 +257,7 @@ export const PersonasProduccion = () => {
   }, []);
 
   const handleOpenDialog = (persona = null) => {
+    if ((persona && !canEdit) || (!persona && !canCreate)) return;
     if (persona) {
       setEditingPersona(persona);
       // Convertir servicios al formato del formulario
@@ -324,6 +336,11 @@ export const PersonasProduccion = () => {
   };
 
   const handleSubmit = guard(async () => {
+    if ((editingPersona && !canEdit) || (!editingPersona && !canCreate)) {
+      toast.error('No tienes permisos para guardar personas');
+      return;
+    }
+
     if (!formData.nombre.trim()) {
       toast.error('El nombre es requerido');
       return;
@@ -358,6 +375,7 @@ export const PersonasProduccion = () => {
   });
 
   const handleDelete = async (id) => {
+    if (!canDelete) return;
     if (!window.confirm('¿Estás seguro de eliminar esta persona?')) return;
     try {
       await axios.delete(`${API}/personas-produccion/${id}`);
@@ -369,6 +387,7 @@ export const PersonasProduccion = () => {
   };
 
   const handleToggleActivo = async (persona) => {
+    if (!canEdit) return;
     try {
       await axios.put(`${API}/personas-produccion/${persona.id}`, {
         nombre: persona.nombre,
@@ -386,6 +405,7 @@ export const PersonasProduccion = () => {
   };
 
   const handleDragEnd = async (event) => {
+    if (!canEdit) return;
     const { active, over } = event;
 
     if (active.id !== over?.id) {
@@ -441,10 +461,12 @@ export const PersonasProduccion = () => {
             Gestiona el personal con sus tarifas por servicio. Arrastra para reordenar.
           </p>
         </div>
-        <Button onClick={() => handleOpenDialog()} data-testid="btn-nueva-persona">
-          <Plus className="h-4 w-4 mr-2" />
-          Nueva Persona
-        </Button>
+        {canCreate && (
+          <Button onClick={() => handleOpenDialog()} data-testid="btn-nueva-persona">
+            <Plus className="h-4 w-4 mr-2" />
+            Nueva Persona
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -493,7 +515,9 @@ export const PersonasProduccion = () => {
                     <th className="p-3 text-left text-sm font-semibold">Servicios (Tarifa)</th>
                     <th className="p-3 text-left text-sm font-semibold">Teléfono</th>
                     <th className="p-3 text-center text-sm font-semibold">Estado</th>
-                    <th className="p-3 text-right text-sm font-semibold w-[120px]">Acciones</th>
+                    {(canEdit || canDelete) && (
+                      <th className="p-3 text-right text-sm font-semibold w-[120px]">Acciones</th>
+                    )}
                   </tr>
                 </thead>
                 <DndContext
@@ -513,6 +537,9 @@ export const PersonasProduccion = () => {
                           onEdit={handleOpenDialog}
                           onDelete={handleDelete}
                           onToggleActivo={handleToggleActivo}
+                          canEdit={canEdit}
+                          canDelete={canDelete}
+                          showActions={canEdit || canDelete}
                         />
                       ))}
                     </tbody>

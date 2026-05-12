@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Navigate, NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -84,7 +84,7 @@ import {
 import { toast } from 'sonner';
 import axios from 'axios';
 import { NotificacionesBell } from './NotificacionesBell';
-import { usePermissions, RUTA_A_TABLA } from '../hooks/usePermissions';
+import { RUTA_A_TABLA } from '../hooks/usePermissions';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -141,7 +141,7 @@ const reportesItems = [
   { to: '/reportes/seguimiento', icon: Activity, label: 'Seguimiento' },
   { to: '/reportes/entregas', icon: Truck, label: 'Entregas' },
   { to: '/reportes/costo-lote', icon: BarChart2, label: 'Costo por Lote' },
-  { to: '/reportes/operativo', icon: Users, label: 'Operativo & Terceros' },
+  { to: '/reportes/operativo', icon: Users, label: 'Reporte de servicios' },
   { to: '/reportes/calidad', icon: Shield, label: 'Calidad' },
   { to: '/reportes/valorizacion', icon: Package, label: 'Valorizacion' },
   { to: '/reportes/lotes', icon: GitBranch, label: 'Lotes & Trazabilidad' },
@@ -190,6 +190,40 @@ const configItems = [
   { to: '/auditoria', icon: ShieldCheck, label: 'Auditoría' },
   { to: '/backups', icon: Database, label: 'Backups' },
 ];
+
+const allNavigableItems = [
+  ...operacionesItems,
+  ...inventarioItems,
+  ...reportesItems,
+  ...catalogosItems,
+  ...odooItems,
+  ...maestrosItems,
+  ...configItems,
+];
+
+const adminOnlyPermissionKeys = new Set([
+  'config_empresa',
+  'usuarios',
+  'historial_actividad',
+  'auditoria',
+  'backups',
+]);
+
+function normalizePath(pathname) {
+  const clean = (pathname || '/').split('?')[0].replace(/\/+$/, '');
+  return clean || '/';
+}
+
+function getPermissionKeyForPath(pathname) {
+  const path = normalizePath(pathname);
+  const route = Object.keys(RUTA_A_TABLA)
+    .sort((a, b) => b.length - a.length)
+    .find((candidate) => {
+      const cleanCandidate = normalizePath(candidate);
+      return path === cleanCandidate || (cleanCandidate !== '/' && path.startsWith(`${cleanCandidate}/`));
+    });
+  return route ? RUTA_A_TABLA[route] : null;
+}
 
 // ── Grupo colapsable ────────────────────────────────────────────────────────
 
@@ -381,7 +415,24 @@ export const Layout = () => {
   const { theme, toggleTheme } = useTheme();
   const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
-  usePermissions('registros');
+  const location = useLocation();
+
+  const hasViewPermission = (permissionKey) => {
+    if (isAdmin()) return true;
+    if (adminOnlyPermissionKeys.has(permissionKey)) return false;
+    if (user?.rol === 'lectura') return true;
+    if (!permissionKey) return false;
+
+    const permisos = user?.permisos || {};
+    return permisos[permissionKey]?.ver === true;
+  };
+
+  const canAccessPath = (pathname) => hasViewPermission(getPermissionKeyForPath(pathname));
+
+  const canAccessItem = (item) => {
+    const permissionKey = RUTA_A_TABLA[item.to];
+    return hasViewPermission(permissionKey);
+  };
 
   // Modo migración — banner global
   const [modoMigracion, setModoMigracion] = useState(false);
@@ -400,14 +451,7 @@ export const Layout = () => {
 
   const filterItems = (items) => {
     if (isAdmin()) return items;
-    return items.filter((item) => {
-      const tabla = RUTA_A_TABLA[item.to];
-      if (!tabla) return true;
-      const permisos = user?.permisos || {};
-      const perm = permisos[tabla];
-      if (!perm) return true;
-      return perm.ver !== false;
-    });
+    return items.filter(canAccessItem);
   };
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -434,6 +478,29 @@ export const Layout = () => {
     logout();
     navigate('/login');
   };
+
+  const navigableItemsForRole = isAdmin()
+    ? allNavigableItems
+    : allNavigableItems.filter((item) => !adminOnlyPermissionKeys.has(RUTA_A_TABLA[item.to]));
+  const firstAllowedPath = navigableItemsForRole.find(canAccessItem)?.to;
+  if (!canAccessPath(location.pathname)) {
+    if (firstAllowedPath && normalizePath(location.pathname) !== normalizePath(firstAllowedPath)) {
+      return <Navigate to={firstAllowedPath} replace />;
+    }
+
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-6">
+        <div className="max-w-md text-center space-y-3">
+          <Shield className="h-10 w-10 mx-auto text-muted-foreground" />
+          <h1 className="text-xl font-semibold">Sin permisos para esta vista</h1>
+          <p className="text-sm text-muted-foreground">
+            Tu usuario no tiene una pantalla habilitada. Pide a un administrador activar al menos un permiso de visualización.
+          </p>
+          <Button variant="outline" onClick={handleLogout}>Cerrar sesión</Button>
+        </div>
+      </div>
+    );
+  }
 
   const handleChangePassword = async (e) => {
     e.preventDefault();

@@ -13,7 +13,7 @@ import uuid, json, io, re
 router = APIRouter(prefix="/api")
 
 from db import get_pool
-from auth_utils import get_current_user
+from auth_utils import require_permiso as require_permission
 from models import ESTADOS_PRODUCCION
 
 
@@ -315,7 +315,7 @@ async def _validate(registros_data, movimientos_data, tallas_data, materiales_da
 # ─────────────── TEMPLATE DOWNLOAD ────────────────
 
 @router.get("/registros/import-template")
-async def download_template():
+async def download_template(_u=Depends(require_permission("registros", "crear"))):
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -566,7 +566,7 @@ async def export_registro_template(registro_id: str):
 # ─────────────── VALIDATE ─────────────────
 
 @router.post("/registros/import-validate")
-async def validate_import(file: UploadFile = File(...), user=Depends(get_current_user)):
+async def validate_import(file: UploadFile = File(...), user=Depends(require_permission("registros", "crear"))):
     content = await file.read()
     try:
         registros_data, movimientos_data, tallas_data, materiales_data = _read_excel(content)
@@ -612,7 +612,7 @@ async def validate_import(file: UploadFile = File(...), user=Depends(get_current
 # ─────────────── EXECUTE IMPORT ─────────────────
 
 @router.post("/registros/import-execute")
-async def execute_import(file: UploadFile = File(...), empresa_id: int = Query(8), user=Depends(get_current_user)):
+async def execute_import(file: UploadFile = File(...), empresa_id: int = Query(8), user=Depends(require_permission("registros", "crear"))):
     content = await file.read()
     try:
         registros_data, movimientos_data, tallas_data, materiales_data = _read_excel(content)

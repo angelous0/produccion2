@@ -35,6 +35,7 @@ import { RegistroDetalleFase2 } from './RegistroDetalleFase2';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
+import usePermissions from '../hooks/usePermissions';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -84,6 +85,7 @@ export const Registros = () => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const { saving, guard } = useSaving();
+  const { canCreate, canEdit, canDelete } = usePermissions('registros');
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [coloresDialogOpen, setColoresDialogOpen] = useState(false);
   const [viewingItem, setViewingItem] = useState(null);
@@ -223,6 +225,10 @@ export const Registros = () => {
   // ========== LÓGICA DE COLORES ==========
 
   const handleOpenColoresDialog = (item) => {
+    if (!canEdit) {
+      toast.error('No tienes permisos para editar registros');
+      return;
+    }
     setColorEditItem(item);
     
     if (item.distribucion_colores && item.distribucion_colores.length > 0) {
@@ -372,6 +378,10 @@ export const Registros = () => {
   };
 
   const handleSaveColores = guard(async () => {
+    if (!canEdit) {
+      toast.error('No tienes permisos para editar registros');
+      return;
+    }
     try {
       const distribucion = (colorEditItem?.tallas || []).map(t => ({
         talla_id: t.talla_id,
@@ -414,12 +424,20 @@ export const Registros = () => {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   const handleDelete = (id) => {
+    if (!canDelete) {
+      toast.error('No tienes permisos para eliminar registros');
+      return;
+    }
     const reg = items.find(i => i.id === id);
     setDeleteConfirm(reg || { id });
   };
 
   const confirmDelete = async () => {
     if (!deleteConfirm) return;
+    if (!canDelete) {
+      toast.error('No tienes permisos para eliminar registros');
+      return;
+    }
     try {
       await axios.delete(`${API}/registros/${deleteConfirm.id}`);
       toast.success('Registro eliminado');
@@ -432,6 +450,10 @@ export const Registros = () => {
 
   // Toggle urgente desde la lista (sin abrir el detalle)
   const handleToggleUrgente = async (item) => {
+    if (!canEdit) {
+      toast.error('No tienes permisos para editar registros');
+      return;
+    }
     const nuevoEstado = !item.urgente;
     // Optimistic UI: actualizar antes de la respuesta
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, urgente: nuevoEstado } : i));
@@ -460,6 +482,10 @@ export const Registros = () => {
   // ========== CONTROL DE PRODUCCIÓN ==========
   
   const handleOpenControl = (item) => {
+    if (!canEdit) {
+      toast.error('No tienes permisos para editar registros');
+      return;
+    }
     setControlItem(item);
     setControlData({
       fecha_entrega_final: item.fecha_entrega_final || '',
@@ -468,6 +494,10 @@ export const Registros = () => {
   };
 
   const handleSaveControl = guard(async () => {
+    if (!canEdit) {
+      toast.error('No tienes permisos para editar registros');
+      return;
+    }
     try {
       await axios.put(`${API}/registros/${controlItem.id}/control`, controlData);
       toast.success('Control actualizado');
@@ -491,6 +521,10 @@ export const Registros = () => {
   };
 
   const handleCreateIncidencia = guard(async () => {
+    if (!canEdit) {
+      toast.error('No tienes permisos para editar registros');
+      return;
+    }
     if (!incidenciaForm.tipo) { toast.error('Selecciona un tipo'); return; }
     try {
       await axios.post(`${API}/incidencias`, {
@@ -510,6 +544,10 @@ export const Registros = () => {
   });
 
   const handleResolverIncidencia = guard(async (incId) => {
+    if (!canEdit) {
+      toast.error('No tienes permisos para editar registros');
+      return;
+    }
     try {
       await axios.put(`${API}/incidencias/${incId}`, { estado: 'RESUELTA' });
       toast.success('Incidencia resuelta');
@@ -534,6 +572,10 @@ export const Registros = () => {
   };
 
   const handleCrearParalizacion = guard(async () => {
+    if (!canEdit) {
+      toast.error('No tienes permisos para editar registros');
+      return;
+    }
     if (!paralizacionForm.motivo) { toast.error('Selecciona un motivo'); return; }
     try {
       await axios.post(`${API}/paralizaciones`, {
@@ -552,6 +594,10 @@ export const Registros = () => {
   });
 
   const handleLevantarParalizacion = guard(async (parId) => {
+    if (!canEdit) {
+      toast.error('No tienes permisos para editar registros');
+      return;
+    }
     try {
       await axios.put(`${API}/paralizaciones/${parId}/levantar`);
       toast.success('Paralización levantada');
@@ -599,6 +645,8 @@ export const Registros = () => {
     if (filtroUrgente && !i.urgente) return false;
     return true;
   });
+  const showActionsColumn = canEdit || canDelete;
+  const tableColSpan = showActionsColumn ? 17 : 16;
 
   return (
     <div className="space-y-4" data-testid="registros-page">
@@ -621,16 +669,20 @@ export const Registros = () => {
             if (searchDebounced) f.search = searchDebounced;
             return f;
           })()} items={items} />
-          <Button onClick={() => navigate('/registros/importar')} variant="outline" size="sm" className="sm:size-default" data-testid="btn-importar-excel">
-            <FileSpreadsheet className="h-4 w-4 mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">Importar Excel</span>
-            <span className="sm:hidden">Importar</span>
-          </Button>
-          <Button onClick={() => navigate('/registros/nuevo')} data-testid="btn-nuevo-registro" size="sm" className="sm:size-default">
-            <Plus className="h-4 w-4 mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">Nuevo Registro</span>
-            <span className="sm:hidden">Nuevo</span>
-          </Button>
+          {canCreate && (
+            <Button onClick={() => navigate('/registros/importar')} variant="outline" size="sm" className="sm:size-default" data-testid="btn-importar-excel">
+              <FileSpreadsheet className="h-4 w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Importar Excel</span>
+              <span className="sm:hidden">Importar</span>
+            </Button>
+          )}
+          {canCreate && (
+            <Button onClick={() => navigate('/registros/nuevo')} data-testid="btn-nuevo-registro" size="sm" className="sm:size-default">
+              <Plus className="h-4 w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Nuevo Registro</span>
+              <span className="sm:hidden">Nuevo</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -845,8 +897,8 @@ export const Registros = () => {
           displayItems.map((item) => (
             <div
               key={item.id}
-              className={`rounded-lg border bg-card p-3 active:bg-muted/60 transition-colors cursor-pointer ${item.urgente ? 'border-l-4 border-l-rose-500 bg-rose-50/50 dark:bg-rose-950/20' : item.estado_operativo === 'PARALIZADA' ? 'border-l-4 border-l-red-500' : ''}`}
-              onClick={() => navigate(`/registros/editar/${item.id}`)}
+              className={`rounded-lg border bg-card p-3 active:bg-muted/60 transition-colors ${canEdit ? 'cursor-pointer' : ''} ${item.urgente ? 'border-l-4 border-l-rose-500 bg-rose-50/50 dark:bg-rose-950/20' : item.estado_operativo === 'PARALIZADA' ? 'border-l-4 border-l-red-500' : ''}`}
+              onClick={() => { if (canEdit) navigate(`/registros/editar/${item.id}`); }}
               data-testid={`registro-card-${item.id}`}
             >
               <div className="flex items-start justify-between gap-2">
@@ -866,13 +918,15 @@ export const Registros = () => {
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
                   <div className="flex items-center gap-1">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleToggleUrgente(item); }}
-                      className={`h-6 w-6 flex items-center justify-center rounded-md transition-colors ${item.urgente ? 'bg-rose-100 dark:bg-rose-900/40' : 'bg-muted/40 hover:bg-muted'}`}
-                      title={item.urgente ? 'Quitar urgente' : 'Marcar urgente'}
-                    >
-                      <AlertTriangle className={`h-3.5 w-3.5 ${item.urgente ? 'text-rose-600 fill-rose-500' : 'text-muted-foreground'}`} />
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleToggleUrgente(item); }}
+                        className={`h-6 w-6 flex items-center justify-center rounded-md transition-colors ${item.urgente ? 'bg-rose-100 dark:bg-rose-900/40' : 'bg-muted/40 hover:bg-muted'}`}
+                        title={item.urgente ? 'Quitar urgente' : 'Marcar urgente'}
+                      >
+                        <AlertTriangle className={`h-3.5 w-3.5 ${item.urgente ? 'text-rose-600 fill-rose-500' : 'text-muted-foreground'}`} />
+                      </button>
+                    )}
                     <Badge variant="outline" className={`${getStatusClass(item.estado)} text-[11px] whitespace-nowrap`}>
                       {item.estado}
                     </Badge>
@@ -923,19 +977,19 @@ export const Registros = () => {
                   <TableHead>Fecha Final</TableHead>
                   <TableHead>Operativo</TableHead>
                   <TableHead className="hidden lg:table-cell">Salud</TableHead>
-                  <TableHead className="w-[140px]">Acciones</TableHead>
+                  {showActionsColumn && <TableHead className="w-[140px]">Acciones</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={16} className="text-center py-8">
+                    <TableCell colSpan={tableColSpan} className="text-center py-8">
                       Cargando...
                     </TableCell>
                   </TableRow>
                 ) : displayItems.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={16} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={tableColSpan} className="text-center py-8 text-muted-foreground">
                       {hayFiltrosActivos ? 'No hay registros que coincidan con los filtros' : 'No hay registros'}
                     </TableCell>
                   </TableRow>
@@ -943,9 +997,9 @@ export const Registros = () => {
                   displayItems.map((item) => (
                     <TableRow
                       key={item.id}
-                      className={`data-table-row cursor-pointer hover:bg-muted/30 transition-colors ${item.urgente ? 'bg-rose-50 dark:bg-rose-950/30 border-l-2 border-l-red-500' : item.estado_operativo === 'PARALIZADA' ? 'bg-red-50 dark:bg-red-950/20 border-l-2 border-l-red-700' : item.estado_operativo === 'EN_RIESGO' ? 'bg-amber-50 dark:bg-amber-950/20 border-l-2 border-l-amber-500' : 'border-l-2 border-l-blue-400'}`}
+                      className={`data-table-row ${canEdit ? 'cursor-pointer' : ''} hover:bg-muted/30 transition-colors ${item.urgente ? 'bg-rose-50 dark:bg-rose-950/30 border-l-2 border-l-red-500' : item.estado_operativo === 'PARALIZADA' ? 'bg-red-50 dark:bg-red-950/20 border-l-2 border-l-red-700' : item.estado_operativo === 'EN_RIESGO' ? 'bg-amber-50 dark:bg-amber-950/20 border-l-2 border-l-amber-500' : 'border-l-2 border-l-blue-400'}`}
                       data-testid={`registro-row-${item.id}`}
-                      onClick={() => navigate(`/registros/editar/${item.id}`)}
+                      onClick={() => { if (canEdit) navigate(`/registros/editar/${item.id}`); }}
                     >
                       <TableCell className="font-mono font-bold text-base whitespace-nowrap">
                         <div>
@@ -1024,26 +1078,34 @@ export const Registros = () => {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className={`h-7 w-7 ${item.urgente ? 'bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/40 dark:hover:bg-rose-900/60' : ''}`}
-                            onClick={(e) => { e.stopPropagation(); handleToggleUrgente(item); }}
-                            title={item.urgente ? 'Quitar marca de urgente' : 'Marcar como urgente'}
-                            data-testid={`urgente-registro-${item.id}`}
-                          >
-                            <AlertTriangle className={`h-3.5 w-3.5 ${item.urgente ? 'text-rose-600 fill-rose-500' : 'text-muted-foreground'}`} />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleOpenColoresDialog(item); }} title="Colores" data-testid={`colores-registro-${item.id}`}>
-                            <Palette className={`h-3.5 w-3.5 ${tieneColores(item) ? 'text-primary' : ''}`} />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} title="Eliminar" data-testid={`delete-registro-${item.id}`}>
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
+                      {showActionsColumn && (
+                        <TableCell>
+                          <div className="flex gap-1">
+                            {canEdit && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={`h-7 w-7 ${item.urgente ? 'bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/40 dark:hover:bg-rose-900/60' : ''}`}
+                                onClick={(e) => { e.stopPropagation(); handleToggleUrgente(item); }}
+                                title={item.urgente ? 'Quitar marca de urgente' : 'Marcar como urgente'}
+                                data-testid={`urgente-registro-${item.id}`}
+                              >
+                                <AlertTriangle className={`h-3.5 w-3.5 ${item.urgente ? 'text-rose-600 fill-rose-500' : 'text-muted-foreground'}`} />
+                              </Button>
+                            )}
+                            {canEdit && (
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleOpenColoresDialog(item); }} title="Colores" data-testid={`colores-registro-${item.id}`}>
+                                <Palette className={`h-3.5 w-3.5 ${tieneColores(item) ? 'text-primary' : ''}`} />
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }} title="Eliminar" data-testid={`delete-registro-${item.id}`}>
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}

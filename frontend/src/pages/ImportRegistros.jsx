@@ -9,14 +9,16 @@ import {
 } from '../components/ui/table';
 import {
   Download, Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle,
-  ArrowLeft, Loader2, FileUp, Check,
+  ArrowLeft, Loader2, FileUp, Check, ShieldAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import usePermissions from '../hooks/usePermissions';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 export default function ImportRegistros() {
   const navigate = useNavigate();
+  const { canCreate } = usePermissions('registros');
   const fileRef = useRef(null);
   const [step, setStep] = useState(1); // 1=template, 2=validate, 3=result
   const [file, setFile] = useState(null);
@@ -26,6 +28,10 @@ export default function ImportRegistros() {
   const [result, setResult] = useState(null);
 
   const downloadTemplate = async () => {
+    if (!canCreate) {
+      toast.error('No tienes permisos para crear registros');
+      return;
+    }
     try {
       const res = await axios.get(`${API}/registros/import-template`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
@@ -41,6 +47,10 @@ export default function ImportRegistros() {
   };
 
   const handleFileChange = (e) => {
+    if (!canCreate) {
+      toast.error('No tienes permisos para crear registros');
+      return;
+    }
     const f = e.target.files?.[0];
     if (f) {
       setFile(f);
@@ -52,6 +62,10 @@ export default function ImportRegistros() {
 
   const handleValidate = async () => {
     if (!file) return;
+    if (!canCreate) {
+      toast.error('No tienes permisos para crear registros');
+      return;
+    }
     setValidating(true);
     try {
       const formData = new FormData();
@@ -67,6 +81,10 @@ export default function ImportRegistros() {
 
   const handleImport = async () => {
     if (!file) return;
+    if (!canCreate) {
+      toast.error('No tienes permisos para crear registros');
+      return;
+    }
     setImporting(true);
     try {
       const formData = new FormData();
@@ -95,6 +113,27 @@ export default function ImportRegistros() {
     setResult(null);
     if (fileRef.current) fileRef.current.value = '';
   };
+
+  if (!canCreate) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center p-6">
+        <Card className="max-w-md w-full">
+          <CardContent className="pt-6 text-center space-y-4">
+            <ShieldAlert className="h-10 w-10 mx-auto text-muted-foreground" />
+            <div>
+              <h2 className="text-lg font-semibold">Sin permisos</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Tu usuario no puede importar ni crear registros.
+              </p>
+            </div>
+            <Button type="button" variant="outline" onClick={() => navigate('/registros')}>
+              Volver a Registros
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

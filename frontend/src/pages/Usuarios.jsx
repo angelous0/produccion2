@@ -53,16 +53,203 @@ const ROLES = [
 const CATEGORIA_ICONS = {
   'Producción': Play,
   'Inventario': Package,
+  'Catálogos': Database,
+  'Odoo': Package,
   'Maestros': Database,
   'Configuración': Settings,
   'Calidad': AlertTriangle,
   'Reportes': BarChart,
 };
 
+const PERMISOS_CATEGORIAS_BASE = [
+  {
+    nombre: 'Producción',
+    icono: 'Play',
+    tablas: [
+      { key: 'dashboard', nombre: 'Dashboard', acciones: ['ver'] },
+      { key: 'registros', nombre: 'Registros', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'muestras', nombre: 'Muestras', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'movimientos_produccion', nombre: 'Movimientos de Producción', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'guias_remision', nombre: 'Guías de Remisión', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+    ],
+  },
+  {
+    nombre: 'Inventario',
+    icono: 'Package',
+    tablas: [
+      { key: 'inventario', nombre: 'Items de Inventario', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'inventario_ingresos', nombre: 'Ingresos', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'inventario_salidas', nombre: 'Salidas', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'inventario_salidas_libres', nombre: 'Salidas Libres', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'inventario_ajustes', nombre: 'Ajustes', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'inventario_rollos', nombre: 'Rollos de Tela', acciones: ['ver', 'crear', 'editar'] },
+      { key: 'reporte_movimientos', nombre: 'Movimientos', acciones: ['ver'] },
+      { key: 'kardex', nombre: 'Kardex', acciones: ['ver'] },
+      { key: 'kardex_pt', nombre: 'Kardex PT', acciones: ['ver'] },
+      { key: 'kardex_general', nombre: 'Kardex General', acciones: ['ver'] },
+      { key: 'reporte_stock_bajo', nombre: 'Alertas Stock', acciones: ['ver'] },
+      { key: 'transferencias_linea', nombre: 'Transferencias', acciones: ['ver', 'crear', 'editar'] },
+    ],
+  },
+  {
+    nombre: 'Catálogos',
+    icono: 'Database',
+    tablas: [
+      { key: 'marcas', nombre: 'Marcas', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'generos', nombre: 'Géneros', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'tipos', nombre: 'Tipos', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'entalles', nombre: 'Entalles', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'telas', nombre: 'Telas', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'telas_general', nombre: 'Telas Generales', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'hilos', nombre: 'Hilos', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'hilos_especificos', nombre: 'Hilos Específicos', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'tallas', nombre: 'Tallas', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'colores', nombre: 'Colores', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'colores_generales', nombre: 'Colores Generales', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'colores_por_tipo', nombre: 'Colores por Tipo', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'cuellos', nombre: 'Cuellos', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'detalles', nombre: 'Detalles', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'lavados', nombre: 'Lavados', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'bases', nombre: 'Bases', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'modelos', nombre: 'Modelos', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+    ],
+  },
+  {
+    nombre: 'Odoo',
+    icono: 'Package',
+    tablas: [
+      { key: 'productos_odoo', nombre: 'Productos Odoo', acciones: ['ver'] },
+    ],
+  },
+  {
+    nombre: 'Maestros',
+    icono: 'Settings',
+    tablas: [
+      { key: 'servicios_produccion', nombre: 'Servicios', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'personas_produccion', nombre: 'Personas', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'rutas_produccion', nombre: 'Rutas de Producción', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'movimientos_produccion', nombre: 'Movimientos', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'motivos_incidencia', nombre: 'Motivos Incidencia', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'reporte_productividad', nombre: 'Productividad', acciones: ['ver'] },
+    ],
+  },
+  {
+    nombre: 'Configuración',
+    icono: 'Settings',
+    tablas: [
+      { key: 'config_empresa', nombre: 'Empresa', acciones: ['ver', 'editar'] },
+      { key: 'usuarios', nombre: 'Usuarios', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'historial_actividad', nombre: 'Historial', acciones: ['ver'] },
+      { key: 'auditoria', nombre: 'Auditoría', acciones: ['ver'] },
+      { key: 'backups', nombre: 'Backups', acciones: ['ver', 'crear', 'eliminar'] },
+    ],
+  },
+  {
+    nombre: 'Calidad',
+    icono: 'AlertTriangle',
+    tablas: [
+      { key: 'merma', nombre: 'Merma', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
+      { key: 'reporte_calidad', nombre: 'Reportes de Calidad', acciones: ['ver'] },
+    ],
+  },
+  {
+    nombre: 'Reportes',
+    icono: 'BarChart',
+    tablas: [
+      { key: 'reporte_validacion_registros', nombre: 'Validación MP/Servicios', acciones: ['ver'] },
+      { key: 'reporte_seguimiento', nombre: 'Seguimiento', acciones: ['ver'] },
+      { key: 'reporte_entregas', nombre: 'Entregas', acciones: ['ver'] },
+      { key: 'reporte_costo_lote', nombre: 'Costo por Lote', acciones: ['ver'] },
+      { key: 'reporte_operativo', nombre: 'Reporte de servicios', acciones: ['ver'] },
+      { key: 'reporte_valorizacion', nombre: 'Valorización', acciones: ['ver'] },
+      { key: 'reporte_lotes', nombre: 'Lotes & Trazabilidad', acciones: ['ver'] },
+      { key: 'reporte_matriz', nombre: 'Matriz Dinámica', acciones: ['ver'] },
+      { key: 'reporte_rendimiento_servicios', nombre: 'Rendimiento Servicios', acciones: ['ver'] },
+      { key: 'reporte_despachos_tienda', nombre: 'Despachos a Tienda', acciones: ['ver'] },
+      { key: 'reporte_costos_produccion', nombre: 'Detalle por Talla e Insumo', acciones: ['ver'] },
+      { key: 'reporte_movimientos_costos', nombre: 'Movimientos & Costos', acciones: ['ver'] },
+      { key: 'reporte_trazabilidad_kpis', nombre: 'KPIs Trazabilidad', acciones: ['ver'] },
+    ],
+  },
+];
+
+const PERMISOS_OPERATIVOS_BASE = {
+  estados_disponibles: [
+    'Para Corte', 'Corte', 'Para Estampado', 'Estampado',
+    'Para Costura', 'Costura', 'Bordado',
+    'Para Atraque', 'Atraque', 'Para Lavandería', 'Muestra Lavandería', 'Lavandería',
+    'Para Acabado', 'Acabado',
+    'Almacén PT', 'Tienda',
+  ],
+  acciones_produccion: [
+    { key: 'crear_movimientos', nombre: 'Crear movimientos de producción' },
+    { key: 'editar_movimientos', nombre: 'Editar/eliminar movimientos' },
+    { key: 'cambiar_estados', nombre: 'Cambiar estados de registros' },
+    { key: 'registrar_incidencias', nombre: 'Registrar incidencias/paralizaciones' },
+    { key: 'resolver_incidencias', nombre: 'Resolver incidencias/paralizaciones' },
+    { key: 'dividir_lotes', nombre: 'Dividir lotes' },
+    { key: 'cerrar_lotes', nombre: 'Cerrar/finalizar lotes' },
+  ],
+  acciones_inventario: [
+    { key: 'crear_items', nombre: 'Crear items de inventario' },
+    { key: 'registrar_ingresos', nombre: 'Registrar ingresos' },
+    { key: 'dar_salida_mp', nombre: 'Dar salida de materia prima' },
+    { key: 'reservar_materiales', nombre: 'Reservar materiales' },
+    { key: 'ajustes_stock', nombre: 'Ajustes de stock' },
+    { key: 'gestionar_bom', nombre: 'Gestionar BOM de modelos' },
+  ],
+};
+
+const mergeUniqueByKey = (base = [], incoming = []) => {
+  const map = new Map(base.map((item) => [item.key, item]));
+  incoming.forEach((item) => {
+    if (!item?.key) return;
+    map.set(item.key, { ...item, ...map.get(item.key) });
+  });
+  return Array.from(map.values());
+};
+
+const mergeUniqueValues = (base = [], incoming = []) => {
+  return Array.from(new Set([...base, ...incoming].filter(Boolean)));
+};
+
+const buildPermisosStructure = (serverData = {}) => {
+  const knownKeys = new Set(PERMISOS_CATEGORIAS_BASE.flatMap((categoria) => categoria.tablas.map((tabla) => tabla.key)));
+  const unknownTables = (serverData.categorias || [])
+    .flatMap((categoria) => categoria.tablas || [])
+    .filter((tabla) => tabla?.key && !knownKeys.has(tabla.key));
+
+  const categorias = PERMISOS_CATEGORIAS_BASE.map((categoria) => ({
+    ...categoria,
+    tablas: categoria.tablas.map((tabla) => ({ ...tabla })),
+  }));
+
+  if (unknownTables.length > 0) {
+    categorias.push({
+      nombre: 'Otros',
+      icono: 'Database',
+      tablas: unknownTables,
+    });
+  }
+
+  const serverOperativos = serverData.permisos_operativos || {};
+  return {
+    ...serverData,
+    categorias,
+    permisos_operativos: {
+      ...serverOperativos,
+      servicios_disponibles: serverOperativos.servicios_disponibles || [],
+      estados_disponibles: mergeUniqueValues(PERMISOS_OPERATIVOS_BASE.estados_disponibles, serverOperativos.estados_disponibles || []),
+      acciones_produccion: mergeUniqueByKey(PERMISOS_OPERATIVOS_BASE.acciones_produccion, serverOperativos.acciones_produccion || []),
+      acciones_inventario: mergeUniqueByKey(PERMISOS_OPERATIVOS_BASE.acciones_inventario, serverOperativos.acciones_inventario || []),
+    },
+  };
+};
+
 export const Usuarios = () => {
   const { user: currentUser, isAdmin } = useAuth();
   const [usuarios, setUsuarios] = useState([]);
-  const [estructura, setEstructura] = useState({ categorias: [] });
+  const [estructura, setEstructura] = useState(() => buildPermisosStructure());
   const [loading, setLoading] = useState(true);
   const { saving, guard } = useSaving();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -94,9 +281,10 @@ export const Usuarios = () => {
   const fetchEstructura = async () => {
     try {
       const response = await axios.get(`${API}/permisos/estructura`);
-      setEstructura(response.data);
+      setEstructura(buildPermisosStructure(response.data));
     } catch (error) {
       console.error('Error fetching estructura:', error);
+      setEstructura(buildPermisosStructure());
     }
   };
 
@@ -207,13 +395,28 @@ export const Usuarios = () => {
   };
 
   const togglePermiso = (tabla, accion) => {
-    setPermisos(prev => ({
-      ...prev,
-      [tabla]: {
-        ...prev[tabla],
-        [accion]: !prev[tabla]?.[accion]
+    setPermisos(prev => {
+      const current = prev[tabla] || {};
+      const nextChecked = !current[accion];
+      const nextTabla = { ...current, [accion]: nextChecked };
+
+      // Crear/editar/eliminar no tiene sentido sin poder ver el modulo.
+      if (accion !== 'ver' && nextChecked) {
+        nextTabla.ver = true;
       }
-    }));
+
+      // Si se quita Ver, se apagan tambien las acciones de escritura.
+      if (accion === 'ver' && !nextChecked) {
+        Object.keys(nextTabla).forEach((key) => {
+          nextTabla[key] = false;
+        });
+      }
+
+      return {
+        ...prev,
+        [tabla]: nextTabla,
+      };
+    });
   };
 
   const toggleAllPermisos = (tabla, acciones, checked) => {

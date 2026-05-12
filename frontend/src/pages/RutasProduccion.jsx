@@ -31,6 +31,7 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Plus, Pencil, Trash2, Route, ArrowRight, GripVertical, X, Flag } from 'lucide-react';
 import { toast } from 'sonner';
+import { usePermissions } from '../hooks/usePermissions';
 import {
   DndContext,
   closestCenter,
@@ -142,6 +143,7 @@ const SortableEtapa = ({ etapa, index, servicios, onRemove, onToggle, onUpdate }
 };
 
 export const RutasProduccion = () => {
+  const { canCreate, canEdit, canDelete } = usePermissions('rutas_produccion');
   const [rutas, setRutas] = useState([]);
   const [servicios, setServicios] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -181,6 +183,7 @@ export const RutasProduccion = () => {
   }, []);
 
   const handleOpenDialog = (ruta = null) => {
+    if ((ruta && !canEdit) || (!ruta && !canCreate)) return;
     if (ruta) {
       setEditingRuta(ruta);
       // Agregar IDs únicos a las etapas para drag & drop
@@ -282,6 +285,11 @@ export const RutasProduccion = () => {
 
   const handleSubmit = guard(async (e) => {
     e.preventDefault();
+    if ((editingRuta && !canEdit) || (!editingRuta && !canCreate)) {
+      toast.error('No tienes permisos para guardar rutas');
+      return;
+    }
+
     if (!formData.nombre.trim()) {
       toast.error('El nombre es requerido');
       return;
@@ -323,6 +331,7 @@ export const RutasProduccion = () => {
   });
 
   const handleDelete = async (id) => {
+    if (!canDelete) return;
     if (!window.confirm('¿Estás seguro de eliminar esta ruta?')) return;
     try {
       await axios.delete(`${API}/rutas-produccion/${id}`);
@@ -349,10 +358,12 @@ export const RutasProduccion = () => {
             Define las secuencias de etapas para los modelos
           </p>
         </div>
-        <Button onClick={() => handleOpenDialog()} data-testid="btn-nueva-ruta">
-          <Plus className="h-4 w-4 mr-2" />
-          Nueva Ruta
-        </Button>
+        {canCreate && (
+          <Button onClick={() => handleOpenDialog()} data-testid="btn-nueva-ruta">
+            <Plus className="h-4 w-4 mr-2" />
+            Nueva Ruta
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -363,13 +374,15 @@ export const RutasProduccion = () => {
                 <TableHead>Nombre</TableHead>
                 <TableHead>Descripción</TableHead>
                 <TableHead>Etapas</TableHead>
-                <TableHead className="text-right w-[100px]">Acciones</TableHead>
+                {(canEdit || canDelete) && (
+                  <TableHead className="text-right w-[100px]">Acciones</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
               {rutas.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={(canEdit || canDelete) ? 4 : 3} className="text-center py-8 text-muted-foreground">
                     No hay rutas creadas. Crea una para empezar.
                   </TableCell>
                 </TableRow>
@@ -400,26 +413,32 @@ export const RutasProduccion = () => {
                           ))}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenDialog(ruta)}
-                          data-testid={`edit-ruta-${ruta.id}`}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(ruta.id)}
-                          data-testid={`delete-ruta-${ruta.id}`}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                    {(canEdit || canDelete) && (
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {canEdit && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleOpenDialog(ruta)}
+                              data-testid={`edit-ruta-${ruta.id}`}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDelete(ruta.id)}
+                              data-testid={`delete-ruta-${ruta.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}

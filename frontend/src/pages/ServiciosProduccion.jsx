@@ -16,6 +16,7 @@ import { Label } from '../components/ui/label';
 import { Plus, Pencil, Trash2, Cog, GripVertical, Percent } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
+import { usePermissions } from '../hooks/usePermissions';
 import {
   DndContext,
   closestCenter,
@@ -36,7 +37,7 @@ import { CSS } from '@dnd-kit/utilities';
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 // Componente de fila sorteable
-const SortableRow = ({ servicio, onEdit, onDelete }) => {
+const SortableRow = ({ servicio, onEdit, onDelete, canEdit, canDelete, showActions }) => {
   const {
     attributes,
     listeners,
@@ -44,7 +45,7 @@ const SortableRow = ({ servicio, onEdit, onDelete }) => {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: servicio.id });
+  } = useSortable({ id: servicio.id, disabled: !canEdit });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -61,14 +62,16 @@ const SortableRow = ({ servicio, onEdit, onDelete }) => {
     >
       <td className="p-3 font-mono text-center">
         <div className="flex items-center gap-2">
-          <button
-            {...attributes}
-            {...listeners}
-            className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
-            data-testid={`drag-handle-${servicio.id}`}
-          >
-            <GripVertical className="h-4 w-4 text-muted-foreground" />
-          </button>
+          {canEdit && (
+            <button
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
+              data-testid={`drag-handle-${servicio.id}`}
+            >
+              <GripVertical className="h-4 w-4 text-muted-foreground" />
+            </button>
+          )}
           {servicio.secuencia}
         </div>
       </td>
@@ -78,31 +81,38 @@ const SortableRow = ({ servicio, onEdit, onDelete }) => {
           <span className="ml-2 text-[10px] font-medium bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">%</span>
         )}
       </td>
-      <td className="p-3 text-right">
-        <div className="flex justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onEdit(servicio)}
-            data-testid={`edit-servicio-${servicio.id}`}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onDelete(servicio.id)}
-            data-testid={`delete-servicio-${servicio.id}`}
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        </div>
-      </td>
+      {showActions && (
+        <td className="p-3 text-right">
+          <div className="flex justify-end gap-1">
+            {canEdit && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onEdit(servicio)}
+                data-testid={`edit-servicio-${servicio.id}`}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+            {canDelete && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onDelete(servicio.id)}
+                data-testid={`delete-servicio-${servicio.id}`}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            )}
+          </div>
+        </td>
+      )}
     </tr>
   );
 };
 
 export const ServiciosProduccion = () => {
+  const { canCreate, canEdit, canDelete } = usePermissions('servicios_produccion');
   const [servicios, setServicios] = useState([]);
   const [loading, setLoading] = useState(true);
   const { saving, guard } = useSaving();
@@ -133,6 +143,7 @@ export const ServiciosProduccion = () => {
   }, []);
 
   const handleOpenDialog = (servicio = null) => {
+    if ((servicio && !canEdit) || (!servicio && !canCreate)) return;
     if (servicio) {
       setEditingServicio(servicio);
       setFormData({ nombre: servicio.nombre, secuencia: servicio.secuencia || 0, usa_avance_porcentaje: servicio.usa_avance_porcentaje || false });
@@ -145,6 +156,11 @@ export const ServiciosProduccion = () => {
   };
 
   const handleSubmit = guard(async () => {
+    if ((editingServicio && !canEdit) || (!editingServicio && !canCreate)) {
+      toast.error('No tienes permisos para guardar servicios');
+      return;
+    }
+
     if (!formData.nombre.trim()) {
       toast.error('El nombre es requerido');
       return;
@@ -166,6 +182,7 @@ export const ServiciosProduccion = () => {
   });
 
   const handleDelete = async (id) => {
+    if (!canDelete) return;
     if (!window.confirm('¿Estás seguro de eliminar este servicio?')) return;
     try {
       await axios.delete(`${API}/servicios-produccion/${id}`);
@@ -177,6 +194,7 @@ export const ServiciosProduccion = () => {
   };
 
   const handleDragEnd = async (event) => {
+    if (!canEdit) return;
     const { active, over } = event;
 
     if (active.id !== over?.id) {
@@ -225,10 +243,12 @@ export const ServiciosProduccion = () => {
             Gestiona los servicios del proceso productivo. Arrastra para reordenar.
           </p>
         </div>
-        <Button onClick={() => handleOpenDialog()} data-testid="btn-nuevo-servicio">
-          <Plus className="h-4 w-4 mr-2" />
-          Nuevo Servicio
-        </Button>
+        {canCreate && (
+          <Button onClick={() => handleOpenDialog()} data-testid="btn-nuevo-servicio">
+            <Plus className="h-4 w-4 mr-2" />
+            Nuevo Servicio
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -249,7 +269,9 @@ export const ServiciosProduccion = () => {
                   <tr className="bg-muted/50 border-b">
                     <th className="p-3 text-left text-sm font-semibold w-[100px]">Orden</th>
                     <th className="p-3 text-left text-sm font-semibold">Nombre</th>
-                    <th className="p-3 text-right text-sm font-semibold w-[120px]">Acciones</th>
+                    {(canEdit || canDelete) && (
+                      <th className="p-3 text-right text-sm font-semibold w-[120px]">Acciones</th>
+                    )}
                   </tr>
                 </thead>
                 <DndContext
@@ -268,6 +290,9 @@ export const ServiciosProduccion = () => {
                           servicio={servicio}
                           onEdit={handleOpenDialog}
                           onDelete={handleDelete}
+                          canEdit={canEdit}
+                          canDelete={canDelete}
+                          showActions={canEdit || canDelete}
                         />
                       ))}
                     </tbody>

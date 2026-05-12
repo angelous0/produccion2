@@ -326,12 +326,14 @@ async def get_estructura_permisos():
     return {
         "categorias": [
             {
-                "nombre": "Produccion",
+                "nombre": "Producción",
                 "icono": "Play",
                 "tablas": [
+                    {"key": "dashboard", "nombre": "Dashboard", "acciones": ["ver"]},
                     {"key": "registros", "nombre": "Registros", "acciones": ["ver", "crear", "editar", "eliminar"]},
-                    {"key": "movimientos_produccion", "nombre": "Movimientos de Produccion", "acciones": ["ver", "crear", "editar", "eliminar"]},
-                    {"key": "guias_remision", "nombre": "Guias de Remision", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "muestras", "nombre": "Muestras", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "movimientos_produccion", "nombre": "Movimientos de Producción", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "guias_remision", "nombre": "Guías de Remisión", "acciones": ["ver", "crear", "editar", "eliminar"]},
                 ]
             },
             {
@@ -341,33 +343,67 @@ async def get_estructura_permisos():
                     {"key": "inventario", "nombre": "Items de Inventario", "acciones": ["ver", "crear", "editar", "eliminar"]},
                     {"key": "inventario_ingresos", "nombre": "Ingresos", "acciones": ["ver", "crear", "editar", "eliminar"]},
                     {"key": "inventario_salidas", "nombre": "Salidas", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "inventario_salidas_libres", "nombre": "Salidas Libres", "acciones": ["ver", "crear", "editar", "eliminar"]},
                     {"key": "inventario_ajustes", "nombre": "Ajustes", "acciones": ["ver", "crear", "editar", "eliminar"]},
                     {"key": "inventario_rollos", "nombre": "Rollos de Tela", "acciones": ["ver", "crear", "editar"]},
+                    {"key": "reporte_movimientos", "nombre": "Movimientos", "acciones": ["ver"]},
+                    {"key": "kardex", "nombre": "Kardex", "acciones": ["ver"]},
+                    {"key": "kardex_pt", "nombre": "Kardex PT", "acciones": ["ver"]},
+                    {"key": "kardex_general", "nombre": "Kardex General", "acciones": ["ver"]},
+                    {"key": "reporte_stock_bajo", "nombre": "Alertas Stock", "acciones": ["ver"]},
+                    {"key": "transferencias_linea", "nombre": "Transferencias", "acciones": ["ver", "crear", "editar"]},
                 ]
             },
             {
-                "nombre": "Maestros",
+                "nombre": "Catálogos",
                 "icono": "Database",
                 "tablas": [
                     {"key": "marcas", "nombre": "Marcas", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "generos", "nombre": "Géneros", "acciones": ["ver", "crear", "editar", "eliminar"]},
                     {"key": "tipos", "nombre": "Tipos", "acciones": ["ver", "crear", "editar", "eliminar"]},
                     {"key": "entalles", "nombre": "Entalles", "acciones": ["ver", "crear", "editar", "eliminar"]},
                     {"key": "telas", "nombre": "Telas", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "telas_general", "nombre": "Telas Generales", "acciones": ["ver", "crear", "editar", "eliminar"]},
                     {"key": "hilos", "nombre": "Hilos", "acciones": ["ver", "crear", "editar", "eliminar"]},
-                    {"key": "hilos_especificos", "nombre": "Hilos Especificos", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "hilos_especificos", "nombre": "Hilos Específicos", "acciones": ["ver", "crear", "editar", "eliminar"]},
                     {"key": "tallas", "nombre": "Tallas", "acciones": ["ver", "crear", "editar", "eliminar"]},
                     {"key": "colores", "nombre": "Colores", "acciones": ["ver", "crear", "editar", "eliminar"]},
                     {"key": "colores_generales", "nombre": "Colores Generales", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "colores_por_tipo", "nombre": "Colores por Tipo", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "cuellos", "nombre": "Cuellos", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "detalles", "nombre": "Detalles", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "lavados", "nombre": "Lavados", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "bases", "nombre": "Bases", "acciones": ["ver", "crear", "editar", "eliminar"]},
                     {"key": "modelos", "nombre": "Modelos", "acciones": ["ver", "crear", "editar", "eliminar"]},
                 ]
             },
             {
-                "nombre": "Configuracion",
+                "nombre": "Odoo",
+                "icono": "Package",
+                "tablas": [
+                    {"key": "productos_odoo", "nombre": "Productos Odoo", "acciones": ["ver"]},
+                ]
+            },
+            {
+                "nombre": "Maestros",
                 "icono": "Settings",
                 "tablas": [
                     {"key": "servicios_produccion", "nombre": "Servicios", "acciones": ["ver", "crear", "editar", "eliminar"]},
                     {"key": "personas_produccion", "nombre": "Personas", "acciones": ["ver", "crear", "editar", "eliminar"]},
-                    {"key": "rutas_produccion", "nombre": "Rutas de Produccion", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "rutas_produccion", "nombre": "Rutas de Producción", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "motivos_incidencia", "nombre": "Motivos Incidencia", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "reporte_productividad", "nombre": "Productividad", "acciones": ["ver"]},
+                ]
+            },
+            {
+                "nombre": "Configuración",
+                "icono": "Settings",
+                "tablas": [
+                    {"key": "config_empresa", "nombre": "Empresa", "acciones": ["ver", "editar"]},
+                    {"key": "usuarios", "nombre": "Usuarios", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "historial_actividad", "nombre": "Historial", "acciones": ["ver"]},
+                    {"key": "auditoria", "nombre": "Auditoría", "acciones": ["ver"]},
+                    {"key": "backups", "nombre": "Backups", "acciones": ["ver", "crear", "eliminar"]},
                 ]
             },
             {
@@ -375,15 +411,26 @@ async def get_estructura_permisos():
                 "icono": "AlertTriangle",
                 "tablas": [
                     {"key": "merma", "nombre": "Merma", "acciones": ["ver", "crear", "editar", "eliminar"]},
+                    {"key": "reporte_calidad", "nombre": "Reportes de Calidad", "acciones": ["ver"]},
                 ]
             },
             {
                 "nombre": "Reportes",
                 "icono": "BarChart",
                 "tablas": [
-                    {"key": "kardex", "nombre": "Kardex", "acciones": ["ver"]},
-                    {"key": "reporte_productividad", "nombre": "Productividad", "acciones": ["ver"]},
-                    {"key": "reporte_movimientos", "nombre": "Reporte Movimientos", "acciones": ["ver"]},
+                    {"key": "reporte_validacion_registros", "nombre": "Validación MP/Servicios", "acciones": ["ver"]},
+                    {"key": "reporte_seguimiento", "nombre": "Seguimiento", "acciones": ["ver"]},
+                    {"key": "reporte_entregas", "nombre": "Entregas", "acciones": ["ver"]},
+                    {"key": "reporte_costo_lote", "nombre": "Costo por Lote", "acciones": ["ver"]},
+                    {"key": "reporte_operativo", "nombre": "Reporte de servicios", "acciones": ["ver"]},
+                    {"key": "reporte_valorizacion", "nombre": "Valorización", "acciones": ["ver"]},
+                    {"key": "reporte_lotes", "nombre": "Lotes & Trazabilidad", "acciones": ["ver"]},
+                    {"key": "reporte_matriz", "nombre": "Matriz Dinámica", "acciones": ["ver"]},
+                    {"key": "reporte_rendimiento_servicios", "nombre": "Rendimiento Servicios", "acciones": ["ver"]},
+                    {"key": "reporte_despachos_tienda", "nombre": "Despachos a Tienda", "acciones": ["ver"]},
+                    {"key": "reporte_costos_produccion", "nombre": "Detalle por Talla e Insumo", "acciones": ["ver"]},
+                    {"key": "reporte_movimientos_costos", "nombre": "Movimientos & Costos", "acciones": ["ver"]},
+                    {"key": "reporte_trazabilidad_kpis", "nombre": "KPIs Trazabilidad", "acciones": ["ver"]},
                 ]
             },
         ],

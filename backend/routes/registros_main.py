@@ -26,6 +26,7 @@ async def get_filtros_modelo(
     tipo_id: str = "",
     entalle_id: str = "",
     tela_id: str = "",
+    _u=Depends(require_permission("registros", "ver")),
 ):
     """Devuelve opciones disponibles para cada filtro, en cascada.
     Incluye valores de modelos normales Y de registros manuales (modelo_manual JSONB)."""
@@ -224,6 +225,7 @@ async def get_registros(
     tipo_id: str = "",
     entalle_id: str = "",
     tela_id: str = "",
+    _u=Depends(require_permission("registros", "ver")),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -422,14 +424,14 @@ async def get_registros(
 
 # Endpoint para obtener estados únicos (para filtros)
 @router.get("/registros-estados")
-async def get_registros_estados():
+async def get_registros_estados(_u=Depends(require_permission("registros", "ver"))):
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT DISTINCT estado FROM prod_registros WHERE estado IS NOT NULL AND estado != '' ORDER BY estado")
         return [r['estado'] for r in rows]
 
 @router.get("/registros/{registro_id}/navegacion")
-async def get_registro_navegacion(registro_id: str):
+async def get_registro_navegacion(registro_id: str, _u=Depends(require_permission("registros", "ver"))):
     """Devuelve el registro anterior y siguiente al actual (ordenado por fecha_creacion DESC)."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -461,7 +463,7 @@ async def get_registro_navegacion(registro_id: str):
 
 
 @router.get("/registros/{registro_id}")
-async def get_registro(registro_id: str):
+async def get_registro(registro_id: str, _u=Depends(require_permission("registros", "ver"))):
     pool = await get_pool()
     async with pool.acquire() as conn:
         # Un solo query con JOINs en lugar de N+1
@@ -535,7 +537,7 @@ async def get_registro(registro_id: str):
         return d
 
 @router.post("/registros")
-async def create_registro(input: RegistroCreate, current_user: dict = Depends(get_current_user)):
+async def create_registro(input: RegistroCreate, current_user: dict = Depends(require_permission("registros", "crear"))):
     registro = Registro(**input.model_dump())
     # Sanitizar FKs opcionales: string vacío → None
     registro.pt_item_id = registro.pt_item_id or None
@@ -583,7 +585,7 @@ async def create_registro(input: RegistroCreate, current_user: dict = Depends(ge
     return registro
 
 @router.put("/registros/{registro_id}/skip-validacion")
-async def toggle_skip_validacion(registro_id: str, body: dict, current_user: dict = Depends(get_current_user)):
+async def toggle_skip_validacion(registro_id: str, body: dict, current_user: dict = Depends(require_permission("registros", "editar"))):
     """Activa o desactiva la validación de estados para un registro. Registra en auditoría."""
     skip = body.get("skip_validacion_estado", False)
     motivo = body.get("motivo", "")
@@ -601,7 +603,7 @@ async def toggle_skip_validacion(registro_id: str, body: dict, current_user: dic
 
 
 @router.patch("/registros/{registro_id}/fecha-envio-tienda")
-async def actualizar_fecha_envio_tienda(registro_id: str, body: dict, current_user: dict = Depends(get_current_user)):
+async def actualizar_fecha_envio_tienda(registro_id: str, body: dict, current_user: dict = Depends(require_permission("registros", "editar"))):
     """Permite editar manualmente la fecha de envío a tienda.
 
     Útil cuando el usuario marca 'Tienda' con retraso (ej. despachó el lunes
@@ -652,7 +654,7 @@ async def actualizar_fecha_envio_tienda(registro_id: str, body: dict, current_us
 
 
 @router.patch("/registros/{registro_id}/urgente")
-async def toggle_urgente(registro_id: str, body: dict = None, current_user: dict = Depends(get_current_user)):
+async def toggle_urgente(registro_id: str, body: dict = None, current_user: dict = Depends(require_permission("registros", "editar"))):
     """Marcar/desmarcar un registro como urgente desde la vista de lista.
 
     Acepta `{"urgente": true/false}` en el body. Si no se manda, alterna el valor
@@ -682,7 +684,7 @@ async def toggle_urgente(registro_id: str, body: dict = None, current_user: dict
 
 
 @router.put("/registros/{registro_id}")
-async def update_registro(registro_id: str, input: RegistroCreate, current_user: dict = Depends(get_current_user)):
+async def update_registro(registro_id: str, input: RegistroCreate, current_user: dict = Depends(require_permission("registros", "editar"))):
     # Sanitizar FKs opcionales: string vacío → None
     input.pt_item_id = input.pt_item_id or None
     input.hilo_especifico_id = input.hilo_especifico_id or None
@@ -795,7 +797,7 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
     return {**row_to_dict(result), **input.model_dump()}
 
 @router.delete("/registros/{registro_id}")
-async def delete_registro(registro_id: str, _u=Depends(get_current_user)):
+async def delete_registro(registro_id: str, _u=Depends(require_permission("registros", "eliminar"))):
     pool = await get_pool()
     async with pool.acquire() as conn:
         # Eliminar datos relacionados en cascada
@@ -816,7 +818,7 @@ async def delete_registro(registro_id: str, _u=Depends(get_current_user)):
         return {"message": "Registro y datos relacionados eliminados"}
 
 @router.get("/registros/{registro_id}/estados-disponibles")
-async def get_estados_disponibles_registro(registro_id: str):
+async def get_estados_disponibles_registro(registro_id: str, _u=Depends(require_permission("registros", "ver"))):
     pool = await get_pool()
     async with pool.acquire() as conn:
         registro = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
@@ -847,7 +849,7 @@ async def get_estados_disponibles_registro(registro_id: str):
 
 
 @router.get("/registros/{registro_id}/analisis-estado")
-async def analisis_estado_registro(registro_id: str):
+async def analisis_estado_registro(registro_id: str, _u=Depends(require_permission("registros", "ver"))):
     """Analiza la coherencia entre estado del registro y sus movimientos."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1033,7 +1035,7 @@ async def analisis_estado_registro(registro_id: str):
         }
 
 @router.post("/registros/{registro_id}/validar-cambio-estado")
-async def validar_cambio_estado(registro_id: str, body: dict, current_user: dict = Depends(get_current_user)):
+async def validar_cambio_estado(registro_id: str, body: dict, current_user: dict = Depends(require_permission("registros", "editar"))):
     """Valida si un cambio de estado es permitido. Retorna bloqueos si los hay.
     Si body incluye forzar=true, se saltan las validaciones de movimientos.
     Si es retroceso, requiere motivo_retroceso.
@@ -1232,7 +1234,7 @@ async def validar_cambio_estado(registro_id: str, body: dict, current_user: dict
 # ==================== FASE 2: ENDPOINTS TALLAS POR REGISTRO ====================
 
 @router.get("/registros/{registro_id}/tallas")
-async def get_registro_tallas(registro_id: str):
+async def get_registro_tallas(registro_id: str, _u=Depends(require_permission("registros", "ver"))):
     """Obtiene las cantidades reales por talla de un registro"""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1281,7 +1283,7 @@ async def get_registro_tallas(registro_id: str):
 
 
 @router.post("/registros/{registro_id}/tallas")
-async def upsert_registro_tallas(registro_id: str, input: RegistroTallaBulkUpdate, _u=Depends(get_current_user)):
+async def upsert_registro_tallas(registro_id: str, input: RegistroTallaBulkUpdate, _u=Depends(require_permission("registros", "editar"))):
     """Actualiza (upsert) las cantidades reales por talla de un registro"""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1327,7 +1329,7 @@ async def upsert_registro_tallas(registro_id: str, input: RegistroTallaBulkUpdat
 
 
 @router.put("/registros/{registro_id}/tallas/{talla_id}")
-async def update_single_registro_talla(registro_id: str, talla_id: str, input: RegistroTallaUpdate, _u=Depends(get_current_user)):
+async def update_single_registro_talla(registro_id: str, talla_id: str, input: RegistroTallaUpdate, _u=Depends(require_permission("registros", "editar"))):
     """Actualiza una sola talla de un registro (para autosave)"""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1365,5 +1367,3 @@ async def update_single_registro_talla(registro_id: str, talla_id: str, input: R
                 new_id, registro_id, talla_id, input.cantidad_real
             )
             return {"id": new_id, "talla_id": talla_id, "cantidad_real": input.cantidad_real}
-
-

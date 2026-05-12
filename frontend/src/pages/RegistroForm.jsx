@@ -56,6 +56,9 @@ export const RegistroForm = () => {
   const perms = usePermissions('registros');
   const permsMovimientos = usePermissions('movimientos_produccion');
   const permsInventario = usePermissions('inventario_salidas');
+  const permsProductosOdoo = usePermissions('productos_odoo');
+  const permsCostosProduccion = usePermissions('reporte_costos_produccion');
+  const canSaveRegistro = isEditing ? perms.canEdit : perms.canCreate;
 
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
@@ -318,6 +321,44 @@ export const RegistroForm = () => {
   // ========== EFFECTS ==========
   const [activeTab, setActiveTab] = useState('datos');
   const [tabsLoaded, setTabsLoaded] = useState({ general: false, produccion: false, incidencias: false });
+  const canUseMovimientosTab = (
+    permsMovimientos.canView ||
+    permsMovimientos.canCreate ||
+    permsMovimientos.canEdit ||
+    permsMovimientos.canDelete ||
+    perms.canAction('crear_movimientos') ||
+    perms.canAction('editar_movimientos')
+  );
+  const canUseMaterialesTab = (
+    permsInventario.canView ||
+    permsInventario.canCreate ||
+    permsInventario.canEdit ||
+    permsInventario.canDelete ||
+    perms.canInventoryAction('dar_salida_mp') ||
+    perms.canInventoryAction('reservar_materiales')
+  );
+  const canUseIncidenciasTab = (
+    perms.canAction('registrar_incidencias') ||
+    perms.canAction('resolver_incidencias') ||
+    incidencias.length > 0
+  );
+  const canUseCostosTab = permsCostosProduccion.canView;
+  const canUseCierreTab = perms.canAction('cerrar_lotes');
+  const canUsePtOdooTab = permsProductosOdoo.canView;
+
+  useEffect(() => {
+    const tabVisible = {
+      datos: true,
+      tallas: true,
+      movimientos: canUseMovimientosTab,
+      materiales: canUseMaterialesTab,
+      incidencias: canUseIncidenciasTab,
+      costos: canUseCostosTab,
+      cierre: canUseCierreTab,
+      pt_odoo: canUsePtOdooTab,
+    };
+    if (!tabVisible[activeTab]) setActiveTab('datos');
+  }, [activeTab, canUseMovimientosTab, canUseMaterialesTab, canUseIncidenciasTab, canUseCostosTab, canUseCierreTab, canUsePtOdooTab]);
 
   // Stats calculados
   const prendasOriginales = tallasSeleccionadas.reduce((sum, t) => sum + (t.cantidad || 0), 0);
@@ -481,6 +522,10 @@ export const RegistroForm = () => {
   };
 
   const handleCrearPT = async () => {
+    if (!canSaveRegistro) {
+      toast.error('No tienes permisos para guardar registros');
+      return;
+    }
     if (!formData.modelo_id) { toast.error('Selecciona un modelo primero'); return; }
     try {
       const token = localStorage.getItem('token');
@@ -806,6 +851,10 @@ export const RegistroForm = () => {
   // Estado
   const autoGuardarEstado = async (nuevoEstado) => {
     if (!id || !isEditing) return;
+    if (!perms.canEdit) {
+      toast.error('No tienes permisos para editar registros');
+      return;
+    }
     try {
       await axios.put(`${API}/registros/${id}`, { ...formData, estado: nuevoEstado, tallas: tallasSeleccionadas, distribucion_colores: distribucionColores });
       setFormData(prev => ({ ...prev, estado: nuevoEstado })); toast.success(`Estado actualizado a "${nuevoEstado}"`); fetchAnalisisEstado();
@@ -813,7 +862,12 @@ export const RegistroForm = () => {
   };
 
   const handleSubmit = async (e, silentMode = false) => {
-    if (e) e.preventDefault(); setLoading(true);
+    if (e) e.preventDefault();
+    if (!canSaveRegistro) {
+      toast.error(isEditing ? 'No tienes permisos para editar registros' : 'No tienes permisos para crear registros');
+      return;
+    }
+    setLoading(true);
     try {
       const payload = { ...formData, tallas: tallasSeleccionadas, distribucion_colores: distribucionColores };
       if (modoManual) {
@@ -1021,6 +1075,28 @@ export const RegistroForm = () => {
   const tallasDisponibles = useMemo(() => tallasCatalogo.filter(t => !tallasSeleccionadas.find(ts => ts.talla_id === t.id)), [tallasCatalogo, tallasSeleccionadas]);
 
   if (loadingData) return <div className="flex items-center justify-center h-64"><div className="text-muted-foreground">Cargando...</div></div>;
+  if (!canSaveRegistro) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center p-6">
+        <Card className="max-w-md w-full">
+          <CardContent className="pt-6 text-center space-y-4">
+            <ShieldAlert className="h-10 w-10 mx-auto text-muted-foreground" />
+            <div>
+              <h2 className="text-lg font-semibold">Sin permisos</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                {isEditing
+                  ? 'Tu usuario no puede editar registros.'
+                  : 'Tu usuario no puede crear registros.'}
+              </p>
+            </div>
+            <Button type="button" variant="outline" onClick={() => navigate('/registros')}>
+              Volver a Registros
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // ========== RENDER ==========
   return (
@@ -1150,29 +1226,41 @@ export const RegistroForm = () => {
                   <TabsTrigger value="tallas" className="registro-tab" data-testid="tab-general">
                     <Scissors className="h-3.5 w-3.5" /> Tallas
                   </TabsTrigger>
-                  <TabsTrigger value="movimientos" className="registro-tab" data-testid="tab-produccion">
-                    <Play className="h-3.5 w-3.5" /> Movimientos
-                  </TabsTrigger>
-                  <TabsTrigger value="materiales" className="registro-tab" data-testid="tab-materiales">
-                    <Package className="h-3.5 w-3.5" /> Materiales
-                  </TabsTrigger>
-                  <TabsTrigger value="incidencias" className="registro-tab" data-testid="tab-control">
-                    <ShieldAlert className="h-3.5 w-3.5" /> Incidencias
-                    {incidenciasAbiertas > 0 && (
-                      <span className="registro-tab-badge-red">
-                        {incidenciasAbiertas}
-                      </span>
-                    )}
-                  </TabsTrigger>
-                  <TabsTrigger value="costos" className="registro-tab" data-testid="tab-costos">
-                    <Cog className="h-3.5 w-3.5" /> Otros Costos
-                  </TabsTrigger>
-                  <TabsTrigger value="cierre" className="registro-tab" data-testid="tab-cierre">
-                    <ShieldAlert className="h-3.5 w-3.5" /> Cierre
-                  </TabsTrigger>
-                  <TabsTrigger value="pt_odoo" className="registro-tab" data-testid="tab-pt-odoo">
-                    <Package className="h-3.5 w-3.5" /> PT Odoo
-                  </TabsTrigger>
+                  {canUseMovimientosTab && (
+                    <TabsTrigger value="movimientos" className="registro-tab" data-testid="tab-produccion">
+                      <Play className="h-3.5 w-3.5" /> Movimientos
+                    </TabsTrigger>
+                  )}
+                  {canUseMaterialesTab && (
+                    <TabsTrigger value="materiales" className="registro-tab" data-testid="tab-materiales">
+                      <Package className="h-3.5 w-3.5" /> Materiales
+                    </TabsTrigger>
+                  )}
+                  {canUseIncidenciasTab && (
+                    <TabsTrigger value="incidencias" className="registro-tab" data-testid="tab-control">
+                      <ShieldAlert className="h-3.5 w-3.5" /> Incidencias
+                      {incidenciasAbiertas > 0 && (
+                        <span className="registro-tab-badge-red">
+                          {incidenciasAbiertas}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                  )}
+                  {canUseCostosTab && (
+                    <TabsTrigger value="costos" className="registro-tab" data-testid="tab-costos">
+                      <Cog className="h-3.5 w-3.5" /> Otros Costos
+                    </TabsTrigger>
+                  )}
+                  {canUseCierreTab && (
+                    <TabsTrigger value="cierre" className="registro-tab" data-testid="tab-cierre">
+                      <ShieldAlert className="h-3.5 w-3.5" /> Cierre
+                    </TabsTrigger>
+                  )}
+                  {canUsePtOdooTab && (
+                    <TabsTrigger value="pt_odoo" className="registro-tab" data-testid="tab-pt-odoo">
+                      <Package className="h-3.5 w-3.5" /> PT Odoo
+                    </TabsTrigger>
+                  )}
                 </TabsList>
 
                 {/* TAB DATOS */}
@@ -1200,16 +1288,18 @@ export const RegistroForm = () => {
                 </TabsContent>
 
                                 {/* TAB MOVIMIENTOS */}
-                <TabsContent value="movimientos" className="space-y-4 mt-0">
-                  <RegistroMovimientosCard
-                    movimientosProduccion={movimientosProduccion} serviciosProduccion={serviciosProduccion}
-                    isParalizado={isParalizado} onOpenDialog={handleOpenMovimientoDialog}
-                    onDelete={handleDeleteMovimiento} onGenerarGuia={handleGenerarGuia}
-                    totalCantidad={totalCantidadMovimientos}
-                    permisos={permsMovimientos}
-                    onCopiarDesdeRegistro={() => setCopiarMovOpen(true)}
-                  />
-                </TabsContent>
+                {canUseMovimientosTab && (
+                  <TabsContent value="movimientos" className="space-y-4 mt-0">
+                    <RegistroMovimientosCard
+                      movimientosProduccion={movimientosProduccion} serviciosProduccion={serviciosProduccion}
+                      isParalizado={isParalizado} onOpenDialog={handleOpenMovimientoDialog}
+                      onDelete={handleDeleteMovimiento} onGenerarGuia={handleGenerarGuia}
+                      totalCantidad={totalCantidadMovimientos}
+                      permisos={permsMovimientos}
+                      onCopiarDesdeRegistro={() => setCopiarMovOpen(true)}
+                    />
+                  </TabsContent>
+                )}
 
                 {/* TAB TALLAS */}
                 <TabsContent value="tallas" className="space-y-4 mt-0">
@@ -1222,61 +1312,71 @@ export const RegistroForm = () => {
                 </TabsContent>
 
                 {/* TAB MATERIALES */}
-                <TabsContent value="materiales" className="space-y-4 mt-0" onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}>
-                  <Card><CardContent className="pt-4">
-                    <MaterialesTab registroId={id} totalPrendas={prendasEfectivas} totalPrendasOriginales={prendasOriginales} modeloId={formData.modelo_id} lineaNegocioId={formData.linea_negocio_id}
-                      lineasNegocio={lineasNegocio} permisos={permsInventario}
-                    />
-                  </CardContent></Card>
-                </TabsContent>
+                {canUseMaterialesTab && (
+                  <TabsContent value="materiales" className="space-y-4 mt-0" onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}>
+                    <Card><CardContent className="pt-4">
+                      <MaterialesTab registroId={id} totalPrendas={prendasEfectivas} totalPrendasOriginales={prendasOriginales} modeloId={formData.modelo_id} lineaNegocioId={formData.linea_negocio_id}
+                        lineasNegocio={lineasNegocio} permisos={permsInventario}
+                      />
+                    </CardContent></Card>
+                  </TabsContent>
+                )}
 
                 {/* TAB INCIDENCIAS */}
-                <TabsContent value="incidencias" className="space-y-4 mt-0">
-                  <RegistroIncidenciasCard
-                    incidencias={incidencias} showResueltas={showResueltas}
-                    onToggleResueltas={() => setShowResueltas(prev => !prev)}
-                    onResolver={handleAbrirResolver} onEliminar={handleEliminarIncidencia}
-                    onEditar={handleEditarIncidencia}
-                    onReabrir={handleReabrirIncidencia}
-                    esAdmin={isAdmin()}
-                    onNueva={() => {
-                      setIncidenciaMode('create');
-                      setEditingIncidenciaId(null);
-                      setIncidenciaForm({ motivo_id: '', comentario: '', paraliza: false, fecha_hora: '' });
-                      setIncidenciaDialogOpen(true);
-                    }}
-                    permisos={perms}
-                  />
-                  <ArreglosPanel registroId={id} servicios={serviciosProduccion} personas={personasProduccion} />
-                </TabsContent>
+                {canUseIncidenciasTab && (
+                  <TabsContent value="incidencias" className="space-y-4 mt-0">
+                    <RegistroIncidenciasCard
+                      incidencias={incidencias} showResueltas={showResueltas}
+                      onToggleResueltas={() => setShowResueltas(prev => !prev)}
+                      onResolver={handleAbrirResolver} onEliminar={handleEliminarIncidencia}
+                      onEditar={handleEditarIncidencia}
+                      onReabrir={handleReabrirIncidencia}
+                      esAdmin={isAdmin()}
+                      onNueva={() => {
+                        setIncidenciaMode('create');
+                        setEditingIncidenciaId(null);
+                        setIncidenciaForm({ motivo_id: '', comentario: '', paraliza: false, fecha_hora: '' });
+                        setIncidenciaDialogOpen(true);
+                      }}
+                      permisos={perms}
+                    />
+                    <ArreglosPanel registroId={id} servicios={serviciosProduccion} personas={personasProduccion} />
+                  </TabsContent>
+                )}
 
                 {/* TAB PT ODOO */}
-                <TabsContent value="pt_odoo" className="space-y-4 mt-0">
-                  <DistribucionPTPanel registroId={id} />
-                </TabsContent>
+                {canUsePtOdooTab && (
+                  <TabsContent value="pt_odoo" className="space-y-4 mt-0">
+                    <DistribucionPTPanel registroId={id} />
+                  </TabsContent>
+                )}
 
                 {/* TAB COSTOS */}
-                <TabsContent value="costos" className="space-y-4 mt-0">
-                  <CostosTab registroId={id} />
-                </TabsContent>
+                {canUseCostosTab && (
+                  <TabsContent value="costos" className="space-y-4 mt-0">
+                    <CostosTab registroId={id} />
+                  </TabsContent>
+                )}
 
                 {/* TAB CIERRE */}
-                <TabsContent value="cierre" className="space-y-4 mt-0">
-                  <CierreTab
-                    registroId={id}
-                    registro={formData}
-                    onCierreComplete={() => {
-                      setFormData(prev => ({ ...prev, estado: 'CERRADA' }));
-                    }}
-                  />
-                </TabsContent>
+                {canUseCierreTab && (
+                  <TabsContent value="cierre" className="space-y-4 mt-0">
+                    <CierreTab
+                      registroId={id}
+                      registro={formData}
+                      onCierreComplete={() => {
+                        setFormData(prev => ({ ...prev, estado: 'CERRADA' }));
+                      }}
+                    />
+                  </TabsContent>
+                )}
 
               </Tabs>
             )}
 
             {/* Mobile buttons */}
             <div className="lg:hidden flex flex-col gap-2 pt-2">
-              <Button type="submit" className="w-full" disabled={loading} data-testid="btn-guardar-registro-mobile">
+              <Button type="submit" className="w-full" disabled={loading || !canSaveRegistro} data-testid="btn-guardar-registro-mobile">
                 <Save className="h-4 w-4 mr-2" />
                 {loading ? 'Guardando...' : (isEditing ? 'Actualizar Registro' : 'Crear Registro')}
               </Button>
