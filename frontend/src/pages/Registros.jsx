@@ -897,8 +897,8 @@ export const Registros = () => {
           displayItems.map((item) => (
             <div
               key={item.id}
-              className={`rounded-lg border bg-card p-3 active:bg-muted/60 transition-colors ${canEdit ? 'cursor-pointer' : ''} ${item.urgente ? 'border-l-4 border-l-rose-500 bg-rose-50/50 dark:bg-rose-950/20' : item.estado_operativo === 'PARALIZADA' ? 'border-l-4 border-l-red-500' : ''}`}
-              onClick={() => { if (canEdit) navigate(`/registros/editar/${item.id}`); }}
+              className={`rounded-lg border bg-card p-3 active:bg-muted/60 transition-colors cursor-pointer ${item.urgente ? 'border-l-4 border-l-rose-500 bg-rose-50/50 dark:bg-rose-950/20' : item.estado_operativo === 'PARALIZADA' ? 'border-l-4 border-l-red-500' : ''}`}
+              onClick={() => navigate(`/registros/editar/${item.id}`)}
               data-testid={`registro-card-${item.id}`}
             >
               <div className="flex items-start justify-between gap-2">
@@ -997,9 +997,9 @@ export const Registros = () => {
                   displayItems.map((item) => (
                     <TableRow
                       key={item.id}
-                      className={`data-table-row ${canEdit ? 'cursor-pointer' : ''} hover:bg-muted/30 transition-colors ${item.urgente ? 'bg-rose-50 dark:bg-rose-950/30 border-l-2 border-l-red-500' : item.estado_operativo === 'PARALIZADA' ? 'bg-red-50 dark:bg-red-950/20 border-l-2 border-l-red-700' : item.estado_operativo === 'EN_RIESGO' ? 'bg-amber-50 dark:bg-amber-950/20 border-l-2 border-l-amber-500' : 'border-l-2 border-l-blue-400'}`}
+                      className={`data-table-row cursor-pointer hover:bg-muted/30 transition-colors ${item.urgente ? 'bg-rose-50 dark:bg-rose-950/30 border-l-2 border-l-red-500' : item.estado_operativo === 'PARALIZADA' ? 'bg-red-50 dark:bg-red-950/20 border-l-2 border-l-red-700' : item.estado_operativo === 'EN_RIESGO' ? 'bg-amber-50 dark:bg-amber-950/20 border-l-2 border-l-amber-500' : 'border-l-2 border-l-blue-400'}`}
                       data-testid={`registro-row-${item.id}`}
-                      onClick={() => { if (canEdit) navigate(`/registros/editar/${item.id}`); }}
+                      onClick={() => navigate(`/registros/editar/${item.id}`)}
                     >
                       <TableCell className="font-mono font-bold text-base whitespace-nowrap">
                         <div>

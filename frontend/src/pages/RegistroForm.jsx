@@ -58,7 +58,13 @@ export const RegistroForm = () => {
   const permsInventario = usePermissions('inventario_salidas');
   const permsProductosOdoo = usePermissions('productos_odoo');
   const permsCostosProduccion = usePermissions('reporte_costos_produccion');
-  const canSaveRegistro = isEditing ? perms.canEdit : perms.canCreate;
+  // canSaveRegistro = puede pulsar el botón "Actualizar Registro" / "Crear Registro".
+  // Para edición: alcanza con tener cambiar_estados (el backend valida que la
+  // única diferencia con el registro actual sea el campo `estado`).
+  // Para creación: requiere el permiso de crear.
+  const canSaveRegistro = isEditing
+    ? (perms.canEdit || perms.canAction('cambiar_estados'))
+    : perms.canCreate;
 
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
@@ -345,6 +351,10 @@ export const RegistroForm = () => {
   const canUseCostosTab = permsCostosProduccion.canView;
   const canUseCierreTab = perms.canAction('cerrar_lotes');
   const canUsePtOdooTab = permsProductosOdoo.canView;
+  // Panel de Fallados/Arreglos: solo lo ven usuarios que pueden editar el
+  // registro completo (admin o usuarios con `registros.editar = true`).
+  // Operarios con solo `cambiar_estados` no lo verán.
+  const canUseFalladosPanel = perms.canEdit;
 
   useEffect(() => {
     const tabVisible = {
@@ -851,19 +861,32 @@ export const RegistroForm = () => {
   // Estado
   const autoGuardarEstado = async (nuevoEstado) => {
     if (!id || !isEditing) return;
-    if (!perms.canEdit) {
-      toast.error('No tienes permisos para editar registros');
+    // Permite si tiene editar completo O si tiene cambiar_estados granular.
+    // El backend valida que (cuando sólo hay cambiar_estados) la única
+    // diferencia con el registro actual sea el campo `estado`.
+    if (!perms.canEdit && !perms.canAction('cambiar_estados')) {
+      toast.error('No tienes permisos para cambiar el estado');
       return;
     }
     try {
       await axios.put(`${API}/registros/${id}`, { ...formData, estado: nuevoEstado, tallas: tallasSeleccionadas, distribucion_colores: distribucionColores });
       setFormData(prev => ({ ...prev, estado: nuevoEstado })); toast.success(`Estado actualizado a "${nuevoEstado}"`); fetchAnalisisEstado();
-    } catch { toast.error('Error al guardar estado'); }
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'Error al guardar estado');
+    }
   };
 
   const handleSubmit = async (e, silentMode = false) => {
     if (e) e.preventDefault();
-    if (!canSaveRegistro) {
+    // Para edición: permite si tiene editar completo O si tiene
+    // cambiar_estados (en cuyo caso el backend validará que sólo cambia
+    // el campo `estado` y devolverá 403 con detalle si tocó otros campos).
+    // Para creación: requiere `crear`.
+    const puedeGuardar = isEditing
+      ? (perms.canEdit || perms.canAction('cambiar_estados'))
+      : perms.canCreate;
+    if (!puedeGuardar) {
       toast.error(isEditing ? 'No tienes permisos para editar registros' : 'No tienes permisos para crear registros');
       return;
     }
@@ -1340,7 +1363,9 @@ export const RegistroForm = () => {
                       }}
                       permisos={perms}
                     />
-                    <ArreglosPanel registroId={id} servicios={serviciosProduccion} personas={personasProduccion} />
+                    {canUseFalladosPanel && (
+                      <ArreglosPanel registroId={id} servicios={serviciosProduccion} personas={personasProduccion} />
+                    )}
                   </TabsContent>
                 )}
 
