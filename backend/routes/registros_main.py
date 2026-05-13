@@ -684,7 +684,7 @@ async def toggle_urgente(registro_id: str, body: dict = None, current_user: dict
 
 
 @router.put("/registros/{registro_id}")
-async def update_registro(registro_id: str, input: RegistroCreate, current_user: dict = Depends(require_permission("registros", "editar"))):
+async def update_registro(registro_id: str, input: RegistroCreate, current_user: dict = Depends(get_current_user)):
     # Sanitizar FKs opcionales: string vacío → None
     input.pt_item_id = input.pt_item_id or None
     input.hilo_especifico_id = input.hilo_especifico_id or None
@@ -693,6 +693,83 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
         result = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
         if not result:
             raise HTTPException(status_code=404, detail="Registro no encontrado")
+
+        # ── Control de permisos para PUT /registros ─────────────────────────
+        # Admin: pasa todo. Lectura: bloqueado siempre. Resto: requiere
+        # `registros.editar` para cambios normales, o `cambiar_estados` +
+        # estado destino permitido si la única diferencia con el registro
+        # actual es el campo `estado`.
+        rol = current_user.get('rol', 'lectura')
+        if rol == 'lectura':
+            raise HTTPException(status_code=403, detail="Sólo lectura: no puedes editar registros")
+        if rol != 'admin':
+            permisos_user = current_user.get('permisos', {})
+            if isinstance(permisos_user, str):
+                permisos_user = json.loads(permisos_user) if permisos_user else {}
+            puede_editar = permisos_user.get('registros', {}).get('editar') is True
+            operativos_user = permisos_user.get('_operativos', {})
+            puede_cambiar_estado = (
+                operativos_user.get('acciones_produccion', {}).get('cambiar_estados') is True
+            )
+
+            if not puede_editar:
+                if not puede_cambiar_estado:
+                    raise HTTPException(status_code=403, detail="No tienes permiso para editar registros")
+                # Validar que la única diferencia sea `estado` y que el estado
+                # destino esté en los estados permitidos del usuario. Esto
+                # protege contra usuarios con sólo `cambiar_estados` que envíen
+                # un PUT con otros campos modificados.
+                def _norm_str(v):
+                    if v is None: return ''
+                    return str(v).strip()
+                # Comparar todos los campos que viajan en RegistroCreate
+                cur = dict(result)
+                diferencias = []
+                if _norm_str(input.n_corte) != _norm_str(cur.get('n_corte')): diferencias.append('n_corte')
+                if (input.modelo_id or None) != (cur.get('modelo_id') or None): diferencias.append('modelo_id')
+                if _norm_str(input.curva) != _norm_str(cur.get('curva')): diferencias.append('curva')
+                if bool(input.urgente) != bool(cur.get('urgente')): diferencias.append('urgente')
+                if (input.hilo_especifico_id or None) != (cur.get('hilo_especifico_id') or None): diferencias.append('hilo_especifico_id')
+                if (input.pt_item_id or None) != (cur.get('pt_item_id') or None): diferencias.append('pt_item_id')
+                if _norm_str(input.observaciones) != _norm_str(cur.get('observaciones')): diferencias.append('observaciones')
+                if (input.linea_negocio_id or None) != (cur.get('linea_negocio_id') or None): diferencias.append('linea_negocio_id')
+                # tallas y distribucion_colores: comparar JSON normalizado
+                try:
+                    if json.dumps([t.model_dump() for t in input.tallas], sort_keys=True) != json.dumps(parse_jsonb(cur.get('tallas')) or [], sort_keys=True):
+                        diferencias.append('tallas')
+                except Exception:
+                    diferencias.append('tallas')
+                try:
+                    if json.dumps([d.model_dump() for d in input.distribucion_colores], sort_keys=True) != json.dumps(parse_jsonb(cur.get('distribucion_colores')) or [], sort_keys=True):
+                        diferencias.append('distribucion_colores')
+                except Exception:
+                    pass  # tolerante: si falla la comparación, no bloquear sólo por esto
+                # fechas: comparar como string
+                if _norm_str(input.fecha_entrega_final) != _norm_str(cur.get('fecha_entrega_final')): diferencias.append('fecha_entrega_final')
+                if _norm_str(input.fecha_inicio_real) != _norm_str(cur.get('fecha_inicio_real')): diferencias.append('fecha_inicio_real')
+                if diferencias:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=(
+                            "No tienes permiso para editar estos campos del registro: "
+                            + ", ".join(diferencias)
+                        ),
+                    )
+                # Validar que el estado destino esté entre los permitidos (si hay
+                # restricción). Lista vacía = todos permitidos.
+                estados_perm = operativos_user.get('estados_permitidos') or []
+                if estados_perm:
+                    import unicodedata
+                    def _norm_estado(s):
+                        s = unicodedata.normalize('NFD', str(s or ''))
+                        return ''.join(c for c in s if unicodedata.category(c) != 'Mn').strip().lower()
+                    target = _norm_estado(input.estado)
+                    allowed = [_norm_estado(e) for e in estados_perm]
+                    if target not in allowed:
+                        raise HTTPException(
+                            status_code=403,
+                            detail=f"No tienes permiso para cambiar al estado '{input.estado}'",
+                        )
         
         # Capturar datos_antes para auditoria
         datos_antes = {"estado": result.get('estado'), "n_corte": result.get('n_corte'),
