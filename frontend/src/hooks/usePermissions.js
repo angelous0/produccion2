@@ -182,7 +182,6 @@ export const RUTA_A_TABLA = {
   '/reportes/agenda-entregas': 'reporte_entregas',
   '/reportes/tendencia-fallados': 'reporte_calidad',
   '/reportes/mermas': 'reporte_calidad',
-  '/reportes/estados-item': 'reporte_calidad',
   '/reportes/lotes-fraccionados': 'reporte_lotes',
   '/reportes/paralizados': 'reporte_seguimiento',
   '/reportes/trazabilidad-general': 'reporte_lotes',

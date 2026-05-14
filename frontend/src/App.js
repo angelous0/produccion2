@@ -224,7 +224,7 @@ function AppRoutes() {
         <Route path="calidad/merma" element={<Navigate to="/reportes/calidad?tab=mermas" replace />} />
         <Route path="calidad/reporte-mermas" element={<Navigate to="/reportes/calidad?tab=mermas" replace />} />
         <Route path="reportes/mermas" element={<Navigate to="/reportes/calidad?tab=mermas" replace />} />
-        <Route path="reportes/estados-item" element={<Navigate to="/reportes/calidad?tab=estados" replace />} />
+        <Route path="reportes/estados-item" element={<Navigate to="/reportes/calidad" replace />} />
         <Route path="reportes/validacion-registros" element={<LazyWrap><ValidacionRegistros /></LazyWrap>} />
       </Route>
       
