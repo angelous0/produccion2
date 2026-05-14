@@ -306,7 +306,7 @@ const TabPorCobrar = ({ filas, refreshAll }) => {
               <div key={g.key} className={gi > 0 ? 'border-t' : ''}>
                 {/* Header del grupo */}
                 <div
-                  className="grid grid-cols-[36px_18px_1fr_56px] gap-3 items-center px-3 py-2 cursor-pointer select-none hover:bg-muted/30 transition-colors"
+                  className="grid grid-cols-[36px_18px_1fr_56px] gap-3 items-center px-3 py-2 cursor-pointer select-none bg-zinc-100 dark:bg-zinc-800/60 hover:bg-zinc-150 dark:hover:bg-zinc-800 transition-colors"
                   onClick={() => toggleGrupo(g.key)}
                   data-testid={`grupo-${g.key}`}
                 >
@@ -340,7 +340,7 @@ const TabPorCobrar = ({ filas, refreshAll }) => {
 
                 {/* Lotes */}
                 {expanded && (
-                  <div className="border-t bg-muted/10 dark:bg-zinc-900/20 divide-y divide-border/50">
+                  <div className="border-t bg-card divide-y divide-border/50">
                     {g.lotes.map(l => {
                       const sel = seleccionados.has(l.arreglo_id);
                       const yaMarcado = l.marcado_para_cobro;
