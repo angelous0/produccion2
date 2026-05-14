@@ -203,6 +203,20 @@ class ArregloMarcaCobro(BaseModel):
     motivo: Optional[str] = None
 
 
+class NotaCobroCreate(BaseModel):
+    """Genera una nota de cobro agrupando N envíos vencidos de un mismo
+    proveedor. Cada envío seleccionado queda vinculado a la nota y se
+    marca como `marcado_para_cobro=TRUE` (si no lo estaba ya)."""
+    arreglo_ids: List[str]
+    proveedor_id: Optional[str] = None   # opcional: si todos son del mismo proveedor
+    proveedor_nombre: Optional[str] = None
+    observacion: Optional[str] = None
+
+
+class NotaCobroAnular(BaseModel):
+    motivo: Optional[str] = None
+
+
 # ==================== HELPERS ====================
 
 def _calcular_estado_arreglo(arreglo_row):
@@ -980,6 +994,348 @@ async def desmarcar_arreglo_cobro(
             return row_new
 
 
+# ==================== NOTAS DE COBRO ====================
+
+async def _generar_numero_nota(conn) -> str:
+    """Numera 'NC-YYYY-NNNN' usando una secuencia de PostgreSQL."""
+    n = await conn.fetchval("SELECT nextval('produccion.seq_notas_cobro')")
+    year = date.today().year
+    return f"NC-{year}-{int(n):04d}"
+
+
+def _nota_basic_dict(row) -> dict:
+    """Serializa una fila de prod_notas_cobro para JSON."""
+    d = dict(row)
+    for f in ("fecha", "created_at", "anulada_at"):
+        if d.get(f):
+            d[f] = str(d[f])
+    return d
+
+
+async def _arreglo_pertenece_a_nota_activa(conn, arreglo_id: str) -> Optional[dict]:
+    """Si el arreglo ya está en una nota activa, devuelve su info."""
+    row = await conn.fetchrow(
+        """
+        SELECT n.id, n.numero, n.fecha, n.estado
+        FROM produccion.prod_notas_cobro_lotes ncl
+        JOIN produccion.prod_notas_cobro n ON n.id = ncl.nota_id
+        WHERE ncl.arreglo_id = $1 AND n.estado = 'activa'
+        LIMIT 1
+        """,
+        arreglo_id,
+    )
+    if not row:
+        return None
+    d = dict(row)
+    if d.get("fecha"): d["fecha"] = str(d["fecha"])
+    return d
+
+
+@router.post("/notas-cobro")
+async def crear_nota_cobro(
+    input: NotaCobroCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Crea una nota de cobro a partir de N envíos a arreglo.
+
+    Reglas:
+      - Mínimo 1 envío.
+      - Todos los envíos deben existir, estar vencidos (fecha_limite <= hoy),
+        no estar completados y no estar ya en una nota activa.
+      - Si todos los envíos comparten un mismo proveedor (persona_id), se
+        usa ese como proveedor_id. Si difieren, se requiere `proveedor_nombre`
+        explícito o falla.
+      - Marca cada arreglo como `marcado_para_cobro=TRUE` (si no lo estaba)
+        y registra en audit.
+    """
+    if not input.arreglo_ids:
+        raise HTTPException(status_code=400, detail="Selecciona al menos un envío")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # Validar que todos existen, son válidos y no están en nota activa
+            rows = await conn.fetch(
+                """
+                SELECT a.*,
+                       sp.nombre AS servicio_nombre,
+                       pp.nombre AS persona_nombre
+                FROM prod_registro_arreglos a
+                LEFT JOIN prod_servicios_produccion sp ON sp.id = a.servicio_id
+                LEFT JOIN prod_personas_produccion pp ON pp.id = a.persona_id
+                WHERE a.id = ANY($1::varchar[])
+                """,
+                input.arreglo_ids,
+            )
+            if len(rows) != len(input.arreglo_ids):
+                raise HTTPException(status_code=400, detail="Algunos envíos no existen")
+
+            hoy = date.today()
+            personas = set()
+            personas_nombres = set()
+            empresas = set()
+            for r in rows:
+                d = dict(r)
+                d["estado"] = _calcular_estado_arreglo(d)
+                if d["estado"] == "COMPLETADO":
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Envío {d['id'][:8]} ya está completado",
+                    )
+                if not d.get("fecha_limite") or d["fecha_limite"] > hoy:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Envío {d['id'][:8]} aún no está vencido",
+                    )
+                nota_activa = await _arreglo_pertenece_a_nota_activa(conn, d["id"])
+                if nota_activa:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Envío {d['id'][:8]} ya está en la nota {nota_activa['numero']}",
+                    )
+                if d.get("persona_id"):
+                    personas.add(d["persona_id"])
+                    personas_nombres.add(d.get("persona_nombre") or "")
+
+            # Determinar proveedor de la nota
+            proveedor_id = input.proveedor_id
+            proveedor_nombre = input.proveedor_nombre
+            if not proveedor_id and len(personas) == 1:
+                proveedor_id = next(iter(personas))
+                if not proveedor_nombre:
+                    proveedor_nombre = next(iter(personas_nombres)) or "—"
+            if not proveedor_nombre:
+                # Si vienen mezclados sin nombre explícito, fallar para no perder info
+                raise HTTPException(
+                    status_code=400,
+                    detail="Los envíos seleccionados son de varios proveedores; especifica proveedor_nombre",
+                )
+
+            # Crear cabecera
+            nota_id = str(uuid.uuid4())
+            numero = await _generar_numero_nota(conn)
+            user_id = current_user.get("id") or current_user.get("user_id") or "sistema"
+            user_name = _user_display_name(current_user)
+            total_pzs = sum(safe_int(r["cantidad"]) for r in rows)
+            empresa_id = current_user.get("empresa_id") or 7
+
+            await conn.execute(
+                """
+                INSERT INTO produccion.prod_notas_cobro
+                    (id, numero, fecha, proveedor_id, proveedor_nombre,
+                     total_pzs, total_lotes, observacion, estado,
+                     created_by_id, created_by_nombre, empresa_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'activa', $9, $10, $11)
+                """,
+                nota_id, numero, hoy, proveedor_id, proveedor_nombre,
+                total_pzs, len(rows), (input.observacion or None),
+                user_id, user_name, empresa_id,
+            )
+
+            # Crear detalles + marcar arreglos
+            for r in rows:
+                d = dict(r)
+                dias_vencido = (hoy - d["fecha_limite"]).days if d.get("fecha_limite") else 0
+                await conn.execute(
+                    """
+                    INSERT INTO produccion.prod_notas_cobro_lotes
+                        (nota_id, arreglo_id, cantidad, dias_vencido)
+                    VALUES ($1, $2, $3, $4)
+                    """,
+                    nota_id, d["id"], safe_int(d["cantidad"]), dias_vencido,
+                )
+                # Marcar si no estaba ya marcado
+                if not d.get("marcado_para_cobro"):
+                    await conn.execute(
+                        """
+                        UPDATE prod_registro_arreglos
+                        SET marcado_para_cobro = TRUE,
+                            marcado_por_usuario_id = $1,
+                            marcado_por_nombre = $2,
+                            fecha_marcado = $3,
+                            motivo_marcado = $4
+                        WHERE id = $5
+                        """,
+                        user_id, user_name,
+                        datetime.now(timezone.utc).replace(tzinfo=None),
+                        f"Nota {numero}",
+                        d["id"],
+                    )
+                    # Audit
+                    estado_previo = _snapshot_arreglo(d)
+                    d["marcado_para_cobro"] = True
+                    estado_nuevo = _snapshot_arreglo(d)
+                    await conn.execute(
+                        """
+                        INSERT INTO prod_arreglos_audit
+                            (arreglo_id, accion, usuario_id, usuario_nombre, motivo,
+                             estado_previo, estado_nuevo)
+                        VALUES ($1, 'marcar_cobro', $2, $3, $4, $5::jsonb, $6::jsonb)
+                        """,
+                        d["id"], user_id, user_name, f"Nota {numero}",
+                        json.dumps(estado_previo), json.dumps(estado_nuevo),
+                    )
+
+            return {
+                "id": nota_id,
+                "numero": numero,
+                "fecha": str(hoy),
+                "proveedor_nombre": proveedor_nombre,
+                "total_pzs": total_pzs,
+                "total_lotes": len(rows),
+                "estado": "activa",
+            }
+
+
+@router.get("/notas-cobro")
+async def listar_notas_cobro(
+    estado: Optional[str] = None,
+    proveedor_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Lista notas de cobro emitidas. Filtros opcionales por estado/proveedor."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        where = []
+        params = []
+        if estado:
+            params.append(estado)
+            where.append(f"estado = ${len(params)}")
+        if proveedor_id:
+            params.append(proveedor_id)
+            where.append(f"proveedor_id = ${len(params)}")
+        where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+        rows = await conn.fetch(
+            f"""
+            SELECT * FROM produccion.prod_notas_cobro
+            {where_sql}
+            ORDER BY fecha DESC, created_at DESC
+            """,
+            *params,
+        )
+        return [_nota_basic_dict(r) for r in rows]
+
+
+@router.get("/notas-cobro/{nota_id}")
+async def get_nota_cobro(
+    nota_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Devuelve la nota con sus lotes."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        nota = await conn.fetchrow(
+            "SELECT * FROM produccion.prod_notas_cobro WHERE id = $1",
+            nota_id,
+        )
+        if not nota:
+            raise HTTPException(status_code=404, detail="Nota no encontrada")
+        lotes = await conn.fetch(
+            """
+            SELECT ncl.*, a.cantidad AS arreglo_cantidad, a.fecha_envio,
+                   a.fecha_limite, r.n_corte, sp.nombre AS servicio_nombre,
+                   pp.nombre AS persona_nombre
+            FROM produccion.prod_notas_cobro_lotes ncl
+            JOIN prod_registro_arreglos a ON a.id = ncl.arreglo_id
+            JOIN prod_registros r ON r.id = a.registro_id
+            LEFT JOIN prod_servicios_produccion sp ON sp.id = a.servicio_id
+            LEFT JOIN prod_personas_produccion pp ON pp.id = a.persona_id
+            WHERE ncl.nota_id = $1
+            ORDER BY ncl.id
+            """,
+            nota_id,
+        )
+        lotes_d = []
+        for l in lotes:
+            d = dict(l)
+            for f in ("fecha_envio", "fecha_limite"):
+                if d.get(f): d[f] = str(d[f])
+            lotes_d.append(d)
+        return {**_nota_basic_dict(nota), "lotes": lotes_d}
+
+
+@router.post("/notas-cobro/{nota_id}/anular")
+async def anular_nota_cobro(
+    nota_id: str,
+    input: NotaCobroAnular,
+    current_user: dict = Depends(get_current_user),
+):
+    """Anula una nota de cobro: marca estado='anulada' y desmarca los
+    arreglos vinculados (vuelven a estado vencido sin marca)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            nota = await conn.fetchrow(
+                "SELECT * FROM produccion.prod_notas_cobro WHERE id = $1",
+                nota_id,
+            )
+            if not nota:
+                raise HTTPException(status_code=404, detail="Nota no encontrada")
+            if nota["estado"] == "anulada":
+                raise HTTPException(status_code=409, detail="La nota ya está anulada")
+
+            user_id = current_user.get("id") or current_user.get("user_id") or "sistema"
+            user_name = _user_display_name(current_user)
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+            await conn.execute(
+                """
+                UPDATE produccion.prod_notas_cobro
+                SET estado = 'anulada',
+                    anulada_at = $1, anulada_by_id = $2, anulada_by_nombre = $3,
+                    motivo_anulacion = $4
+                WHERE id = $5
+                """,
+                now, user_id, user_name, (input.motivo or None), nota_id,
+            )
+
+            # Desmarcar arreglos vinculados (registrar audit)
+            lotes = await conn.fetch(
+                "SELECT arreglo_id FROM produccion.prod_notas_cobro_lotes WHERE nota_id = $1",
+                nota_id,
+            )
+            for l in lotes:
+                arr_id = l["arreglo_id"]
+                row = await conn.fetchrow(
+                    "SELECT * FROM prod_registro_arreglos WHERE id = $1", arr_id,
+                )
+                if not row:
+                    continue
+                row_d = dict(row)
+                row_d["estado"] = _calcular_estado_arreglo(row_d)
+                estado_previo = _snapshot_arreglo(row_d)
+                await conn.execute(
+                    """
+                    UPDATE prod_registro_arreglos
+                    SET marcado_para_cobro = FALSE,
+                        marcado_por_usuario_id = NULL,
+                        marcado_por_nombre = NULL,
+                        fecha_marcado = NULL,
+                        motivo_marcado = NULL
+                    WHERE id = $1
+                    """,
+                    arr_id,
+                )
+                row_new = dict(await conn.fetchrow(
+                    "SELECT * FROM prod_registro_arreglos WHERE id = $1", arr_id,
+                ))
+                row_new["estado"] = _calcular_estado_arreglo(row_new)
+                estado_nuevo = _snapshot_arreglo(row_new)
+                await conn.execute(
+                    """
+                    INSERT INTO prod_arreglos_audit
+                        (arreglo_id, accion, usuario_id, usuario_nombre, motivo,
+                         estado_previo, estado_nuevo)
+                    VALUES ($1, 'desmarcar_cobro', $2, $3, $4, $5::jsonb, $6::jsonb)
+                    """,
+                    arr_id, user_id, user_name,
+                    f"Anulación nota {nota['numero']}",
+                    json.dumps(estado_previo), json.dumps(estado_nuevo),
+                )
+
+            return {"message": "Nota anulada", "numero": nota["numero"]}
+
+
 # ==================== RESUMEN DE CANTIDADES V2 ====================
 
 @router.get("/registros/{registro_id}/resumen-cantidades")
@@ -1475,6 +1831,8 @@ async def fallados_control(
     pool = await get_pool()
     async with pool.acquire() as conn:
         # 1) Filas de arreglos individuales
+        # Incluye campos de marcaje/nota para que el frontend pueda agrupar
+        # por proveedor y mostrar el estado de cobro (pendiente / en nota).
         arreglo_rows = await conn.fetch("""
             SELECT a.id as arreglo_id,
                    a.registro_id,
@@ -1498,7 +1856,16 @@ async def fallados_control(
                    a.fecha_envio,
                    a.fecha_limite,
                    a.estado,
-                   a.created_at
+                   a.created_at,
+                   COALESCE(a.marcado_para_cobro, FALSE) AS marcado_para_cobro,
+                   a.marcado_por_nombre,
+                   a.fecha_marcado,
+                   a.motivo_marcado,
+                   -- Nota de cobro activa vinculada (si existe)
+                   nca.id AS nota_id,
+                   nca.numero AS nota_numero,
+                   nca.fecha AS nota_fecha,
+                   nca.estado AS nota_estado
             FROM prod_registro_arreglos a
             JOIN prod_registros r ON a.registro_id = r.id
             LEFT JOIN prod_modelos m ON r.modelo_id = m.id
@@ -1506,6 +1873,14 @@ async def fallados_control(
             LEFT JOIN finanzas2.cont_linea_negocio ln ON r.linea_negocio_id = ln.id
             LEFT JOIN prod_servicios_produccion sp ON a.servicio_id = sp.id
             LEFT JOIN prod_personas_produccion pp ON a.persona_id = pp.id
+            LEFT JOIN LATERAL (
+                SELECT n.id, n.numero, n.fecha, n.estado
+                FROM produccion.prod_notas_cobro_lotes ncl
+                JOIN produccion.prod_notas_cobro n ON n.id = ncl.nota_id
+                WHERE ncl.arreglo_id = a.id AND n.estado = 'activa'
+                ORDER BY n.created_at DESC
+                LIMIT 1
+            ) nca ON true
             ORDER BY
                 CASE WHEN a.fecha_limite < CURRENT_DATE
                      AND (a.cantidad_recuperada + a.cantidad_liquidacion + a.cantidad_merma) < a.cantidad
@@ -1560,6 +1935,16 @@ async def fallados_control(
             else:
                 dias = 0
 
+            # Info de nota (si está en una activa)
+            nota_obj = None
+            if d.get("nota_id"):
+                nota_obj = {
+                    "id": d["nota_id"],
+                    "numero": d.get("nota_numero"),
+                    "fecha": str(d["nota_fecha"]) if d.get("nota_fecha") else None,
+                    "estado": d.get("nota_estado"),
+                }
+
             fila = {
                 "tipo_fila": "ARREGLO",
                 "arreglo_id": d["arreglo_id"],
@@ -1583,6 +1968,12 @@ async def fallados_control(
                 "fecha_limite": str(fecha_limite) if fecha_limite else None,
                 "dias": dias,
                 "estado": estado_calc,
+                # Marcaje / nota de cobro
+                "marcado_para_cobro": bool(d.get("marcado_para_cobro") or False),
+                "marcado_por_nombre": d.get("marcado_por_nombre"),
+                "fecha_marcado": str(d["fecha_marcado"]) if d.get("fecha_marcado") else None,
+                "motivo_marcado": d.get("motivo_marcado"),
+                "nota_cobro": nota_obj,
             }
 
             # Aplicar filtros

@@ -1,300 +1,574 @@
-import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { Card, CardContent } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
 import { Checkbox } from '../components/ui/checkbox';
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '../components/ui/select';
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '../components/ui/dialog';
+import { Label } from '../components/ui/label';
+import { Input } from '../components/ui/input';
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '../components/ui/table';
-import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
-} from '../components/ui/tooltip';
-import {
-  AlertTriangle, CheckCircle2, Clock, XCircle, Filter, Package, Wrench, RefreshCw,
+  RefreshCw, ChevronDown, ChevronRight,
+  FileText, ClipboardList, ExternalLink, Ban,
 } from 'lucide-react';
-
-import { formatDate } from '../lib/dateUtils';
+import { toast } from 'sonner';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-const estadoBadge = (estado) => {
-  const map = {
-    VENCIDO:     { cls: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/40 dark:text-red-300', icon: <AlertTriangle className="h-3 w-3" /> },
-    EN_ARREGLO:  { cls: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300', icon: <Wrench className="h-3 w-3" /> },
-    PARCIAL:     { cls: 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/40 dark:text-violet-300', icon: <Wrench className="h-3 w-3" /> },
-    COMPLETADO:  { cls: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300', icon: <CheckCircle2 className="h-3 w-3" /> },
-    SIN_ASIGNAR: { cls: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300', icon: <Clock className="h-3 w-3" /> },
-  };
-  const { cls, icon } = map[estado] || map.SIN_ASIGNAR;
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cls}`} data-testid={`badge-${estado}`}>
-      {icon} {estado === 'SIN_ASIGNAR' ? 'SIN ASIGNAR' : estado}
-    </span>
-  );
+// ─── Helpers ─────────────────────────────────────────────────────────────
+const fmtDM = (d) => {
+  if (!d) return '-';
+  const s = String(d).slice(0, 10);
+  const [, m, dd] = s.split('-');
+  return `${dd}/${m}`;
 };
 
-export const ControlFallados = () => {
-  const navigate = useNavigate();
-  const [data, setData] = useState({ filas: [], kpis: {} });
-  const [loading, setLoading] = useState(true);
-  const [showFilters, setShowFilters] = useState(false);
-  const [filtros, setFiltros] = useState({
-    estado: '', servicio_id: '', persona_id: '', fecha_desde: '', fecha_hasta: '',
-    solo_vencidos: false, solo_pendientes: false, linea_negocio_id: '',
-  });
-  const [servicios, setServicios] = useState([]);
-  const [personas, setPersonas] = useState([]);
-  const [lineas, setLineas] = useState([]);
+const fmtFecha = (d) => {
+  if (!d) return '-';
+  const s = String(d).slice(0, 10);
+  const [y, m, dd] = s.split('-');
+  return `${dd}/${m}/${y}`;
+};
 
-  const hdrs = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
+const hdrs = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const p = new URLSearchParams();
-      Object.entries(filtros).forEach(([k, v]) => {
-        if (v === true) p.set(k, 'true');
-        else if (v && v !== '') p.set(k, v);
-      });
-      const res = await axios.get(`${API}/fallados-control?${p.toString()}`, { headers: hdrs() });
-      setData(res.data);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  }, [filtros]);
+// ─── Pestaña: Por cobrar ─────────────────────────────────────────────────
+const TabPorCobrar = ({ filas, refreshAll }) => {
+  const [seleccionados, setSeleccionados] = useState(new Set());
+  const [grupoExpandido, setGrupoExpandido] = useState({});
+  const [modalOpen, setModalOpen] = useState(false);
+  const [observacion, setObservacion] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // Solo arreglos VENCIDOS, no completados, no en nota activa.
+  // Si ya están marcados (pero todavía no en nota), también los muestro.
+  const elegibles = useMemo(() => filas.filter(f =>
+    f.tipo_fila === 'ARREGLO' &&
+    f.estado === 'VENCIDO' &&
+    !f.nota_cobro,
+  ), [filas]);
 
+  // Agrupar por persona (proveedor)
+  const grupos = useMemo(() => {
+    const m = new Map();
+    for (const f of elegibles) {
+      const key = f.persona_id || `__sin_persona_${f.persona || 'Sin proveedor'}`;
+      const name = f.persona || 'Sin proveedor';
+      if (!m.has(key)) m.set(key, { key, persona_id: f.persona_id, persona: name, lotes: [], totalPzs: 0 });
+      m.get(key).lotes.push(f);
+      m.get(key).totalPzs += f.enviado || 0;
+    }
+    return Array.from(m.values()).sort((a, b) => a.persona.localeCompare(b.persona));
+  }, [elegibles]);
+
+  // Auto-expandir grupos por defecto (solo grupos nuevos)
   useEffect(() => {
-    const h = hdrs();
-    Promise.allSettled([
-      axios.get(`${API}/servicios-produccion`, { headers: h }),
-      axios.get(`${API}/personas-produccion`, { headers: h }),
-      axios.get(`${API}/lineas-negocio`, { headers: h }),
-    ]).then(([s, p, l]) => {
-      if (s.status === 'fulfilled') setServicios(s.value.data || []);
-      if (p.status === 'fulfilled') setPersonas(p.value.data || []);
-      if (l.status === 'fulfilled') setLineas(l.value.data || []);
+    setGrupoExpandido(prev => {
+      const next = { ...prev };
+      for (const g of grupos) {
+        if (!(g.key in next)) next[g.key] = true;
+      }
+      return next;
     });
-  }, []);
+  }, [grupos]);
 
-  const k = data.kpis || {};
-  const filas = data.filas || [];
-  const hasActiveFilters = Object.entries(filtros).some(([, v]) => v === true || (v && v !== ''));
+  // KPIs derivados
+  const totalProveedores = grupos.length;
+  const totalPzsPorCobrar = elegibles.reduce((acc, f) => acc + (f.enviado || 0), 0);
 
-  const clearFilters = () => setFiltros({
-    estado: '', servicio_id: '', persona_id: '', fecha_desde: '', fecha_hasta: '',
-    solo_vencidos: false, solo_pendientes: false, linea_negocio_id: '',
-  });
+  // Validación seleccionados: todos del mismo proveedor
+  const seleccionadosArr = useMemo(() =>
+    elegibles.filter(f => seleccionados.has(f.arreglo_id)),
+    [elegibles, seleccionados],
+  );
+  const proveedoresSeleccionados = useMemo(() =>
+    new Set(seleccionadosArr.map(s => s.persona_id || s.persona)),
+    [seleccionadosArr],
+  );
+  const seleccionPzs = seleccionadosArr.reduce((acc, s) => acc + (s.enviado || 0), 0);
+  const mismosProveedores = proveedoresSeleccionados.size <= 1;
+
+  const toggleSel = (arregloId) => {
+    setSeleccionados(prev => {
+      const n = new Set(prev);
+      if (n.has(arregloId)) n.delete(arregloId);
+      else n.add(arregloId);
+      return n;
+    });
+  };
+
+  const toggleGrupo = (key) => {
+    setGrupoExpandido(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const seleccionarGrupo = (g) => {
+    setSeleccionados(prev => {
+      const n = new Set(prev);
+      const todosSeleccionados = g.lotes.every(l => n.has(l.arreglo_id));
+      if (todosSeleccionados) {
+        for (const l of g.lotes) n.delete(l.arreglo_id);
+      } else {
+        for (const l of g.lotes) n.add(l.arreglo_id);
+      }
+      return n;
+    });
+  };
+
+  const handleGenerar = async () => {
+    if (!seleccionadosArr.length) return;
+    if (!mismosProveedores) {
+      toast.error('Selecciona envíos de un solo proveedor por nota');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await axios.post(`${API}/notas-cobro`, {
+        arreglo_ids: seleccionadosArr.map(s => s.arreglo_id),
+        observacion: observacion || null,
+      }, { headers: hdrs() });
+      toast.success(`Nota ${res.data.numero} generada · ${res.data.total_pzs} pzs`);
+      setSeleccionados(new Set());
+      setObservacion('');
+      setModalOpen(false);
+      refreshAll();
+    } catch (e) {
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response.data.detail : 'Error al generar nota');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
-    <div className="space-y-4" data-testid="control-fallados-page">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">Vista operativa diaria — cada fila es un arreglo individual o un lote sin asignar</p>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="h-8 text-xs" data-testid="btn-filtros">
-            <Filter className="h-3 w-3 mr-1" /> Filtros {hasActiveFilters && <Badge variant="secondary" className="ml-1 h-4 text-[9px]">ON</Badge>}
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={fetchData} className="h-8 text-xs" data-testid="btn-refresh">
-            <RefreshCw className="h-3 w-3" />
-          </Button>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2" data-testid="kpi-section">
-        <KpiCard label="Total Fallados" value={k.total_fallados || 0} icon={<XCircle className="h-4 w-4" />} color="zinc" />
-        <KpiCard label="Pendientes" value={k.total_pendiente || 0} icon={<Clock className="h-4 w-4" />} color={k.total_pendiente > 0 ? 'amber' : 'zinc'} />
-        <KpiCard label="Vencidos" value={k.total_vencidos || 0} icon={<AlertTriangle className="h-4 w-4" />} color={k.total_vencidos > 0 ? 'red' : 'zinc'} />
-        <KpiCard label="Recuperado" value={k.total_recuperado || 0} icon={<CheckCircle2 className="h-4 w-4" />} color={k.total_recuperado > 0 ? 'emerald' : 'zinc'} />
-        <KpiCard label="Liquidacion" value={k.total_liquidacion || 0} icon={<Package className="h-4 w-4" />} color={k.total_liquidacion > 0 ? 'orange' : 'zinc'} />
-        <KpiCard label="Merma" value={k.total_merma || 0} icon={<AlertTriangle className="h-4 w-4" />} color={k.total_merma > 0 ? 'red' : 'zinc'} />
-      </div>
-
-      {/* Filtros */}
-      {showFilters && (
-        <Card data-testid="filtros-panel">
+    <div className="space-y-3 pb-24">
+      {/* KPI cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <Card className="bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900">
           <CardContent className="p-3">
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 items-end">
-              <FilterSelect label="Estado" value={filtros.estado} onChange={v => setFiltros({ ...filtros, estado: v })} testId="filter-estado"
-                options={[{v:'VENCIDO',l:'Vencido'},{v:'EN_ARREGLO',l:'En Arreglo'},{v:'PARCIAL',l:'Parcial'},{v:'COMPLETADO',l:'Completado'},{v:'SIN_ASIGNAR',l:'Sin Asignar'}]} />
-              <FilterSelect label="Servicio" value={filtros.servicio_id} onChange={v => setFiltros({ ...filtros, servicio_id: v })} testId="filter-servicio"
-                options={servicios.map(s => ({v:s.id,l:s.nombre}))} />
-              <FilterSelect label="Persona" value={filtros.persona_id} onChange={v => setFiltros({ ...filtros, persona_id: v })} testId="filter-persona"
-                options={personas.map(p => ({v:p.id,l:p.nombre}))} />
-              {lineas.length > 0 && (
-                <FilterSelect label="Linea Negocio" value={filtros.linea_negocio_id} onChange={v => setFiltros({ ...filtros, linea_negocio_id: v })} testId="filter-linea"
-                  options={lineas.map(l => ({v:l.id,l:l.nombre}))} />
-              )}
-              <div>
-                <Label className="text-[10px]">Desde</Label>
-                <Input type="date" className="h-7 text-xs" value={filtros.fecha_desde} onChange={e => setFiltros({ ...filtros, fecha_desde: e.target.value })} data-testid="filter-desde" />
-              </div>
-              <div>
-                <Label className="text-[10px]">Hasta</Label>
-                <Input type="date" className="h-7 text-xs" value={filtros.fecha_hasta} onChange={e => setFiltros({ ...filtros, fecha_hasta: e.target.value })} data-testid="filter-hasta" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <Checkbox checked={filtros.solo_vencidos} onCheckedChange={v => setFiltros({ ...filtros, solo_vencidos: v })} data-testid="filter-solo-vencidos" />
-                  <span className="text-[10px]">Solo vencidos</span>
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <Checkbox checked={filtros.solo_pendientes} onCheckedChange={v => setFiltros({ ...filtros, solo_pendientes: v })} data-testid="filter-solo-pendientes" />
-                  <span className="text-[10px]">Solo pendientes</span>
-                </label>
-              </div>
-              <Button type="button" variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs" data-testid="btn-clear-filters">Limpiar</Button>
-            </div>
+            <p className="text-[10px] uppercase tracking-wider text-red-700 dark:text-red-300 font-semibold">Por cobrar</p>
+            <p className="text-2xl font-bold text-red-700 dark:text-red-300 mt-0.5">{totalPzsPorCobrar} pzs</p>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Proveedores</p>
+            <p className="text-2xl font-bold mt-0.5">{totalProveedores}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Selección actual</p>
+            <p className="text-2xl font-bold mt-0.5">
+              {seleccionadosArr.length} lote{seleccionadosArr.length !== 1 ? 's' : ''} · {seleccionPzs} pzs
+            </p>
+            {!mismosProveedores && (
+              <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">
+                ⚠ Distintos proveedores — selecciona uno a la vez
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Lista agrupada */}
+      {grupos.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground text-sm">
+            ✓ No hay envíos vencidos pendientes de cobro
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {grupos.map(g => {
+            const allSel = g.lotes.every(l => seleccionados.has(l.arreglo_id));
+            const someSel = g.lotes.some(l => seleccionados.has(l.arreglo_id));
+            const expanded = grupoExpandido[g.key] !== false;
+            return (
+              <Card key={g.key} className="overflow-hidden">
+                {/* Header del grupo */}
+                <div
+                  className="flex items-center gap-2 px-3 py-2 bg-muted/50 dark:bg-zinc-900/40 cursor-pointer select-none"
+                  onClick={() => toggleGrupo(g.key)}
+                  data-testid={`grupo-${g.key}`}
+                >
+                  {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                  <Checkbox
+                    checked={allSel ? true : (someSel ? 'indeterminate' : false)}
+                    onCheckedChange={() => seleccionarGrupo(g)}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Seleccionar todos los lotes de ${g.persona}`}
+                  />
+                  <span className="font-semibold text-sm flex-1">{g.persona}</span>
+                  <span className="text-xs font-mono text-muted-foreground">
+                    {g.lotes.length} lote{g.lotes.length !== 1 ? 's' : ''} · <span className="text-foreground font-semibold">{g.totalPzs} pzs</span>
+                  </span>
+                </div>
+                {/* Lotes */}
+                {expanded && (
+                  <div className="divide-y">
+                    {g.lotes.map(l => {
+                      const sel = seleccionados.has(l.arreglo_id);
+                      const yaMarcado = l.marcado_para_cobro;
+                      return (
+                        <div
+                          key={l.arreglo_id}
+                          className={`flex items-center gap-3 px-3 py-2 hover:bg-muted/30 transition-colors ${sel ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''}`}
+                          data-testid={`lote-${l.arreglo_id}`}
+                        >
+                          <Checkbox
+                            checked={sel}
+                            onCheckedChange={() => toggleSel(l.arreglo_id)}
+                            aria-label={`Seleccionar lote ${l.n_corte}`}
+                          />
+                          <span className="font-mono font-bold w-12 shrink-0">{l.n_corte}</span>
+                          <span className="font-semibold w-12 text-right shrink-0">{l.enviado}</span>
+                          <span className="text-xs text-muted-foreground flex-1 truncate">
+                            {l.servicio}
+                            {l.modelo ? ` · ${l.modelo}` : ''}
+                          </span>
+                          {yaMarcado && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 whitespace-nowrap">
+                              MARCADO
+                            </span>
+                          )}
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 whitespace-nowrap">
+                            {l.dias}d
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
       )}
 
-      {/* Tabla */}
-      <Card data-testid="tabla-fallados">
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">Cargando...</div>
-          ) : filas.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <CheckCircle2 className="h-8 w-8 mb-2 text-emerald-400" />
-              <p className="text-sm font-medium">Sin fallados</p>
-              <p className="text-xs">No hay registros que coincidan con los filtros</p>
+      {/* Barra inferior fija con CTA */}
+      {seleccionadosArr.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-primary text-primary-foreground px-4 py-3 flex items-center justify-between shadow-lg" data-testid="barra-generar">
+          <div className="text-sm">
+            <strong>{seleccionadosArr.length} lote{seleccionadosArr.length !== 1 ? 's' : ''} · {seleccionPzs} pzs</strong> seleccionados
+            {!mismosProveedores && <span className="text-amber-200 text-xs ml-2">⚠ Mezcla de proveedores</span>}
+          </div>
+          <Button
+            variant="secondary"
+            disabled={!mismosProveedores}
+            onClick={() => setModalOpen(true)}
+            data-testid="btn-generar-nota"
+          >
+            Generar Nota →
+          </Button>
+        </div>
+      )}
+
+      {/* Modal de confirmación */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="max-w-md" data-testid="dialog-generar-nota">
+          <DialogHeader>
+            <DialogTitle>Generar nota de cobro</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="bg-muted/40 rounded-md p-3 space-y-1">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Proveedor:</span>
+                <span className="font-semibold">{seleccionadosArr[0]?.persona || '-'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Lotes:</span>
+                <span className="font-mono">{seleccionadosArr.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total piezas:</span>
+                <span className="font-mono font-bold">{seleccionPzs} pzs</span>
+              </div>
             </div>
-          ) : (
-            <TooltipProvider delayDuration={200}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-[11px] font-semibold w-16">Corte</TableHead>
-                    <TableHead className="text-[11px] font-semibold">Modelo</TableHead>
-                    <TableHead className="text-[11px] font-semibold text-center w-16">Fallados</TableHead>
-                    <TableHead className="text-[11px] font-semibold text-center w-16">Enviado</TableHead>
-                    <TableHead className="text-[11px] font-semibold text-center w-16">Recup.</TableHead>
-                    <TableHead className="text-[11px] font-semibold text-center w-16">Pend.</TableHead>
-                    <TableHead className="text-[11px] font-semibold">Servicio</TableHead>
-                    <TableHead className="text-[11px] font-semibold">Persona</TableHead>
-                    <TableHead className="text-[11px] font-semibold text-center w-20">Envio</TableHead>
-                    <TableHead className="text-[11px] font-semibold text-center w-14">Dias</TableHead>
-                    <TableHead className="text-[11px] font-semibold text-center w-24">Estado</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filas.map((r, idx) => {
-                    const isSinAsignar = r.tipo_fila === 'SIN_ARREGLO';
-                    const rowBg = r.estado === 'VENCIDO' ? 'bg-red-50/50 dark:bg-red-950/10' :
-                      isSinAsignar ? 'bg-amber-50/30 dark:bg-amber-950/10' :
-                      r.estado === 'COMPLETADO' ? 'bg-emerald-50/20 dark:bg-emerald-950/5' : '';
-                    return (
-                      <Tooltip key={r.arreglo_id || `sin-${r.registro_id}-${idx}`}>
-                        <TooltipTrigger asChild>
-                          <TableRow
-                            className={`cursor-pointer transition-colors hover:bg-muted/50 ${rowBg}`}
-                            onClick={() => navigate(`/registros/editar/${r.registro_id}`)}
-                            data-testid={`row-${idx}`}
-                          >
-                            <TableCell className="font-mono font-bold text-sm">{r.n_corte}</TableCell>
-                            <TableCell>
-                              <div className="text-xs truncate max-w-[120px]">{r.modelo}</div>
-                              {r.marca && <div className="text-[10px] text-muted-foreground">{r.marca}</div>}
-                            </TableCell>
-                            <TableCell className="text-center font-mono text-xs text-muted-foreground">{r.total_fallados_registro}</TableCell>
-                            <TableCell className="text-center font-mono font-semibold text-xs">{r.enviado || '-'}</TableCell>
-                            <TableCell className="text-center font-mono text-xs text-emerald-600">{r.recuperado || '-'}</TableCell>
-                            <TableCell className="text-center">
-                              <span className={`font-mono font-semibold text-xs ${r.pendiente > 0 ? 'text-amber-600' : 'text-zinc-400'}`}>
-                                {r.pendiente}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-xs truncate max-w-[100px]">{r.servicio || <span className="text-zinc-300">-</span>}</TableCell>
-                            <TableCell className="text-xs truncate max-w-[100px]">{r.persona || <span className="text-zinc-300">-</span>}</TableCell>
-                            <TableCell className="text-center text-[11px] text-muted-foreground">{formatDate(r.fecha_envio)}</TableCell>
-                            <TableCell className="text-center">
-                              {r.dias > 0 ? (
-                                <span className={`font-mono text-xs font-semibold ${r.estado === 'VENCIDO' ? 'text-red-600' : r.dias > 3 ? 'text-amber-600' : 'text-zinc-500'}`}>
-                                  {r.dias}d
-                                </span>
-                              ) : (
-                                <span className="text-zinc-300">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-center">{estadoBadge(r.estado)}</TableCell>
-                          </TableRow>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="text-[10px] max-w-xs">
-                          <div className="space-y-0.5">
-                            <div className="font-semibold">Corte {r.n_corte} — {r.modelo}</div>
-                            {isSinAsignar ? (
-                              <div className="text-amber-600">{r.pendiente} fallados pendientes de asignar a arreglo</div>
-                            ) : (
-                              <>
-                                <div>Enviado: {r.enviado} | Rec: {r.recuperado} | Liq: {r.liquidacion} | Merma: {r.merma}</div>
-                                {r.fecha_limite && <div>Limite: {formatDate(r.fecha_limite)}</div>}
-                              </>
-                            )}
-                            {r.linea_negocio && <div>Linea: {r.linea_negocio}</div>}
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TooltipProvider>
-          )}
-          {!loading && filas.length > 0 && (
-            <div className="px-3 py-2 border-t bg-muted/30 text-[10px] text-muted-foreground flex justify-between">
-              <span>{k.total_registros} filas</span>
-              <span>
-                {k.total_vencidos} vencidos | {k.total_sin_asignar || 0} sin asignar | {k.total_pendiente} prendas pendientes
-              </span>
+            <div>
+              <Label className="text-xs">Observación (opcional)</Label>
+              <Input
+                value={observacion}
+                onChange={(e) => setObservacion(e.target.value)}
+                maxLength={500}
+                placeholder="ej: descontar de próxima factura"
+                data-testid="input-nota-observacion"
+              />
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <div className="text-[11px] text-muted-foreground">
+              Esta acción marca los envíos como pendientes de cobro y los vincula a la nota.
+              Si necesitas revertir, puedes anular la nota en la pestaña "Notas emitidas".
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+            <Button onClick={handleGenerar} disabled={submitting} data-testid="btn-confirmar-nota">
+              {submitting ? 'Generando...' : 'Confirmar y generar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
-const KpiCard = ({ label, value, icon, color = 'zinc' }) => {
-  const colors = {
-    zinc: 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300',
-    amber: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300',
-    red: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300',
-    emerald: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300',
-    orange: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300',
-  };
+// ─── Pestaña: Notas emitidas ─────────────────────────────────────────────
+const TabNotasEmitidas = ({ notas, onAnular, onVer }) => {
+  if (!notas.length) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-muted-foreground text-sm">
+          Sin notas emitidas todavía
+        </CardContent>
+      </Card>
+    );
+  }
   return (
-    <Card className={`border ${colors[color] || colors.zinc}`} data-testid={`kpi-${label.toLowerCase().replace(/\s/g, '-')}`}>
-      <CardContent className="p-3 flex items-center gap-2">
-        <div className="opacity-70">{icon}</div>
-        <div>
-          <p className="text-[9px] uppercase tracking-wider opacity-70">{label}</p>
-          <p className="text-xl font-bold font-mono leading-tight">{value}</p>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-2">
+      {notas.map(n => {
+        const isAnulada = n.estado === 'anulada';
+        return (
+          <Card key={n.id} className={isAnulada ? 'opacity-60' : ''} data-testid={`nota-${n.id}`}>
+            <CardContent className="p-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono font-bold text-base">{n.numero}</span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${
+                    isAnulada
+                      ? 'bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200'
+                      : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                  }`}>{n.estado.toUpperCase()}</span>
+                  <span className="text-xs text-muted-foreground">{fmtFecha(n.fecha)}</span>
+                </div>
+                <p className="text-sm mt-0.5 truncate">{n.proveedor_nombre}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {n.total_lotes} lote{n.total_lotes !== 1 ? 's' : ''} · <strong>{n.total_pzs} pzs</strong>
+                  {n.observacion && ` · ${n.observacion}`}
+                </p>
+                {isAnulada && n.motivo_anulacion && (
+                  <p className="text-[10px] italic text-muted-foreground mt-0.5">
+                    Anulada: {n.motivo_anulacion}
+                  </p>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onVer(n)}
+                data-testid={`btn-ver-nota-${n.id}`}
+                title="Ver detalle"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+              {!isAnulada && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-red-600 hover:text-red-700"
+                  onClick={() => onAnular(n)}
+                  data-testid={`btn-anular-nota-${n.id}`}
+                  title="Anular"
+                >
+                  <Ban className="h-4 w-4" />
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
   );
 };
 
-const FilterSelect = ({ label, value, onChange, options, testId }) => (
-  <div>
-    <Label className="text-[10px]">{label}</Label>
-    <Select value={value || '_all'} onValueChange={v => onChange(v === '_all' ? '' : v)}>
-      <SelectTrigger className="h-7 text-xs" data-testid={testId}><SelectValue /></SelectTrigger>
-      <SelectContent>
-        <SelectItem value="_all">Todos</SelectItem>
-        {options.map(o => <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}
-      </SelectContent>
-    </Select>
-  </div>
-);
+// ─── Componente principal ──────────────────────────────────────────────
+export const ControlFallados = () => {
+  const [tab, setTab] = useState('por_cobrar');
+  const [filas, setFilas] = useState([]);
+  const [notas, setNotas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [detalleNota, setDetalleNota] = useState(null);
+  const [motivoAnular, setMotivoAnular] = useState('');
+  const [anularDialog, setAnularDialog] = useState(null);
 
-export default ControlFallados;
+  const refreshAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [fc, nc] = await Promise.allSettled([
+        axios.get(`${API}/fallados-control?solo_vencidos=true`, { headers: hdrs() }),
+        axios.get(`${API}/notas-cobro`, { headers: hdrs() }),
+      ]);
+      if (fc.status === 'fulfilled') setFilas(fc.value.data.filas || []);
+      if (nc.status === 'fulfilled') setNotas(nc.value.data || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refreshAll(); }, [refreshAll]);
+
+  const handleVerNota = async (n) => {
+    try {
+      const res = await axios.get(`${API}/notas-cobro/${n.id}`, { headers: hdrs() });
+      setDetalleNota(res.data);
+    } catch {
+      toast.error('No se pudo cargar el detalle');
+    }
+  };
+
+  const handleAnular = (n) => {
+    setAnularDialog(n);
+    setMotivoAnular('');
+  };
+
+  const confirmarAnular = async () => {
+    if (!anularDialog) return;
+    try {
+      await axios.post(`${API}/notas-cobro/${anularDialog.id}/anular`,
+        { motivo: motivoAnular || null }, { headers: hdrs() });
+      toast.success(`Nota ${anularDialog.numero} anulada`);
+      setAnularDialog(null);
+      setMotivoAnular('');
+      refreshAll();
+    } catch (e) {
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response.data.detail : 'Error al anular');
+    }
+  };
+
+  const notasActivas = notas.filter(n => n.estado === 'activa').length;
+
+  if (loading && !filas.length && !notas.length) {
+    return <div className="flex items-center justify-center py-12 text-muted-foreground">Cargando...</div>;
+  }
+
+  return (
+    <div className="space-y-3" data-testid="control-fallados">
+      {/* Tabs */}
+      <div className="flex items-center gap-1 border-b">
+        <button
+          type="button"
+          onClick={() => setTab('por_cobrar')}
+          className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+            tab === 'por_cobrar'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+          data-testid="tab-por-cobrar"
+        >
+          <ClipboardList className="h-3.5 w-3.5 inline-block mr-1.5" />
+          Por cobrar
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('notas')}
+          className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+            tab === 'notas'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+          data-testid="tab-notas-emitidas"
+        >
+          <FileText className="h-3.5 w-3.5 inline-block mr-1.5" />
+          Notas emitidas ({notasActivas}{notas.length > notasActivas ? ` / ${notas.length}` : ''})
+        </button>
+        <Button variant="ghost" size="sm" onClick={refreshAll} className="ml-auto" data-testid="btn-refresh">
+          <RefreshCw className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      {tab === 'por_cobrar' && (
+        <TabPorCobrar filas={filas} refreshAll={refreshAll} />
+      )}
+      {tab === 'notas' && (
+        <TabNotasEmitidas notas={notas} onAnular={handleAnular} onVer={handleVerNota} />
+      )}
+
+      {/* Modal detalle de nota */}
+      <Dialog open={!!detalleNota} onOpenChange={(v) => !v && setDetalleNota(null)}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto" data-testid="dialog-detalle-nota">
+          <DialogHeader>
+            <DialogTitle>
+              {detalleNota?.numero}
+              <span className={`ml-2 text-[10px] font-semibold px-2 py-0.5 rounded-md align-middle ${
+                detalleNota?.estado === 'anulada'
+                  ? 'bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200'
+                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+              }`}>
+                {detalleNota?.estado?.toUpperCase()}
+              </span>
+            </DialogTitle>
+          </DialogHeader>
+          {detalleNota && (
+            <div className="space-y-3 text-sm">
+              <div className="bg-muted/40 rounded-md p-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <span className="text-muted-foreground">Fecha:</span>
+                <span className="font-mono">{fmtFecha(detalleNota.fecha)}</span>
+                <span className="text-muted-foreground">Proveedor:</span>
+                <span className="font-semibold">{detalleNota.proveedor_nombre}</span>
+                <span className="text-muted-foreground">Lotes:</span>
+                <span className="font-mono">{detalleNota.total_lotes}</span>
+                <span className="text-muted-foreground">Total piezas:</span>
+                <span className="font-mono font-bold">{detalleNota.total_pzs}</span>
+                <span className="text-muted-foreground">Creada por:</span>
+                <span>{detalleNota.created_by_nombre || '-'}</span>
+                {detalleNota.observacion && (
+                  <>
+                    <span className="text-muted-foreground">Observación:</span>
+                    <span>{detalleNota.observacion}</span>
+                  </>
+                )}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-1.5">Lotes incluidos:</p>
+                <div className="border rounded-md divide-y">
+                  {(detalleNota.lotes || []).map(l => (
+                    <div key={l.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                      <span className="font-mono font-bold w-12">{l.n_corte}</span>
+                      <span className="font-semibold w-10 text-right">{l.cantidad}</span>
+                      <span className="text-muted-foreground flex-1 truncate">
+                        {l.servicio_nombre} · {l.persona_nombre}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        vence {fmtDM(l.fecha_limite)} · {l.dias_vencido}d
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal anular */}
+      <Dialog open={!!anularDialog} onOpenChange={(v) => !v && setAnularDialog(null)}>
+        <DialogContent className="max-w-sm" data-testid="dialog-anular-nota">
+          <DialogHeader>
+            <DialogTitle>Anular nota {anularDialog?.numero}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              Se desmarcarán los {anularDialog?.total_lotes} lote{anularDialog?.total_lotes !== 1 ? 's' : ''}
+              {' '}({anularDialog?.total_pzs} pzs) y volverán a aparecer en "Por cobrar".
+            </p>
+            <div>
+              <Label className="text-xs">Motivo (opcional)</Label>
+              <Input
+                value={motivoAnular}
+                onChange={(e) => setMotivoAnular(e.target.value)}
+                maxLength={500}
+                placeholder="ej: error en selección, falta agregar otro lote"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAnularDialog(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={confirmarAnular} data-testid="btn-confirmar-anular">
+              Anular nota
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
