@@ -19,12 +19,13 @@ import { toast } from 'sonner';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-// Checkbox con estilo sutil (borde gris claro, fondo blanco hasta marcar).
+// Checkbox blanco, gris al pasar el cursor, azul al marcarse.
 const SoftCheckbox = ({ checked, onCheckedChange, ...rest }) => (
   <Checkbox
     checked={checked}
     onCheckedChange={onCheckedChange}
-    className="h-5 w-5 rounded-[5px] border-[1.5px] border-zinc-400 dark:border-zinc-500 bg-white dark:bg-zinc-900 shadow-none transition-colors hover:border-primary data-[state=checked]:bg-primary data-[state=checked]:border-primary data-[state=indeterminate]:bg-primary data-[state=indeterminate]:border-primary"
+    className="h-[18px] w-[18px] rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-950 bg-none shadow-none transition-colors hover:border-zinc-500 dark:hover:border-zinc-400 data-[state=checked]:bg-primary data-[state=checked]:border-primary data-[state=indeterminate]:bg-primary data-[state=indeterminate]:border-primary"
+    style={{ backgroundImage: 'none', appearance: 'none', WebkitAppearance: 'none' }}
     {...rest}
   />
 );
@@ -217,83 +218,61 @@ const TabPorCobrar = ({ filas, refreshAll }) => {
       {/* KPI cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Por cobrar */}
-        <div className="relative overflow-hidden rounded-xl border border-red-200/70 dark:border-red-900/50 bg-gradient-to-br from-red-50 to-rose-50/50 dark:from-red-950/40 dark:to-rose-950/20 px-4 py-3">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider font-bold text-red-700/80 dark:text-red-300/80 flex items-center gap-1">
-                <AlertCircle className="h-3 w-3" />
-                Por cobrar
-              </p>
-              <p className="text-3xl font-bold text-red-700 dark:text-red-300 mt-1 tabular-nums leading-none">
-                {totalPzsPorCobrar}
-                <span className="text-base font-medium ml-1">pzs</span>
-              </p>
-              <p className="text-[11px] text-red-700/70 dark:text-red-300/70 mt-1">
-                {totalLotes} lote{totalLotes !== 1 ? 's' : ''} vencido{totalLotes !== 1 ? 's' : ''}
-              </p>
-            </div>
-            <AlertCircle className="h-8 w-8 text-red-300/50 dark:text-red-700/40" />
-          </div>
+        <div className="rounded-lg border bg-card px-4 py-3">
+          <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground">
+            Por cobrar
+          </p>
+          <p className="text-2xl text-red-600 dark:text-red-400 mt-1 tabular-nums leading-none">
+            {totalPzsPorCobrar}
+            <span className="text-sm text-muted-foreground ml-1.5">pzs</span>
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            {totalLotes} lote{totalLotes !== 1 ? 's' : ''} vencido{totalLotes !== 1 ? 's' : ''}
+          </p>
         </div>
 
         {/* Proveedores */}
-        <div className="relative overflow-hidden rounded-xl border bg-card px-4 py-3">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground flex items-center gap-1">
-                <Users className="h-3 w-3" />
-                Proveedores
-              </p>
-              <p className="text-3xl font-bold mt-1 tabular-nums leading-none">{totalProveedores}</p>
-              <p className="text-[11px] text-muted-foreground mt-1">
-                con envíos pendientes
-              </p>
-            </div>
-            <Users className="h-8 w-8 text-muted-foreground/20" />
-          </div>
+        <div className="rounded-lg border bg-card px-4 py-3">
+          <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground">
+            Proveedores
+          </p>
+          <p className="text-2xl mt-1 tabular-nums leading-none">{totalProveedores}</p>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            con envíos pendientes
+          </p>
         </div>
 
         {/* Selección actual */}
-        <div className={`relative overflow-hidden rounded-xl border px-4 py-3 transition-colors ${
+        <div className={`rounded-lg border px-4 py-3 transition-colors ${
           seleccionadosArr.length === 0
             ? 'bg-card'
             : mismosProveedores
-              ? 'border-blue-300/70 dark:border-blue-800/60 bg-blue-50/60 dark:bg-blue-950/30'
-              : 'border-amber-300/70 dark:border-amber-800/60 bg-amber-50/60 dark:bg-amber-950/30'
+              ? 'border-blue-200 dark:border-blue-900/60 bg-blue-50/40 dark:bg-blue-950/20'
+              : 'border-amber-200 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20'
         }`}>
-          <div className="flex items-start justify-between">
-            <div>
-              <p className={`text-[10px] uppercase tracking-wider font-bold flex items-center gap-1 ${
-                seleccionadosArr.length > 0 && mismosProveedores
-                  ? 'text-blue-700/80 dark:text-blue-300/80'
-                  : seleccionadosArr.length > 0 && !mismosProveedores
-                    ? 'text-amber-700/80 dark:text-amber-300/80'
-                    : 'text-muted-foreground'
-              }`}>
-                <CheckCircle2 className="h-3 w-3" />
-                Selección actual
-              </p>
-              <p className="text-3xl font-bold mt-1 tabular-nums leading-none">
-                {seleccionadosArr.length}
-                <span className="text-base font-medium ml-1">lote{seleccionadosArr.length !== 1 ? 's' : ''}</span>
-              </p>
-              <p className="text-[11px] mt-1">
-                {!mismosProveedores ? (
-                  <span className="text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3" />
-                    Distintos proveedores
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">{seleccionPzs} pzs</span>
-                )}
-              </p>
-            </div>
-            <CheckCircle2 className={`h-8 w-8 ${
-              seleccionadosArr.length > 0 && mismosProveedores
-                ? 'text-blue-300/60 dark:text-blue-700/50'
-                : 'text-muted-foreground/20'
-            }`} />
-          </div>
+          <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground">
+            Selección actual
+          </p>
+          <p className="text-2xl mt-1 tabular-nums leading-none">
+            {seleccionadosArr.length}
+            <span className="text-sm text-muted-foreground ml-1.5">
+              lote{seleccionadosArr.length !== 1 ? 's' : ''} · {seleccionPzs} pzs
+            </span>
+          </p>
+          <p className="text-[11px] mt-1">
+            {!mismosProveedores ? (
+              <span className="text-amber-700 dark:text-amber-400 inline-flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                Distintos proveedores
+              </span>
+            ) : seleccionadosArr.length > 0 ? (
+              <span className="text-blue-700 dark:text-blue-400 truncate block">
+                {seleccionadosArr[0]?.persona}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">sin selección</span>
+            )}
+          </p>
         </div>
       </div>
 
@@ -307,28 +286,40 @@ const TabPorCobrar = ({ filas, refreshAll }) => {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2.5">
-          {grupos.map(g => {
+        <div className="rounded-lg border bg-card overflow-hidden">
+          {/* Header de columnas */}
+          <div className="grid grid-cols-[36px_18px_minmax(120px,1fr)_80px_minmax(140px,1.4fr)_minmax(120px,1fr)_56px] gap-3 items-center px-3 py-2 border-b bg-muted/30 text-[10px] uppercase tracking-wider font-medium text-muted-foreground">
+            <span></span>
+            <span></span>
+            <span>N° de corte</span>
+            <span className="text-right">Cant.</span>
+            <span>Servicio</span>
+            <span>Modelo</span>
+            <span className="text-right">Días</span>
+          </div>
+
+          {grupos.map((g, gi) => {
             const allSel = g.lotes.every(l => seleccionados.has(l.arreglo_id));
             const someSel = g.lotes.some(l => seleccionados.has(l.arreglo_id));
             const expanded = grupoExpandido[g.key] !== false;
-            const avatarCls = colorFromName(g.persona);
             return (
-              <div
-                key={g.key}
-                className={`overflow-hidden rounded-xl border bg-card transition-shadow ${
-                  someSel ? 'ring-1 ring-blue-300 dark:ring-blue-800 shadow-sm' : ''
-                }`}
-              >
+              <div key={g.key} className={gi > 0 ? 'border-t' : ''}>
                 {/* Header del grupo */}
                 <div
-                  className="flex items-center gap-3 px-3 py-2.5 cursor-pointer select-none hover:bg-muted/40 transition-colors"
+                  className="grid grid-cols-[36px_18px_1fr_56px] gap-3 items-center px-3 py-2 cursor-pointer select-none hover:bg-muted/30 transition-colors"
                   onClick={() => toggleGrupo(g.key)}
                   data-testid={`grupo-${g.key}`}
                 >
-                  <ChevronDown
-                    className={`h-4 w-4 text-muted-foreground transition-transform ${expanded ? '' : '-rotate-90'}`}
-                  />
+                  <button
+                    type="button"
+                    className="h-7 w-7 rounded-md hover:bg-muted/60 flex items-center justify-center text-muted-foreground"
+                    onClick={(e) => { e.stopPropagation(); toggleGrupo(g.key); }}
+                    aria-label={expanded ? 'Colapsar' : 'Expandir'}
+                  >
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform ${expanded ? '' : '-rotate-90'}`}
+                    />
+                  </button>
                   <div onClick={(e) => e.stopPropagation()} className="flex items-center">
                     <SoftCheckbox
                       checked={allSel ? true : (someSel ? 'indeterminate' : false)}
@@ -336,21 +327,20 @@ const TabPorCobrar = ({ filas, refreshAll }) => {
                       aria-label={`Seleccionar todos los lotes de ${g.persona}`}
                     />
                   </div>
-                  <div className={`h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${avatarCls}`}>
-                    {iniciales(g.persona)}
+                  <div className="flex items-baseline gap-2 min-w-0">
+                    <span className="font-medium text-sm truncate">{g.persona}</span>
+                    <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+                      · {g.lotes.length} lote{g.lotes.length !== 1 ? 's' : ''} · {g.totalPzs} pzs
+                    </span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm truncate leading-tight">{g.persona}</p>
-                    <p className="text-[11px] text-muted-foreground leading-tight">
-                      {g.lotes.length} lote{g.lotes.length !== 1 ? 's' : ''} · {g.totalPzs} pzs
-                    </p>
+                  <div className="flex justify-end">
+                    <DiasBadge dias={g.maxDias} />
                   </div>
-                  <DiasBadge dias={g.maxDias} />
                 </div>
 
                 {/* Lotes */}
                 {expanded && (
-                  <div className="divide-y border-t bg-muted/20 dark:bg-zinc-900/30">
+                  <div className="border-t bg-muted/10 dark:bg-zinc-900/20 divide-y divide-border/50">
                     {g.lotes.map(l => {
                       const sel = seleccionados.has(l.arreglo_id);
                       const yaMarcado = l.marcado_para_cobro;
@@ -358,45 +348,45 @@ const TabPorCobrar = ({ filas, refreshAll }) => {
                         <div
                           key={l.arreglo_id}
                           onClick={() => toggleSel(l.arreglo_id)}
-                          className={`relative flex items-center gap-3 pl-3 pr-3 py-2.5 cursor-pointer transition-colors ${
+                          className={`relative grid grid-cols-[36px_18px_minmax(120px,1fr)_80px_minmax(140px,1.4fr)_minmax(120px,1fr)_56px] gap-3 items-center px-3 py-2 cursor-pointer transition-colors ${
                             sel
-                              ? 'bg-blue-50 dark:bg-blue-950/40'
-                              : 'hover:bg-muted/50 dark:hover:bg-zinc-800/40'
+                              ? 'bg-blue-50/70 dark:bg-blue-950/30'
+                              : 'hover:bg-muted/30 dark:hover:bg-zinc-800/30'
                           }`}
                           data-testid={`lote-${l.arreglo_id}`}
                         >
-                          {sel && <span className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500" />}
-                          <div onClick={(e) => e.stopPropagation()} className="flex items-center ml-5">
+                          {sel && <span className="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-500" />}
+                          <span></span>
+                          <div onClick={(e) => e.stopPropagation()} className="flex items-center">
                             <SoftCheckbox
                               checked={sel}
                               onCheckedChange={() => toggleSel(l.arreglo_id)}
                               aria-label={`Seleccionar lote ${l.n_corte}`}
                             />
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="font-mono text-[11px] text-muted-foreground">N°</span>
-                            <span className="font-mono font-bold text-sm tabular-nums tracking-tight">
-                              {l.n_corte}
-                            </span>
+                          <span className="font-mono text-sm tabular-nums tracking-tight truncate">
+                            {l.n_corte}
+                          </span>
+                          <div className="text-right tabular-nums">
+                            <span className="text-sm">{l.enviado}</span>
+                            <span className="text-[10px] text-muted-foreground ml-1">pzs</span>
                           </div>
-                          <div className="flex items-baseline gap-1 shrink-0 w-16">
-                            <span className="font-bold text-base tabular-nums">{l.enviado}</span>
-                            <span className="text-[10px] text-muted-foreground">pzs</span>
-                          </div>
-                          <div className="flex-1 min-w-0">
+                          <div className="min-w-0">
                             <ServicioBadge nombre={l.servicio} />
-                            {l.modelo && (
-                              <span className="text-[10px] text-muted-foreground/70 ml-2 truncate">
-                                · {l.modelo}
+                          </div>
+                          <div className="min-w-0 flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground truncate">
+                              {l.modelo || '—'}
+                            </span>
+                            {yaMarcado && (
+                              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-900/60 whitespace-nowrap">
+                                MARCADO
                               </span>
                             )}
                           </div>
-                          {yaMarcado && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 whitespace-nowrap">
-                              MARCADO
-                            </span>
-                          )}
-                          <DiasBadge dias={l.dias} />
+                          <div className="flex justify-end">
+                            <DiasBadge dias={l.dias} />
+                          </div>
                         </div>
                       );
                     })}
@@ -462,23 +452,18 @@ const TabPorCobrar = ({ filas, refreshAll }) => {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 text-sm">
-            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+            <div className="rounded-md border bg-muted/20 p-3 space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-muted-foreground">Proveedor</span>
-                <div className="flex items-center gap-2">
-                  <span className={`h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold ${colorFromName(seleccionadosArr[0]?.persona || '')}`}>
-                    {iniciales(seleccionadosArr[0]?.persona || '')}
-                  </span>
-                  <span className="font-semibold">{seleccionadosArr[0]?.persona || '-'}</span>
-                </div>
+                <span className="text-sm">{seleccionadosArr[0]?.persona || '-'}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-muted-foreground">Lotes incluidos</span>
-                <span className="font-mono font-semibold tabular-nums">{seleccionadosArr.length}</span>
+                <span className="font-mono text-sm tabular-nums">{seleccionadosArr.length}</span>
               </div>
               <div className="flex justify-between items-center pt-2 border-t">
                 <span className="text-xs text-muted-foreground">Total piezas</span>
-                <span className="font-bold text-lg tabular-nums">{seleccionPzs} <span className="text-xs font-normal text-muted-foreground">pzs</span></span>
+                <span className="text-base tabular-nums">{seleccionPzs} <span className="text-xs text-muted-foreground">pzs</span></span>
               </div>
             </div>
             <div>
@@ -525,38 +510,30 @@ const TabNotasEmitidas = ({ notas, onAnular, onVer }) => {
     );
   }
   return (
-    <div className="space-y-2.5">
+    <div className="rounded-lg border bg-card overflow-hidden divide-y">
       {notas.map(n => {
         const isAnulada = n.estado === 'anulada';
-        const avatarCls = colorFromName(n.proveedor_nombre);
         return (
           <div
             key={n.id}
-            className={`group relative overflow-hidden rounded-xl border bg-card p-3 flex items-center gap-3 transition-all hover:shadow-sm ${
-              isAnulada ? 'opacity-60' : ''
+            className={`flex items-center gap-4 px-4 py-3 hover:bg-muted/30 transition-colors ${
+              isAnulada ? 'opacity-50' : ''
             }`}
             data-testid={`nota-${n.id}`}
           >
-            {!isAnulada && <span className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500" />}
-            {isAnulada && <span className="absolute left-0 top-0 bottom-0 w-1 bg-zinc-300 dark:bg-zinc-700" />}
-
-            <div className={`h-10 w-10 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ml-1 ${avatarCls}`}>
-              {iniciales(n.proveedor_nombre)}
-            </div>
-
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-mono font-bold text-sm tracking-tight">{n.numero}</span>
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm tracking-tight">{n.numero}</span>
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                   isAnulada
-                    ? 'bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200'
-                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                    ? 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'
+                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/60'
                 }`}>{n.estado.toUpperCase()}</span>
                 <span className="text-[11px] text-muted-foreground">{fmtFecha(n.fecha)}</span>
               </div>
-              <p className="text-sm font-medium truncate leading-tight mt-0.5">{n.proveedor_nombre}</p>
+              <p className="text-sm truncate leading-tight mt-0.5">{n.proveedor_nombre}</p>
               <p className="text-[11px] text-muted-foreground leading-tight">
-                {n.total_lotes} lote{n.total_lotes !== 1 ? 's' : ''} · <strong className="text-foreground tabular-nums">{n.total_pzs} pzs</strong>
+                {n.total_lotes} lote{n.total_lotes !== 1 ? 's' : ''} · <span className="tabular-nums text-foreground/80">{n.total_pzs} pzs</span>
                 {n.observacion && <span className="italic"> · {n.observacion}</span>}
               </p>
               {isAnulada && n.motivo_anulacion && (
@@ -572,7 +549,7 @@ const TabNotasEmitidas = ({ notas, onAnular, onVer }) => {
               onClick={() => onVer(n)}
               data-testid={`btn-ver-nota-${n.id}`}
               title="Ver detalle"
-              className="shrink-0"
+              className="shrink-0 h-8 w-8 p-0"
             >
               <ExternalLink className="h-4 w-4" />
             </Button>
@@ -580,7 +557,7 @@ const TabNotasEmitidas = ({ notas, onAnular, onVer }) => {
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 shrink-0"
+                className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 shrink-0 h-8 w-8 p-0"
                 onClick={() => onAnular(n)}
                 data-testid={`btn-anular-nota-${n.id}`}
                 title="Anular"
@@ -731,19 +708,14 @@ export const ControlFallados = () => {
           </DialogHeader>
           {detalleNota && (
             <div className="space-y-4 text-sm">
-              <div className="rounded-lg border bg-muted/30 p-3 space-y-2 text-xs">
+              <div className="rounded-md border bg-muted/20 p-3 space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Fecha</span>
                   <span className="font-mono">{fmtFecha(detalleNota.fecha)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Proveedor</span>
-                  <div className="flex items-center gap-2">
-                    <span className={`h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold ${colorFromName(detalleNota.proveedor_nombre)}`}>
-                      {iniciales(detalleNota.proveedor_nombre)}
-                    </span>
-                    <span className="font-semibold">{detalleNota.proveedor_nombre}</span>
-                  </div>
+                  <span>{detalleNota.proveedor_nombre}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Lotes</span>
@@ -751,7 +723,7 @@ export const ControlFallados = () => {
                 </div>
                 <div className="flex justify-between pt-2 border-t">
                   <span className="text-muted-foreground">Total piezas</span>
-                  <span className="font-bold text-base tabular-nums">{detalleNota.total_pzs}</span>
+                  <span className="text-base tabular-nums">{detalleNota.total_pzs}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Creada por</span>
@@ -774,23 +746,19 @@ export const ControlFallados = () => {
                 <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Lotes incluidos</p>
                 <div className="border rounded-lg divide-y bg-card overflow-hidden">
                   {(detalleNota.lotes || []).map(l => (
-                    <div key={l.id} className="flex items-center gap-3 px-3 py-2 text-xs hover:bg-muted/30 transition-colors">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-[10px] text-muted-foreground">N°</span>
-                        <span className="font-mono font-bold tabular-nums">{l.n_corte}</span>
+                    <div key={l.id} className="grid grid-cols-[minmax(80px,1fr)_60px_minmax(120px,1.4fr)_80px_56px] gap-3 items-center px-3 py-2 text-xs hover:bg-muted/30 transition-colors">
+                      <span className="font-mono tabular-nums truncate">{l.n_corte}</span>
+                      <div className="text-right tabular-nums">
+                        <span>{l.cantidad}</span>
+                        <span className="text-[10px] text-muted-foreground ml-1">pzs</span>
                       </div>
-                      <div className="flex items-baseline gap-1 w-12">
-                        <span className="font-bold tabular-nums">{l.cantidad}</span>
-                        <span className="text-[10px] text-muted-foreground">pzs</span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <ServicioBadge nombre={l.servicio_nombre} />
-                        <span className="text-[10px] text-muted-foreground/80 ml-2">· {l.persona_nombre}</span>
-                      </div>
-                      <span className="text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
-                        vence {fmtDM(l.fecha_limite)}
+                      <ServicioBadge nombre={l.servicio_nombre} />
+                      <span className="text-[10px] text-muted-foreground tabular-nums truncate text-right">
+                        {fmtDM(l.fecha_limite)}
                       </span>
-                      <DiasBadge dias={l.dias_vencido || 0} />
+                      <div className="flex justify-end">
+                        <DiasBadge dias={l.dias_vencido || 0} />
+                      </div>
                     </div>
                   ))}
                 </div>
