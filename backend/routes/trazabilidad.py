@@ -6,9 +6,11 @@ Router: Trazabilidad Simplificada - Fallados + Arreglos V2
 - Estados automaticos: EN_ARREGLO, PARCIAL, COMPLETADO, VENCIDO
 """
 from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date, datetime, timedelta, timezone
+import io
 import json
 import uuid
 
@@ -200,6 +202,20 @@ class ArregloMarcaCobro(BaseModel):
     al proveedor en lugar de esperar la entrega física. La acción la procesa
     Finanzas en otro módulo.
     """
+    motivo: Optional[str] = None
+
+
+class ArregloCobrar(BaseModel):
+    """Marca un envío como cobrado (Finanzas procesó la nota de descuento o
+    registró el comprobante). Solo aplica si previamente estaba marcado.
+    """
+    tipo_comprobante: Optional[str] = None        # 'nota_descuento', 'factura', 'boleta', etc.
+    numero_comprobante: Optional[str] = None
+    fecha_emision_comprobante: Optional[str] = None  # ISO YYYY-MM-DD
+    observaciones: Optional[str] = None
+
+
+class ArregloDescobrar(BaseModel):
     motivo: Optional[str] = None
 
 
@@ -817,6 +833,14 @@ def _snapshot_arreglo(row: dict) -> dict:
         "marcado_por_nombre": row.get("marcado_por_nombre"),
         "fecha_marcado": str(row.get("fecha_marcado")) if row.get("fecha_marcado") else None,
         "motivo_marcado": row.get("motivo_marcado"),
+        "cobrado": bool(row.get("cobrado") or False),
+        "cobrado_por_usuario_id": row.get("cobrado_por_usuario_id"),
+        "cobrado_por_nombre": row.get("cobrado_por_nombre"),
+        "fecha_cobro": str(row.get("fecha_cobro")) if row.get("fecha_cobro") else None,
+        "tipo_comprobante": row.get("tipo_comprobante"),
+        "numero_comprobante": row.get("numero_comprobante"),
+        "fecha_emision_comprobante": str(row.get("fecha_emision_comprobante")) if row.get("fecha_emision_comprobante") else None,
+        "observaciones_cobro": row.get("observaciones_cobro"),
     }
 
 
@@ -880,6 +904,8 @@ async def marcar_arreglo_para_cobro(
                 )
             if row.get("marcado_para_cobro"):
                 raise HTTPException(status_code=409, detail="El envío ya está marcado para cobro")
+            if row.get("cobrado"):
+                raise HTTPException(status_code=409, detail="El envío ya está cobrado")
             if await _arreglo_tiene_nota_activa(conn, arreglo_id):
                 raise HTTPException(
                     status_code=409,
@@ -949,6 +975,8 @@ async def desmarcar_arreglo_cobro(
             row = dict(existing)
             if not row.get("marcado_para_cobro"):
                 raise HTTPException(status_code=409, detail="El envío no está marcado")
+            if row.get("cobrado"):
+                raise HTTPException(status_code=409, detail="No se puede desmarcar: el envío ya está cobrado. Descobra primero.")
             if await _arreglo_tiene_nota_activa(conn, arreglo_id):
                 raise HTTPException(
                     status_code=409,
@@ -989,6 +1017,157 @@ async def desmarcar_arreglo_cobro(
                 json.dumps(estado_previo), json.dumps(estado_nuevo),
             )
 
+            row_new = _serialize_arreglo(row_new)
+            row_new["nota_descuento"] = None
+            return row_new
+
+
+@router.post("/arreglos/{arreglo_id}/cobrar")
+async def cobrar_arreglo(
+    arreglo_id: str,
+    input: ArregloCobrar,
+    current_user: dict = Depends(get_current_user),
+):
+    """Marca un envío como COBRADO: Finanzas procesó la nota / comprobante.
+    Requisitos:
+      - El arreglo existe y está marcado_para_cobro = TRUE.
+      - No está ya cobrado.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            existing = await conn.fetchrow(
+                "SELECT * FROM prod_registro_arreglos WHERE id = $1",
+                arreglo_id,
+            )
+            if not existing:
+                raise HTTPException(status_code=404, detail="Envío no encontrado")
+            row = dict(existing)
+            if not row.get("marcado_para_cobro"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="El envío no está marcado para cobro. Márcalo primero.",
+                )
+            if row.get("cobrado"):
+                raise HTTPException(status_code=409, detail="El envío ya está cobrado")
+
+            tipo = (input.tipo_comprobante or "").strip() or None
+            numero = (input.numero_comprobante or "").strip() or None
+            fecha_emi = None
+            if input.fecha_emision_comprobante:
+                try:
+                    fecha_emi = date.fromisoformat(input.fecha_emision_comprobante[:10])
+                except (ValueError, TypeError):
+                    raise HTTPException(status_code=400, detail="fecha_emision_comprobante inválida")
+            obs = (input.observaciones or "").strip() or None
+
+            row["estado"] = _calcular_estado_arreglo(row)
+            estado_previo = _snapshot_arreglo(row)
+            user_id = current_user.get("id") or current_user.get("user_id") or "sistema"
+            user_name = _user_display_name(current_user)
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+            await conn.execute(
+                """
+                UPDATE prod_registro_arreglos
+                SET cobrado = TRUE,
+                    cobrado_por_usuario_id = $1,
+                    cobrado_por_nombre = $2,
+                    fecha_cobro = $3,
+                    tipo_comprobante = $4,
+                    numero_comprobante = $5,
+                    fecha_emision_comprobante = $6,
+                    observaciones_cobro = $7
+                WHERE id = $8
+                """,
+                user_id, user_name, now, tipo, numero, fecha_emi, obs, arreglo_id,
+            )
+            row_new = dict(await conn.fetchrow(
+                "SELECT * FROM prod_registro_arreglos WHERE id = $1", arreglo_id,
+            ))
+            row_new["estado"] = _calcular_estado_arreglo(row_new)
+            estado_nuevo = _snapshot_arreglo(row_new)
+
+            await conn.execute(
+                """
+                INSERT INTO prod_arreglos_audit
+                    (arreglo_id, accion, usuario_id, usuario_nombre, motivo,
+                     estado_previo, estado_nuevo)
+                VALUES ($1, 'cobrar', $2, $3, $4, $5::jsonb, $6::jsonb)
+                """,
+                arreglo_id, user_id, user_name,
+                f"{tipo or '-'} {numero or '-'}" if (tipo or numero) else None,
+                json.dumps(estado_previo), json.dumps(estado_nuevo),
+            )
+            row_new = _serialize_arreglo(row_new)
+            row_new["nota_descuento"] = None
+            return row_new
+
+
+@router.post("/arreglos/{arreglo_id}/descobrar")
+async def descobrar_arreglo(
+    arreglo_id: str,
+    input: ArregloDescobrar,
+    current_user: dict = Depends(get_current_user),
+):
+    """Revierte el estado COBRADO de un envío (vuelve a 'marcado').
+    Útil cuando se anuló el comprobante. Requiere motivo.
+    """
+    motivo = (input.motivo or "").strip()
+    if not motivo:
+        raise HTTPException(status_code=400, detail="El motivo es obligatorio para descobrar")
+    if len(motivo) > 500:
+        raise HTTPException(status_code=400, detail="El motivo no puede exceder 500 caracteres")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            existing = await conn.fetchrow(
+                "SELECT * FROM prod_registro_arreglos WHERE id = $1",
+                arreglo_id,
+            )
+            if not existing:
+                raise HTTPException(status_code=404, detail="Envío no encontrado")
+            row = dict(existing)
+            if not row.get("cobrado"):
+                raise HTTPException(status_code=409, detail="El envío no está cobrado")
+
+            row["estado"] = _calcular_estado_arreglo(row)
+            estado_previo = _snapshot_arreglo(row)
+            user_id = current_user.get("id") or current_user.get("user_id") or "sistema"
+            user_name = _user_display_name(current_user)
+
+            await conn.execute(
+                """
+                UPDATE prod_registro_arreglos
+                SET cobrado = FALSE,
+                    cobrado_por_usuario_id = NULL,
+                    cobrado_por_nombre = NULL,
+                    fecha_cobro = NULL,
+                    tipo_comprobante = NULL,
+                    numero_comprobante = NULL,
+                    fecha_emision_comprobante = NULL,
+                    observaciones_cobro = NULL
+                WHERE id = $1
+                """,
+                arreglo_id,
+            )
+            row_new = dict(await conn.fetchrow(
+                "SELECT * FROM prod_registro_arreglos WHERE id = $1", arreglo_id,
+            ))
+            row_new["estado"] = _calcular_estado_arreglo(row_new)
+            estado_nuevo = _snapshot_arreglo(row_new)
+
+            await conn.execute(
+                """
+                INSERT INTO prod_arreglos_audit
+                    (arreglo_id, accion, usuario_id, usuario_nombre, motivo,
+                     estado_previo, estado_nuevo)
+                VALUES ($1, 'descobrar', $2, $3, $4, $5::jsonb, $6::jsonb)
+                """,
+                arreglo_id, user_id, user_name, motivo,
+                json.dumps(estado_previo), json.dumps(estado_nuevo),
+            )
             row_new = _serialize_arreglo(row_new)
             row_new["nota_descuento"] = None
             return row_new
@@ -1867,6 +2046,13 @@ async def fallados_control(
                    a.marcado_por_nombre,
                    a.fecha_marcado,
                    a.motivo_marcado,
+                   COALESCE(a.cobrado, FALSE) AS cobrado,
+                   a.cobrado_por_nombre,
+                   a.fecha_cobro,
+                   a.tipo_comprobante,
+                   a.numero_comprobante,
+                   a.fecha_emision_comprobante,
+                   a.observaciones_cobro,
                    -- Nota de cobro activa vinculada (si existe)
                    nca.id AS nota_id,
                    nca.numero AS nota_numero,
@@ -1951,6 +2137,16 @@ async def fallados_control(
                     "estado": d.get("nota_estado"),
                 }
 
+            # Determinar estado_cobro (sin_marcar / marcado / cobrado)
+            cobrado_flag = bool(d.get("cobrado") or False)
+            marcado_flag = bool(d.get("marcado_para_cobro") or False)
+            if cobrado_flag:
+                estado_cobro = "cobrado"
+            elif marcado_flag:
+                estado_cobro = "marcado"
+            else:
+                estado_cobro = "sin_marcar"
+
             fila = {
                 "tipo_fila": "ARREGLO",
                 "arreglo_id": d["arreglo_id"],
@@ -1974,11 +2170,19 @@ async def fallados_control(
                 "fecha_limite": str(fecha_limite) if fecha_limite else None,
                 "dias": dias,
                 "estado": estado_calc,
-                # Marcaje / nota de cobro
-                "marcado_para_cobro": bool(d.get("marcado_para_cobro") or False),
+                # Estado de cobro (sin_marcar / marcado / cobrado)
+                "estado_cobro": estado_cobro,
+                "marcado_para_cobro": marcado_flag,
                 "marcado_por_nombre": d.get("marcado_por_nombre"),
                 "fecha_marcado": str(d["fecha_marcado"]) if d.get("fecha_marcado") else None,
                 "motivo_marcado": d.get("motivo_marcado"),
+                "cobrado": cobrado_flag,
+                "cobrado_por_nombre": d.get("cobrado_por_nombre"),
+                "fecha_cobro": str(d["fecha_cobro"]) if d.get("fecha_cobro") else None,
+                "tipo_comprobante": d.get("tipo_comprobante"),
+                "numero_comprobante": d.get("numero_comprobante"),
+                "fecha_emision_comprobante": str(d["fecha_emision_comprobante"]) if d.get("fecha_emision_comprobante") else None,
+                "observaciones_cobro": d.get("observaciones_cobro"),
                 "nota_cobro": nota_obj,
             }
 
@@ -2057,3 +2261,122 @@ async def fallados_control(
 
         return {"filas": resultado, "kpis": kpis}
 
+
+@router.get("/fallados-control/export")
+async def fallados_control_export(
+    current_user: dict = Depends(get_current_user),
+):
+    """Exporta los envíos a arreglo vencidos en 3 hojas:
+       - Sin marcar
+       - Marcados (pendientes de cobro)
+       - Cobrados
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except ImportError:
+        raise HTTPException(status_code=500, detail="openpyxl no disponible")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT a.id AS arreglo_id, r.n_corte,
+                   COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') AS modelo,
+                   ln.nombre AS linea_negocio,
+                   a.cantidad,
+                   (a.cantidad - a.cantidad_recuperada - a.cantidad_liquidacion - a.cantidad_merma) AS pendiente,
+                   sp.nombre AS servicio,
+                   pp.nombre AS persona,
+                   a.fecha_envio, a.fecha_limite,
+                   COALESCE(a.marcado_para_cobro, FALSE) AS marcado,
+                   a.marcado_por_nombre, a.fecha_marcado, a.motivo_marcado,
+                   COALESCE(a.cobrado, FALSE) AS cobrado,
+                   a.cobrado_por_nombre, a.fecha_cobro,
+                   a.tipo_comprobante, a.numero_comprobante, a.fecha_emision_comprobante,
+                   a.observaciones_cobro
+            FROM prod_registro_arreglos a
+            JOIN prod_registros r ON r.id = a.registro_id
+            LEFT JOIN prod_modelos m ON m.id = r.modelo_id
+            LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = r.linea_negocio_id
+            LEFT JOIN prod_servicios_produccion sp ON sp.id = a.servicio_id
+            LEFT JOIN prod_personas_produccion pp ON pp.id = a.persona_id
+            WHERE a.fecha_limite < CURRENT_DATE
+              AND (a.cantidad_recuperada + a.cantidad_liquidacion + a.cantidad_merma) < a.cantidad
+            ORDER BY pp.nombre, a.fecha_limite
+        """)
+
+    hoy = date.today()
+    sin_marcar, marcados, cobrados = [], [], []
+    for r in rows:
+        d = dict(r)
+        if d.get("fecha_envio"):
+            dias = max((hoy - d["fecha_envio"]).days, 0)
+        else:
+            dias = 0
+        base = {
+            "N°": d["n_corte"],
+            "Modelo": d["modelo"] or d["linea_negocio"] or "",
+            "Proveedor": d["persona"] or "",
+            "Servicio": d["servicio"] or "",
+            "Cantidad": int(d["cantidad"] or 0),
+            "Pendiente": int(d["pendiente"] or 0),
+            "Fecha envío": str(d["fecha_envio"]) if d["fecha_envio"] else "",
+            "Fecha límite": str(d["fecha_limite"]) if d["fecha_limite"] else "",
+            "Días vencido": dias,
+        }
+        if d["cobrado"]:
+            cobrados.append({
+                **base,
+                "Cobrado por": d.get("cobrado_por_nombre") or "",
+                "Fecha cobro": str(d["fecha_cobro"]) if d["fecha_cobro"] else "",
+                "Tipo comprobante": d.get("tipo_comprobante") or "",
+                "Número comprobante": d.get("numero_comprobante") or "",
+                "Fecha emisión": str(d["fecha_emision_comprobante"]) if d["fecha_emision_comprobante"] else "",
+                "Observaciones cobro": d.get("observaciones_cobro") or "",
+            })
+        elif d["marcado"]:
+            marcados.append({
+                **base,
+                "Marcado por": d.get("marcado_por_nombre") or "",
+                "Fecha marcado": str(d["fecha_marcado"]) if d["fecha_marcado"] else "",
+                "Motivo": d.get("motivo_marcado") or "",
+            })
+        else:
+            sin_marcar.append(base)
+
+    wb = Workbook()
+    wb.remove(wb.active)
+    bold = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="334155", end_color="334155", fill_type="solid")
+
+    def add_sheet(name, rows_dicts):
+        ws = wb.create_sheet(name)
+        if not rows_dicts:
+            ws["A1"] = f"Sin {name.lower()}"
+            return
+        cols = list(rows_dicts[0].keys())
+        for c, col in enumerate(cols, start=1):
+            cell = ws.cell(row=1, column=c, value=col)
+            cell.font = bold
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+        for ri, row in enumerate(rows_dicts, start=2):
+            for c, col in enumerate(cols, start=1):
+                ws.cell(row=ri, column=c, value=row.get(col))
+        for c, col in enumerate(cols, start=1):
+            max_len = max([len(str(row.get(col) or "")) for row in rows_dicts] + [len(col)])
+            ws.column_dimensions[ws.cell(row=1, column=c).column_letter].width = min(max_len + 2, 50)
+
+    add_sheet("Sin marcar", sin_marcar)
+    add_sheet("Marcados", marcados)
+    add_sheet("Cobrados", cobrados)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"fallados_arreglos_{hoy.isoformat()}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
