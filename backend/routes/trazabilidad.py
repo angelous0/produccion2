@@ -1235,7 +1235,8 @@ async def get_nota_cobro(
             SELECT ncl.*, a.cantidad AS arreglo_cantidad, a.fecha_envio,
                    a.fecha_limite, r.n_corte, sp.nombre AS servicio_nombre,
                    pp.nombre AS persona_nombre,
-                   m.nombre AS modelo, ma.nombre AS marca,
+                   COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') AS modelo,
+                   COALESCE(ma.nombre, r.modelo_manual->>'marca_texto') AS marca,
                    ln.nombre AS linea_negocio
             FROM produccion.prod_notas_cobro_lotes ncl
             JOIN prod_registro_arreglos a ON a.id = ncl.arreglo_id
@@ -1844,8 +1845,8 @@ async def fallados_control(
                    r.n_corte,
                    r.estado as estado_op,
                    r.linea_negocio_id,
-                   m.nombre as modelo,
-                   ma.nombre as marca,
+                   COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') as modelo,
+                   COALESCE(ma.nombre, r.modelo_manual->>'marca_texto') as marca,
                    ln.nombre as linea_negocio,
                    (SELECT COALESCE(SUM(pf.cantidad_detectada),0) FROM prod_fallados pf WHERE pf.registro_id = r.id) as total_fallados_registro,
                    a.cantidad,
@@ -1899,8 +1900,8 @@ async def fallados_control(
                    r.n_corte,
                    r.estado as estado_op,
                    r.linea_negocio_id,
-                   m.nombre as modelo,
-                   ma.nombre as marca,
+                   COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') as modelo,
+                   COALESCE(ma.nombre, r.modelo_manual->>'marca_texto') as marca,
                    ln.nombre as linea_negocio,
                    fa_sum.total_fallados,
                    COALESCE(aa_sum.total_enviado, 0) as total_enviado,

@@ -369,7 +369,7 @@ const TabPorCobrar = ({ filas, refreshAll }) => {
                           </span>
                           <div className="min-w-0 flex items-center gap-2">
                             <span className="text-sm truncate">
-                              {l.modelo || l.linea_negocio || l.marca || '—'}
+                              {l.modelo || l.marca || l.linea_negocio || '—'}
                             </span>
                             {yaMarcado && (
                               <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-900/60 whitespace-nowrap shrink-0">
@@ -748,7 +748,7 @@ export const ControlFallados = () => {
                   {(detalleNota.lotes || []).map(l => (
                     <div key={l.id} className="grid grid-cols-[minmax(80px,0.9fr)_minmax(140px,1.8fr)_60px_minmax(110px,1fr)_56px] gap-3 items-center px-3 py-2 text-xs hover:bg-muted/30 transition-colors">
                       <span className="font-mono tabular-nums truncate">{l.n_corte}</span>
-                      <span className="truncate">{l.modelo || l.linea_negocio || l.marca || '—'}</span>
+                      <span className="truncate">{l.modelo || l.marca || l.linea_negocio || '—'}</span>
                       <div className="text-right tabular-nums">
                         <span>{l.cantidad}</span>
                         <span className="text-[10px] text-muted-foreground ml-1">pzs</span>
