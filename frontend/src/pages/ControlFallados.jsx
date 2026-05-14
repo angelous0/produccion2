@@ -287,14 +287,14 @@ const TabPorCobrar = ({ filas, refreshAll }) => {
         </Card>
       ) : (
         <div className="rounded-lg border bg-card overflow-hidden">
-          {/* Header de columnas */}
-          <div className="grid grid-cols-[36px_18px_minmax(120px,1fr)_80px_minmax(140px,1.4fr)_minmax(120px,1fr)_56px] gap-3 items-center px-3 py-2 border-b bg-muted/30 text-[10px] uppercase tracking-wider font-medium text-muted-foreground">
+          {/* Header de columnas: N° | Modelo | Cant. | Servicio | Días */}
+          <div className="grid grid-cols-[36px_18px_minmax(110px,0.9fr)_minmax(180px,2fr)_80px_minmax(140px,1.2fr)_56px] gap-3 items-center px-3 py-2 border-b bg-muted/30 text-[10px] uppercase tracking-wider font-medium text-muted-foreground">
             <span></span>
             <span></span>
             <span>N° de corte</span>
+            <span>Modelo</span>
             <span className="text-right">Cant.</span>
             <span>Servicio</span>
-            <span>Modelo</span>
             <span className="text-right">Días</span>
           </div>
 
@@ -348,7 +348,7 @@ const TabPorCobrar = ({ filas, refreshAll }) => {
                         <div
                           key={l.arreglo_id}
                           onClick={() => toggleSel(l.arreglo_id)}
-                          className={`relative grid grid-cols-[36px_18px_minmax(120px,1fr)_80px_minmax(140px,1.4fr)_minmax(120px,1fr)_56px] gap-3 items-center px-3 py-2 cursor-pointer transition-colors ${
+                          className={`relative grid grid-cols-[36px_18px_minmax(110px,0.9fr)_minmax(180px,2fr)_80px_minmax(140px,1.2fr)_56px] gap-3 items-center px-3 py-2 cursor-pointer transition-colors ${
                             sel
                               ? 'bg-blue-50/70 dark:bg-blue-950/30'
                               : 'hover:bg-muted/30 dark:hover:bg-zinc-800/30'
@@ -367,22 +367,22 @@ const TabPorCobrar = ({ filas, refreshAll }) => {
                           <span className="font-mono text-sm tabular-nums tracking-tight truncate">
                             {l.n_corte}
                           </span>
+                          <div className="min-w-0 flex items-center gap-2">
+                            <span className="text-sm truncate">
+                              {l.modelo || l.linea_negocio || l.marca || '—'}
+                            </span>
+                            {yaMarcado && (
+                              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-900/60 whitespace-nowrap shrink-0">
+                                MARCADO
+                              </span>
+                            )}
+                          </div>
                           <div className="text-right tabular-nums">
                             <span className="text-sm">{l.enviado}</span>
                             <span className="text-[10px] text-muted-foreground ml-1">pzs</span>
                           </div>
                           <div className="min-w-0">
                             <ServicioBadge nombre={l.servicio} />
-                          </div>
-                          <div className="min-w-0 flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground truncate">
-                              {l.modelo || '—'}
-                            </span>
-                            {yaMarcado && (
-                              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-900/60 whitespace-nowrap">
-                                MARCADO
-                              </span>
-                            )}
                           </div>
                           <div className="flex justify-end">
                             <DiasBadge dias={l.dias} />
@@ -746,16 +746,14 @@ export const ControlFallados = () => {
                 <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Lotes incluidos</p>
                 <div className="border rounded-lg divide-y bg-card overflow-hidden">
                   {(detalleNota.lotes || []).map(l => (
-                    <div key={l.id} className="grid grid-cols-[minmax(80px,1fr)_60px_minmax(120px,1.4fr)_80px_56px] gap-3 items-center px-3 py-2 text-xs hover:bg-muted/30 transition-colors">
+                    <div key={l.id} className="grid grid-cols-[minmax(80px,0.9fr)_minmax(140px,1.8fr)_60px_minmax(110px,1fr)_56px] gap-3 items-center px-3 py-2 text-xs hover:bg-muted/30 transition-colors">
                       <span className="font-mono tabular-nums truncate">{l.n_corte}</span>
+                      <span className="truncate">{l.modelo || l.linea_negocio || l.marca || '—'}</span>
                       <div className="text-right tabular-nums">
                         <span>{l.cantidad}</span>
                         <span className="text-[10px] text-muted-foreground ml-1">pzs</span>
                       </div>
                       <ServicioBadge nombre={l.servicio_nombre} />
-                      <span className="text-[10px] text-muted-foreground tabular-nums truncate text-right">
-                        {fmtDM(l.fecha_limite)}
-                      </span>
                       <div className="flex justify-end">
                         <DiasBadge dias={l.dias_vencido || 0} />
                       </div>

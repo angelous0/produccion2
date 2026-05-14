@@ -1234,12 +1234,17 @@ async def get_nota_cobro(
             """
             SELECT ncl.*, a.cantidad AS arreglo_cantidad, a.fecha_envio,
                    a.fecha_limite, r.n_corte, sp.nombre AS servicio_nombre,
-                   pp.nombre AS persona_nombre
+                   pp.nombre AS persona_nombre,
+                   m.nombre AS modelo, ma.nombre AS marca,
+                   ln.nombre AS linea_negocio
             FROM produccion.prod_notas_cobro_lotes ncl
             JOIN prod_registro_arreglos a ON a.id = ncl.arreglo_id
             JOIN prod_registros r ON r.id = a.registro_id
             LEFT JOIN prod_servicios_produccion sp ON sp.id = a.servicio_id
             LEFT JOIN prod_personas_produccion pp ON pp.id = a.persona_id
+            LEFT JOIN prod_modelos m ON m.id = r.modelo_id
+            LEFT JOIN prod_marcas ma ON ma.id = m.marca_id
+            LEFT JOIN finanzas2.cont_linea_negocio ln ON ln.id = r.linea_negocio_id
             WHERE ncl.nota_id = $1
             ORDER BY ncl.id
             """,
