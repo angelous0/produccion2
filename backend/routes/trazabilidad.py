@@ -193,6 +193,15 @@ class ArregloUpdate(BaseModel):
     cantidad_merma: Optional[int] = None
     cantidad_pasa_a_tela: Optional[int] = None
 
+class ArregloMarcaCobro(BaseModel):
+    """Marca o desmarca un envío como "pendiente de cobro al proveedor".
+
+    Se usa cuando un envío venció y el supervisor decide descontar el costo
+    al proveedor en lugar de esperar la entrega física. La acción la procesa
+    Finanzas en otro módulo.
+    """
+    motivo: Optional[str] = None
+
 
 # ==================== HELPERS ====================
 
@@ -488,6 +497,64 @@ async def delete_fallado(
 
 # ==================== ARREGLOS V2 CRUD ====================
 
+async def _tabla_existe(conn, schema: str, tabla: str) -> bool:
+    """True si existe la tabla. Útil para chequear tablas de finanzas que
+    pueden no existir todavía en esta instancia (forward-compat).
+    """
+    return bool(await conn.fetchval(
+        """
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = $1 AND table_name = $2
+        )
+        """,
+        schema, tabla,
+    ))
+
+
+async def _get_nota_descuento_por_arreglo(conn, arreglo_id: str) -> Optional[dict]:
+    """Devuelve la nota de descuento ACTIVA asociada a un arreglo, si existe.
+
+    Si la tabla `fin_notas_descuento_lotes` aún no fue creada en este deploy
+    (módulo de Finanzas pendiente), devuelve None sin error.
+    """
+    # Buscar en ambos schemas posibles (finanzas / finanzas2) por compatibilidad.
+    for schema in ("finanzas", "finanzas2"):
+        if not await _tabla_existe(conn, schema, "fin_notas_descuento_lotes"):
+            continue
+        if not await _tabla_existe(conn, schema, "fin_notas_descuento"):
+            continue
+        try:
+            row = await conn.fetchrow(
+                f"""
+                SELECT nd.id, nd.numero, nd.fecha, nd.estado
+                FROM {schema}.fin_notas_descuento_lotes ndl
+                JOIN {schema}.fin_notas_descuento nd ON nd.id = ndl.nota_id
+                WHERE ndl.arreglo_id = $1 AND nd.estado = 'activa'
+                LIMIT 1
+                """,
+                arreglo_id,
+            )
+        except Exception:
+            return None
+        if row:
+            d = dict(row)
+            if d.get("fecha"): d["fecha"] = str(d["fecha"])
+            return d
+    return None
+
+
+def _serialize_arreglo(d: dict) -> dict:
+    """Normaliza fechas y tipos para que el JSON sea consistente con la UI."""
+    d["estado"] = _calcular_estado_arreglo(d)
+    for f in ("fecha_envio", "fecha_limite", "created_at", "fecha_marcado"):
+        if d.get(f):
+            d[f] = str(d[f])
+    # Exponer marcado_para_cobro como bool (no None)
+    d["marcado_para_cobro"] = bool(d.get("marcado_para_cobro") or False)
+    return d
+
+
 @router.get("/registros/{registro_id}/arreglos")
 async def get_arreglos(
     registro_id: str,
@@ -511,11 +578,9 @@ async def get_arreglos(
 
         result = []
         for r in rows:
-            d = dict(r)
-            # Recalcular estado en vivo
-            d["estado"] = _calcular_estado_arreglo(d)
-            for f in ("fecha_envio", "fecha_limite", "created_at"):
-                if d.get(f): d[f] = str(d[f])
+            d = _serialize_arreglo(dict(r))
+            # nota_descuento: forward-compat, null si Finanzas no tiene la tabla
+            d["nota_descuento"] = await _get_nota_descuento_por_arreglo(conn, d["id"])
             result.append(d)
         return result
 
@@ -720,6 +785,199 @@ async def delete_arreglo(
             raise HTTPException(status_code=400, detail="No se puede eliminar un arreglo completado")
         await conn.execute("DELETE FROM prod_registro_arreglos WHERE id = $1", arreglo_id)
         return {"message": "Arreglo eliminado"}
+
+
+# ==================== MARCAJE PARA COBRO ====================
+
+def _snapshot_arreglo(row: dict) -> dict:
+    """Mini-snapshot del arreglo para guardar en audit (estado_previo/nuevo)."""
+    return {
+        "id": row.get("id"),
+        "registro_id": row.get("registro_id"),
+        "cantidad": safe_int(row.get("cantidad")),
+        "estado": row.get("estado"),
+        "fecha_envio": str(row.get("fecha_envio")) if row.get("fecha_envio") else None,
+        "fecha_limite": str(row.get("fecha_limite")) if row.get("fecha_limite") else None,
+        "marcado_para_cobro": bool(row.get("marcado_para_cobro") or False),
+        "marcado_por_usuario_id": row.get("marcado_por_usuario_id"),
+        "marcado_por_nombre": row.get("marcado_por_nombre"),
+        "fecha_marcado": str(row.get("fecha_marcado")) if row.get("fecha_marcado") else None,
+        "motivo_marcado": row.get("motivo_marcado"),
+    }
+
+
+def _user_display_name(current_user: dict) -> str:
+    return (
+        current_user.get("nombre_completo")
+        or current_user.get("nombre")
+        or current_user.get("username")
+        or "sistema"
+    )
+
+
+async def _arreglo_tiene_nota_activa(conn, arreglo_id: str) -> bool:
+    """Chequeo defensivo: si el arreglo ya está en una nota de descuento
+    activa, no se puede marcar/desmarcar (lo procesó Finanzas)."""
+    nota = await _get_nota_descuento_por_arreglo(conn, arreglo_id)
+    return nota is not None
+
+
+@router.post("/arreglos/{arreglo_id}/marcar-cobro")
+async def marcar_arreglo_para_cobro(
+    arreglo_id: str,
+    input: ArregloMarcaCobro,
+    current_user: dict = Depends(get_current_user),
+):
+    """Marca un envío vencido como "pendiente de cobro al proveedor".
+
+    Valida:
+      - El arreglo existe.
+      - El estado es EN_ARREGLO (sin entregar todavía).
+      - La fecha_limite ya pasó o es hoy.
+      - No está ya marcado.
+      - No está vinculado a una nota de descuento activa.
+    """
+    motivo = (input.motivo or "").strip()
+    if motivo and len(motivo) > 500:
+        raise HTTPException(status_code=400, detail="El motivo no puede exceder 500 caracteres")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            existing = await conn.fetchrow(
+                "SELECT * FROM prod_registro_arreglos WHERE id = $1",
+                arreglo_id,
+            )
+            if not existing:
+                raise HTTPException(status_code=404, detail="Envío no encontrado")
+            row = dict(existing)
+            # Recalcular estado en vivo (VENCIDO se infiere de fecha_limite)
+            row["estado"] = _calcular_estado_arreglo(row)
+            if row["estado"] not in ("EN_ARREGLO", "VENCIDO", "PARCIAL"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Solo envíos no entregados (sin completar) pueden marcarse para cobro",
+                )
+            fecha_limite = row.get("fecha_limite")
+            if fecha_limite and fecha_limite > date.today():
+                raise HTTPException(
+                    status_code=400,
+                    detail="El envío aún no está vencido (fecha límite es futura)",
+                )
+            if row.get("marcado_para_cobro"):
+                raise HTTPException(status_code=409, detail="El envío ya está marcado para cobro")
+            if await _arreglo_tiene_nota_activa(conn, arreglo_id):
+                raise HTTPException(
+                    status_code=409,
+                    detail="El envío ya forma parte de una nota de descuento activa",
+                )
+
+            estado_previo = _snapshot_arreglo(row)
+            user_id = current_user.get("id") or current_user.get("user_id") or "sistema"
+            user_name = _user_display_name(current_user)
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+            await conn.execute(
+                """
+                UPDATE prod_registro_arreglos
+                SET marcado_para_cobro = TRUE,
+                    marcado_por_usuario_id = $1,
+                    marcado_por_nombre = $2,
+                    fecha_marcado = $3,
+                    motivo_marcado = $4
+                WHERE id = $5
+                """,
+                user_id, user_name, now, (motivo or None), arreglo_id,
+            )
+            row_new = dict(await conn.fetchrow(
+                "SELECT * FROM prod_registro_arreglos WHERE id = $1", arreglo_id,
+            ))
+            row_new["estado"] = _calcular_estado_arreglo(row_new)
+            estado_nuevo = _snapshot_arreglo(row_new)
+
+            await conn.execute(
+                """
+                INSERT INTO prod_arreglos_audit
+                    (arreglo_id, accion, usuario_id, usuario_nombre, motivo,
+                     estado_previo, estado_nuevo)
+                VALUES ($1, 'marcar_cobro', $2, $3, $4, $5::jsonb, $6::jsonb)
+                """,
+                arreglo_id, user_id, user_name, (motivo or None),
+                json.dumps(estado_previo), json.dumps(estado_nuevo),
+            )
+
+            row_new = _serialize_arreglo(row_new)
+            row_new["nota_descuento"] = None
+            return row_new
+
+
+@router.post("/arreglos/{arreglo_id}/desmarcar-cobro")
+async def desmarcar_arreglo_cobro(
+    arreglo_id: str,
+    input: ArregloMarcaCobro,
+    current_user: dict = Depends(get_current_user),
+):
+    """Quita la marca de cobro de un envío. Solo si no fue procesado por
+    Finanzas todavía (no está en una nota de descuento activa)."""
+    motivo = (input.motivo or "").strip()
+    if motivo and len(motivo) > 500:
+        raise HTTPException(status_code=400, detail="El motivo no puede exceder 500 caracteres")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            existing = await conn.fetchrow(
+                "SELECT * FROM prod_registro_arreglos WHERE id = $1",
+                arreglo_id,
+            )
+            if not existing:
+                raise HTTPException(status_code=404, detail="Envío no encontrado")
+            row = dict(existing)
+            if not row.get("marcado_para_cobro"):
+                raise HTTPException(status_code=409, detail="El envío no está marcado")
+            if await _arreglo_tiene_nota_activa(conn, arreglo_id):
+                raise HTTPException(
+                    status_code=409,
+                    detail="No se puede desmarcar: ya está descontado en una nota activa",
+                )
+
+            row["estado"] = _calcular_estado_arreglo(row)
+            estado_previo = _snapshot_arreglo(row)
+            user_id = current_user.get("id") or current_user.get("user_id") or "sistema"
+            user_name = _user_display_name(current_user)
+
+            await conn.execute(
+                """
+                UPDATE prod_registro_arreglos
+                SET marcado_para_cobro = FALSE,
+                    marcado_por_usuario_id = NULL,
+                    marcado_por_nombre = NULL,
+                    fecha_marcado = NULL,
+                    motivo_marcado = NULL
+                WHERE id = $1
+                """,
+                arreglo_id,
+            )
+            row_new = dict(await conn.fetchrow(
+                "SELECT * FROM prod_registro_arreglos WHERE id = $1", arreglo_id,
+            ))
+            row_new["estado"] = _calcular_estado_arreglo(row_new)
+            estado_nuevo = _snapshot_arreglo(row_new)
+
+            await conn.execute(
+                """
+                INSERT INTO prod_arreglos_audit
+                    (arreglo_id, accion, usuario_id, usuario_nombre, motivo,
+                     estado_previo, estado_nuevo)
+                VALUES ($1, 'desmarcar_cobro', $2, $3, $4, $5::jsonb, $6::jsonb)
+                """,
+                arreglo_id, user_id, user_name, (motivo or None),
+                json.dumps(estado_previo), json.dumps(estado_nuevo),
+            )
+
+            row_new = _serialize_arreglo(row_new)
+            row_new["nota_descuento"] = None
+            return row_new
 
 
 # ==================== RESUMEN DE CANTIDADES V2 ====================

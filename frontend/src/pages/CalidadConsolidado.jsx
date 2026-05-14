@@ -1,27 +1,27 @@
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { BarChart3, Shield, ListChecks, AlertTriangle } from 'lucide-react';
-import { ReporteMermas } from './ReporteMermas';
+import { Shield, ListChecks, AlertTriangle } from 'lucide-react';
 import { CalidadMerma } from './CalidadMerma';
 import { ReporteEstadosItem } from './ReporteEstadosItem';
 import { ControlFallados } from './ControlFallados';
 
 export const CalidadConsolidado = () => {
   const [searchParams] = useSearchParams();
-  const defaultTab = searchParams.get('tab') || 'resumen-calidad';
+  // El tab "Análisis de Mermas" (key resumen-calidad) fue eliminado.
+  // Aceptamos el query param por retro-compatibilidad pero redirigimos al
+  // primer tab disponible.
+  const requested = searchParams.get('tab');
+  const defaultTab = (!requested || requested === 'resumen-calidad') ? 'mermas' : requested;
 
   return (
     <div className="space-y-4" data-testid="calidad-consolidado">
       <div>
         <h2 className="text-2xl font-bold tracking-tight">Calidad</h2>
-        <p className="text-sm text-muted-foreground">Análisis de mermas, diferencias con servicio externo, estados y fallados</p>
+        <p className="text-sm text-muted-foreground">Diferencias con servicio externo, estados y fallados</p>
       </div>
 
       <Tabs defaultValue={defaultTab} className="space-y-4">
         <TabsList className="h-9">
-          <TabsTrigger value="resumen-calidad" className="text-xs gap-1.5" data-testid="tab-resumen-calidad">
-            <BarChart3 className="h-3.5 w-3.5" /> Análisis de Mermas
-          </TabsTrigger>
           <TabsTrigger value="mermas" className="text-xs gap-1.5" data-testid="tab-mermas">
             <Shield className="h-3.5 w-3.5" /> Diferencias Servicio Externo
           </TabsTrigger>
@@ -33,7 +33,6 @@ export const CalidadConsolidado = () => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="resumen-calidad"><ReporteMermas /></TabsContent>
         <TabsContent value="mermas"><CalidadMerma /></TabsContent>
         <TabsContent value="estados"><ReporteEstadosItem /></TabsContent>
         <TabsContent value="fallados"><ControlFallados /></TabsContent>
