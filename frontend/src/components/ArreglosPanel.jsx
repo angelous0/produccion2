@@ -113,10 +113,6 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
   const [arregloDialogOpen, setArregloDialogOpen] = useState(false);
   const [resolucionDialogOpen, setResolucionDialogOpen] = useState(false);
   const [selectedArreglo, setSelectedArreglo] = useState(null);
-  // Modal de "Marcar para cobro" — confirma motivo opcional antes de POST
-  const [marcaCobroOpen, setMarcaCobroOpen] = useState(false);
-  const [marcaCobroArreglo, setMarcaCobroArreglo] = useState(null);
-  const [marcaCobroMotivo, setMarcaCobroMotivo] = useState('');
 
   const [falladoForm, setFalladoForm] = useState({ cantidad_detectada: '', fecha_deteccion: '', observacion: '', causa: 'servicio' });
   const [arregloForm, setArregloForm] = useState({ cantidad: '', servicio_id: '', persona_id: '', fecha_envio: '', observacion: '' });
@@ -293,53 +289,6 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
     }
   };
 
-  // ===== MARCAJE PARA COBRO =====
-  const openMarcaCobro = (arreglo) => {
-    setMarcaCobroArreglo(arreglo);
-    setMarcaCobroMotivo('');
-    setMarcaCobroOpen(true);
-  };
-
-  const handleConfirmarMarcaCobro = async () => {
-    if (saving || !marcaCobroArreglo) return;
-    setSaving(true);
-    try {
-      await axios.post(
-        `${API}/arreglos/${marcaCobroArreglo.id}/marcar-cobro`,
-        { motivo: marcaCobroMotivo || null },
-        { headers: hdrs() },
-      );
-      toast.success('Envío marcado para cobro');
-      setMarcaCobroOpen(false);
-      setMarcaCobroArreglo(null);
-      setMarcaCobroMotivo('');
-      fetchAll();
-    } catch (e) {
-      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : 'Error al marcar');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDesmarcarCobro = async (arreglo) => {
-    if (!window.confirm('¿Quitar la marca de cobro?')) return;
-    if (saving) return;
-    setSaving(true);
-    try {
-      await axios.post(
-        `${API}/arreglos/${arreglo.id}/desmarcar-cobro`,
-        {},
-        { headers: hdrs() },
-      );
-      toast.success('Marca removida');
-      fetchAll();
-    } catch (e) {
-      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : 'Error al desmarcar');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const openResolucion = (arreglo) => {
     setSelectedArreglo(arreglo);
     const rec = arreglo.cantidad_recuperada || 0;
@@ -416,44 +365,12 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
   const pzsTelaPendientes = falladosTelaEvaluando
     .reduce((acc, f) => acc + (f.cantidad_detectada || 0), 0);
 
-  // Envíos vencidos sin marcar y sin nota activa — para banner de aviso.
-  const enviosPendientesDeMarcaje = (arreglos || []).filter(a => {
-    if (a.estado === 'COMPLETADO') return false;
-    if (a.marcado_para_cobro) return false;
-    if (a.nota_descuento && a.nota_descuento.estado === 'activa') return false;
-    const cb = countdownBadge(a.fecha_limite);
-    return cb && (cb.label.startsWith('VENCIDO') || cb.label === 'VENCE HOY');
-  });
-
-  const scrollToDeServicio = () => {
-    try {
-      const el = document.querySelector('[data-testid="col-de-servicio"]');
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } catch {}
-  };
-
   return (
     <div className="space-y-4" data-testid="arreglos-panel">
       {/* Cabecera mínima — número de corte arriba */}
       <div data-testid="bloque-resumen">
         <p className="text-xs text-muted-foreground">Detección de fallados</p>
       </div>
-
-      {/* Banner de marcaje pendiente (envíos vencidos sin decidir) */}
-      {enviosPendientesDeMarcaje.length > 0 && (
-        <button
-          type="button"
-          onClick={scrollToDeServicio}
-          className="w-full flex items-center gap-2 text-xs px-3 py-1.5 rounded-md border bg-amber-50/70 hover:bg-amber-100/70 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:hover:bg-amber-900/40 dark:border-amber-900 dark:text-amber-200 text-left"
-          data-testid="banner-marcaje-pendiente"
-        >
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          {enviosPendientesDeMarcaje.length === 1
-            ? '1 envío vencido espera decisión de marcaje'
-            : `${enviosPendientesDeMarcaje.length} envíos vencidos esperan decisión de marcaje`}
-          <span className="ml-auto text-[10px] opacity-70">Ver →</span>
-        </button>
-      )}
 
       {/* Banners de alerta (solo si X > 0 — el backend ya los filtra) */}
       {r.alertas && r.alertas.length > 0 && (
@@ -567,29 +484,13 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
                 // Días hábiles que tomó la entrega (si está cerrado)
                 const diasEntrega = completado ? diasHabilesEntre(a.fecha_envio, a.fecha_limite) : null;
 
-                // Flags del flujo de marcaje para cobro (forward-compat)
-                const notaDesc = a.nota_descuento && a.nota_descuento.estado === 'activa' ? a.nota_descuento : null;
-                const marcado = !!a.marcado_para_cobro;
-                const elegibleMarcaje = !completado && isVencido && !marcado && !notaDesc;
-
                 // Estilos según estado
                 let bg, borderLeft, txtCant;
-                if (notaDesc) {
-                  // CASO 3 — ya descontado por Finanzas: gris + borde verde
-                  bg = 'bg-muted/50 dark:bg-zinc-900/40';
-                  borderLeft = 'border-l-emerald-500';
-                  txtCant = '';
-                } else if (marcado) {
-                  // CASO 2 — marcado para cobro, pendiente Finanzas: ámbar
-                  bg = 'bg-amber-50 dark:bg-amber-950/30';
-                  borderLeft = 'border-l-amber-500';
-                  txtCant = 'text-amber-800 dark:text-amber-200';
-                } else if (completado) {
+                if (completado) {
                   bg = 'bg-muted/50 dark:bg-zinc-900/40';
                   borderLeft = 'border-l-emerald-500';
                   txtCant = '';
                 } else if (isVencido) {
-                  // CASO 1 — vencido y sin marca: rojo (estado actual)
                   bg = 'bg-red-50 dark:bg-red-950/30';
                   borderLeft = 'border-l-red-500';
                   txtCant = 'text-red-700 dark:text-red-300';
@@ -605,34 +506,16 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
                 }
 
                 // Badge derecha
-                let badgeLabel, badgeBgCls;
-                if (notaDesc) {
-                  badgeLabel = `DESCONTADO · ${notaDesc.numero || ''}`.trim();
-                  badgeBgCls = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300';
-                } else if (marcado) {
-                  badgeLabel = 'MARCADO · PENDIENTE COBRO';
-                  badgeBgCls = 'bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-200';
-                } else if (completado) {
-                  badgeLabel = 'CERRADO';
-                  badgeBgCls = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300';
-                } else if (cb) {
-                  badgeLabel = cb.label;
-                  badgeBgCls = isVencido
+                const badge = completado
+                  ? { label: 'CERRADO', cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' }
+                  : cb;
+                const badgeBgCls = completado
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                  : isVencido
                     ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
                     : isCriticoHoy
                       ? 'bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-200'
                       : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300';
-                }
-
-                // Botones a mostrar
-                // - CASO 3 (descontado): solo lectura, ningún botón ni papelera
-                // - CASO 2 (marcado): "Marcar entregado" sigue + "Desmarcar"
-                // - CASO 1 (vencido sin marcar): "Marcar entregado" + "Marcar para cobro"
-                // - Resto: como antes
-                const showDelete = !completado && !notaDesc;
-                const showMarcarEntregado = !completado && !notaDesc;
-                const showMarcarCobro = elegibleMarcaje;
-                const showDesmarcar = marcado && !notaDesc;
 
                 return (
                   <div
@@ -640,7 +523,8 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
                     className={`relative p-3 rounded-md border border-l-4 ${bg} ${borderLeft}`}
                     data-testid={`arreglo-card-${a.id}`}
                   >
-                    {showDelete && (
+                    {/* Eliminar (sólo si no completado) */}
+                    {!completado && (
                       <button
                         type="button"
                         onClick={() => handleDeleteArreglo(a.id)}
@@ -654,9 +538,9 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
 
                     <div className="flex items-center justify-between gap-2 pr-6">
                       <span className={`font-semibold text-base ${txtCant}`}>{a.cantidad} pzs</span>
-                      {badgeLabel && (
+                      {badge && (
                         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md whitespace-nowrap ${badgeBgCls}`}>
-                          {badgeLabel}
+                          {badge.label}
                         </span>
                       )}
                     </div>
@@ -666,39 +550,15 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
                     </div>
 
                     <div className={`text-[10px] mt-0.5 ${txtCant ? 'opacity-80' : 'text-muted-foreground'}`}>
-                      {notaDesc
-                        ? `Cobrado el ${notaDesc.fecha ? fmtDM(notaDesc.fecha) : '-'}`
-                        : completado
-                          ? (diasEntrega !== null && diasEntrega > 0
-                              ? `entregado en ${diasEntrega}d hábiles`
-                              : 'entregado')
-                          : `enviado ${fmtDM(a.fecha_envio)} · vence ${fmtDM(a.fecha_limite)}`}
+                      {completado
+                        ? (diasEntrega !== null && diasEntrega > 0
+                            ? `entregado en ${diasEntrega}d hábiles`
+                            : 'entregado')
+                        : `enviado ${fmtDM(a.fecha_envio)} · vence ${fmtDM(a.fecha_limite)}`}
                     </div>
 
-                    {/* Info de marcaje (solo si marcado y no descontado) */}
-                    {marcado && !notaDesc && (
-                      <div className="mt-1 space-y-0.5">
-                        <div className="text-[10px] text-amber-700 dark:text-amber-300 opacity-90">
-                          Marcado por {a.marcado_por_nombre || '—'}
-                          {a.fecha_marcado && ` · ${fmtDM(a.fecha_marcado)}`}
-                        </div>
-                        {a.motivo_marcado && (
-                          <div className="text-[10px] italic text-amber-700 dark:text-amber-300 opacity-80">
-                            “{a.motivo_marcado}”
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Mensaje de read-only si descontado */}
-                    {notaDesc && (
-                      <div className="text-[10px] italic text-muted-foreground mt-1">
-                        Ya procesado por Finanzas
-                      </div>
-                    )}
-
                     {/* Mini resolución (sólo si ya hay valores parciales) */}
-                    {!completado && !notaDesc && (rec + liq + mer + pat) > 0 && (
+                    {!completado && (rec + liq + mer + pat) > 0 && (
                       <div className="text-[10px] mt-1 flex flex-wrap gap-2">
                         {rec > 0 && <span className="text-emerald-600 dark:text-emerald-400">Rec:{rec}</span>}
                         {liq > 0 && <span className="text-orange-600 dark:text-orange-400">Cobr:{liq}</span>}
@@ -707,7 +567,7 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
                       </div>
                     )}
 
-                    {showMarcarEntregado && (
+                    {!completado && (
                       <Button
                         type="button"
                         variant="outline"
@@ -716,30 +576,6 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
                         data-testid={`btn-resolver-${a.id}`}
                       >
                         Marcar entregado →
-                      </Button>
-                    )}
-
-                    {showMarcarCobro && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="w-full h-8 text-xs mt-2 bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 dark:border-amber-800 dark:text-amber-200"
-                        onClick={() => openMarcaCobro(a)}
-                        data-testid={`btn-marcar-cobro-${a.id}`}
-                      >
-                        📌 Marcar para cobro
-                      </Button>
-                    )}
-
-                    {showDesmarcar && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="w-full h-8 text-xs mt-2 bg-background/60 text-muted-foreground"
-                        onClick={() => handleDesmarcarCobro(a)}
-                        data-testid={`btn-desmarcar-cobro-${a.id}`}
-                      >
-                        Desmarcar
                       </Button>
                     )}
                   </div>
@@ -1059,46 +895,6 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
           <DialogFooter>
             <Button type="button" variant="outline" size="sm" onClick={() => setResolucionDialogOpen(false)}>Cancelar</Button>
             <Button type="button" size="sm" onClick={handleSaveResolucion} disabled={saving || resTotal !== resCantidad} data-testid="btn-guardar-resolucion">{saving ? 'Guardando...' : 'Confirmar entrega'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* DIALOG: Marcar para cobro */}
-      <Dialog open={marcaCobroOpen} onOpenChange={(v) => {
-        setMarcaCobroOpen(v);
-        if (!v) { setMarcaCobroArreglo(null); setMarcaCobroMotivo(''); }
-      }}>
-        <DialogContent className="max-w-sm" data-testid="dialog-marcar-cobro">
-          <DialogHeader>
-            <DialogTitle className="text-sm">¿Marcar este envío para cobro?</DialogTitle>
-          </DialogHeader>
-          {marcaCobroArreglo && (
-            <div className="text-xs text-muted-foreground -mt-2 mb-1">
-              {marcaCobroArreglo.cantidad} pzs · {marcaCobroArreglo.servicio_nombre || '-'} ·{' '}
-              {marcaCobroArreglo.persona_nombre || '-'}
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label className="text-xs">Motivo (opcional · solo lo verá finanzas)</Label>
-            <textarea
-              value={marcaCobroMotivo}
-              onChange={(e) => setMarcaCobroMotivo(e.target.value)}
-              placeholder="ej: proveedor no responde, descontar de próxima factura"
-              maxLength={500}
-              rows={3}
-              className="w-full text-xs p-2 border rounded-md bg-background resize-none"
-              data-testid="input-marca-cobro-motivo"
-            />
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" size="sm"
-              onClick={() => { setMarcaCobroOpen(false); setMarcaCobroArreglo(null); setMarcaCobroMotivo(''); }}>
-              Cancelar
-            </Button>
-            <Button type="button" size="sm" onClick={handleConfirmarMarcaCobro} disabled={saving}
-              data-testid="btn-confirmar-marca-cobro">
-              {saving ? 'Guardando...' : 'Confirmar'}
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
