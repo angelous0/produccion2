@@ -593,7 +593,11 @@ export const InventarioIngresos = () => {
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[620px] p-0" align="start">
+                    <PopoverContent
+                      className="p-0"
+                      align="start"
+                      style={{ width: 'var(--radix-popover-trigger-width)', maxWidth: 'calc(100vw - 2rem)' }}
+                    >
                       <Command>
                         <CommandInput placeholder="Buscar por nombre o código..." data-testid="search-item" />
                         <CommandList className="max-h-[280px]" onWheel={e => e.stopPropagation()}>
@@ -825,7 +829,11 @@ export const InventarioIngresos = () => {
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[340px] p-0" align="start">
+                    <PopoverContent
+                      className="p-0"
+                      align="start"
+                      style={{ width: 'var(--radix-popover-trigger-width)', maxWidth: 'calc(100vw - 2rem)' }}
+                    >
                       <Command>
                         <CommandInput placeholder="Buscar proveedor..." data-testid="search-proveedor" />
                         <CommandList>
