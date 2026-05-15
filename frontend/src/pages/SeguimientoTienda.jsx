@@ -87,7 +87,27 @@ const SeguimientoTienda = () => {
     });
   };
 
-  const [lastSyncResult, setLastSyncResult] = useState(null);
+  // Persistimos el último resultado de sync en localStorage para que el
+  // banner sobreviva recargas (el usuario lo perdía después de F5).
+  const SYNC_LS_KEY = 'seguimientoTienda.lastSync';
+  const [lastSyncResult, setLastSyncResultRaw] = useState(() => {
+    try {
+      const raw = localStorage.getItem(SYNC_LS_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return { ...parsed, at: parsed.at ? new Date(parsed.at) : null };
+    } catch { return null; }
+  });
+  const setLastSyncResult = useCallback((val) => {
+    setLastSyncResultRaw(val);
+    try {
+      if (val == null) localStorage.removeItem(SYNC_LS_KEY);
+      else localStorage.setItem(SYNC_LS_KEY, JSON.stringify({
+        ...val,
+        at: val.at ? new Date(val.at).toISOString() : null,
+      }));
+    } catch { /* quota / privacy mode */ }
+  }, []);
 
   const sincronizar = async () => {
     setSyncing(true);

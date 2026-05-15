@@ -17,7 +17,11 @@ router = APIRouter(prefix="/api", tags=["distribucion-pt"])
 class LineaDistribucion(BaseModel):
     tipo_salida: str  # 'normal' | 'liquidacion_leve' | 'liquidacion_grave'
     product_template_id_odoo: int
-    cantidad: float = Field(gt=0)
+    # Permitimos cantidad=0 (vínculo puro: el corte declara el template y el
+    # tipo, pero deja la cantidad pendiente de definir — útil cuando la
+    # mercadería llega en parciales o cuando todavía no se sabe cuántas
+    # entran en LQ vs Normal).
+    cantidad: float = Field(ge=0)
 
 class DistribucionPTInput(BaseModel):
     lineas: List[LineaDistribucion]
@@ -179,12 +183,19 @@ async def guardar_distribucion_pt(
         if missing:
             raise HTTPException(400, f"Productos Odoo no encontrados: {missing}")
 
-        # Validar suma = total producido
+        # Validar cantidades: permitimos parciales (suma <= total_producido) y
+        # cantidad = 0 (vínculo puro al template sin declarar cuántas piezas
+        # van a ese tipo de salida todavía). Lo único que NO permitimos es
+        # excederse del producido o cantidades negativas.
+        for linea in data.lineas:
+            if linea.cantidad is None or linea.cantidad < 0:
+                raise HTTPException(400, "La cantidad no puede ser negativa")
+
         total_distribuido = sum(l.cantidad for l in data.lineas)
-        if abs(total_distribuido - total_producido) > 0.01:
+        if total_distribuido > total_producido + 0.01:
             raise HTTPException(
                 400,
-                f"El total distribuido ({total_distribuido}) no coincide con el total producido ({total_producido})"
+                f"El total distribuido ({total_distribuido}) excede el total producido ({total_producido})"
             )
 
         # Agrupar duplicados (mismo product + mismo tipo_salida)

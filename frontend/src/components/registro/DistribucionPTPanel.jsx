@@ -190,15 +190,25 @@ export const DistribucionPTPanel = ({ registroId }) => {
   const totalDistribuido = lineas.reduce((s, l) => s + (parseFloat(l.cantidad) || 0), 0);
   const totalProducido = distribucion?.total_producido || 0;
   const cuadra = Math.abs(totalDistribuido - totalProducido) < 0.01;
+  const excede = totalDistribuido > totalProducido + 0.01;
+  const parcial = !cuadra && !excede && totalDistribuido >= 0;
+  const pendiente = Math.max(0, totalProducido - totalDistribuido);
 
   const guardarDistribucion = async () => {
-    const invalidas = lineas.filter(l => !l.product_template_id_odoo || l.cantidad <= 0);
-    if (invalidas.length) {
-      toast.error('Todas las lineas deben tener producto y cantidad > 0');
+    // Validaciones cliente: relajamos a (a) sin negativos, (b) sin exceder.
+    // Cantidad=0 está permitido (vínculo puro: solo declara template+tipo).
+    const sinProducto = lineas.filter(l => !l.product_template_id_odoo);
+    if (sinProducto.length) {
+      toast.error('Todas las lineas deben tener un producto Odoo seleccionado');
       return;
     }
-    if (!cuadra) {
-      toast.error(`El total (${totalDistribuido}) no coincide con el producido (${totalProducido})`);
+    const negativas = lineas.filter(l => parseFloat(l.cantidad) < 0);
+    if (negativas.length) {
+      toast.error('La cantidad no puede ser negativa');
+      return;
+    }
+    if (excede) {
+      toast.error(`El total (${totalDistribuido}) excede el producido (${totalProducido})`);
       return;
     }
     setSaving(true);
@@ -296,7 +306,7 @@ export const DistribucionPTPanel = ({ registroId }) => {
             <Separator orientation="vertical" className="h-5" />
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Distribuido:</span>
-              <span className={`font-semibold ${cuadra ? 'text-emerald-600' : 'text-red-600'}`} data-testid="total-distribuido">
+              <span className={`font-semibold ${cuadra ? 'text-emerald-600' : excede ? 'text-red-600' : 'text-amber-600'}`} data-testid="total-distribuido">
                 {totalDistribuido}
               </span>
             </div>
@@ -433,10 +443,12 @@ export const DistribucionPTPanel = ({ registroId }) => {
                     value={linea.product_template_id_odoo}
                     onChange={v => updateLinea(idx, 'product_template_id_odoo', v)}
                   />
-                  <Input type="number" min="1" step="1" className="h-8 text-xs"
-                    value={linea.cantidad || ''} placeholder="Cant."
+                  <Input type="number" min="0" step="1" className="h-8 text-xs"
+                    value={linea.cantidad === 0 ? 0 : (linea.cantidad || '')}
+                    placeholder="Cant. (0 = sólo vincular)"
                     onChange={e => updateLinea(idx, 'cantidad', e.target.value)}
                     data-testid={`input-cantidad-${idx}`}
+                    title="Cantidad esperada. Deja 0 si sólo quieres vincular el template para que el sync detecte llegadas a tienda."
                   />
                   <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
                     onClick={() => removeLinea(idx)} data-testid={`btn-remove-${idx}`}>
@@ -449,18 +461,52 @@ export const DistribucionPTPanel = ({ registroId }) => {
 
           {/* Footer distribucion */}
           {lineas.length > 0 && (
-            <div className="flex items-center justify-between mt-3 pt-3 border-t">
-              <div className="flex items-center gap-3 text-xs">
-                <span>Total: <strong className={cuadra ? 'text-emerald-600' : 'text-red-600'}>{totalDistribuido}</strong> / {totalProducido}</span>
-                {cuadra ? (
+            <div className="flex items-center justify-between mt-3 pt-3 border-t gap-2 flex-wrap">
+              <div className="flex items-center gap-2 text-xs flex-wrap">
+                <span>
+                  Total:{' '}
+                  <strong className={cuadra ? 'text-emerald-600' : excede ? 'text-red-600' : 'text-amber-600'}>
+                    {totalDistribuido}
+                  </strong>
+                  {' / '}{totalProducido}
+                </span>
+                {cuadra && (
                   <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[10px]">Cuadra</Badge>
-                ) : (
+                )}
+                {excede && (
                   <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 text-[10px]">
-                    Diferencia: {(totalDistribuido - totalProducido).toFixed(0)}
+                    Excede en {(totalDistribuido - totalProducido).toFixed(0)}
                   </Badge>
                 )}
+                {parcial && (
+                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-[10px]" title="Puedes guardar parcial y completar después cuando lleguen los arreglos o se confirmen las mermas">
+                    Pendiente: {pendiente.toFixed(0)} prendas
+                  </Badge>
+                )}
+                {parcial && pendiente > 0 && (
+                  <Button
+                    type="button" size="sm" variant="ghost"
+                    className="h-6 text-[10px] px-2 text-blue-700 hover:text-blue-900 hover:bg-blue-50"
+                    onClick={() => {
+                      // Atajo: agrega una línea Normal con el resto pendiente.
+                      // Si ya hay una línea Normal sin producto, la rellena;
+                      // si no, crea una nueva (el usuario elige el template).
+                      setLineas(prev => {
+                        const idxVacia = prev.findIndex(l => l.tipo_salida === 'normal' && !l.product_template_id_odoo);
+                        if (idxVacia >= 0) {
+                          return prev.map((l, i) => i === idxVacia ? { ...l, cantidad: pendiente } : l);
+                        }
+                        return [...prev, { tipo_salida: 'normal', product_template_id_odoo: null, cantidad: pendiente }];
+                      });
+                      setDirty(true);
+                    }}
+                    title="Crea una línea Normal con las prendas pendientes (te falta elegir el template)"
+                  >
+                    + Completar con Normal
+                  </Button>
+                )}
               </div>
-              <Button type="button" size="sm" onClick={guardarDistribucion} disabled={saving || !cuadra || !dirty}
+              <Button type="button" size="sm" onClick={guardarDistribucion} disabled={saving || excede || !dirty}
                 className="h-7 text-xs gap-1" data-testid="btn-guardar-distribucion">
                 {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                 Guardar

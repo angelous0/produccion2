@@ -110,7 +110,7 @@ export const RegistroPanelLateral = ({
               <div className="h-6 w-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M20 6L9 17l-5-5"/></svg>
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-[11px] font-bold text-emerald-800 dark:text-emerald-200 leading-none">En Tienda</p>
                 <p className="text-[10px] text-emerald-700 dark:text-emerald-300 mt-0.5 leading-tight">
                   {new Date(formData.fecha_envio_tienda).toLocaleDateString('es-PE', {
@@ -120,6 +120,20 @@ export const RegistroPanelLateral = ({
                   })}
                 </p>
               </div>
+              {formData.fecha_envio_tienda_auto !== undefined && (
+                <span
+                  className={`text-[9px] font-semibold px-1 py-0.5 rounded shrink-0 ${
+                    formData.fecha_envio_tienda_auto
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300'
+                      : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
+                  }`}
+                  title={formData.fecha_envio_tienda_auto
+                    ? 'Detectado automaticamente desde Odoo (primer movimiento done a tienda comercial). Re-detecta si cambias el template.'
+                    : 'Fecha registrada manualmente. El sync no la sobrescribe.'}
+                >
+                  {formData.fecha_envio_tienda_auto ? '⚡ auto' : '✏️ manual'}
+                </span>
+              )}
             </div>
           )}
 

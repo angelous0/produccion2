@@ -292,6 +292,7 @@ export const RegistroForm = () => {
         fecha_inicio_real: registro.fecha_inicio_real || '',
         skip_validacion_estado: registro.skip_validacion_estado || false, linea_negocio_id: registro.linea_negocio_id || null,
         fecha_envio_tienda: registro.fecha_envio_tienda || null,
+        fecha_envio_tienda_auto: registro.fecha_envio_tienda_auto ?? undefined,
       });
       // Restore manual mode if registro was created with modelo_manual
       if (registro.modelo_manual && !registro.modelo_id) {
