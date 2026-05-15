@@ -41,10 +41,48 @@ async def init_distribucion_pt_tables():
                 registro_id VARCHAR NOT NULL,
                 tipo_salida VARCHAR NOT NULL CHECK(tipo_salida IN ('normal','liquidacion_leve','liquidacion_grave')),
                 product_template_id_odoo INTEGER NOT NULL,
-                cantidad NUMERIC NOT NULL CHECK(cantidad > 0),
+                cantidad NUMERIC NOT NULL CHECK(cantidad >= 0),
                 created_at TIMESTAMP DEFAULT NOW(),
                 created_by VARCHAR
             )
+        """)
+        # Si la tabla existía con el CHECK viejo (cantidad > 0), bajamos el
+        # constraint y subimos el nuevo (cantidad >= 0). Idempotente.
+        await conn.execute("""
+            DO $$
+            DECLARE
+                conname TEXT;
+            BEGIN
+                SELECT con.conname INTO conname
+                FROM pg_constraint con
+                JOIN pg_class rel ON rel.oid = con.conrelid
+                JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+                WHERE nsp.nspname = 'produccion'
+                  AND rel.relname = 'prod_registro_pt_relacion'
+                  AND pg_get_constraintdef(con.oid) ILIKE '%cantidad > 0%';
+                IF conname IS NOT NULL THEN
+                    EXECUTE format(
+                        'ALTER TABLE produccion.prod_registro_pt_relacion DROP CONSTRAINT %I',
+                        conname
+                    );
+                END IF;
+            END $$;
+        """)
+        await conn.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint con
+                    JOIN pg_class rel ON rel.oid = con.conrelid
+                    JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+                    WHERE nsp.nspname = 'produccion'
+                      AND rel.relname = 'prod_registro_pt_relacion'
+                      AND pg_get_constraintdef(con.oid) ILIKE '%cantidad >= 0%'
+                ) THEN
+                    ALTER TABLE produccion.prod_registro_pt_relacion
+                    ADD CONSTRAINT prod_registro_pt_relacion_cantidad_check CHECK (cantidad >= 0);
+                END IF;
+            END $$;
         """)
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_pt_relacion_registro

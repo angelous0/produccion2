@@ -249,7 +249,20 @@ export const DistribucionPTPanel = ({ registroId }) => {
 
       await fetchAll();
     } catch (err) {
-      toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al guardar distribucion');
+      const detail = err.response?.data?.detail;
+      let msg = 'Error al guardar distribucion';
+      if (typeof detail === 'string') {
+        msg = detail;
+      } else if (Array.isArray(detail) && detail.length > 0) {
+        // FastAPI validación: [{loc: [...], msg: '...', type: '...'}]
+        msg = detail.map(d => `${(d.loc || []).slice(-1)[0] || ''}: ${d.msg || d.type || ''}`).filter(Boolean).join(' · ') || msg;
+      } else if (detail && typeof detail === 'object' && detail.msg) {
+        msg = detail.msg;
+      }
+      toast.error(msg);
+      // Log completo en consola para diagnóstico
+      // eslint-disable-next-line no-console
+      console.error('[DistribucionPT] error', err.response?.status, err.response?.data);
     } finally {
       setSaving(false);
     }
