@@ -258,7 +258,7 @@ async def tienda_info(
     pool = await get_pool()
     async with pool.acquire() as conn:
         reg = await conn.fetchrow(
-            """SELECT id, n_corte, fecha_envio_tienda
+            """SELECT id, n_corte, estado, fecha_envio_tienda, fecha_envio_tienda_auto
                FROM prod_registros WHERE id = $1""",
             registro_id,
         )
@@ -284,6 +284,9 @@ async def tienda_info(
                 "stock_total": 0,
                 "ventas_total": 0,
                 "producto_principal": None,
+                "fecha_envio_tienda": str(reg["fecha_envio_tienda"]) if reg["fecha_envio_tienda"] else None,
+                "fecha_envio_tienda_auto": bool(reg["fecha_envio_tienda_auto"]),
+                "estado": reg["estado"],
             }
 
         template_ids = [t["template_id"] for t in templates]
@@ -383,6 +386,9 @@ async def tienda_info(
             "tiendas": tiendas_out,
             "stock_total": stock_total,
             "ventas_total": ventas_total,
+            "fecha_envio_tienda": str(reg["fecha_envio_tienda"]) if reg["fecha_envio_tienda"] else None,
+            "fecha_envio_tienda_auto": bool(reg["fecha_envio_tienda_auto"]),
+            "estado": reg["estado"],
         }
 
 
@@ -403,7 +409,8 @@ async def seguimiento_tienda(
         rows = await conn.fetch(
             """
             WITH base AS (
-              SELECT r.id, r.n_corte, r.estado, r.fecha_envio_tienda,
+              SELECT r.id, r.n_corte, r.estado,
+                     r.fecha_envio_tienda, r.fecha_envio_tienda_auto,
                      COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') AS modelo
               FROM prod_registros r
               LEFT JOIN prod_modelos m ON m.id = r.modelo_id
@@ -474,6 +481,7 @@ async def seguimiento_tienda(
                     "estado": r["estado"],
                     "modelo": r["modelo"],
                     "fecha_envio_tienda": str(r["fecha_envio_tienda"]) if r["fecha_envio_tienda"] else None,
+                    "fecha_envio_tienda_auto": bool(r["fecha_envio_tienda_auto"]),
                     "template_id": r["template_id"],
                     "producto_nombre": r["producto_nombre"],
                     "tiendas": [],
@@ -493,106 +501,203 @@ async def seguimiento_tienda(
 
 
 # ============================================================================
+# Lógica de sync compartida (usada por sincronizar-estados y por el hook
+# automático de guardar_distribucion_pt)
+# ============================================================================
+def _normalizar_fecha(fecha):
+    """Convierte cualquier fecha (str / datetime tz-aware) a datetime tz-naive
+    para guardar en prod_registros.fecha_envio_tienda (TIMESTAMP WITHOUT TZ).
+    """
+    if fecha is None:
+        return None
+    if isinstance(fecha, str):
+        from datetime import datetime as _dt
+        fecha = _dt.fromisoformat(fecha[:19])
+    if hasattr(fecha, "tzinfo") and fecha.tzinfo is not None:
+        fecha = fecha.replace(tzinfo=None)
+    return fecha
+
+
+async def _sync_estados_tienda(conn, registro_ids=None):
+    """Ejecuta la sincronización de estado Tienda + fecha_envio_tienda
+    para los registros con distribución `tipo_salida='normal'`.
+
+    Reglas de escritura sobre fecha_envio_tienda:
+      - Si está NULL              → se escribe, marca auto=TRUE.
+      - Si tiene fecha y auto=TRUE → se sobrescribe sólo si la fecha
+                                     detectada es DISTINTA (re-detect
+                                     después de cambiar de template).
+      - Si tiene fecha y auto=FALSE → se respeta (puesta por el usuario).
+
+    Reglas sobre estado:
+      - Si la consulta encuentra un primer movimiento → estado = 'Tienda'.
+      - Si no encuentra movimiento → no toca el estado.
+
+    Si `registro_ids` viene como lista, restringe el barrido a esos cortes
+    (sirve para el hook on-save de distribución). Si es None, barre todos.
+
+    Devuelve lista de dicts con la acción ejecutada por registro.
+    """
+    filtro_ids_sql = ""
+    args = []
+    if registro_ids:
+        filtro_ids_sql = "AND r.id = ANY($1::text[])"
+        args.append([str(rid) for rid in registro_ids])
+
+    rows = await conn.fetch(
+        f"""
+        WITH base AS (
+          SELECT r.id, r.n_corte, r.estado,
+                 r.fecha_envio_tienda, r.fecha_envio_tienda_auto
+          FROM prod_registros r
+          WHERE EXISTS (
+                  SELECT 1 FROM produccion.prod_registro_pt_relacion rel
+                  WHERE rel.registro_id = r.id AND rel.tipo_salida = 'normal'
+                )
+            {filtro_ids_sql}
+        ),
+        {TIENDAS_CTE},
+        variantes AS (
+          SELECT rel.registro_id, pp.odoo_id AS variant_id
+          FROM produccion.prod_registro_pt_relacion rel
+          JOIN odoo.product_product pp ON pp.product_tmpl_id = rel.product_template_id_odoo
+          WHERE rel.tipo_salida = 'normal'
+            { ("AND rel.registro_id = ANY($1::text[])" if registro_ids else "") }
+        ),
+        primer_mov AS (
+          SELECT v.registro_id,
+                 t.nombre_grupo AS tienda,
+                 MIN(sm.date) AS fecha_ingreso
+          FROM base b
+          JOIN variantes v ON v.registro_id = b.id
+          JOIN odoo.stock_move sm
+            ON sm.product_id = v.variant_id AND sm.state = 'done'
+          JOIN tiendas t ON t.location_id = sm.location_dest_id
+          GROUP BY v.registro_id, t.nombre_grupo
+        ),
+        primero_por_corte AS (
+          SELECT DISTINCT ON (registro_id) registro_id, tienda, fecha_ingreso
+          FROM primer_mov ORDER BY registro_id, fecha_ingreso
+        )
+        SELECT b.id, b.n_corte, b.estado AS estado_actual,
+               b.fecha_envio_tienda AS fecha_actual,
+               b.fecha_envio_tienda_auto AS auto_actual,
+               p.tienda, p.fecha_ingreso
+        FROM base b
+        LEFT JOIN primero_por_corte p ON p.registro_id = b.id
+        """,
+        *args,
+    )
+
+    cambios = []
+    for r in rows:
+        registro_id = r["id"]
+        estado_actual = r["estado_actual"] or ""
+        fecha_actual = r["fecha_actual"]
+        auto_actual = r["auto_actual"]
+        tienda_destino = r["tienda"]
+        fecha_detect = _normalizar_fecha(r["fecha_ingreso"])
+
+        # Si no hay primer movimiento detectado → nada que hacer
+        if fecha_detect is None or tienda_destino is None:
+            continue
+
+        # Decidir acción según el flag auto y la fecha actual
+        if fecha_actual is None:
+            accion = "nuevo"
+        elif auto_actual is True:
+            # Fue puesta por el sync. Sólo sobrescribimos si cambia.
+            fecha_actual_naive = _normalizar_fecha(fecha_actual)
+            if fecha_actual_naive == fecha_detect and estado_actual == "Tienda":
+                accion = "sin_cambios"
+            else:
+                accion = "actualizado"
+        else:
+            # Fue puesta por el usuario manualmente → no se toca la fecha
+            # (pero sí podemos escalar el estado a Tienda si aún no lo está)
+            if estado_actual != "Tienda":
+                await conn.execute(
+                    "UPDATE prod_registros SET estado = 'Tienda' WHERE id = $1",
+                    registro_id,
+                )
+                cambios.append({
+                    "registro_id": registro_id,
+                    "n_corte": r["n_corte"],
+                    "estado_anterior": estado_actual,
+                    "tienda_destino": tienda_destino,
+                    "fecha_ingreso": str(fecha_detect),
+                    "accion": "estado_solo_fecha_manual",
+                })
+            continue
+
+        if accion == "sin_cambios":
+            continue
+
+        # Escribir / sobrescribir fecha + estado, marcando auto=TRUE
+        await conn.execute(
+            """UPDATE prod_registros
+               SET estado = 'Tienda',
+                   fecha_envio_tienda = $1,
+                   fecha_envio_tienda_auto = TRUE
+               WHERE id = $2""",
+            fecha_detect, registro_id,
+        )
+        cambios.append({
+            "registro_id": registro_id,
+            "n_corte": r["n_corte"],
+            "estado_anterior": estado_actual,
+            "tienda_destino": tienda_destino,
+            "fecha_ingreso": str(fecha_detect),
+            "fecha_anterior": str(fecha_actual) if fecha_actual else None,
+            "accion": accion,
+        })
+
+    return cambios
+
+
+# ============================================================================
 # POST /api/odoo-tienda/sincronizar-estados
 # ============================================================================
 @router.post("/sincronizar-estados")
 async def sincronizar_estados_tienda(
     current_user: dict = Depends(get_current_user),
 ):
-    """Para cada corte con distribución PT 'normal' definida y cuyo
-    estado actual NO sea 'Tienda', busca la primera transferencia done
-    a una tienda comercial (configurada en prod_tiendas_comerciales).
-    Si existe, actualiza el estado a 'Tienda' y fecha_envio_tienda con
-    la fecha de ese primer movimiento.
+    """Para cada corte con distribución PT 'normal' busca la primera
+    transferencia done a una tienda comercial (configurada en
+    prod_tiendas_comerciales) y actualiza estado + fecha_envio_tienda
+    según las reglas de smart-overwrite documentadas en
+    `_sync_estados_tienda`.
 
-    Idempotente: si el corte ya está en 'Tienda', no lo toca.
-    Devuelve el resumen: cuántos cortes se actualizaron y detalle.
+    Idempotente.
     """
     pool = await get_pool()
-    actualizados = []
-
     async with pool.acquire() as conn:
-        # Para cada corte con distribución 'normal', busca primer mov done
-        # a tienda comercial. Usa todas las variantes de TODOS los templates
-        # con tipo_salida='normal' del corte.
-        rows = await conn.fetch(
-            f"""
-            WITH base AS (
-              SELECT r.id, r.n_corte, r.estado, r.fecha_envio_tienda
-              FROM prod_registros r
-              WHERE COALESCE(r.estado, '') != 'Tienda'
-                AND EXISTS (
-                  SELECT 1 FROM produccion.prod_registro_pt_relacion rel
-                  WHERE rel.registro_id = r.id AND rel.tipo_salida = 'normal'
-                )
-            ),
-            {TIENDAS_CTE},
-            variantes AS (
-              SELECT rel.registro_id, pp.odoo_id AS variant_id
-              FROM produccion.prod_registro_pt_relacion rel
-              JOIN odoo.product_product pp ON pp.product_tmpl_id = rel.product_template_id_odoo
-              WHERE rel.tipo_salida = 'normal'
-            ),
-            primer_mov AS (
-              SELECT v.registro_id,
-                     t.nombre_grupo AS tienda,
-                     MIN(sm.date) AS fecha_ingreso
-              FROM base b
-              JOIN variantes v ON v.registro_id = b.id
-              JOIN odoo.stock_move sm
-                ON sm.product_id = v.variant_id AND sm.state = 'done'
-              JOIN tiendas t ON t.location_id = sm.location_dest_id
-              GROUP BY v.registro_id, t.nombre_grupo
-            ),
-            primero_por_corte AS (
-              SELECT DISTINCT ON (registro_id) registro_id, tienda, fecha_ingreso
-              FROM primer_mov ORDER BY registro_id, fecha_ingreso
-            )
-            SELECT b.id, b.n_corte, b.estado AS estado_actual, b.fecha_envio_tienda AS fecha_actual,
-                   p.tienda, p.fecha_ingreso
-            FROM base b
-            JOIN primero_por_corte p ON p.registro_id = b.id
-            """
-        )
+        cambios = await _sync_estados_tienda(conn)
 
-        user_name = (
-            current_user.get("nombre_completo")
-            or current_user.get("nombre")
-            or current_user.get("username")
-            or "sistema"
-        )
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+    user_name = (
+        current_user.get("nombre_completo")
+        or current_user.get("nombre")
+        or current_user.get("username")
+        or "sistema"
+    )
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
-        for r in rows:
-            # Asegurar formato datetime sin timezone (prod_registros usa
-            # timestamp WITHOUT TIME ZONE).
-            fecha = r["fecha_ingreso"]
-            if isinstance(fecha, str):
-                from datetime import datetime as _dt
-                fecha = _dt.fromisoformat(fecha[:19])
-            if hasattr(fecha, "tzinfo") and fecha.tzinfo is not None:
-                fecha = fecha.replace(tzinfo=None)
-            await conn.execute(
-                """UPDATE prod_registros
-                   SET estado = 'Tienda',
-                       fecha_envio_tienda = COALESCE(fecha_envio_tienda, $1)
-                   WHERE id = $2""",
-                fecha, r["id"],
-            )
-            actualizados.append({
-                "registro_id": r["id"],
-                "n_corte": r["n_corte"],
-                "estado_anterior": r["estado_actual"],
-                "tienda_destino": r["tienda"],
-                "fecha_ingreso": str(fecha),
-            })
+    # Resumen por tipo de acción para el toast del frontend
+    resumen = {
+        "nuevo": 0,
+        "actualizado": 0,
+        "estado_solo_fecha_manual": 0,
+    }
+    for c in cambios:
+        resumen[c.get("accion", "nuevo")] = resumen.get(c.get("accion", "nuevo"), 0) + 1
 
     return {
         "ok": True,
-        "actualizados": len(actualizados),
+        "actualizados": len(cambios),
+        "resumen": resumen,
         "ejecutado_por": user_name,
         "ejecutado_at": now.isoformat(),
-        "detalle": actualizados,
+        "detalle": cambios,
     }
 
 

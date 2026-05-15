@@ -203,7 +203,7 @@ export const DistribucionPTPanel = ({ registroId }) => {
     }
     setSaving(true);
     try {
-      await axios.post(`${API}/registros/${registroId}/distribucion-pt`, {
+      const res = await axios.post(`${API}/registros/${registroId}/distribucion-pt`, {
         lineas: lineas.map(l => ({
           tipo_salida: l.tipo_salida,
           product_template_id_odoo: l.product_template_id_odoo,
@@ -211,6 +211,32 @@ export const DistribucionPTPanel = ({ registroId }) => {
         }))
       }, { headers: getAuthHeader() });
       toast.success('Distribucion guardada correctamente');
+
+      // Feedback del hook automático de sync: si el sistema detectó que
+      // alguna variante 'normal' ya llegó a tienda comercial, lo avisamos
+      // explícitamente para que el usuario sepa que el estado/fecha fueron
+      // actualizados sin que tenga que ir a otra pantalla.
+      const syncCambios = res.data?.sync_tienda || [];
+      const cambio = syncCambios[0];
+      if (cambio) {
+        const fechaStr = cambio.fecha_ingreso
+          ? new Date(cambio.fecha_ingreso).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: 'short' })
+          : '';
+        if (cambio.accion === 'nuevo') {
+          toast.success(`Detectado en ${cambio.tienda_destino} (${fechaStr})`, {
+            description: 'Estado actualizado a Tienda · fecha auto-asignada',
+          });
+        } else if (cambio.accion === 'actualizado') {
+          toast.success(`Re-detectado en ${cambio.tienda_destino} (${fechaStr})`, {
+            description: 'Fecha actualizada por cambio de template (era auto)',
+          });
+        } else if (cambio.accion === 'estado_solo_fecha_manual') {
+          toast.info(`Estado pasado a Tienda (${cambio.tienda_destino})`, {
+            description: 'Fecha manual previa respetada',
+          });
+        }
+      }
+
       await fetchAll();
     } catch (err) {
       toast.error(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Error al guardar distribucion');

@@ -207,7 +207,25 @@ async def guardar_distribucion_pt(
                 """, registro_id, tipo, prod_id, cantidad,
                    datetime.now(timezone.utc).replace(tzinfo=None), current_user.get('username'))
 
-        return {"ok": True, "total_distribuido": total_distribuido, "total_producido": total_producido}
+        # Hook automático: tras guardar la distribución, intentar detectar el
+        # primer movimiento done a una tienda comercial usando los templates
+        # con tipo_salida='normal'. Si lo encuentra, marca estado='Tienda' y
+        # setea fecha_envio_tienda (respeta la edición manual del usuario —
+        # la lógica vive en odoo_tienda._sync_estados_tienda).
+        sync_cambios = []
+        try:
+            from routes.odoo_tienda import _sync_estados_tienda
+            sync_cambios = await _sync_estados_tienda(conn, registro_ids=[registro_id])
+        except Exception as e:
+            # No bloqueamos el guardado de la distribución por un fallo de sync.
+            print(f"[distribucion_pt] aviso: sync post-guardado falló para {registro_id}: {e}")
+
+        return {
+            "ok": True,
+            "total_distribuido": total_distribuido,
+            "total_producido": total_producido,
+            "sync_tienda": sync_cambios,  # [] si no detectó nada o sólo respeto manual
+        }
 
 
 @router.delete("/registros/{registro_id}/distribucion-pt")

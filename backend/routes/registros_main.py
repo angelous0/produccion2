@@ -316,6 +316,10 @@ async def get_registros(
             SELECT r.*,
                 COUNT(*) OVER() as _total_count,
                 m.nombre as modelo_nombre,
+                COALESCE(m.marca_id, r.modelo_manual->>'marca_id') as marca_id,
+                COALESCE(m.tipo_id, r.modelo_manual->>'tipo_id') as tipo_id,
+                COALESCE(m.entalle_id, r.modelo_manual->>'entalle_id') as entalle_id,
+                COALESCE(m.tela_id, r.modelo_manual->>'tela_id') as tela_id,
                 ma.nombre as marca_nombre,
                 t.nombre as tipo_nombre,
                 e.nombre as entalle_nombre,
@@ -470,6 +474,10 @@ async def get_registro(registro_id: str, _u=Depends(require_permission("registro
         row = await conn.fetchrow("""
             SELECT r.*,
                 m.nombre as modelo_nombre,
+                COALESCE(m.marca_id, r.modelo_manual->>'marca_id') as marca_id,
+                COALESCE(m.tipo_id, r.modelo_manual->>'tipo_id') as tipo_id,
+                COALESCE(m.entalle_id, r.modelo_manual->>'entalle_id') as entalle_id,
+                COALESCE(m.tela_id, r.modelo_manual->>'tela_id') as tela_id,
                 ma.nombre as marca_nombre,
                 t.nombre as tipo_nombre,
                 e.nombre as entalle_nombre,
@@ -639,17 +647,25 @@ async def actualizar_fecha_envio_tienda(registro_id: str, body: dict, current_us
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"Fecha inválida: {e}")
 
+        # Edición manual ⇒ flag auto=FALSE.
+        # Excepción: si el usuario LIMPIA la fecha (nueva_fecha=None) dejamos
+        # auto=FALSE también para que el sync futuro pueda rellenarla (al
+        # estar NULL la regla siempre escribe).
         await conn.execute(
-            "UPDATE prod_registros SET fecha_envio_tienda = $1 WHERE id = $2",
+            """UPDATE prod_registros
+               SET fecha_envio_tienda = $1,
+                   fecha_envio_tienda_auto = FALSE
+               WHERE id = $2""",
             nueva_fecha, registro_id,
         )
         usuario = get_usuario(current_user)
         await audit_log_safe(conn, usuario, "UPDATE_FECHA_TIENDA", "produccion", "prod_registros", registro_id,
             datos_antes={"fecha_envio_tienda": str(existing["fecha_envio_tienda"]) if existing["fecha_envio_tienda"] else None},
-            datos_despues={"fecha_envio_tienda": str(nueva_fecha) if nueva_fecha else None})
+            datos_despues={"fecha_envio_tienda": str(nueva_fecha) if nueva_fecha else None, "origen": "manual"})
     return {
         "ok": True,
         "fecha_envio_tienda": nueva_fecha.isoformat() + 'Z' if nueva_fecha else None,
+        "fecha_envio_tienda_auto": False,
     }
 
 

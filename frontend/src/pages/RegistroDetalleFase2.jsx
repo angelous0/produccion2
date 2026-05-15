@@ -68,7 +68,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
  * Click en el ícono lápiz → muestra un <input type="date"> para corregir la
  * fecha de despacho. Guardar llama PATCH /registros/:id/fecha-envio-tienda.
  */
-const TiendaBanner = ({ registroId, fechaActual, onUpdated }) => {
+const TiendaBanner = ({ registroId, fechaActual, fechaAuto, tiendaDetectada, onUpdated }) => {
   const [editando, setEditando] = useState(false);
   const [fechaInput, setFechaInput] = useState('');
   const [saving, setSaving] = useState(false);
@@ -100,7 +100,8 @@ const TiendaBanner = ({ registroId, fechaActual, onUpdated }) => {
       );
       toast.success('Fecha de envío actualizada');
       setEditando(false);
-      if (onUpdated) onUpdated(res.data?.fecha_envio_tienda || null);
+      // PATCH manual ⇒ auto=false (el sync respetará esta fecha)
+      if (onUpdated) onUpdated(res.data?.fecha_envio_tienda || null, false);
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al actualizar');
     } finally {
@@ -161,13 +162,37 @@ const TiendaBanner = ({ registroId, fechaActual, onUpdated }) => {
               </Button>
             </div>
           ) : (
-            <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
-              Despachado el {new Date(fechaActual).toLocaleString('es-PE', {
-                timeZone: 'America/Lima',
-                day: '2-digit', month: 'long', year: 'numeric',
-                hour: '2-digit', minute: '2-digit',
-              })}
-            </p>
+            <div className="mt-0.5 space-y-0.5">
+              <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                Despachado el {new Date(fechaActual).toLocaleString('es-PE', {
+                  timeZone: 'America/Lima',
+                  day: '2-digit', month: 'long', year: 'numeric',
+                  hour: '2-digit', minute: '2-digit',
+                })}
+              </p>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {fechaAuto ? (
+                  <span
+                    className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-900"
+                    title="Detectado automáticamente desde Odoo (primer movimiento done a tienda comercial). Si cambias el template, el sistema re-detecta."
+                  >
+                    <span aria-hidden>⚡</span> Auto-detectado
+                  </span>
+                ) : (
+                  <span
+                    className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700"
+                    title="Fecha registrada manualmente. El sync automático no la va a sobrescribir."
+                  >
+                    <span aria-hidden>✏️</span> Manual
+                  </span>
+                )}
+                {tiendaDetectada && (
+                  <span className="text-[10px] text-emerald-700 dark:text-emerald-300">
+                    en <span className="font-semibold">{tiendaDetectada}</span>
+                  </span>
+                )}
+              </div>
+            </div>
           )}
         </div>
         {!editando && fechaActual && (
@@ -1895,7 +1920,13 @@ export const CierreTab = ({ registroId, registro, empresaId = 8, onCierreComplet
         <TiendaBanner
           registroId={registroId}
           fechaActual={preview.fecha_envio_tienda}
-          onUpdated={(nueva) => setPreview(prev => prev ? { ...prev, fecha_envio_tienda: nueva } : prev)}
+          fechaAuto={preview.fecha_envio_tienda_auto}
+          tiendaDetectada={preview.tienda_detectada}
+          onUpdated={(nueva, auto) => setPreview(prev => prev ? {
+            ...prev,
+            fecha_envio_tienda: nueva,
+            fecha_envio_tienda_auto: auto ?? prev.fecha_envio_tienda_auto,
+          } : prev)}
         />
       )}
 

@@ -390,12 +390,50 @@ async def preview_cierre(registro_id: str, current_user: dict = Depends(get_curr
     except (KeyError, IndexError):
         fecha_envio_tienda_val = None
     fecha_envio_tienda_iso = fecha_envio_tienda_val.isoformat() + 'Z' if fecha_envio_tienda_val else None
+    try:
+        fecha_envio_tienda_auto = bool(reg['fecha_envio_tienda_auto'])
+    except (KeyError, IndexError, TypeError):
+        fecha_envio_tienda_auto = False
+
+    # Tienda detectada por el sync (si existe). Lookup en la última
+    # transferencia "done" a tienda comercial usando los templates 'normal'.
+    tienda_detectada = None
+    if fecha_envio_tienda_val and fecha_envio_tienda_auto:
+        try:
+            tienda_detectada = await conn.fetchval(
+                """
+                WITH tiendas AS (
+                  SELECT tc.odoo_location_id AS location_id,
+                         COALESCE(NULLIF(tc.alias_grupo, ''), tc.nombre) AS nombre_grupo
+                  FROM produccion.prod_tiendas_comerciales tc
+                  WHERE tc.activo = TRUE
+                ),
+                variantes AS (
+                  SELECT pp.odoo_id
+                  FROM produccion.prod_registro_pt_relacion rel
+                  JOIN odoo.product_product pp ON pp.product_tmpl_id = rel.product_template_id_odoo
+                  WHERE rel.registro_id = $1 AND rel.tipo_salida = 'normal'
+                )
+                SELECT t.nombre_grupo
+                FROM odoo.stock_move sm
+                JOIN variantes v ON v.odoo_id = sm.product_id
+                JOIN tiendas t ON t.location_id = sm.location_dest_id
+                WHERE sm.state = 'done'
+                ORDER BY sm.date ASC
+                LIMIT 1
+                """,
+                registro_id,
+            )
+        except Exception:
+            tienda_detectada = None
 
     return {
         "registro_id": registro_id,
         "n_corte": reg['n_corte'],
         "estado": reg['estado'],
         "fecha_envio_tienda": fecha_envio_tienda_iso,
+        "fecha_envio_tienda_auto": fecha_envio_tienda_auto,
+        "tienda_detectada": tienda_detectada,
         "pt_item": pt_item,
         "qty_terminada": qty,
         "merma_qty": merma_qty,

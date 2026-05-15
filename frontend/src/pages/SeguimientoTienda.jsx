@@ -87,16 +87,37 @@ const SeguimientoTienda = () => {
     });
   };
 
+  const [lastSyncResult, setLastSyncResult] = useState(null);
+
   const sincronizar = async () => {
     setSyncing(true);
     try {
       const res = await axios.post(`${API}/sincronizar-estados`, {}, { headers: hdrs() });
-      const n = res.data?.actualizados ?? 0;
+      const data = res.data || {};
+      const n = data.actualizados ?? 0;
+      const resumen = data.resumen || {};
+      setLastSyncResult({
+        at: new Date(),
+        total: n,
+        nuevos: resumen.nuevo || 0,
+        actualizados: resumen.actualizado || 0,
+        soloEstado: resumen.estado_solo_fecha_manual || 0,
+        detalle: data.detalle || [],
+      });
       if (n > 0) {
-        toast.success(`${n} corte${n !== 1 ? 's' : ''} marcado${n !== 1 ? 's' : ''} como Tienda automáticamente`);
+        const partes = [];
+        if (resumen.nuevo) partes.push(`${resumen.nuevo} nuevo${resumen.nuevo !== 1 ? 's' : ''}`);
+        if (resumen.actualizado) partes.push(`${resumen.actualizado} re-detectado${resumen.actualizado !== 1 ? 's' : ''}`);
+        if (resumen.estado_solo_fecha_manual) partes.push(`${resumen.estado_solo_fecha_manual} con fecha manual respetada`);
+        toast.success(
+          `${n} corte${n !== 1 ? 's' : ''} sincronizado${n !== 1 ? 's' : ''}`,
+          { description: partes.join(' · ') || 'Detectados desde Odoo' },
+        );
         await fetchCortes();
       } else {
-        toast.info('Sin cambios — todos los cortes ya están sincronizados');
+        toast.info('Sin cambios', {
+          description: 'No se detectaron nuevos movimientos a tienda comercial',
+        });
       }
     } catch {
       toast.error('Error al sincronizar');
@@ -140,11 +161,56 @@ const SeguimientoTienda = () => {
             Cortes con distribución a producto Odoo (normal) · movimientos a tiendas, stock y ventas en vivo
           </p>
         </div>
-        <Button onClick={sincronizar} disabled={syncing} className="gap-2">
-          {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Sincronizar estados
-        </Button>
+        <div className="flex items-center gap-2">
+          {lastSyncResult && (
+            <span className="text-[11px] text-muted-foreground hidden md:inline">
+              Última sync: {lastSyncResult.at.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+              {lastSyncResult.total > 0 ? ` · ${lastSyncResult.total} cambios` : ' · sin cambios'}
+            </span>
+          )}
+          <Button onClick={sincronizar} disabled={syncing} className="gap-2">
+            {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Sincronizar estados
+          </Button>
+        </div>
       </div>
+
+      {/* Banner de último sync con detalle */}
+      {lastSyncResult && lastSyncResult.total > 0 && (
+        <div className="rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 px-3 py-2 flex items-start gap-3 text-xs">
+          <div className="h-6 w-6 rounded-full bg-blue-500 text-white flex items-center justify-center shrink-0">
+            <RefreshCw className="h-3 w-3" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-blue-900 dark:text-blue-200">
+              Sincronización completada · {lastSyncResult.total} corte{lastSyncResult.total !== 1 ? 's' : ''}
+            </p>
+            <p className="text-blue-700 dark:text-blue-300 mt-0.5 flex flex-wrap gap-2">
+              {lastSyncResult.nuevos > 0 && (
+                <span className="inline-flex items-center gap-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  {lastSyncResult.nuevos} nuevo{lastSyncResult.nuevos !== 1 ? 's' : ''} (fecha NULL → auto)
+                </span>
+              )}
+              {lastSyncResult.actualizados > 0 && (
+                <span className="inline-flex items-center gap-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  {lastSyncResult.actualizados} re-detectado{lastSyncResult.actualizados !== 1 ? 's' : ''} (template cambió)
+                </span>
+              )}
+              {lastSyncResult.soloEstado > 0 && (
+                <span className="inline-flex items-center gap-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-zinc-500" />
+                  {lastSyncResult.soloEstado} con fecha manual respetada
+                </span>
+              )}
+            </p>
+          </div>
+          <button onClick={() => setLastSyncResult(null)} className="text-blue-600 hover:text-blue-800 text-[11px] underline shrink-0">
+            cerrar
+          </button>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -270,7 +336,22 @@ const SeguimientoTienda = () => {
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded justify-self-start ${estadoColor(c.estado)}`}>
                       {c.estado || '—'}
                     </span>
-                    <span className="text-xs text-muted-foreground tabular-nums">{fmtDM(tiendaDesde)}</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-muted-foreground tabular-nums">{fmtDM(tiendaDesde)}</span>
+                      {c.fecha_envio_tienda && (
+                        c.fecha_envio_tienda_auto ? (
+                          <span
+                            className="text-[9px] px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+                            title="Fecha detectada automáticamente desde Odoo. Si cambias el template el sistema la re-detecta."
+                          >⚡</span>
+                        ) : (
+                          <span
+                            className="text-[9px] px-1 py-0.5 rounded bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                            title="Fecha registrada manualmente. El sync no la sobrescribe."
+                          >✏️</span>
+                        )
+                      )}
+                    </div>
                     <span className="text-right tabular-nums">
                       {stockTotal}
                       <span className="text-[10px] text-muted-foreground ml-1">pzs</span>
