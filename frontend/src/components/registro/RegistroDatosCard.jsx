@@ -244,6 +244,22 @@ const TiendaInfoPanel = ({ registroId }) => {
     return `${dd}/${m}`;
   };
 
+  const sincronizar = async () => {
+    try {
+      const hdrs = { Authorization: `Bearer ${localStorage.getItem('token')}` };
+      const res = await axios.post(`${API_TIENDA}/sincronizar-estados`, {}, { headers: hdrs });
+      const n = res.data?.actualizados ?? 0;
+      if (n > 0) {
+        toast.success(`${n} corte${n !== 1 ? 's' : ''} marcado${n !== 1 ? 's' : ''} como "Tienda" automáticamente`);
+        setTimeout(() => window.location.reload(), 800);
+      } else {
+        toast.info('Sin cambios — todos los cortes ya están sincronizados');
+      }
+    } catch {
+      toast.error('No se pudo sincronizar');
+    }
+  };
+
   return (
     <div className="rounded-md border bg-card overflow-hidden">
       {/* Título + descripción */}
@@ -252,14 +268,26 @@ const TiendaInfoPanel = ({ registroId }) => {
           <p className="text-[11px] font-medium">
             Movimientos del producto en Odoo · {tiendas.length} tienda{tiendas.length !== 1 ? 's' : ''}
           </p>
-          <p className="text-[10px] text-muted-foreground font-mono">
-            Total stock: <strong className="text-foreground">{info.stock_total}</strong>
-            {' · '}
-            Total vendido: <strong className="text-foreground">{info.ventas_total}</strong>
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] text-muted-foreground font-mono">
+              Total stock: <strong className="text-foreground">{info.stock_total}</strong>
+              {' · '}
+              Total vendido: <strong className="text-foreground">{info.ventas_total}</strong>
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 text-[10px] gap-1"
+              onClick={sincronizar}
+              title="Detecta llegadas a tienda y actualiza el estado del corte"
+            >
+              ↻ Sincronizar
+            </Button>
+          </div>
         </div>
         <p className="text-[10px] text-muted-foreground mt-0.5">
-          Por cada tienda: cuántas piezas llegaron, cuántas quedan, cuántas se vendieron desde que ingresaron y cuántas transferencias se hicieron.
+          Por cada tienda comercial: cuántas piezas llegaron, cuántas quedan, cuántas se vendieron desde que ingresaron y cuántas transferencias se hicieron.
         </p>
       </div>
 

@@ -28,6 +28,20 @@ from auth_utils import get_current_user
 router = APIRouter(prefix="/api/odoo-tienda", tags=["Odoo Tienda"])
 
 
+# ─── Helpers de tiendas comerciales ──────────────────────────────────
+# CTE reutilizable: locations que SI cuentan como "tienda comercial".
+# Excluye AP, TALLER, REMATE, FALLADOS, AJUSTES — todo lo configurado
+# en produccion.prod_tiendas_comerciales con activo=TRUE.
+TIENDAS_CTE = """
+    tiendas AS (
+      SELECT tc.odoo_location_id AS location_id,
+             COALESCE(NULLIF(tc.alias_grupo, ''), tc.nombre) AS nombre_grupo
+      FROM produccion.prod_tiendas_comerciales tc
+      WHERE tc.activo = TRUE
+    )
+"""
+
+
 # ─── Modelos ─────────────────────────────────────────────────────────
 class VincularProductoInput(BaseModel):
     odoo_product_id: int            # variant_id (product_product.odoo_id) — para barcode
@@ -257,59 +271,57 @@ async def tienda_info(
         pid = reg["odoo_product_id"]
         tpl = reg["odoo_template_id"]
 
-        # Movimientos done a ubicaciones internas que NO sean taller/fallados/virtuales,
-        # agrupados por destino con la fecha del primero. Cruzamos por TEMPLATE para
-        # agregar todas las variantes (tallas/colores) del mismo modelo.
+        # Movimientos done SOLO a tiendas comerciales configuradas en
+        # produccion.prod_tiendas_comerciales (excluye AP, TALLER, REMATE,
+        # Fallados, Ajustes, etc.). Cruzamos por TEMPLATE para agregar
+        # todas las variantes del mismo modelo. Agrupamos por
+        # nombre_grupo para unificar tiendas-alias (ej. GR55+GR82).
         moves = await conn.fetch(
-            """
+            f"""
             WITH variantes AS (
               SELECT odoo_id FROM odoo.product_product
               WHERE ($1::int IS NOT NULL AND product_tmpl_id = $1)
                  OR ($1::int IS NULL AND odoo_id = $2)
-            )
-            SELECT ld.odoo_id AS location_id,
-                   COALESCE(NULLIF(ld.x_nombre, ''), ld.name) AS tienda,
+            ), {TIENDAS_CTE}
+            SELECT t.nombre_grupo AS tienda,
+                   MIN(t.location_id) AS location_id,
                    MIN(sm.date) AS fecha_primer_ingreso,
                    MAX(sm.date) AS fecha_ultimo_ingreso,
                    SUM(sm.product_qty) AS total_ingresado,
                    COUNT(*) AS n_movs
             FROM odoo.stock_move sm
             JOIN variantes v ON v.odoo_id = sm.product_id
-            JOIN odoo.stock_location ld
-              ON ld.odoo_id = sm.location_dest_id
+            JOIN tiendas t ON t.location_id = sm.location_dest_id
             WHERE sm.state = 'done'
-              AND ld.usage = 'internal'
-              AND COALESCE(ld.x_nombre, '') NOT ILIKE '%TALLER%'
-              AND COALESCE(ld.x_nombre, '') NOT ILIKE '%Fallad%'
-              AND COALESCE(ld.x_nombre, '') NOT ILIKE '%Ajuste%'
-            GROUP BY ld.odoo_id, ld.x_nombre, ld.name
+            GROUP BY t.nombre_grupo
             ORDER BY fecha_primer_ingreso
             """,
             tpl, pid,
         )
 
-        # Stock vivo por tienda (suma todas las variantes del template)
+        # Stock vivo por tienda comercial (suma todas las variantes y agrupa por alias)
         quants = await conn.fetch(
-            """
+            f"""
             WITH variantes AS (
               SELECT odoo_id FROM odoo.product_product
               WHERE ($1::int IS NOT NULL AND product_tmpl_id = $1)
                  OR ($1::int IS NULL AND odoo_id = $2)
-            )
-            SELECT sq.location_id, SUM(sq.qty) AS stock
+            ), {TIENDAS_CTE}
+            SELECT t.nombre_grupo AS tienda, SUM(sq.qty) AS stock
             FROM odoo.stock_quant sq
             JOIN variantes v ON v.odoo_id = sq.product_id
-            GROUP BY sq.location_id
+            JOIN tiendas t ON t.location_id = sq.location_id
+            GROUP BY t.nombre_grupo
             """,
             tpl, pid,
         )
-        stock_map = {q["location_id"]: float(q["stock"] or 0) for q in quants}
+        stock_map = {q["tienda"]: float(q["stock"] or 0) for q in quants}
 
         # Ventas POS por tienda desde la primera fecha de ingreso
         tiendas_out = []
         ventas_total = 0
         for m in moves:
-            loc_id = m["location_id"]
+            nombre_t = m["tienda"]
             fecha_ingr = m["fecha_primer_ingreso"]
             # Por ahora contamos TODAS las ventas POS del producto desde la fecha de
             # primer ingreso a esa tienda. Refinar después uniendo por sucursal (pos_config).
@@ -331,14 +343,14 @@ async def tienda_info(
             )
             ventas_int = int(ventas or 0)
             tiendas_out.append({
-                "location_id": loc_id,
-                "tienda": m["tienda"],
+                "location_id": m["location_id"],
+                "tienda": nombre_t,
                 "fecha_primer_ingreso": str(m["fecha_primer_ingreso"]) if m["fecha_primer_ingreso"] else None,
                 "fecha_ultimo_ingreso": str(m["fecha_ultimo_ingreso"]) if m["fecha_ultimo_ingreso"] else None,
                 "total_ingresado": int(m["total_ingresado"] or 0),
                 "n_movs": int(m["n_movs"] or 0),
-                "stock_actual": int(stock_map.get(loc_id, 0)),
-                "ventas_desde_ingreso": ventas_int,  # Por ahora ventas globales del producto desde fecha
+                "stock_actual": int(stock_map.get(nombre_t, 0)),
+                "ventas_desde_ingreso": ventas_int,
             })
             ventas_total += ventas_int
 
@@ -383,36 +395,43 @@ async def seguimiento_tienda(
               LEFT JOIN prod_modelos m ON m.id = r.modelo_id
               WHERE r.odoo_product_id IS NOT NULL
             ),
+            tiendas AS (
+              SELECT tc.odoo_location_id AS location_id,
+                     COALESCE(NULLIF(tc.alias_grupo, ''), tc.nombre) AS nombre_grupo
+              FROM produccion.prod_tiendas_comerciales tc
+              WHERE tc.activo = TRUE
+            ),
+            variantes AS (
+              SELECT b.id AS registro_id, pp.odoo_id AS variant_id
+              FROM base b
+              JOIN odoo.product_product pp
+                ON (b.odoo_template_id IS NOT NULL AND pp.product_tmpl_id = b.odoo_template_id)
+                OR (b.odoo_template_id IS NULL AND pp.odoo_id = b.odoo_product_id)
+            ),
             ingresos AS (
-              SELECT b.id AS registro_id,
-                     ld.odoo_id AS location_id,
-                     COALESCE(NULLIF(ld.x_nombre, ''), ld.name) AS tienda,
+              SELECT v.registro_id,
+                     t.nombre_grupo AS tienda,
                      MIN(sm.date) AS fecha_primer_ingreso,
                      SUM(sm.product_qty) AS total_ingresado
-              FROM base b
+              FROM variantes v
               JOIN odoo.stock_move sm
-                ON sm.product_id = b.odoo_product_id
-               AND sm.state = 'done'
-              JOIN odoo.stock_location ld
-                ON ld.odoo_id = sm.location_dest_id
-              WHERE ld.usage = 'internal'
-                AND COALESCE(ld.x_nombre, '') NOT ILIKE '%TALLER%'
-                AND COALESCE(ld.x_nombre, '') NOT ILIKE '%Fallad%'
-              GROUP BY b.id, ld.odoo_id, ld.x_nombre, ld.name
+                ON sm.product_id = v.variant_id AND sm.state = 'done'
+              JOIN tiendas t ON t.location_id = sm.location_dest_id
+              GROUP BY v.registro_id, t.nombre_grupo
             ),
             stocks AS (
-              SELECT b.id AS registro_id, sq.location_id, SUM(sq.qty) AS stock
-              FROM base b
-              JOIN odoo.stock_quant sq
-                ON sq.product_id = b.odoo_product_id
-              GROUP BY b.id, sq.location_id
+              SELECT v.registro_id, t.nombre_grupo AS tienda, SUM(sq.qty) AS stock
+              FROM variantes v
+              JOIN odoo.stock_quant sq ON sq.product_id = v.variant_id
+              JOIN tiendas t ON t.location_id = sq.location_id
+              GROUP BY v.registro_id, t.nombre_grupo
             )
             SELECT b.*,
-                   i.location_id, i.tienda, i.fecha_primer_ingreso, i.total_ingresado,
+                   i.tienda, i.fecha_primer_ingreso, i.total_ingresado,
                    COALESCE(s.stock, 0) AS stock_actual
             FROM base b
             LEFT JOIN ingresos i ON i.registro_id = b.id
-            LEFT JOIN stocks s ON s.registro_id = b.id AND s.location_id = i.location_id
+            LEFT JOIN stocks s ON s.registro_id = b.id AND s.tienda = i.tienda
             ORDER BY b.n_corte, i.fecha_primer_ingreso
             """
         )
@@ -433,9 +452,8 @@ async def seguimiento_tienda(
                     "odoo_product_codigo": r["odoo_product_codigo"],
                     "tiendas": [],
                 }
-            if r["location_id"]:
+            if r["tienda"]:
                 cortes[rid]["tiendas"].append({
-                    "location_id": r["location_id"],
                     "tienda": r["tienda"],
                     "fecha_primer_ingreso": str(r["fecha_primer_ingreso"]) if r["fecha_primer_ingreso"] else None,
                     "total_ingresado": int(r["total_ingresado"] or 0),
@@ -446,3 +464,120 @@ async def seguimiento_tienda(
         if solo_en_tienda:
             result = [c for c in result if c["tiendas"]]
         return result
+
+
+# ============================================================================
+# POST /api/odoo-tienda/sincronizar-estados
+# ============================================================================
+@router.post("/sincronizar-estados")
+async def sincronizar_estados_tienda(
+    current_user: dict = Depends(get_current_user),
+):
+    """Para cada corte vinculado a Odoo (odoo_product_id != NULL) y cuyo
+    estado actual NO sea 'Tienda', busca la primera transferencia done a
+    una tienda comercial (configurada en prod_tiendas_comerciales). Si
+    existe, actualiza el estado a 'Tienda' y fecha_envio_tienda con la
+    fecha de ese primer movimiento.
+
+    Idempotente: si el corte ya está en 'Tienda', no lo toca.
+    Devuelve el resumen: cuántos cortes se actualizaron y detalle.
+    """
+    pool = await get_pool()
+    actualizados = []
+
+    async with pool.acquire() as conn:
+        # Para cada corte vinculado, busca primer mov done a tienda comercial.
+        rows = await conn.fetch(
+            f"""
+            WITH base AS (
+              SELECT r.id, r.n_corte, r.estado, r.fecha_envio_tienda,
+                     r.odoo_product_id, r.odoo_template_id
+              FROM prod_registros r
+              WHERE r.odoo_product_id IS NOT NULL
+                AND COALESCE(r.estado, '') != 'Tienda'
+            ),
+            {TIENDAS_CTE},
+            primer_mov AS (
+              SELECT b.id AS registro_id,
+                     t.nombre_grupo AS tienda,
+                     MIN(sm.date) AS fecha_ingreso
+              FROM base b
+              JOIN odoo.product_product pp
+                ON (b.odoo_template_id IS NOT NULL AND pp.product_tmpl_id = b.odoo_template_id)
+                OR (b.odoo_template_id IS NULL AND pp.odoo_id = b.odoo_product_id)
+              JOIN odoo.stock_move sm
+                ON sm.product_id = pp.odoo_id AND sm.state = 'done'
+              JOIN tiendas t ON t.location_id = sm.location_dest_id
+              GROUP BY b.id, t.nombre_grupo
+            ),
+            primero_por_corte AS (
+              SELECT DISTINCT ON (registro_id) registro_id, tienda, fecha_ingreso
+              FROM primer_mov ORDER BY registro_id, fecha_ingreso
+            )
+            SELECT b.id, b.n_corte, b.estado AS estado_actual, b.fecha_envio_tienda AS fecha_actual,
+                   p.tienda, p.fecha_ingreso
+            FROM base b
+            JOIN primero_por_corte p ON p.registro_id = b.id
+            """
+        )
+
+        user_name = (
+            current_user.get("nombre_completo")
+            or current_user.get("nombre")
+            or current_user.get("username")
+            or "sistema"
+        )
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        for r in rows:
+            # Asegurar formato datetime sin timezone (prod_registros usa
+            # timestamp WITHOUT TIME ZONE).
+            fecha = r["fecha_ingreso"]
+            if isinstance(fecha, str):
+                from datetime import datetime as _dt
+                fecha = _dt.fromisoformat(fecha[:19])
+            if hasattr(fecha, "tzinfo") and fecha.tzinfo is not None:
+                fecha = fecha.replace(tzinfo=None)
+            await conn.execute(
+                """UPDATE prod_registros
+                   SET estado = 'Tienda',
+                       fecha_envio_tienda = COALESCE(fecha_envio_tienda, $1)
+                   WHERE id = $2""",
+                fecha, r["id"],
+            )
+            actualizados.append({
+                "registro_id": r["id"],
+                "n_corte": r["n_corte"],
+                "estado_anterior": r["estado_actual"],
+                "tienda_destino": r["tienda"],
+                "fecha_ingreso": str(fecha),
+            })
+
+    return {
+        "ok": True,
+        "actualizados": len(actualizados),
+        "ejecutado_por": user_name,
+        "ejecutado_at": now.isoformat(),
+        "detalle": actualizados,
+    }
+
+
+# ============================================================================
+# GET /api/odoo-tienda/tiendas-config — listado de tiendas configuradas
+# ============================================================================
+@router.get("/tiendas-config")
+async def listar_tiendas_config(
+    current_user: dict = Depends(get_current_user),
+):
+    """Devuelve la configuración de tiendas comerciales."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT tc.id, tc.odoo_location_id, tc.nombre, tc.alias_grupo,
+                      tc.activo, tc.notas,
+                      ld.complete_name, COALESCE(NULLIF(ld.x_nombre, ''), ld.name) AS x_nombre
+               FROM produccion.prod_tiendas_comerciales tc
+               LEFT JOIN odoo.stock_location ld ON ld.odoo_id = tc.odoo_location_id
+               ORDER BY tc.nombre, tc.id"""
+        )
+    return [dict(r) for r in rows]
