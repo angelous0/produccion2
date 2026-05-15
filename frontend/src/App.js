@@ -73,6 +73,7 @@ const Muestras = lazy(() => import("./pages/Muestras").then(m => ({ default: m.M
 const MuestraDetalle = lazy(() => import("./pages/MuestraDetalle").then(m => ({ default: m.MuestraDetalle })));
 const ValidacionRegistros = lazy(() => import("./pages/ValidacionRegistros").then(m => ({ default: m.ValidacionRegistros })));
 const ReporteTrazabilidadKPIs = lazy(() => import("./pages/ReporteTrazabilidadKPIs").then(m => ({ default: m.ReporteTrazabilidadKPIs })));
+const SeguimientoTienda = lazy(() => import("./pages/SeguimientoTienda"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center h-64">
@@ -206,6 +207,7 @@ function AppRoutes() {
         <Route path="reportes/trazabilidad/:registroId" element={<LazyWrap><ReporteTrazabilidad /></LazyWrap>} />
         {/* Reportes standalone restantes (los demás son tabs de hubs) */}
         <Route path="reportes/trazabilidad-kpis" element={<LazyWrap><ReporteTrazabilidadKPIs /></LazyWrap>} />
+        <Route path="reportes/seguimiento-tienda" element={<LazyWrap><SeguimientoTienda /></LazyWrap>} />
         {/* Legacy redirects */}
         <Route path="reportes/dashboard" element={<Navigate to="/" replace />} />
         <Route path="reportes/en-proceso" element={<Navigate to="/reportes/seguimiento" replace />} />

@@ -389,7 +389,8 @@ async def seguimiento_tienda(
             WITH base AS (
               SELECT r.id, r.n_corte, r.estado, r.fecha_envio_tienda,
                      COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') AS modelo,
-                     r.odoo_product_id, r.odoo_product_company_key,
+                     r.odoo_product_id, r.odoo_template_id,
+                     r.odoo_product_company_key,
                      r.odoo_product_nombre, r.odoo_product_codigo
               FROM prod_registros r
               LEFT JOIN prod_modelos m ON m.id = r.modelo_id

@@ -146,6 +146,12 @@ const OdooProductoPicker = ({ registroId, actual, prefill, onVincular, onDesvinc
                 <> · Asignado por {actual.odoo_product_asignado_por}</>
               )}
             </p>
+            <a
+              href={`/reportes/seguimiento-tienda?corte=${encodeURIComponent(registroId || '')}`}
+              className="inline-flex items-center gap-1 mt-1 text-[11px] text-blue-700 dark:text-blue-300 hover:underline"
+            >
+              Ver detalle de tiendas, stock y ventas →
+            </a>
           </div>
           <div className="flex gap-1 shrink-0">
             <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setOpen(true)} disabled={submitting}>
@@ -156,9 +162,6 @@ const OdooProductoPicker = ({ registroId, actual, prefill, onVincular, onDesvinc
             </Button>
           </div>
         </div>
-
-        {/* Panel de tiendas/stock/ventas en vivo */}
-        <TiendaInfoPanel registroId={registroId} />
 
         {/* Modal de búsqueda al cambiar */}
         <Popover open={open} onOpenChange={setOpen}>
@@ -202,165 +205,6 @@ const OdooProductoPicker = ({ registroId, actual, prefill, onVincular, onDesvinc
   );
 };
 
-const TiendaInfoPanel = ({ registroId }) => {
-  const [info, setInfo] = React.useState(null);
-  const [loading, setLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    if (!registroId) return;
-    const t = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const hdrs = { Authorization: `Bearer ${localStorage.getItem('token')}` };
-        const res = await axios.get(`${API_TIENDA}/registros/${registroId}/tienda-info`, { headers: hdrs });
-        setInfo(res.data);
-      } catch {
-        setInfo(null);
-      } finally {
-        setLoading(false);
-      }
-    }, 200);
-    return () => clearTimeout(t);
-  }, [registroId]);
-
-  if (loading) {
-    return <div className="text-[11px] text-muted-foreground py-2 flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> Consultando movimientos en Odoo...</div>;
-  }
-  if (!info || !info.vinculado) return null;
-
-  const tiendas = info.tiendas || [];
-  if (tiendas.length === 0) {
-    return (
-      <div className="text-[11px] text-muted-foreground rounded-md border bg-muted/20 px-3 py-2">
-        Aún no hay movimientos a tienda registrados en Odoo para este producto.
-      </div>
-    );
-  }
-
-  const fmtDM = (d) => {
-    if (!d) return '—';
-    const s = String(d).slice(0, 10);
-    const [, m, dd] = s.split('-');
-    return `${dd}/${m}`;
-  };
-
-  const sincronizar = async () => {
-    try {
-      const hdrs = { Authorization: `Bearer ${localStorage.getItem('token')}` };
-      const res = await axios.post(`${API_TIENDA}/sincronizar-estados`, {}, { headers: hdrs });
-      const n = res.data?.actualizados ?? 0;
-      if (n > 0) {
-        toast.success(`${n} corte${n !== 1 ? 's' : ''} marcado${n !== 1 ? 's' : ''} como "Tienda" automáticamente`);
-        setTimeout(() => window.location.reload(), 800);
-      } else {
-        toast.info('Sin cambios — todos los cortes ya están sincronizados');
-      }
-    } catch {
-      toast.error('No se pudo sincronizar');
-    }
-  };
-
-  return (
-    <div className="rounded-md border bg-card overflow-hidden">
-      {/* Título + descripción */}
-      <div className="px-3 py-2 bg-muted/40 border-b">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[11px] font-medium">
-            Movimientos del producto en Odoo · {tiendas.length} tienda{tiendas.length !== 1 ? 's' : ''}
-          </p>
-          <div className="flex items-center gap-2">
-            <p className="text-[10px] text-muted-foreground font-mono">
-              Total stock: <strong className="text-foreground">{info.stock_total}</strong>
-              {' · '}
-              Total vendido: <strong className="text-foreground">{info.ventas_total}</strong>
-            </p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-6 text-[10px] gap-1"
-              onClick={sincronizar}
-              title="Detecta llegadas a tienda y actualiza el estado del corte"
-            >
-              ↻ Sincronizar
-            </Button>
-          </div>
-        </div>
-        <p className="text-[10px] text-muted-foreground mt-0.5">
-          Por cada tienda comercial: cuántas piezas llegaron, cuántas quedan, cuántas se vendieron desde que ingresaron y cuántas transferencias se hicieron.
-        </p>
-      </div>
-
-      {/* Header de columnas */}
-      <div className="px-3 py-1.5 border-b bg-muted/15 grid grid-cols-[1.4fr_70px_70px_80px_50px] gap-2 text-[10px] uppercase tracking-wider font-medium text-muted-foreground">
-        <span>Tienda</span>
-        <span className="text-right" title="Total de piezas que llegaron a esta tienda en transferencias">
-          Recibido
-        </span>
-        <span className="text-right" title="Stock vivo actual en esta tienda según Odoo">
-          Stock hoy
-        </span>
-        <span className="text-right" title="Ventas POS de este producto desde que llegó por primera vez">
-          Vendido
-        </span>
-        <span className="text-right" title="Cantidad de transferencias hechas a esta tienda">
-          Envíos
-        </span>
-      </div>
-
-      {/* Filas */}
-      <div className="divide-y divide-border/50">
-        {tiendas.map((t) => (
-          <div
-            key={t.location_id}
-            className="grid grid-cols-[1.4fr_70px_70px_80px_50px] gap-2 items-center px-3 py-1.5 text-[11px] hover:bg-muted/20"
-          >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Store className="h-3 w-3 text-blue-600 shrink-0" />
-              <span className="font-medium truncate">{t.tienda}</span>
-              <span className="text-muted-foreground text-[10px] shrink-0">
-                desde {fmtDM(t.fecha_primer_ingreso)}
-              </span>
-            </div>
-            <div
-              className="text-right tabular-nums"
-              title={`${t.total_ingresado} piezas llegaron en ${t.n_movs} transferencia${t.n_movs !== 1 ? 's' : ''}`}
-            >
-              {t.total_ingresado}
-            </div>
-            <div
-              className={`text-right tabular-nums ${
-                t.stock_actual === 0
-                  ? 'text-red-600 font-semibold'
-                  : t.stock_actual <= 5
-                  ? 'text-amber-600 font-semibold'
-                  : ''
-              }`}
-              title={
-                t.stock_actual === 0
-                  ? 'Agotado en esta tienda'
-                  : t.stock_actual <= 5
-                  ? 'Stock bajo · revisar reposición'
-                  : 'Stock actual en esta tienda'
-              }
-            >
-              {t.stock_actual}
-            </div>
-            <div
-              className="text-right tabular-nums text-emerald-700 dark:text-emerald-400"
-              title={`Vendidas desde ${fmtDM(t.fecha_primer_ingreso)}`}
-            >
-              {t.ventas_desde_ingreso}
-            </div>
-            <div className="text-right tabular-nums text-muted-foreground" title="# de transferencias">
-              {t.n_movs}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 const PickerBody = ({ query, setQuery, resultados, loading, onSelect, submitting }) => (
   <div className="text-xs">
