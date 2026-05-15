@@ -11,8 +11,326 @@ import {
 } from '../ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../ui/command';
-import { AlertTriangle, Scissors, Package, Check, ChevronsUpDown, FileDown, Lock, RotateCcw, Clock, PenLine, Plus, Sparkles } from 'lucide-react';
+import { AlertTriangle, Scissors, Package, Check, ChevronsUpDown, FileDown, Lock, RotateCcw, Clock, PenLine, Plus, Sparkles, Store, X, Search, Loader2 } from 'lucide-react';
 import { Textarea } from '../ui/textarea';
+import { toast } from 'sonner';
+
+const API_TIENDA = `${process.env.REACT_APP_BACKEND_URL}/api/odoo-tienda`;
+
+/**
+ * Picker de producto Odoo para vincular con el corte (tracking de tienda).
+ * Solo aparece si hay registroId (registro ya creado).
+ *
+ * Props:
+ *   - registroId: id del corte
+ *   - actual: { odoo_product_id, odoo_product_nombre, odoo_product_codigo, odoo_product_company_key, odoo_product_asignado_at, odoo_product_asignado_por }
+ *   - prefill: { marca, tipo, tela, entalle } — usado como término inicial de búsqueda
+ *   - onVincular(producto): callback al asignar correctamente (para refrescar formData)
+ *   - onDesvincular(): callback al quitar el vínculo
+ */
+const OdooProductoPicker = ({ registroId, actual, prefill, onVincular, onDesvincular }) => {
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [resultados, setResultados] = React.useState([]);
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const hdrs = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
+
+  // Cuando se abre el picker, hace búsqueda inicial usando prefill si no hay query
+  React.useEffect(() => {
+    if (!open) return;
+    const initial = query || prefill?.modelo || prefill?.marca || '';
+    if (!initial) {
+      // Sin query inicial, no buscamos — esperamos a que el user escriba
+      setResultados([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        params.set('q', initial);
+        params.set('limit', '30');
+        const res = await axios.get(`${API_TIENDA}/productos/buscar?${params.toString()}`, { headers: hdrs() });
+        setResultados(res.data || []);
+      } catch {
+        setResultados([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [open, query, prefill?.modelo, prefill?.marca]);
+
+  const handleSelect = async (prod) => {
+    if (!registroId) {
+      toast.error('Guarda el registro primero para vincular un producto');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await axios.post(`${API_TIENDA}/registros/${registroId}/vincular-producto`, {
+        odoo_product_id: prod.variant_id,
+        template_id: prod.template_id,
+        company_key: prod.company_key,
+        nombre: prod.name,
+        codigo: prod.codigo,
+      }, { headers: hdrs() });
+      toast.success(`Producto vinculado: ${prod.name}`);
+      onVincular && onVincular({
+        odoo_product_id: prod.variant_id,
+        odoo_product_company_key: prod.company_key,
+        odoo_product_nombre: prod.name,
+        odoo_product_codigo: prod.codigo,
+      });
+      setOpen(false);
+      setQuery('');
+    } catch (e) {
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response.data.detail : 'No se pudo vincular');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDesvincular = async () => {
+    if (!registroId) return;
+    if (!window.confirm('¿Quitar el vínculo con el producto Odoo?')) return;
+    setSubmitting(true);
+    try {
+      await axios.delete(`${API_TIENDA}/registros/${registroId}/vincular-producto`, { headers: hdrs() });
+      toast.success('Vínculo eliminado');
+      onDesvincular && onDesvincular();
+    } catch {
+      toast.error('No se pudo desvincular');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Sin registro guardado: deshabilitar
+  if (!registroId) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="flex items-center gap-1.5">
+            <Store className="h-3.5 w-3.5 text-blue-600" />
+            Producto Odoo (tracking de tienda)
+          </Label>
+        </div>
+        <div className="text-xs text-muted-foreground rounded-md border bg-muted/30 px-3 py-2">
+          Guarda el registro primero. Después podrás vincular un producto de Odoo
+          para rastrear su llegada a tienda, stock y ventas.
+        </div>
+      </div>
+    );
+  }
+
+  // Ya vinculado: mostrar info + botón cambiar/quitar + panel de tiendas
+  if (actual?.odoo_product_id) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="flex items-center gap-1.5">
+            <Store className="h-3.5 w-3.5 text-blue-600" />
+            Producto Odoo (tracking de tienda)
+          </Label>
+        </div>
+        <div className="rounded-md border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-900 px-3 py-2 flex items-start gap-2">
+          <Check className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0 text-xs">
+            <p className="font-medium truncate">{actual.odoo_product_nombre || `Producto #${actual.odoo_product_id}`}</p>
+            <p className="text-muted-foreground">
+              Código: <span className="font-mono">{actual.odoo_product_codigo || '—'}</span>
+              {actual.odoo_product_asignado_por && (
+                <> · Asignado por {actual.odoo_product_asignado_por}</>
+              )}
+            </p>
+          </div>
+          <div className="flex gap-1 shrink-0">
+            <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setOpen(true)} disabled={submitting}>
+              Cambiar
+            </Button>
+            <Button type="button" size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-600" onClick={handleDesvincular} disabled={submitting} title="Quitar vínculo">
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Panel de tiendas/stock/ventas en vivo */}
+        <TiendaInfoPanel registroId={registroId} />
+
+        {/* Modal de búsqueda al cambiar */}
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild><span /></PopoverTrigger>
+          <PopoverContent className="w-[500px] p-0" align="start">
+            <PickerBody query={query} setQuery={setQuery} resultados={resultados} loading={loading} onSelect={handleSelect} submitting={submitting} />
+          </PopoverContent>
+        </Popover>
+      </div>
+    );
+  }
+
+  // Sin vincular: mostrar buscador
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label className="flex items-center gap-1.5">
+          <Store className="h-3.5 w-3.5 text-blue-600" />
+          Producto Odoo (tracking de tienda)
+        </Label>
+      </div>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button type="button" variant="outline" className="w-full justify-between text-xs h-9">
+            <span className="text-muted-foreground inline-flex items-center gap-2">
+              <Search className="h-3.5 w-3.5" />
+              Buscar producto en Odoo
+            </span>
+            <ChevronsUpDown className="h-3.5 w-3.5 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[500px] p-0" align="start">
+          <PickerBody query={query} setQuery={setQuery} resultados={resultados} loading={loading} onSelect={handleSelect} submitting={submitting} />
+        </PopoverContent>
+      </Popover>
+      <p className="text-[11px] text-muted-foreground">
+        Una vez vinculado, el sistema detecta automáticamente cuándo el producto entra
+        a tienda (transferencias de Odoo) y muestra stock y ventas en vivo.
+      </p>
+    </div>
+  );
+};
+
+const TiendaInfoPanel = ({ registroId }) => {
+  const [info, setInfo] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!registroId) return;
+    const t = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const hdrs = { Authorization: `Bearer ${localStorage.getItem('token')}` };
+        const res = await axios.get(`${API_TIENDA}/registros/${registroId}/tienda-info`, { headers: hdrs });
+        setInfo(res.data);
+      } catch {
+        setInfo(null);
+      } finally {
+        setLoading(false);
+      }
+    }, 200);
+    return () => clearTimeout(t);
+  }, [registroId]);
+
+  if (loading) {
+    return <div className="text-[11px] text-muted-foreground py-2 flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> Consultando movimientos en Odoo...</div>;
+  }
+  if (!info || !info.vinculado) return null;
+
+  const tiendas = info.tiendas || [];
+  if (tiendas.length === 0) {
+    return (
+      <div className="text-[11px] text-muted-foreground rounded-md border bg-muted/20 px-3 py-2">
+        Aún no hay movimientos a tienda registrados en Odoo para este producto.
+      </div>
+    );
+  }
+
+  const fmtDM = (d) => {
+    if (!d) return '—';
+    const s = String(d).slice(0, 10);
+    const [, m, dd] = s.split('-');
+    return `${dd}/${m}`;
+  };
+
+  return (
+    <div className="rounded-md border bg-card overflow-hidden">
+      <div className="px-3 py-1.5 bg-muted/40 border-b text-[10px] uppercase tracking-wider font-medium text-muted-foreground flex items-center justify-between">
+        <span>Tiendas con el producto · {tiendas.length}</span>
+        <span className="font-mono">
+          Stock total: <strong className="text-foreground">{info.stock_total}</strong>
+          {' · '}
+          Ventas: <strong className="text-foreground">{info.ventas_total}</strong>
+        </span>
+      </div>
+      <div className="divide-y">
+        {tiendas.map((t) => (
+          <div key={t.location_id} className="grid grid-cols-[1.2fr_60px_60px_60px_60px] gap-2 items-center px-3 py-1.5 text-[11px]">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Store className="h-3 w-3 text-blue-600 shrink-0" />
+              <span className="font-medium truncate">{t.tienda}</span>
+              <span className="text-muted-foreground text-[10px]">desde {fmtDM(t.fecha_primer_ingreso)}</span>
+            </div>
+            <div className="text-right tabular-nums" title="Total ingresado">
+              ↓ <span className="text-foreground">{t.total_ingresado}</span>
+            </div>
+            <div className="text-right tabular-nums" title="Stock actual">
+              <span className={t.stock_actual <= 5 ? 'text-amber-600 font-semibold' : ''}>{t.stock_actual}</span>
+            </div>
+            <div className="text-right tabular-nums text-emerald-700 dark:text-emerald-400" title="Ventas POS">
+              {t.ventas_desde_ingreso}
+            </div>
+            <div className="text-right text-[10px] text-muted-foreground" title="# transferencias">
+              {t.n_movs} mov
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="px-3 py-1 border-t bg-muted/20 grid grid-cols-[1.2fr_60px_60px_60px_60px] gap-2 text-[9px] uppercase tracking-wider text-muted-foreground">
+        <span>Tienda</span>
+        <span className="text-right">Ingr.</span>
+        <span className="text-right">Stock</span>
+        <span className="text-right">Vendido</span>
+        <span className="text-right">Movs</span>
+      </div>
+    </div>
+  );
+};
+
+const PickerBody = ({ query, setQuery, resultados, loading, onSelect, submitting }) => (
+  <div className="text-xs">
+    <div className="flex items-center border-b px-3 py-2 gap-2">
+      <Search className="h-3.5 w-3.5 text-muted-foreground" />
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Buscar por nombre / marca / tipo (ej: BEMY, Element Premium, Skinny)..."
+        className="flex-1 bg-transparent outline-none text-sm"
+        autoFocus
+      />
+      {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+    </div>
+    <div className="max-h-80 overflow-y-auto">
+      {!loading && resultados.length === 0 && (
+        <div className="px-3 py-6 text-center text-muted-foreground">
+          {query ? 'Sin resultados' : 'Escribe el nombre, marca o tipo del producto'}
+        </div>
+      )}
+      {resultados.map((r) => (
+        <button
+          key={`${r.template_id}-${r.variant_id}`}
+          type="button"
+          onClick={() => !submitting && onSelect(r)}
+          disabled={submitting}
+          className="w-full text-left px-3 py-2 hover:bg-muted/50 border-b last:border-b-0 transition-colors"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium truncate">{r.name}</span>
+            <span className="text-[10px] text-muted-foreground font-mono shrink-0">{r.codigo}</span>
+          </div>
+          <div className="text-[11px] text-muted-foreground truncate">
+            {[r.marca, r.tipo, r.tela, r.entalle].filter(Boolean).join(' · ')}
+            {r.variantes_count > 1 && (
+              <span className="ml-1 text-blue-600">· {r.variantes_count} variantes</span>
+            )}
+          </div>
+        </button>
+      ))}
+    </div>
+  </div>
+);
 
 /**
  * Input de N° Corte con semántica número + año.
@@ -191,6 +509,7 @@ export const RegistroDatosCard = ({
   catalogoHilos = [], catalogoHilosEsp = [],
   setCatalogoTipos, setCatalogoEntalles, setCatalogoTelas, setCatalogoHilos,
   onCrearPT,
+  registroId,
 }) => {
   const handleToggleManual = () => {
     if (!modoManual) {
@@ -669,6 +988,33 @@ export const RegistroDatosCard = ({
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        {/* ── Vínculo con producto Odoo (tracking de tienda) ─────────── */}
+        <div className="pt-2 border-t">
+          <OdooProductoPicker
+            registroId={registroId}
+            actual={{
+              odoo_product_id: formData.odoo_product_id,
+              odoo_product_nombre: formData.odoo_product_nombre,
+              odoo_product_codigo: formData.odoo_product_codigo,
+              odoo_product_company_key: formData.odoo_product_company_key,
+              odoo_product_asignado_por: formData.odoo_product_asignado_por,
+            }}
+            prefill={{
+              modelo: modeloSeleccionado?.nombre || modeloManualForm?.nombre_modelo,
+              marca: modeloSeleccionado?.marca_nombre || modeloManualForm?.marca_texto,
+            }}
+            onVincular={(vals) => setFormData({ ...formData, ...vals })}
+            onDesvincular={() => setFormData({
+              ...formData,
+              odoo_product_id: null,
+              odoo_product_nombre: null,
+              odoo_product_codigo: null,
+              odoo_product_company_key: null,
+              odoo_product_asignado_por: null,
+            })}
+          />
         </div>
 
         {/* Campos cascada modo manual */}
