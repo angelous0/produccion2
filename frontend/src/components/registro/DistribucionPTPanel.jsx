@@ -16,11 +16,13 @@ import {
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+// IMPORTANTE: el backend valida estos valores. Si agregas uno nuevo (ej. 'facturado_proveedor')
+// hay que actualizar también backend/routes/distribucion_pt.py::TIPOS_SALIDA_LABELS y la
+// migración que define el CHECK constraint.
 const TIPOS_SALIDA = [
   { value: 'normal', label: 'Normal' },
-  { value: 'arreglo', label: 'Arreglo' },
-  { value: 'liquidacion_leve', label: 'Liquidacion Leve' },
-  { value: 'liquidacion_grave', label: 'Liquidacion Grave' },
+  { value: 'liquidacion_leve', label: 'Liquidación Leve (LQ)' },
+  { value: 'liquidacion_grave', label: 'Liquidación Grave' },
 ];
 
 const EstadoBadge = ({ estado }) => {
@@ -60,7 +62,9 @@ const ProductoSelector = ({ value, onChange }) => {
   useEffect(() => {
     if (value && !selected) {
       const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
-      axios.get(`${API}/odoo/product-templates?search=${value}&limit=5`, { headers })
+      // Para hidratar la selección actual permitimos también templates que no
+      // cumplan el filtro vendible (por compat con datos legacy).
+      axios.get(`${API}/odoo/product-templates?search=${value}&limit=5&incluir_no_vendibles=true`, { headers })
         .then(res => {
           const found = res.data.find(p => p.odoo_id === value);
           if (found) setSelected(found);
@@ -86,7 +90,9 @@ const ProductoSelector = ({ value, onChange }) => {
                   onSelect={() => { setSelected(p); onChange(p.odoo_id); setOpen(false); }}>
                   <div className="flex flex-col">
                     <span className="text-xs font-medium">{p.name}</span>
-                    <span className="text-[10px] text-muted-foreground">{p.marca} | {p.tipo} | ID: {p.odoo_id}</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {[p.marca, p.tipo, p.entalle].filter(Boolean).join(' | ')} · ID: {p.odoo_id}
+                    </span>
                   </div>
                 </CommandItem>
               ))}

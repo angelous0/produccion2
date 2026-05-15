@@ -118,7 +118,7 @@ const SeguimientoTienda = () => {
       arr = arr.filter(c =>
         (c.n_corte || '').toLowerCase().includes(q)
         || (c.modelo || '').toLowerCase().includes(q)
-        || (c.odoo_product_nombre || '').toLowerCase().includes(q)
+        || (c.producto_nombre || '').toLowerCase().includes(q)
       );
     }
     return arr;
@@ -137,7 +137,7 @@ const SeguimientoTienda = () => {
             Seguimiento Tienda
           </h1>
           <p className="text-sm text-muted-foreground">
-            Cortes vinculados a productos Odoo · movimientos a tiendas, stock y ventas en vivo
+            Cortes con distribución a producto Odoo (normal) · movimientos a tiendas, stock y ventas en vivo
           </p>
         </div>
         <Button onClick={sincronizar} disabled={syncing} className="gap-2">
@@ -149,9 +149,9 @@ const SeguimientoTienda = () => {
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-lg border bg-card px-4 py-3">
-          <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground">Total vinculados</p>
+          <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground">Cortes con distribución</p>
           <p className="text-2xl mt-1 tabular-nums leading-none">{cortes.length}</p>
-          <p className="text-[11px] text-muted-foreground mt-1">cortes con producto Odoo</p>
+          <p className="text-[11px] text-muted-foreground mt-1">distribución normal a Odoo</p>
         </div>
         <div className="rounded-lg border bg-card px-4 py-3">
           <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground">En tienda</p>
@@ -217,12 +217,12 @@ const SeguimientoTienda = () => {
             <Store className="h-12 w-12 mx-auto text-muted-foreground/40 mb-2" />
             <p className="text-sm font-medium">
               {cortes.length === 0
-                ? 'Sin cortes vinculados a productos Odoo todavía'
+                ? 'Sin cortes con distribución normal a Odoo todavía'
                 : 'Ningún corte coincide con los filtros'}
             </p>
             {cortes.length === 0 && (
               <p className="text-xs text-muted-foreground mt-1">
-                Vincula un producto Odoo al editar un corte para empezar.
+                Distribuye un corte al tab "PT Odoo" con tipo "Normal" para verlo aquí.
               </p>
             )}
           </CardContent>
@@ -262,8 +262,10 @@ const SeguimientoTienda = () => {
                     <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? '' : '-rotate-90'}`} />
                     <span className="font-mono tabular-nums">{c.n_corte}</span>
                     <div className="min-w-0">
-                      <p className="font-medium truncate">{c.odoo_product_nombre || '—'}</p>
-                      <p className="text-[10px] text-muted-foreground font-mono">#{c.odoo_product_codigo || '—'}</p>
+                      <p className="font-medium truncate">{c.producto_nombre || c.modelo || '—'}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">
+                        {c.template_id ? `#${c.template_id}` : '—'}
+                      </p>
                     </div>
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded justify-self-start ${estadoColor(c.estado)}`}>
                       {c.estado || '—'}
@@ -303,7 +305,7 @@ const SeguimientoTienda = () => {
                   </div>
 
                   {isOpen && (
-                    <div className="bg-muted/20 px-3 py-3 border-t">
+                    <div className="bg-muted/20 px-3 py-3 border-t space-y-2">
                       {loading_d ? (
                         <p className="text-xs text-muted-foreground flex items-center gap-2">
                           <Loader2 className="h-3 w-3 animate-spin" /> Cargando detalle...
@@ -311,13 +313,35 @@ const SeguimientoTienda = () => {
                       ) : !d ? (
                         <p className="text-xs text-muted-foreground">Sin información</p>
                       ) : !d.vinculado ? (
-                        <p className="text-xs text-muted-foreground">Sin vínculo</p>
+                        <p className="text-xs text-muted-foreground">Sin distribución normal a Odoo</p>
                       ) : (d.tiendas || []).length === 0 ? (
-                        <div className="text-xs text-muted-foreground border border-dashed rounded-md px-3 py-2">
-                          <AlertTriangle className="h-4 w-4 inline-block text-amber-600 mr-1" />
-                          Aún no hay movimientos a tienda registrados en Odoo para este producto.
-                        </div>
+                        <>
+                          {d.producto_principal && (
+                            <div className="text-[11px] text-muted-foreground">
+                              Producto principal:{' '}
+                              <span className="font-medium text-foreground">{d.producto_principal.name}</span>
+                              {' '}<span className="font-mono">#{d.producto_principal.template_id}</span>
+                              {' · '}{d.producto_principal.cantidad_distribuida} pzs distribuidas
+                            </div>
+                          )}
+                          <div className="text-xs text-muted-foreground border border-dashed rounded-md px-3 py-2">
+                            <AlertTriangle className="h-4 w-4 inline-block text-amber-600 mr-1" />
+                            Aún no hay movimientos a tienda registrados en Odoo para este producto.
+                          </div>
+                        </>
                       ) : (
+                        <>
+                          {d.producto_principal && (
+                            <div className="text-[11px] text-muted-foreground">
+                              Producto principal:{' '}
+                              <span className="font-medium text-foreground">{d.producto_principal.name}</span>
+                              {' '}<span className="font-mono">#{d.producto_principal.template_id}</span>
+                              {' · '}{d.producto_principal.cantidad_distribuida} pzs distribuidas
+                              {(d.template_ids || []).length > 1 && (
+                                <> · <span className="text-blue-700 dark:text-blue-300">{d.template_ids.length} templates en total</span></>
+                              )}
+                            </div>
+                          )}
                         <div className="rounded-md border bg-card overflow-hidden">
                           <div className="px-3 py-1.5 border-b bg-muted/30 grid grid-cols-[1.4fr_80px_80px_80px_60px] gap-2 text-[10px] uppercase tracking-wider font-medium text-muted-foreground">
                             <span>Tienda</span>
@@ -368,6 +392,7 @@ const SeguimientoTienda = () => {
                             </span>
                           </div>
                         </div>
+                        </>
                       )}
                     </div>
                   )}

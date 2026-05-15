@@ -77,10 +77,6 @@ export const RegistroForm = () => {
     n_corte: '', modelo_id: '', modelo_manual: null, curva: '', estado: 'Para Corte', urgente: false,
     hilo_especifico_id: '', pt_item_id: '',
     observaciones: '', fecha_entrega_final: '', fecha_inicio_real: '', linea_negocio_id: null,
-    // Vínculo con producto Odoo (tracking de tienda)
-    odoo_product_id: null, odoo_product_company_key: null,
-    odoo_product_nombre: null, odoo_product_codigo: null,
-    odoo_product_asignado_por: null,
   });
 
   const [modoManual, setModoManual] = useState(false);
@@ -296,12 +292,6 @@ export const RegistroForm = () => {
         fecha_inicio_real: registro.fecha_inicio_real || '',
         skip_validacion_estado: registro.skip_validacion_estado || false, linea_negocio_id: registro.linea_negocio_id || null,
         fecha_envio_tienda: registro.fecha_envio_tienda || null,
-        // Vínculo con producto Odoo
-        odoo_product_id: registro.odoo_product_id || null,
-        odoo_product_company_key: registro.odoo_product_company_key || null,
-        odoo_product_nombre: registro.odoo_product_nombre || null,
-        odoo_product_codigo: registro.odoo_product_codigo || null,
-        odoo_product_asignado_por: registro.odoo_product_asignado_por || null,
       });
       // Restore manual mode if registro was created with modelo_manual
       if (registro.modelo_manual && !registro.modelo_id) {

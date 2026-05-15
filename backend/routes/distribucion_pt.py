@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api", tags=["distribucion-pt"])
 # ======================== MODELOS ========================
 
 class LineaDistribucion(BaseModel):
-    tipo_salida: str
+    tipo_salida: str  # 'normal' | 'liquidacion_leve' | 'liquidacion_grave'
     product_template_id_odoo: int
     cantidad: float = Field(gt=0)
 
@@ -35,7 +35,7 @@ async def init_distribucion_pt_tables():
             CREATE TABLE IF NOT EXISTS produccion.prod_registro_pt_relacion (
                 id SERIAL PRIMARY KEY,
                 registro_id VARCHAR NOT NULL,
-                tipo_salida VARCHAR NOT NULL CHECK(tipo_salida IN ('normal','arreglo','liquidacion_leve','liquidacion_grave')),
+                tipo_salida VARCHAR NOT NULL CHECK(tipo_salida IN ('normal','liquidacion_leve','liquidacion_grave')),
                 product_template_id_odoo INTEGER NOT NULL,
                 cantidad NUMERIC NOT NULL CHECK(cantidad > 0),
                 created_at TIMESTAMP DEFAULT NOW(),
@@ -94,10 +94,10 @@ async def _get_total_producido(conn, registro_id: str) -> float:
 
 TIPOS_SALIDA_LABELS = {
     'normal': 'Normal',
-    'arreglo': 'Arreglo',
-    'liquidacion_leve': 'Liquidacion Leve',
-    'liquidacion_grave': 'Liquidacion Grave',
+    'liquidacion_leve': 'Liquidación Leve (LQ)',
+    'liquidacion_grave': 'Liquidación Grave',
 }
+TIPOS_SALIDA_VALIDOS = set(TIPOS_SALIDA_LABELS.keys())
 
 
 # ======================== DISTRIBUCION PT ========================
@@ -164,9 +164,8 @@ async def guardar_distribucion_pt(
             raise HTTPException(400, "El registro no tiene cantidad producida (tallas sin definir)")
 
         # Validar tipos de salida validos
-        tipos_validos = {'normal', 'arreglo', 'liquidacion_leve', 'liquidacion_grave'}
         for linea in data.lineas:
-            if linea.tipo_salida not in tipos_validos:
+            if linea.tipo_salida not in TIPOS_SALIDA_VALIDOS:
                 raise HTTPException(400, f"Tipo de salida invalido: {linea.tipo_salida}")
 
         # Validar que los product_template_id_odoo existan
@@ -407,38 +406,52 @@ async def get_conciliacion_odoo(registro_id: str, current_user: dict = Depends(g
 async def buscar_product_templates(
     search: str = Query("", min_length=0),
     limit: int = Query(30, ge=1, le=100),
+    incluir_no_vendibles: bool = Query(False, description="Si False (default): solo sale_ok=TRUE AND purchase_ok=FALSE (productos terminados propios). Si True: trae todos los activos."),
     current_user: dict = Depends(get_current_user)
 ):
+    """Busca templates Odoo para asignar como producto final de un corte.
+    Por defecto filtra solo los productos vendibles que NO son de compra
+    (es decir, productos terminados propios, no insumos).
+    """
+    # WHERE base: active=true + filtros sale_ok/purchase_ok
+    where = ["active = TRUE"]
+    if not incluir_no_vendibles:
+        where.append("sale_ok = TRUE")
+        where.append("COALESCE(purchase_ok, FALSE) = FALSE")
+
+    params = []
+    if search:
+        params.append(f"%{search.lower()}%")
+        where.append(f"(LOWER(name) LIKE ${len(params)} OR CAST(odoo_id AS TEXT) LIKE ${len(params)})")
+
+    params.append(limit)
+    sql = f"""
+        SELECT odoo_id, name, marca, tipo, tela, entalle, linea_negocio, linea_negocio_id,
+               sale_ok, purchase_ok
+        FROM odoo.product_template
+        WHERE {' AND '.join(where)}
+        ORDER BY name
+        LIMIT ${len(params)}
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        if search:
-            rows = await conn.fetch("""
-                SELECT odoo_id, name, marca, tipo, tela, linea_negocio, linea_negocio_id
-                FROM odoo.product_template
-                WHERE LOWER(name) LIKE $1 OR CAST(odoo_id AS TEXT) LIKE $1
-                ORDER BY name
-                LIMIT $2
-            """, f"%{search.lower()}%", limit)
-        else:
-            rows = await conn.fetch("""
-                SELECT odoo_id, name, marca, tipo, tela, linea_negocio, linea_negocio_id
-                FROM odoo.product_template
-                ORDER BY name
-                LIMIT $1
-            """, limit)
+        rows = await conn.fetch(sql, *params)
 
-        return [
-            {
-                "odoo_id": r['odoo_id'],
-                "name": r['name'],
-                "marca": r['marca'],
-                "tipo": r['tipo'],
-                "tela": r['tela'],
-                "linea_negocio": r['linea_negocio'],
-                "linea_negocio_id": r['linea_negocio_id'],
-            }
-            for r in rows
-        ]
+    return [
+        {
+            "odoo_id": r['odoo_id'],
+            "name": r['name'],
+            "marca": r['marca'],
+            "tipo": r['tipo'],
+            "tela": r['tela'],
+            "entalle": r['entalle'],
+            "linea_negocio": r['linea_negocio'],
+            "linea_negocio_id": r['linea_negocio_id'],
+            "sale_ok": r['sale_ok'],
+            "purchase_ok": r['purchase_ok'],
+        }
+        for r in rows
+    ]
 
 
 @router.get("/odoo/stock-inventories")
