@@ -22,8 +22,29 @@ import { formatDate } from '../lib/dateUtils';
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const STORAGE_KEY = 'matriz-produccion-prefs';
 const COL_WIDTHS_KEY = 'matriz-produccion-col-widths';
+const VISTA_MODO_KEY = 'matriz-produccion-vista-modo';
 const DEFAULT_COL_WIDTHS = { __item: 280, __hilo: 90, __total: 80 };
 const MIN_COL_WIDTH = 50;
+
+// Calcula para cada fila qué celdas pintar y con qué rowSpan en cada nivel.
+// Asume que las filas ya vienen ordenadas por los niveles.
+function computeJerarquiaSpans(filas, levels) {
+  const spans = filas.map(() => ({}));
+  levels.forEach((_, levelIdx) => {
+    const composite = (row) =>
+      levels.slice(0, levelIdx + 1).map(l => (row[l] || '__null__')).join('||');
+    let i = 0;
+    while (i < filas.length) {
+      const key = composite(filas[i]);
+      let j = i + 1;
+      while (j < filas.length && composite(filas[j]) === key) j++;
+      spans[i][levels[levelIdx]] = j - i;
+      for (let k = i + 1; k < j; k++) spans[k][levels[levelIdx]] = 0;
+      i = j;
+    }
+  });
+  return spans;
+}
 function isOverdue(val) {
   if (!val) return false;
   try { return new Date(val) < new Date(); } catch { return false; }
@@ -278,6 +299,14 @@ export const MatrizProduccion = () => {
     solo_atrasados: false, solo_activos: true, solo_fraccionados: false,
   });
   const [metrica, setMetrica] = useState('registros');
+  // Vista 'plana' (item plano por fila) o 'jerarquica' (Marca/Tipo/Entalle/Tela/Hilo con merge vertical)
+  const [vistaModo, setVistaModoState] = useState(() => {
+    try { return localStorage.getItem(VISTA_MODO_KEY) || 'plana'; } catch { return 'plana'; }
+  });
+  const setVistaModo = (m) => {
+    setVistaModoState(m);
+    try { localStorage.setItem(VISTA_MODO_KEY, m); } catch {}
+  };
   const [visibleCols, setVisibleCols] = useState(null);
   const [colOrder, setColOrder] = useState(null);
   const [mergedCols, setMergedCols] = useState({}); // { targetCol: [absorbed1, absorbed2] }
@@ -468,6 +497,20 @@ export const MatrizProduccion = () => {
     });
   }, [prefsScope, visibleCols, colOrder, mergedCols]);
 
+  // Filas ordenadas para vista jerárquica: agrupadas por Marca → Tipo → Entalle → Tela → Hilo.
+  // Devuelve además el spans precalculado para los rowSpan de cada nivel.
+  const filasJerarquia = useMemo(() => {
+    const sorted = [...(data?.filas || [])].sort((a, b) =>
+      (a.marca || '').localeCompare(b.marca || '')
+      || (a.tipo || '').localeCompare(b.tipo || '')
+      || (a.entalle || '').localeCompare(b.entalle || '')
+      || (a.tela || '').localeCompare(b.tela || '')
+      || (a.hilo || '').localeCompare(b.hilo || '')
+    );
+    const spans = computeJerarquiaSpans(sorted, ['marca', 'tipo', 'entalle', 'tela']);
+    return { filas: sorted, spans };
+  }, [data]);
+
   const filasOrdenadas = useMemo(() => {
     const filas = data?.filas || [];
     if (totalSort === 'none') return filas;
@@ -643,6 +686,26 @@ export const MatrizProduccion = () => {
             <button className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${metrica === 'prendas' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setMetrica('prendas')} data-testid="metrica-prendas">Prendas</button>
           </div>
 
+          {/* Vista: plana / jerárquica */}
+          <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5" data-testid="vista-toggle">
+            <button
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${vistaModo === 'plana' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setVistaModo('plana')}
+              data-testid="vista-plana"
+              title="Una fila por item · hilo"
+            >
+              Lista plana
+            </button>
+            <button
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${vistaModo === 'jerarquica' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setVistaModo('jerarquica')}
+              data-testid="vista-jerarquica"
+              title="Agrupado por Marca / Tipo / Entalle / Tela (estilo árbol)"
+            >
+              Agrupada
+            </button>
+          </div>
+
           {/* Merges activos */}
           {hasMerges && (
             <div className="flex items-center gap-1">
@@ -766,27 +829,39 @@ export const MatrizProduccion = () => {
               <table className="w-full text-xs border-collapse" data-testid="matriz-table">
                 <thead>
                   <tr className="bg-muted/60">
-                    <th
-                      className="text-left p-2.5 font-semibold sticky top-0 left-0 bg-muted z-30 border-r border-b shadow-sm relative"
-                      style={{ width: getColWidth('__item'), minWidth: getColWidth('__item'), maxWidth: getColWidth('__item') }}
-                    >
-                      Item
-                      <div
-                        className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
-                        onMouseDown={e => startResize(e, '__item')}
-                        title="Arrastra para redimensionar"
-                      />
-                    </th>
-                    <th
-                      className="text-left p-2.5 font-semibold sticky top-0 bg-muted z-30 border-r border-b shadow-sm relative"
-                      style={{ left: getColWidth('__item'), width: getColWidth('__hilo'), minWidth: getColWidth('__hilo'), maxWidth: getColWidth('__hilo') }}
-                    >
-                      Hilo
-                      <div
-                        className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
-                        onMouseDown={e => startResize(e, '__hilo')}
-                      />
-                    </th>
+                    {vistaModo === 'jerarquica' ? (
+                      <>
+                        <th className="text-left p-2 font-semibold sticky top-0 bg-muted z-30 border-r border-b" style={{ width: 130, minWidth: 130 }}>Marca</th>
+                        <th className="text-left p-2 font-semibold sticky top-0 bg-muted z-30 border-r border-b" style={{ width: 90, minWidth: 90 }}>Tipo</th>
+                        <th className="text-left p-2 font-semibold sticky top-0 bg-muted z-30 border-r border-b" style={{ width: 110, minWidth: 110 }}>Entalle</th>
+                        <th className="text-left p-2 font-semibold sticky top-0 bg-muted z-30 border-r border-b" style={{ width: 100, minWidth: 100 }}>Tela</th>
+                        <th className="text-left p-2 font-semibold sticky top-0 bg-muted z-30 border-r border-b" style={{ width: 80, minWidth: 80 }}>Hilo</th>
+                      </>
+                    ) : (
+                      <>
+                        <th
+                          className="text-left p-2.5 font-semibold sticky top-0 left-0 bg-muted z-30 border-r border-b shadow-sm relative"
+                          style={{ width: getColWidth('__item'), minWidth: getColWidth('__item'), maxWidth: getColWidth('__item') }}
+                        >
+                          Item
+                          <div
+                            className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
+                            onMouseDown={e => startResize(e, '__item')}
+                            title="Arrastra para redimensionar"
+                          />
+                        </th>
+                        <th
+                          className="text-left p-2.5 font-semibold sticky top-0 bg-muted z-30 border-r border-b shadow-sm relative"
+                          style={{ left: getColWidth('__item'), width: getColWidth('__hilo'), minWidth: getColWidth('__hilo'), maxWidth: getColWidth('__hilo') }}
+                        >
+                          Hilo
+                          <div
+                            className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
+                            onMouseDown={e => startResize(e, '__hilo')}
+                          />
+                        </th>
+                      </>
+                    )}
                     {effectiveCols.map(col => {
                       const w = getColWidth(col);
                       // Auto-ajuste del tamaño de letra según ancho
@@ -847,29 +922,60 @@ export const MatrizProduccion = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filasOrdenadas.map((fila, idx) => {
+                  {(vistaModo === 'jerarquica' ? filasJerarquia.filas : filasOrdenadas).map((fila, idx) => {
                     const key = `${fila.marca}-${fila.tipo}-${fila.entalle}-${fila.tela}-${fila.hilo}`;
+                    const spans = vistaModo === 'jerarquica' ? (filasJerarquia.spans[idx] || {}) : null;
                     return (
                       <tr key={key} className="border-b hover:bg-muted/20 transition-colors" data-testid={`fila-${idx}`}>
-                        <td
-                          className="p-2.5 sticky left-0 bg-background z-10 border-r"
-                          style={{ width: getColWidth('__item'), minWidth: getColWidth('__item'), maxWidth: getColWidth('__item') }}
-                        >
-                          <button
-                            className="flex items-center gap-1.5 text-left w-full group hover:text-primary transition-colors"
-                            onClick={() => openModal(fila, null)}
-                            data-testid={`item-click-${idx}`}
-                          >
-                            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 group-hover:text-primary" />
-                            <span className="font-medium truncate">{fila.item}</span>
-                          </button>
-                        </td>
-                        <td
-                          className="p-2.5 sticky bg-background z-10 border-r text-muted-foreground truncate"
-                          style={{ left: getColWidth('__item'), width: getColWidth('__hilo'), minWidth: getColWidth('__hilo'), maxWidth: getColWidth('__hilo') }}
-                        >
-                          {fila.hilo}
-                        </td>
+                        {vistaModo === 'jerarquica' ? (
+                          <>
+                            {spans.marca > 0 && (
+                              <td className="p-2 align-top border-r font-medium bg-background" style={{ width: 130, minWidth: 130 }} rowSpan={spans.marca}>
+                                {fila.marca || '—'}
+                              </td>
+                            )}
+                            {spans.tipo > 0 && (
+                              <td className="p-2 align-top border-r bg-background" style={{ width: 90, minWidth: 90 }} rowSpan={spans.tipo}>
+                                {fila.tipo || '—'}
+                              </td>
+                            )}
+                            {spans.entalle > 0 && (
+                              <td className="p-2 align-top border-r bg-background" style={{ width: 110, minWidth: 110 }} rowSpan={spans.entalle}>
+                                {fila.entalle || '—'}
+                              </td>
+                            )}
+                            {spans.tela > 0 && (
+                              <td className="p-2 align-top border-r bg-background" style={{ width: 100, minWidth: 100 }} rowSpan={spans.tela}>
+                                {fila.tela || '—'}
+                              </td>
+                            )}
+                            <td className="p-2 border-r text-muted-foreground" style={{ width: 80, minWidth: 80 }}>
+                              {fila.hilo || '—'}
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td
+                              className="p-2.5 sticky left-0 bg-background z-10 border-r"
+                              style={{ width: getColWidth('__item'), minWidth: getColWidth('__item'), maxWidth: getColWidth('__item') }}
+                            >
+                              <button
+                                className="flex items-center gap-1.5 text-left w-full group hover:text-primary transition-colors"
+                                onClick={() => openModal(fila, null)}
+                                data-testid={`item-click-${idx}`}
+                              >
+                                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 group-hover:text-primary" />
+                                <span className="font-medium truncate">{fila.item}</span>
+                              </button>
+                            </td>
+                            <td
+                              className="p-2.5 sticky bg-background z-10 border-r text-muted-foreground truncate"
+                              style={{ left: getColWidth('__item'), width: getColWidth('__hilo'), minWidth: getColWidth('__hilo'), maxWidth: getColWidth('__hilo') }}
+                            >
+                              {fila.hilo}
+                            </td>
+                          </>
+                        )}
                         {effectiveCols.map(col => {
                           const val = cellVal(fila.celdas, col);
                           return (
@@ -913,8 +1019,8 @@ export const MatrizProduccion = () => {
                   <tr className="bg-muted/40 font-semibold border-t-2">
                     <td
                       className="p-2.5 sticky left-0 bg-muted/40 z-10 border-r"
-                      colSpan={2}
-                      style={{ minWidth: getColWidth('__item') + getColWidth('__hilo') }}
+                      colSpan={vistaModo === 'jerarquica' ? 5 : 2}
+                      style={{ minWidth: vistaModo === 'jerarquica' ? 510 : (getColWidth('__item') + getColWidth('__hilo')) }}
                     >
                       TOTALES
                     </td>
