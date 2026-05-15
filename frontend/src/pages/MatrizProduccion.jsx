@@ -498,18 +498,76 @@ export const MatrizProduccion = () => {
   }, [prefsScope, visibleCols, colOrder, mergedCols]);
 
   // Filas ordenadas para vista jerárquica: agrupadas por Marca → Tipo → Entalle → Tela → Hilo.
-  // Devuelve además el spans precalculado para los rowSpan de cada nivel.
+  // Si totalSort != 'none', se ordena en cada nivel por la suma del total visible
+  // del subárbol (mayor primero si 'desc'). Si totalSort === 'none', alfabético.
   const filasJerarquia = useMemo(() => {
-    const sorted = [...(data?.filas || [])].sort((a, b) =>
-      (a.marca || '').localeCompare(b.marca || '')
-      || (a.tipo || '').localeCompare(b.tipo || '')
-      || (a.entalle || '').localeCompare(b.entalle || '')
-      || (a.tela || '').localeCompare(b.tela || '')
-      || (a.hilo || '').localeCompare(b.hilo || '')
-    );
-    const spans = computeJerarquiaSpans(sorted, ['marca', 'tipo', 'entalle', 'tela']);
+    const filas = data?.filas || [];
+    const direction = totalSort === 'desc' ? -1 : 1;
+    const useTotal = totalSort !== 'none';
+
+    // Construir árbol jerárquico Marca → Tipo → Entalle → Tela → [Hilos]
+    const levels = ['marca', 'tipo', 'entalle', 'tela'];
+    const root = { children: new Map(), total: 0, hilos: [] };
+
+    filas.forEach(f => {
+      let node = root;
+      levels.forEach(l => {
+        const key = f[l] || '';
+        if (!node.children.has(key)) {
+          node.children.set(key, { key, name: key, children: new Map(), total: 0, hilos: [] });
+        }
+        node = node.children.get(key);
+      });
+      const value = filaTotalVisible(f);
+      node.hilos.push({ fila: f, total: value });
+      // Propagar el total hacia arriba (ancestros)
+      node.total += value;
+    });
+
+    // Re-propagar totales (los nodos padre necesitan suma de descendientes).
+    // Pasamos abajo→arriba haciendo DFS.
+    const sumar = (node) => {
+      let total = node.hilos.reduce((a, h) => a + h.total, 0);
+      for (const child of node.children.values()) {
+        total += sumar(child);
+      }
+      node.total = total;
+      return total;
+    };
+    sumar(root);
+
+    const ordenarMap = (m) => {
+      const arr = Array.from(m.values());
+      arr.sort((a, b) => {
+        if (useTotal) {
+          const byTotal = (a.total - b.total) * direction;
+          if (byTotal !== 0) return byTotal;
+        }
+        return (a.name || '').localeCompare(b.name || '');
+      });
+      return arr;
+    };
+
+    // Aplanar el árbol en filas siguiendo el orden de cada nivel.
+    const sorted = [];
+    const walk = (node) => {
+      if (node.hilos.length > 0) {
+        const hilosOrdenados = [...node.hilos].sort((a, b) => {
+          if (useTotal) {
+            const byTotal = (a.total - b.total) * direction;
+            if (byTotal !== 0) return byTotal;
+          }
+          return (a.fila.hilo || '').localeCompare(b.fila.hilo || '');
+        });
+        hilosOrdenados.forEach(h => sorted.push(h.fila));
+      }
+      ordenarMap(node.children).forEach(walk);
+    };
+    walk(root);
+
+    const spans = computeJerarquiaSpans(sorted, levels);
     return { filas: sorted, spans };
-  }, [data]);
+  }, [data, totalSort, filaTotalVisible]);
 
   const filasOrdenadas = useMemo(() => {
     const filas = data?.filas || [];
