@@ -141,7 +141,7 @@ const OdooProductoPicker = ({ registroId, actual, prefill, onVincular, onDesvinc
           <div className="flex-1 min-w-0 text-xs">
             <p className="font-medium truncate">{actual.odoo_product_nombre || `Producto #${actual.odoo_product_id}`}</p>
             <p className="text-muted-foreground">
-              Código: <span className="font-mono">{actual.odoo_product_codigo || '—'}</span>
+              Modelo Odoo: <span className="font-mono">{actual.odoo_product_codigo || '—'}</span>
               {actual.odoo_product_asignado_por && (
                 <> · Asignado por {actual.odoo_product_asignado_por}</>
               )}
@@ -246,43 +246,89 @@ const TiendaInfoPanel = ({ registroId }) => {
 
   return (
     <div className="rounded-md border bg-card overflow-hidden">
-      <div className="px-3 py-1.5 bg-muted/40 border-b text-[10px] uppercase tracking-wider font-medium text-muted-foreground flex items-center justify-between">
-        <span>Tiendas con el producto · {tiendas.length}</span>
-        <span className="font-mono">
-          Stock total: <strong className="text-foreground">{info.stock_total}</strong>
-          {' · '}
-          Ventas: <strong className="text-foreground">{info.ventas_total}</strong>
+      {/* Título + descripción */}
+      <div className="px-3 py-2 bg-muted/40 border-b">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] font-medium">
+            Movimientos del producto en Odoo · {tiendas.length} tienda{tiendas.length !== 1 ? 's' : ''}
+          </p>
+          <p className="text-[10px] text-muted-foreground font-mono">
+            Total stock: <strong className="text-foreground">{info.stock_total}</strong>
+            {' · '}
+            Total vendido: <strong className="text-foreground">{info.ventas_total}</strong>
+          </p>
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-0.5">
+          Por cada tienda: cuántas piezas llegaron, cuántas quedan, cuántas se vendieron desde que ingresaron y cuántas transferencias se hicieron.
+        </p>
+      </div>
+
+      {/* Header de columnas */}
+      <div className="px-3 py-1.5 border-b bg-muted/15 grid grid-cols-[1.4fr_70px_70px_80px_50px] gap-2 text-[10px] uppercase tracking-wider font-medium text-muted-foreground">
+        <span>Tienda</span>
+        <span className="text-right" title="Total de piezas que llegaron a esta tienda en transferencias">
+          Recibido
+        </span>
+        <span className="text-right" title="Stock vivo actual en esta tienda según Odoo">
+          Stock hoy
+        </span>
+        <span className="text-right" title="Ventas POS de este producto desde que llegó por primera vez">
+          Vendido
+        </span>
+        <span className="text-right" title="Cantidad de transferencias hechas a esta tienda">
+          Envíos
         </span>
       </div>
-      <div className="divide-y">
+
+      {/* Filas */}
+      <div className="divide-y divide-border/50">
         {tiendas.map((t) => (
-          <div key={t.location_id} className="grid grid-cols-[1.2fr_60px_60px_60px_60px] gap-2 items-center px-3 py-1.5 text-[11px]">
+          <div
+            key={t.location_id}
+            className="grid grid-cols-[1.4fr_70px_70px_80px_50px] gap-2 items-center px-3 py-1.5 text-[11px] hover:bg-muted/20"
+          >
             <div className="flex items-center gap-1.5 min-w-0">
               <Store className="h-3 w-3 text-blue-600 shrink-0" />
               <span className="font-medium truncate">{t.tienda}</span>
-              <span className="text-muted-foreground text-[10px]">desde {fmtDM(t.fecha_primer_ingreso)}</span>
+              <span className="text-muted-foreground text-[10px] shrink-0">
+                desde {fmtDM(t.fecha_primer_ingreso)}
+              </span>
             </div>
-            <div className="text-right tabular-nums" title="Total ingresado">
-              ↓ <span className="text-foreground">{t.total_ingresado}</span>
+            <div
+              className="text-right tabular-nums"
+              title={`${t.total_ingresado} piezas llegaron en ${t.n_movs} transferencia${t.n_movs !== 1 ? 's' : ''}`}
+            >
+              {t.total_ingresado}
             </div>
-            <div className="text-right tabular-nums" title="Stock actual">
-              <span className={t.stock_actual <= 5 ? 'text-amber-600 font-semibold' : ''}>{t.stock_actual}</span>
+            <div
+              className={`text-right tabular-nums ${
+                t.stock_actual === 0
+                  ? 'text-red-600 font-semibold'
+                  : t.stock_actual <= 5
+                  ? 'text-amber-600 font-semibold'
+                  : ''
+              }`}
+              title={
+                t.stock_actual === 0
+                  ? 'Agotado en esta tienda'
+                  : t.stock_actual <= 5
+                  ? 'Stock bajo · revisar reposición'
+                  : 'Stock actual en esta tienda'
+              }
+            >
+              {t.stock_actual}
             </div>
-            <div className="text-right tabular-nums text-emerald-700 dark:text-emerald-400" title="Ventas POS">
+            <div
+              className="text-right tabular-nums text-emerald-700 dark:text-emerald-400"
+              title={`Vendidas desde ${fmtDM(t.fecha_primer_ingreso)}`}
+            >
               {t.ventas_desde_ingreso}
             </div>
-            <div className="text-right text-[10px] text-muted-foreground" title="# transferencias">
-              {t.n_movs} mov
+            <div className="text-right tabular-nums text-muted-foreground" title="# de transferencias">
+              {t.n_movs}
             </div>
           </div>
         ))}
-      </div>
-      <div className="px-3 py-1 border-t bg-muted/20 grid grid-cols-[1.2fr_60px_60px_60px_60px] gap-2 text-[9px] uppercase tracking-wider text-muted-foreground">
-        <span>Tienda</span>
-        <span className="text-right">Ingr.</span>
-        <span className="text-right">Stock</span>
-        <span className="text-right">Vendido</span>
-        <span className="text-right">Movs</span>
       </div>
     </div>
   );
@@ -318,7 +364,9 @@ const PickerBody = ({ query, setQuery, resultados, loading, onSelect, submitting
         >
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium truncate">{r.name}</span>
-            <span className="text-[10px] text-muted-foreground font-mono shrink-0">{r.codigo}</span>
+            <span className="text-[10px] text-muted-foreground font-mono shrink-0" title="ID del modelo en Odoo (template_id)">
+              #{r.template_id}
+            </span>
           </div>
           <div className="text-[11px] text-muted-foreground truncate">
             {[r.marca, r.tipo, r.tela, r.entalle].filter(Boolean).join(' · ')}

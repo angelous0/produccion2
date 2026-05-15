@@ -121,8 +121,9 @@ async def buscar_productos(
             "template_id": r["template_id"],
             "variant_barcode": r["variant_barcode"],
             "variantes_count": int(r["variantes_count"] or 0),
-            # Codigo a guardar: barcode si existe, sino TPL-{id}
-            "codigo": r["variant_barcode"] or f"TPL-{r['template_id']}",
+            # Codigo a guardar: template_id como referencia estable.
+            # El barcode queda disponible en variant_barcode si se necesita.
+            "codigo": str(r["template_id"]),
             "display": (
                 f"{r['name']} · {r['marca'] or '—'} · "
                 f"{r['tela'] or '—'} {r['entalle'] or ''}"
