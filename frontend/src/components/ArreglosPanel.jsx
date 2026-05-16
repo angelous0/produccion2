@@ -550,11 +550,16 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
                     </div>
 
                     <div className={`text-[10px] mt-0.5 ${txtCant ? 'opacity-80' : 'text-muted-foreground'}`}>
-                      {completado
-                        ? (diasEntrega !== null && diasEntrega > 0
-                            ? `entregado en ${diasEntrega}d hábiles`
-                            : 'entregado')
-                        : `enviado ${fmtDM(a.fecha_envio)} · vence ${fmtDM(a.fecha_limite)}`}
+                      {completado ? (
+                        <>
+                          enviado {fmtDM(a.fecha_envio)}
+                          {diasEntrega !== null && diasEntrega > 0
+                            ? ` · entregado en ${diasEntrega}d hábiles`
+                            : ' · entregado'}
+                        </>
+                      ) : (
+                        <>enviado {fmtDM(a.fecha_envio)} · vence {fmtDM(a.fecha_limite)}</>
+                      )}
                     </div>
 
                     {/* Mini resolución (sólo si ya hay valores parciales) */}
@@ -690,9 +695,18 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
                     </div>
 
                     <div className={`text-[10px] mt-0.5 ${txt ? 'opacity-80' : 'text-muted-foreground'}`}>
-                      {cerrado
-                        ? (diasCierre !== null ? `cerrado en ${diasCierre}d` : 'cerrado')
-                        : `detectado hace ${dias === null ? '-' : `${dias}d`}${destrabar ? ' · destrabar' : ''}`}
+                      {cerrado ? (
+                        <>
+                          detectado {fmtDM(f.fecha_deteccion)}
+                          {diasCierre !== null ? ` · cerrado en ${diasCierre}d` : ' · cerrado'}
+                          {f.fecha_cierre ? ` (${fmtDM(f.fecha_cierre)})` : ''}
+                        </>
+                      ) : (
+                        <>
+                          detectado {fmtDM(f.fecha_deteccion)}{dias !== null ? ` · hace ${dias}d` : ''}
+                          {destrabar ? ' · destrabar' : ''}
+                        </>
+                      )}
                     </div>
 
                     {!cerrado && (
