@@ -168,8 +168,25 @@ class FalladoUpdate(BaseModel):
     observacion: Optional[str] = None
 
 class FalladoCerrarTela(BaseModel):
-    """Cierra un fallado causa='tela' con la decisión de Acabado."""
-    resolucion: str  # 'RECUPERADO' o 'LIQUIDADO'
+    """Resuelve (parcial o total) un fallado causa='tela' por parte de Acabado.
+
+    Hoy soporta dos modos:
+      1. Modo nuevo (acumulativo): pasar `agregar_recuperada` y/o
+         `agregar_liquidada`. Los valores se SUMAN a las cantidades ya
+         resueltas en pasos anteriores. Permite ir cerrando de a poco.
+      2. Modo legacy: pasar `resolucion='RECUPERADO'|'LIQUIDADO'` cierra
+         de una sola vez el saldo pendiente con ese destino.
+
+    Reglas:
+      - `agregar_recuperada + agregar_liquidada` no puede dejar el total
+        acumulado por encima de `cantidad_detectada`.
+      - Si el total acumulado llega a `cantidad_detectada`, se marca
+        `estado_tela`: `RECUPERADO` si todo fue recuperado, `LIQUIDADO`
+        si todo fue liquidado, `CERRADO` si hubo mezcla.
+    """
+    resolucion: Optional[str] = None  # legacy: 'RECUPERADO' | 'LIQUIDADO'
+    agregar_recuperada: Optional[float] = None
+    agregar_liquidada: Optional[float] = None
 
 class ArregloCreate(BaseModel):
     cantidad: int
@@ -355,6 +372,7 @@ async def get_fallados(
                    COALESCE(f.observacion, f.observaciones) as observacion,
                    COALESCE(f.causa, 'servicio') AS causa,
                    f.estado_tela, f.fecha_cierre, f.origen_arreglo_id,
+                   f.cantidad_tela_recuperada, f.cantidad_tela_liquidada,
                    f.created_at, f.created_by
             FROM prod_fallados f
             WHERE 1=1
@@ -370,6 +388,10 @@ async def get_fallados(
             d = dict(r)
             for f in ("fecha_deteccion", "fecha_cierre", "created_at"):
                 if d.get(f): d[f] = str(d[f])
+            # Asegurar serialización numérica (asyncpg devuelve Decimal)
+            for nf in ("cantidad_tela_recuperada", "cantidad_tela_liquidada", "cantidad_detectada"):
+                if d.get(nf) is not None:
+                    d[nf] = float(d[nf])
             result.append(d)
         return result
 
@@ -413,21 +435,22 @@ async def cerrar_fallado_tela(
     input: FalladoCerrarTela,
     current_user: dict = Depends(get_current_user),
 ):
-    """Cierra un fallado causa='tela' con la decisión de Acabado:
-    - RECUPERADO: la prenda vuelve al lote bueno.
-    - LIQUIDADO: la prenda sale del inventario.
-    """
-    resolucion = (input.resolucion or "").upper().strip()
-    if resolucion not in ("RECUPERADO", "LIQUIDADO"):
-        raise HTTPException(
-            status_code=400,
-            detail="resolucion debe ser 'RECUPERADO' o 'LIQUIDADO'",
-        )
+    """Resuelve (parcial o total) un fallado causa='tela'.
 
+    Modo acumulativo (recomendado):
+        body: { "agregar_recuperada": 4, "agregar_liquidada": 0 }
+        Suma a lo ya resuelto. Si llega al total → cierra.
+
+    Modo legacy:
+        body: { "resolucion": "RECUPERADO" | "LIQUIDADO" }
+        Cierra todo el saldo pendiente con ese destino.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         existing = await conn.fetchrow(
-            "SELECT id, causa, estado_tela FROM prod_fallados WHERE id = $1",
+            """SELECT id, causa, estado_tela, cantidad_detectada,
+                      cantidad_tela_recuperada, cantidad_tela_liquidada
+               FROM prod_fallados WHERE id = $1""",
             fallado_id,
         )
         if not existing:
@@ -437,17 +460,86 @@ async def cerrar_fallado_tela(
                 status_code=400,
                 detail="Solo se pueden cerrar fallados con causa='tela'",
             )
-        if existing["estado_tela"] in ("RECUPERADO", "LIQUIDADO"):
+
+        detectada = float(existing["cantidad_detectada"] or 0)
+        rec_actual = float(existing["cantidad_tela_recuperada"] or 0)
+        liq_actual = float(existing["cantidad_tela_liquidada"] or 0)
+        pendiente = detectada - rec_actual - liq_actual
+
+        # Estado cerrado (todo resuelto) → no permitimos más cambios
+        if pendiente <= 0:
             raise HTTPException(
                 status_code=400,
-                detail=f"Este fallado ya fue cerrado como {existing['estado_tela']}",
+                detail="Este fallado ya está cerrado (todo resuelto). No se pueden agregar más resoluciones.",
             )
 
+        # Determinar deltas según modo
+        if input.agregar_recuperada is not None or input.agregar_liquidada is not None:
+            d_rec = float(input.agregar_recuperada or 0)
+            d_liq = float(input.agregar_liquidada or 0)
+        else:
+            # Modo legacy
+            res = (input.resolucion or "").upper().strip()
+            if res == "RECUPERADO":
+                d_rec, d_liq = pendiente, 0.0
+            elif res == "LIQUIDADO":
+                d_rec, d_liq = 0.0, pendiente
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Debes enviar agregar_recuperada/agregar_liquidada o resolucion='RECUPERADO|LIQUIDADO'",
+                )
+
+        if d_rec < 0 or d_liq < 0:
+            raise HTTPException(status_code=400, detail="Las cantidades no pueden ser negativas")
+        if d_rec == 0 and d_liq == 0:
+            raise HTTPException(status_code=400, detail="Debes indicar al menos una cantidad > 0")
+        if d_rec + d_liq > pendiente + 0.0001:
+            raise HTTPException(
+                status_code=400,
+                detail=f"La suma a agregar ({d_rec + d_liq}) excede el pendiente actual ({pendiente})",
+            )
+
+        nuevo_rec = rec_actual + d_rec
+        nuevo_liq = liq_actual + d_liq
+        nuevo_total = nuevo_rec + nuevo_liq
+        cerrado = abs(nuevo_total - detectada) < 0.0001
+
+        # Derivar estado_tela:
+        if not cerrado:
+            nuevo_estado = "EVALUANDO"
+            fecha_cierre = None
+        elif nuevo_liq == 0:
+            nuevo_estado = "RECUPERADO"
+            fecha_cierre = date.today()
+        elif nuevo_rec == 0:
+            nuevo_estado = "LIQUIDADO"
+            fecha_cierre = date.today()
+        else:
+            nuevo_estado = "CERRADO"  # mixto recuperado + liquidado
+            fecha_cierre = date.today()
+
         await conn.execute(
-            "UPDATE prod_fallados SET estado_tela = $1, fecha_cierre = $2 WHERE id = $3",
-            resolucion, date.today(), fallado_id,
+            """UPDATE prod_fallados
+               SET cantidad_tela_recuperada = $1,
+                   cantidad_tela_liquidada  = $2,
+                   estado_tela = $3,
+                   fecha_cierre = $4
+               WHERE id = $5""",
+            nuevo_rec, nuevo_liq, nuevo_estado, fecha_cierre, fallado_id,
         )
-        return {"message": f"Fallado cerrado como {resolucion}", "estado_tela": resolucion}
+        return {
+            "message": (
+                f"Fallado cerrado como {nuevo_estado}"
+                if cerrado else
+                f"Resolución parcial registrada · {nuevo_rec}/{detectada} recuperado · {nuevo_liq}/{detectada} liquidado"
+            ),
+            "estado_tela": nuevo_estado,
+            "cantidad_tela_recuperada": nuevo_rec,
+            "cantidad_tela_liquidada": nuevo_liq,
+            "pendiente": max(detectada - nuevo_total, 0),
+            "cerrado": cerrado,
+        }
 
 
 @router.put("/fallados/{fallado_id}")
@@ -1574,28 +1666,24 @@ async def resumen_cantidades(
         total_fallados = await _get_total_fallados(conn, registro_id)
         total_fallados_originales = await _get_total_fallados_originales(conn, registro_id)
 
-        # Cifras del flujo "De tela" (causa='tela'), por estado.
-        tela_evaluando = safe_int(await conn.fetchval(
+        # Cifras del flujo "De tela" (causa='tela'). Soporta resoluciones
+        # parciales: un mismo fallado puede tener parte recuperada y parte
+        # liquidada. tela_evaluando = pendiente = detectada - rec - liq.
+        tela_sumas = await conn.fetchrow(
             """
-            SELECT COALESCE(SUM(cantidad_detectada), 0) FROM prod_fallados
-            WHERE registro_id = $1 AND causa = 'tela' AND estado_tela = 'EVALUANDO'
+            SELECT
+              COALESCE(SUM(cantidad_detectada), 0)          AS detectada,
+              COALESCE(SUM(cantidad_tela_recuperada), 0)    AS recuperada,
+              COALESCE(SUM(cantidad_tela_liquidada), 0)     AS liquidada
+            FROM prod_fallados
+            WHERE registro_id = $1 AND causa = 'tela'
             """,
             registro_id,
-        ))
-        tela_recuperado = safe_int(await conn.fetchval(
-            """
-            SELECT COALESCE(SUM(cantidad_detectada), 0) FROM prod_fallados
-            WHERE registro_id = $1 AND causa = 'tela' AND estado_tela = 'RECUPERADO'
-            """,
-            registro_id,
-        ))
-        tela_liquidado = safe_int(await conn.fetchval(
-            """
-            SELECT COALESCE(SUM(cantidad_detectada), 0) FROM prod_fallados
-            WHERE registro_id = $1 AND causa = 'tela' AND estado_tela = 'LIQUIDADO'
-            """,
-            registro_id,
-        ))
+        )
+        tela_recuperado = safe_int(tela_sumas["recuperada"] if tela_sumas else 0)
+        tela_liquidado = safe_int(tela_sumas["liquidada"] if tela_sumas else 0)
+        tela_detectada_total = safe_int(tela_sumas["detectada"] if tela_sumas else 0)
+        tela_evaluando = max(tela_detectada_total - tela_recuperado - tela_liquidado, 0)
 
         # Arreglos V2 (envíos a servicio)
         arreglos_rows = await conn.fetch(

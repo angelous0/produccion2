@@ -194,11 +194,12 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
     }
   };
 
-  // Cierre de fallado tela: Acabado decide RECUPERADO o LIQUIDADO.
+  // Cierre rápido (legacy / atajo): cierra TODO el saldo pendiente con un destino.
+  // Soporta también el nuevo modo acumulativo via openResolverTela().
   const handleCerrarTela = async (falladoId, resolucion) => {
     if (saving) return;
-    const txt = resolucion === 'RECUPERADO' ? 'recuperar (vuelve al lote bueno)' : 'liquidar (sale del inventario)';
-    if (!window.confirm(`¿Confirmas ${txt} estas prendas?`)) return;
+    const txt = resolucion === 'RECUPERADO' ? 'recuperar TODO el saldo (vuelve al lote bueno)' : 'liquidar TODO el saldo (sale del inventario)';
+    if (!window.confirm(`¿Confirmas ${txt}?`)) return;
     setSaving(true);
     try {
       await axios.post(`${API}/fallados/${falladoId}/cerrar-tela`, { resolucion }, { headers: hdrs() });
@@ -206,6 +207,43 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
       fetchAll();
     } catch (e) {
       toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : 'Error al cerrar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Modal de resolución parcial: acumula deltas a recuperada/liquidada.
+  const [telaModal, setTelaModal] = useState(null); // fallado actual
+  const [telaForm, setTelaForm] = useState({ agregar_recuperada: 0, agregar_liquidada: 0 });
+  const openResolverTela = (f) => {
+    setTelaModal(f);
+    setTelaForm({ agregar_recuperada: 0, agregar_liquidada: 0 });
+  };
+  const submitResolverTela = async () => {
+    if (!telaModal || saving) return;
+    const rec = parseFloat(telaForm.agregar_recuperada || 0);
+    const liq = parseFloat(telaForm.agregar_liquidada || 0);
+    if (rec <= 0 && liq <= 0) {
+      toast.error('Indica al menos una cantidad > 0');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await axios.post(
+        `${API}/fallados/${telaModal.id}/cerrar-tela`,
+        { agregar_recuperada: rec, agregar_liquidada: liq },
+        { headers: hdrs() },
+      );
+      const d = res.data || {};
+      if (d.cerrado) {
+        toast.success(`Cerrado como ${d.estado_tela}`);
+      } else {
+        toast.success(`Parcial guardado · pendiente: ${d.pendiente}`);
+      }
+      setTelaModal(null);
+      fetchAll();
+    } catch (e) {
+      toast.error(typeof e.response?.data?.detail === 'string' ? e.response?.data?.detail : 'Error al guardar');
     } finally {
       setSaving(false);
     }
@@ -613,47 +651,59 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
             ) : (
               falladosTela.map(f => {
                 const dias = diasDesde(f.fecha_deteccion);
+                const detectada = Number(f.cantidad_detectada) || 0;
+                const rec = Number(f.cantidad_tela_recuperada) || 0;
+                const liq = Number(f.cantidad_tela_liquidada) || 0;
+                const resuelto = rec + liq;
+                const pendiente = Math.max(detectada - resuelto, 0);
                 const estadoT = f.estado_tela || 'EVALUANDO';
-                const recuperado = estadoT === 'RECUPERADO';
-                const liquidado = estadoT === 'LIQUIDADO';
-                const cerrado = recuperado || liquidado;
+                const cerrado = pendiente <= 0 && detectada > 0;
+                const parcial = !cerrado && resuelto > 0;
+                const todoRec = cerrado && liq === 0;
+                const todoLiq = cerrado && rec === 0;
+                const mixto = cerrado && rec > 0 && liq > 0;
                 const destrabar = !cerrado && (dias || 0) > DIAS_LIMITE_TELA_DESTRABAR;
                 const diasCierre = cerrado ? diasHabilesEntre(f.fecha_deteccion, f.fecha_cierre) : null;
 
-                // Estilos
+                // Estilos según estado real (cerrado/parcial/evaluando)
                 let bg, borderLeft, txt;
-                if (recuperado) {
+                if (todoRec) {
                   bg = 'bg-muted/50 dark:bg-zinc-900/40';
                   borderLeft = 'border-l-emerald-500';
                   txt = '';
-                } else if (liquidado) {
+                } else if (todoLiq) {
                   bg = 'bg-muted/50 dark:bg-zinc-900/40';
                   borderLeft = 'border-l-red-500';
+                  txt = '';
+                } else if (mixto) {
+                  bg = 'bg-muted/50 dark:bg-zinc-900/40';
+                  borderLeft = 'border-l-violet-500';
                   txt = '';
                 } else if (destrabar) {
                   bg = 'bg-amber-100 dark:bg-amber-900/40';
                   borderLeft = 'border-l-amber-500';
                   txt = 'text-amber-800 dark:text-amber-200';
+                } else if (parcial) {
+                  bg = 'bg-blue-50 dark:bg-blue-950/30';
+                  borderLeft = 'border-l-blue-400 dark:border-l-blue-700';
+                  txt = 'text-blue-700 dark:text-blue-300';
                 } else {
                   bg = 'bg-blue-50 dark:bg-blue-950/30';
                   borderLeft = 'border-l-blue-300 dark:border-l-blue-800';
                   txt = 'text-blue-700 dark:text-blue-300';
                 }
 
-                const badgeLbl = recuperado
-                  ? 'RECUPERADO'
-                  : liquidado
-                    ? 'LIQUIDADO'
-                    : destrabar
-                      ? `LLEVA ${dias}d`
-                      : 'EVALUANDO';
-                const badgeCls = recuperado
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                  : liquidado
-                    ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
-                    : destrabar
-                      ? 'bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-200'
-                      : 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300';
+                const badgeLbl = todoRec ? 'RECUPERADO'
+                  : todoLiq ? 'LIQUIDADO'
+                  : mixto ? 'CERRADO'
+                  : destrabar ? `LLEVA ${dias}d`
+                  : parcial ? `PENDIENTE ${pendiente}`
+                  : 'EVALUANDO';
+                const badgeCls = todoRec ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                  : todoLiq ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                  : mixto ? 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300'
+                  : destrabar ? 'bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-200'
+                  : 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300';
 
                 return (
                   <div
@@ -661,8 +711,8 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
                     className={`relative p-3 rounded-md border border-l-4 ${bg} ${borderLeft}`}
                     data-testid={`tela-card-${f.id}`}
                   >
-                    {/* Eliminar (sólo si EVALUANDO; cerrados no se eliminan para preservar trazabilidad) */}
-                    {!cerrado && (
+                    {/* Eliminar (sólo si nada resuelto; sino preservamos trazabilidad) */}
+                    {!cerrado && !parcial && (
                       <button
                         type="button"
                         onClick={() => handleDeleteFallado(f.id)}
@@ -675,15 +725,15 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
                     )}
 
                     <div className="flex items-center justify-between gap-2 pr-6">
-                      <span className={`font-semibold text-base ${txt}`}>{f.cantidad_detectada} pzs</span>
+                      <span className={`font-semibold text-base ${txt}`}>{detectada} pzs</span>
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md whitespace-nowrap ${badgeCls}`}>
                         {badgeLbl}
                       </span>
                     </div>
 
                     <div className={`text-xs mt-0.5 ${txt || 'text-muted-foreground'} flex items-center gap-1 flex-wrap`}>
-                      {cerrado
-                        ? (recuperado ? 'acabado recuperó' : 'acabado liquidó')
+                      {cerrado ? (todoRec ? 'acabado recuperó' : todoLiq ? 'acabado liquidó' : 'cerrado mixto')
+                        : parcial ? 'resolución parcial'
                         : 'acabado pendiente'}
                       {f.origen_arreglo_id && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-background/50 text-muted-foreground">
@@ -693,6 +743,15 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
                         </span>
                       )}
                     </div>
+
+                    {/* Desglose rec/liq cuando hay algo resuelto */}
+                    {(rec > 0 || liq > 0) && (
+                      <div className="text-[10px] mt-1 flex flex-wrap gap-2">
+                        {rec > 0 && <span className="text-emerald-600 dark:text-emerald-400">Rec: {rec}</span>}
+                        {liq > 0 && <span className="text-red-600 dark:text-red-400">Liq: {liq}</span>}
+                        {pendiente > 0 && <span className="text-muted-foreground">Pend: {pendiente}</span>}
+                      </div>
+                    )}
 
                     <div className={`text-[10px] mt-0.5 ${txt ? 'opacity-80' : 'text-muted-foreground'}`}>
                       {cerrado ? (
@@ -710,26 +769,15 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
                     </div>
 
                     {!cerrado && (
-                      <div className="flex gap-2 mt-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="flex-1 h-8 text-xs bg-background/60"
-                          onClick={() => handleCerrarTela(f.id, 'RECUPERADO')}
-                          data-testid={`btn-tela-recuperar-${f.id}`}
-                        >
-                          Recuperar
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="flex-1 h-8 text-xs bg-background/60"
-                          onClick={() => handleCerrarTela(f.id, 'LIQUIDADO')}
-                          data-testid={`btn-tela-liquidar-${f.id}`}
-                        >
-                          Liquidar
-                        </Button>
-                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full h-8 text-xs mt-2 bg-background/60"
+                        onClick={() => openResolverTela(f)}
+                        data-testid={`btn-resolver-tela-${f.id}`}
+                      >
+                        Resolver tela →
+                      </Button>
                     )}
                   </div>
                 );
@@ -909,6 +957,83 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
           <DialogFooter>
             <Button type="button" variant="outline" size="sm" onClick={() => setResolucionDialogOpen(false)}>Cancelar</Button>
             <Button type="button" size="sm" onClick={handleSaveResolucion} disabled={saving || resTotal !== resCantidad} data-testid="btn-guardar-resolucion">{saving ? 'Guardando...' : 'Confirmar entrega'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG: Resolver tela (parcial / acumulativo) */}
+      <Dialog open={!!telaModal} onOpenChange={(o) => { if (!o) setTelaModal(null); }}>
+        <DialogContent className="max-w-sm" data-testid="dialog-resolver-tela">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Resolver tela</DialogTitle>
+          </DialogHeader>
+          {telaModal && (() => {
+            const det = Number(telaModal.cantidad_detectada) || 0;
+            const recAct = Number(telaModal.cantidad_tela_recuperada) || 0;
+            const liqAct = Number(telaModal.cantidad_tela_liquidada) || 0;
+            const pend = Math.max(det - recAct - liqAct, 0);
+            const dRec = parseFloat(telaForm.agregar_recuperada) || 0;
+            const dLiq = parseFloat(telaForm.agregar_liquidada) || 0;
+            const nuevoRec = recAct + dRec;
+            const nuevoLiq = liqAct + dLiq;
+            const nuevoPend = Math.max(det - nuevoRec - nuevoLiq, 0);
+            const excede = (dRec + dLiq) > pend + 0.0001;
+            return (
+              <div className="space-y-3">
+                <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs space-y-1">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Detectado:</span><span className="font-mono">{det}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Recuperado hasta hoy:</span><span className="font-mono text-emerald-600">{recAct}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Liquidado hasta hoy:</span><span className="font-mono text-red-600">{liqAct}</span></div>
+                  <div className="flex justify-between border-t pt-1 mt-1 font-semibold"><span>Pendiente:</span><span className="font-mono">{pend}</span></div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs flex items-center gap-1 text-emerald-700"><span>+ Recuperar</span></Label>
+                    <Input
+                      type="number" min={0} max={pend} step={1}
+                      value={telaForm.agregar_recuperada}
+                      onChange={e => setTelaForm({ ...telaForm, agregar_recuperada: e.target.value })}
+                      className="h-8 text-sm font-mono"
+                      data-testid="input-tela-recuperar"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs flex items-center gap-1 text-red-700"><span>+ Liquidar</span></Label>
+                    <Input
+                      type="number" min={0} max={pend} step={1}
+                      value={telaForm.agregar_liquidada}
+                      onChange={e => setTelaForm({ ...telaForm, agregar_liquidada: e.target.value })}
+                      className="h-8 text-sm font-mono"
+                      data-testid="input-tela-liquidar"
+                    />
+                  </div>
+                </div>
+
+                {(dRec > 0 || dLiq > 0) && (
+                  <div className={`text-[11px] rounded-md px-3 py-2 border ${excede ? 'bg-red-50 border-red-200 text-red-700' : 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900 dark:text-blue-300'}`}>
+                    Después de guardar: rec={nuevoRec}, liq={nuevoLiq}, pendiente={nuevoPend}
+                    {nuevoPend === 0 && !excede && <> · <strong>se cerrará</strong></>}
+                    {excede && <> · <strong>excede el pendiente</strong></>}
+                  </div>
+                )}
+
+                <p className="text-[10px] text-muted-foreground">
+                  Tip: puedes guardar parcial varias veces hasta llegar a 0 pendientes.
+                </p>
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button type="button" variant="outline" size="sm" onClick={() => setTelaModal(null)}>Cancelar</Button>
+            <Button
+              type="button" size="sm"
+              onClick={submitResolverTela}
+              disabled={saving || (!parseFloat(telaForm.agregar_recuperada) && !parseFloat(telaForm.agregar_liquidada))}
+              data-testid="btn-submit-resolver-tela"
+            >
+              {saving ? 'Guardando...' : 'Guardar'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
