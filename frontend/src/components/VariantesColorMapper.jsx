@@ -7,20 +7,108 @@ import { Badge } from './ui/badge';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from './ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command';
 import {
   ChevronDown, ChevronRight, Plus, Loader2, Palette,
   CheckCircle2, AlertCircle, CircleDashed, Trash2, Check, X,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn, formatColorName } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+const ColorCatalogCombobox = ({ colores = [], value = '', onChange }) => {
+  const [open, setOpen] = useState(false);
+  const selected = colores.find(c => c.id === value);
+  const hasRuleFlags = colores.some(c => typeof c.permitido === 'boolean');
+  const sugeridos = hasRuleFlags ? colores.filter(c => c.permitido) : colores;
+  const otros = hasRuleFlags ? colores.filter(c => !c.permitido) : [];
+
+  const renderColorItem = (c) => (
+    <CommandItem
+      key={c.id}
+      value={`${formatColorName(c.nombre || '')} ${formatColorName(c.color_general_nombre || '')} ${c.id}`}
+      onSelect={() => {
+        onChange(c.id);
+        setOpen(false);
+      }}
+    >
+      <Check className={cn('mr-2 h-4 w-4', value === c.id ? 'opacity-100' : 'opacity-0')} />
+      <span className="truncate">
+        {formatColorName(c.nombre)}
+        {c.color_general_nombre && (
+          <span className="text-muted-foreground"> · {formatColorName(c.color_general_nombre)}</span>
+        )}
+      </span>
+    </CommandItem>
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="h-9 text-sm flex-1 justify-between font-normal"
+        >
+          <span className={cn('truncate text-left', !selected && 'text-muted-foreground')}>
+            {selected ? (
+              <>
+                {formatColorName(selected.nombre)}
+                {selected.color_general_nombre && (
+                  <span className="text-muted-foreground"> · {formatColorName(selected.color_general_nombre)}</span>
+                )}
+              </>
+            ) : (
+              '— Seleccionar —'
+            )}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[320px] p-0 z-[80]" align="start">
+        <Command shouldFilter={true}>
+          <CommandInput placeholder="Buscar color..." />
+          <CommandList className="max-h-[280px]" onWheel={e => e.stopPropagation()}>
+            <CommandEmpty>Sin colores en la regla para este producto.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="sin asignar limpiar seleccionar"
+                onSelect={() => {
+                  onChange('');
+                  setOpen(false);
+                }}
+                className="text-muted-foreground italic"
+              >
+                <Check className={cn('mr-2 h-4 w-4', !value ? 'opacity-100' : 'opacity-0')} />
+                — Seleccionar —
+              </CommandItem>
+            </CommandGroup>
+            <CommandGroup heading={hasRuleFlags ? "Sugeridos por regla" : undefined}>
+              {sugeridos.map(renderColorItem)}
+            </CommandGroup>
+            {otros.length > 0 && (
+              <CommandGroup heading="Otros colores">
+                {otros.map(renderColorItem)}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+};
 
 /**
  * Mapea los colores Odoo (texto libre) a FKs de prod_colores_catalogo,
  * por cada product_id (variante) del template. Agrupa por color Odoo,
  * muestra stock/ventas por talla y permite mapeo bulk por grupo.
  */
-export default function VariantesColorMapper({ templateId }) {
+export default function VariantesColorMapper({ templateId, scope = {} }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [colores, setColores] = useState([]);
@@ -31,6 +119,10 @@ export default function VariantesColorMapper({ templateId }) {
   const [nuevoNombre, setNuevoNombre] = useState('');
   const [nuevoGeneralId, setNuevoGeneralId] = useState('');
   const [saving, setSaving] = useState(null);
+  const scopeMarcaId = scope?.marca_id || '';
+  const scopeTipoId = scope?.tipo_id || '';
+  const scopeEntalleId = scope?.entalle_id || '';
+  const scopeHiloId = scope?.hilo_id || '';
 
   const cargar = useCallback(async () => {
     if (!templateId) return;
@@ -47,14 +139,19 @@ export default function VariantesColorMapper({ templateId }) {
 
   const cargarColores = useCallback(async () => {
     try {
+      const params = new URLSearchParams({ solo_regla: 'true' });
+      if (scopeMarcaId) params.set('marca_id', scopeMarcaId);
+      if (scopeTipoId) params.set('tipo_id', scopeTipoId);
+      if (scopeEntalleId) params.set('entalle_id', scopeEntalleId);
+      if (scopeHiloId) params.set('hilo_id', scopeHiloId);
       const [c, cg] = await Promise.all([
-        axios.get(`${API}/colores-catalogo`),
+        axios.get(`${API}/colores-catalogo?${params.toString()}`),
         axios.get(`${API}/colores-generales`),
       ]);
       setColores(c.data || []);
       setColoresGenerales(cg.data || []);
     } catch {}
-  }, []);
+  }, [scopeMarcaId, scopeTipoId, scopeEntalleId, scopeHiloId]);
 
   useEffect(() => {
     cargar();
@@ -72,7 +169,7 @@ export default function VariantesColorMapper({ templateId }) {
         color_id: colorId,
         product_ids: grupo.product_ids.map(p => p.product_id),
       });
-      toast.success(`${grupo.color_odoo} mapeado`);
+      toast.success(`${formatColorName(grupo.color_odoo)} mapeado`);
       setExpandido(null);
       await cargar();
     } catch (err) {
@@ -84,7 +181,7 @@ export default function VariantesColorMapper({ templateId }) {
   };
 
   const quitarMapeo = async (grupo) => {
-    if (!window.confirm(`¿Quitar el mapeo de "${grupo.color_odoo}"? (${grupo.product_ids.length} variantes)`)) return;
+    if (!window.confirm(`¿Quitar el mapeo de "${formatColorName(grupo.color_odoo)}"? (${grupo.product_ids.length} variantes)`)) return;
     setSaving(grupo.color_odoo);
     try {
       await axios.delete(`${API}/odoo-enriq/color-mapping`, {
@@ -103,7 +200,7 @@ export default function VariantesColorMapper({ templateId }) {
   };
 
   const crearColor = async (colorOdoo) => {
-    const nombre = nuevoNombre.trim();
+    const nombre = formatColorName(nuevoNombre);
     if (!nombre) return;
     try {
       const res = await axios.post(`${API}/odoo-enriq/colores/crear`, {
@@ -112,9 +209,9 @@ export default function VariantesColorMapper({ templateId }) {
       });
       const d = res.data;
       if (d.existing) {
-        toast.success(`Color "${d.nombre}" ya existía, seleccionado`);
+        toast.success(`Color "${formatColorName(d.nombre)}" ya existía, seleccionado`);
       } else {
-        toast.success(`Color "${d.nombre}" creado`);
+        toast.success(`Color "${formatColorName(d.nombre)}" creado`);
       }
       await cargarColores();
       setSelecciones(prev => ({ ...prev, [colorOdoo]: d.id }));
@@ -199,7 +296,7 @@ export default function VariantesColorMapper({ templateId }) {
                   {expanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium flex items-center gap-2">
-                      {grupo.color_odoo}
+                      {formatColorName(grupo.color_odoo)}
                       <span className="text-[10px] text-muted-foreground font-normal">color Odoo</span>
                     </div>
                     <div className="text-[11px] text-muted-foreground">
@@ -214,8 +311,8 @@ export default function VariantesColorMapper({ templateId }) {
                         <CheckCircle2 className="h-3 w-3" /> mapeado
                       </Badge>
                       <span className="text-[11px] text-muted-foreground truncate max-w-[180px]">
-                        → {grupo.color_nombre_mapeado}
-                        {grupo.color_general_nombre && <span className="opacity-60"> · {grupo.color_general_nombre}</span>}
+                        → {formatColorName(grupo.color_nombre_mapeado)}
+                        {grupo.color_general_nombre && <span className="opacity-60"> · {formatColorName(grupo.color_general_nombre)}</span>}
                       </span>
                     </>
                   )}
@@ -261,7 +358,7 @@ export default function VariantesColorMapper({ templateId }) {
                           <SelectTrigger className="h-9 text-sm w-full sm:w-48"><SelectValue placeholder="Color general (opcional)" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="_none">— sin asignar —</SelectItem>
-                            {coloresGenerales.map(cg => <SelectItem key={cg.id} value={cg.id}>{cg.nombre}</SelectItem>)}
+                            {coloresGenerales.map(cg => <SelectItem key={cg.id} value={cg.id}>{formatColorName(cg.nombre)}</SelectItem>)}
                           </SelectContent>
                         </Select>
                         <div className="flex gap-1">
@@ -275,21 +372,11 @@ export default function VariantesColorMapper({ templateId }) {
                       </div>
                     ) : (
                       <div className="flex gap-2">
-                        <Select
-                          value={colorSelId || '_none'}
-                          onValueChange={(v) => setSelecciones(prev => ({ ...prev, [grupo.color_odoo]: v === '_none' ? '' : v }))}
-                        >
-                          <SelectTrigger className="h-9 text-sm flex-1"><SelectValue placeholder="— Seleccionar —" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="_none">— Seleccionar —</SelectItem>
-                            {colores.map(c => (
-                              <SelectItem key={c.id} value={c.id}>
-                                {c.nombre}
-                                {c.color_general_nombre && <span className="text-muted-foreground"> · {c.color_general_nombre}</span>}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <ColorCatalogCombobox
+                          colores={colores}
+                          value={colorSelId}
+                          onChange={(v) => setSelecciones(prev => ({ ...prev, [grupo.color_odoo]: v }))}
+                        />
                         <Button size="sm" variant="outline" onClick={() => setCreando(grupo.color_odoo)} className="h-9" title="Crear nuevo color">
                           <Plus className="h-4 w-4" />
                         </Button>

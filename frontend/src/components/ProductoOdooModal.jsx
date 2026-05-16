@@ -349,7 +349,15 @@ const ProductoOdooModal = ({ producto, onClose, onSaved }) => {
 
         {/* Mapeo de colores por variante (product_id) — sección independiente */}
         {producto?.odoo_template_id && (
-          <VariantesColorMapper templateId={producto.odoo_template_id} />
+          <VariantesColorMapper
+            templateId={producto.odoo_template_id}
+            scope={{
+              marca_id: form.marca_id,
+              tipo_id: form.tipo_id,
+              entalle_id: form.entalle_id,
+              hilo_id: form.hilo_id,
+            }}
+          />
         )}
 
         <DialogFooter className="flex justify-between flex-row">

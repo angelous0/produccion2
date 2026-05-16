@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Check, ChevronsUpDown, Plus } from 'lucide-react';
 
-import { cn } from '@/lib/utils';
+import { cn, formatColorName } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Command,
@@ -53,7 +53,7 @@ export const ColorGeneralCombobox = ({
     if (!newNombre.trim()) return;
     if (!onCreate) return;
 
-    const created = await onCreate(newNombre.trim());
+    const created = await onCreate(formatColorName(newNombre));
     setCreateOpen(false);
     setNewNombre('');
 
@@ -75,7 +75,7 @@ export const ColorGeneralCombobox = ({
             data-testid="color-general-combobox-trigger"
           >
             <span className={cn(!selected && 'text-muted-foreground')}>
-              {selected ? selected.nombre : placeholder}
+              {selected ? formatColorName(selected.nombre) : placeholder}
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
@@ -93,7 +93,7 @@ export const ColorGeneralCombobox = ({
                 {options.map((o) => (
                   <CommandItem
                     key={o.id}
-                    value={o.nombre}
+                    value={formatColorName(o.nombre)}
                     onSelect={() => {
                       onChange?.(o.id);
                       setOpen(false);
@@ -106,7 +106,7 @@ export const ColorGeneralCombobox = ({
                         value === o.id ? 'opacity-100' : 'opacity-0'
                       )}
                     />
-                    {o.nombre}
+                    {formatColorName(o.nombre)}
                   </CommandItem>
                 ))}
 

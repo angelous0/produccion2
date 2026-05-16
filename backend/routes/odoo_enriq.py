@@ -471,18 +471,40 @@ async def list_productos(
         )
         offset = (page - 1) * limit
         rows = await conn.fetch(f"""
-            WITH variantes_por_tmpl AS (
-                -- Colores Odoo por template (excluye variantes sin color)
-                SELECT v.product_tmpl_id,
-                       COUNT(DISTINCT v.color)            AS total_colores,
-                       COUNT(DISTINCT v.color)
+            WITH base AS (
+                SELECT p.*
+                FROM prod_odoo_productos_enriq p
+                WHERE {where}
+                ORDER BY {_build_order_by(sort_by, sort_dir)}
+                LIMIT {limit} OFFSET {offset}
+            ),
+            variantes_por_tmpl AS (
+                -- Colores Odoo solo para los templates de la pagina actual.
+                SELECT pp.product_tmpl_id,
+                       COUNT(DISTINCT color_val.name)            AS total_colores,
+                       COUNT(DISTINCT color_val.name)
                          FILTER (WHERE m.color_id IS NOT NULL) AS colores_mapeados
-                  FROM odoo.v_product_variant_flat v
+                  FROM odoo.product_product pp
+                  LEFT JOIN LATERAL (
+                    SELECT pav.name
+                      FROM odoo.product_attribute_value_product_product_rel rel
+                      JOIN odoo.product_attribute_value pav
+                        ON pav.company_key = rel.company_key
+                       AND pav.odoo_id = rel.product_attribute_value_id
+                      JOIN odoo.product_attribute pa
+                        ON pa.company_key = pav.company_key
+                       AND pa.odoo_id = pav.attribute_id
+                     WHERE rel.company_key = pp.company_key
+                       AND rel.product_product_id = pp.odoo_id
+                       AND pa.name = ANY (ARRAY['COLOR'::text, 'Color'::text])
+                     LIMIT 1
+                  ) color_val ON true
                   LEFT JOIN prod_odoo_color_mapping m
-                         ON m.odoo_product_id = v.product_product_id
+                         ON m.odoo_product_id = pp.odoo_id
                         AND m.empresa_id = $1
-                 WHERE v.color IS NOT NULL AND TRIM(v.color) <> ''
-                 GROUP BY v.product_tmpl_id
+                 WHERE color_val.name IS NOT NULL AND TRIM(color_val.name) <> ''
+                   AND pp.product_tmpl_id IN (SELECT odoo_template_id FROM base)
+                 GROUP BY pp.product_tmpl_id
             )
             SELECT p.*,
                    ma.nombre AS marca_nombre,
@@ -499,7 +521,7 @@ async def list_productos(
                    ln.nombre AS linea_negocio_nombre,
                    COALESCE(vt.total_colores, 0)    AS colores_total,
                    COALESCE(vt.colores_mapeados, 0) AS colores_mapeados
-            FROM prod_odoo_productos_enriq p
+            FROM base p
             LEFT JOIN prod_marcas ma ON p.marca_id = ma.id
             LEFT JOIN prod_tipos t   ON p.tipo_id = t.id
             LEFT JOIN prod_telas_general tg ON p.tela_general_id = tg.id
@@ -513,9 +535,7 @@ async def list_productos(
             LEFT JOIN prod_colores_generales cc ON p.categoria_color_id = cc.id
             LEFT JOIN finanzas2.cont_linea_negocio ln ON p.linea_negocio_id = ln.id
             LEFT JOIN variantes_por_tmpl vt ON vt.product_tmpl_id = p.odoo_template_id
-            WHERE {where}
             ORDER BY {_build_order_by(sort_by, sort_dir)}
-            LIMIT {limit} OFFSET {offset}
         """, *params)
         items = [row_to_dict(r) for r in rows]
         return {"items": items, "total": total, "page": page, "limit": limit}

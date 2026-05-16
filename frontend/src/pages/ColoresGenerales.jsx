@@ -25,6 +25,7 @@ import { Badge } from '../components/ui/badge';
 import { Plus, Pencil, Trash2, Palette } from 'lucide-react';
 import { toast } from 'sonner';
 import { SortableRow, useSortableTable, SortableTableWrapper } from '../components/SortableTable';
+import { formatColorName } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -56,11 +57,12 @@ export const ColoresGenerales = () => {
   const handleSubmit = guard(async (e) => {
     e.preventDefault();
     try {
+      const payload = { ...formData, nombre: formatColorName(formData.nombre) };
       if (editingItem) {
-        await axios.put(`${API}/colores-generales/${editingItem.id}`, formData);
+        await axios.put(`${API}/colores-generales/${editingItem.id}`, payload);
         toast.success('Color general actualizado');
       } else {
-        await axios.post(`${API}/colores-generales`, formData);
+        await axios.post(`${API}/colores-generales`, payload);
         toast.success('Color general creado');
       }
       setDialogOpen(false);
@@ -74,7 +76,7 @@ export const ColoresGenerales = () => {
 
   const handleEdit = (item) => {
     setEditingItem(item);
-    setFormData({ nombre: item.nombre, orden: item.orden || 0 });
+    setFormData({ nombre: formatColorName(item.nombre), orden: item.orden || 0 });
     setDialogOpen(true);
   };
 
@@ -151,7 +153,7 @@ export const ColoresGenerales = () => {
                     <SortableRow key={item.id} id={item.id}>
                       <TableCell>
                         <Badge variant="secondary" className="font-medium">
-                          {item.nombre}
+                          {formatColorName(item.nombre)}
                         </Badge>
                       </TableCell>
                       <TableCell>

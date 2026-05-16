@@ -6,7 +6,7 @@ import {
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from '../components/ui/alert-dialog';
-import { formatCurrency } from '../lib/utils';
+import { formatColorName, formatCurrency } from '../lib/utils';
 import { useSaving } from '../hooks/useSaving';
 import axios from 'axios';
 import { Button } from '../components/ui/button';
@@ -605,12 +605,35 @@ export const RegistroForm = () => {
   const handleRemoveTalla = (tallaId) => { setTallasSeleccionadas(tallasSeleccionadas.filter(t => t.talla_id !== tallaId)); };
 
   // Colores
-  const handleOpenColoresDialog = () => {
+  const getColorScopeParams = () => {
+    const params = new URLSearchParams();
+    params.set('solo_regla', 'true');
+    const marcaId = modeloSeleccionado?.marca_id || (modoManual && modeloManualForm.marca_modo === 'select' ? modeloManualForm.marca_id : '');
+    const tipoId = modeloSeleccionado?.tipo_id || (modoManual && modeloManualForm.tipo_modo === 'select' ? modeloManualForm.tipo_id : '');
+    const entalleId = modeloSeleccionado?.entalle_id || (modoManual && modeloManualForm.entalle_modo === 'select' ? modeloManualForm.entalle_id : '');
+    if (marcaId) params.set('marca_id', marcaId);
+    if (tipoId) params.set('tipo_id', tipoId);
+    if (entalleId) params.set('entalle_id', entalleId);
+    return params;
+  };
+
+  const handleOpenColoresDialog = async () => {
+    let catalogo = coloresCatalogo;
+    try {
+      const params = getColorScopeParams();
+      const res = await axios.get(`${API}/colores-catalogo?${params.toString()}`);
+      catalogo = res.data || [];
+      setColoresCatalogo(catalogo);
+    } catch {
+      catalogo = [];
+      setColoresCatalogo([]);
+      toast.error('No se pudieron cargar los colores de la regla');
+    }
     if (distribucionColores && distribucionColores.length > 0) {
       const coloresUnicos = []; const matriz = {};
       distribucionColores.forEach(talla => {
         (talla.colores || []).forEach(c => {
-          if (!coloresUnicos.find(cu => cu.id === c.color_id)) { const colorCat = coloresCatalogo.find(cc => cc.id === c.color_id); if (colorCat) coloresUnicos.push(colorCat); }
+          if (!coloresUnicos.find(cu => cu.id === c.color_id)) { const colorCat = catalogo.find(cc => cc.id === c.color_id); if (colorCat) coloresUnicos.push(colorCat); }
           matriz[`${c.color_id}_${talla.talla_id}`] = c.cantidad;
         });
       });
@@ -659,7 +682,7 @@ export const RegistroForm = () => {
   const handleSaveColores = () => {
     const distribucion = tallasSeleccionadas.map(t => ({
       talla_id: t.talla_id, talla_nombre: t.talla_nombre, cantidad_total: t.cantidad,
-      colores: coloresSeleccionados.map(c => ({ color_id: c.id, color_nombre: c.nombre, cantidad: getCantidadMatriz(c.id, t.talla_id) })).filter(c => c.cantidad > 0)
+      colores: coloresSeleccionados.map(c => ({ color_id: c.id, color_nombre: formatColorName(c.nombre), cantidad: getCantidadMatriz(c.id, t.talla_id) })).filter(c => c.cantidad > 0)
     }));
     setDistribucionColores(distribucion); setColoresDialogOpen(false); toast.success('Distribución de colores guardada');
   };

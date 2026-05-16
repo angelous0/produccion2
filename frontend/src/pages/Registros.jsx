@@ -27,7 +27,7 @@ import { Separator } from '../components/ui/separator';
 import { Plus, Pencil, Trash2, AlertTriangle, Eye, Palette, Scissors, Package, Cog, Clock, PauseCircle, PlayCircle, FileWarning, Calendar, User, Search, X, Filter, ChevronRight, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
-import { getStatusClass } from '../lib/utils';
+import { formatColorName, getStatusClass } from '../lib/utils';
 import { MultiSelectColors } from '../components/MultiSelectColors';
 import { formatDate, formatRelativeDate, formatDateTime } from '../lib/dateUtils';
 import { ExportButton } from '../components/ExportButton';
@@ -193,6 +193,24 @@ export const Registros = () => {
     }
   };
 
+  const getColorScopeParams = (item) => {
+    const manual = item?.modelo_manual || {};
+    const params = new URLSearchParams({ solo_regla: 'true' });
+    const marcaId = item?.marca_id || manual.marca_id || '';
+    const tipoId = item?.tipo_id || manual.tipo_id || '';
+    const entalleId = item?.entalle_id || manual.entalle_id || '';
+    if (marcaId) params.set('marca_id', marcaId);
+    if (tipoId) params.set('tipo_id', tipoId);
+    if (entalleId) params.set('entalle_id', entalleId);
+    return params;
+  };
+
+  const fetchColoresReglaRegistro = async (item) => {
+    const params = getColorScopeParams(item);
+    const response = await axios.get(`${API}/colores-catalogo?${params.toString()}`);
+    return response.data || [];
+  };
+
   const fetchFiltrosModelo = async () => {
     try {
       const params = new URLSearchParams();
@@ -224,12 +242,21 @@ export const Registros = () => {
 
   // ========== LÓGICA DE COLORES ==========
 
-  const handleOpenColoresDialog = (item) => {
+  const handleOpenColoresDialog = async (item) => {
     if (!canEdit) {
       toast.error('No tienes permisos para editar registros');
       return;
     }
     setColorEditItem(item);
+
+    let catalogo = [];
+    try {
+      catalogo = await fetchColoresReglaRegistro(item);
+      setColoresCatalogo(catalogo);
+    } catch (error) {
+      setColoresCatalogo([]);
+      toast.error('No se pudieron cargar los colores de la regla');
+    }
     
     if (item.distribucion_colores && item.distribucion_colores.length > 0) {
       const coloresUnicos = [];
@@ -238,7 +265,7 @@ export const Registros = () => {
       item.distribucion_colores.forEach(talla => {
         (talla.colores || []).forEach(c => {
           if (!coloresUnicos.find(cu => cu.id === c.color_id)) {
-            const colorCat = coloresCatalogo.find(cc => cc.id === c.color_id);
+            const colorCat = catalogo.find(cc => cc.id === c.color_id);
             if (colorCat) {
               coloresUnicos.push(colorCat);
             }
@@ -389,7 +416,7 @@ export const Registros = () => {
         cantidad_total: t.cantidad,
         colores: coloresSeleccionados.map(c => ({
           color_id: c.id,
-          color_nombre: c.nombre,
+          color_nombre: formatColorName(c.nombre),
           cantidad: getCantidadMatriz(c.id, t.talla_id)
         })).filter(c => c.cantidad > 0)
       }));
@@ -1145,10 +1172,10 @@ export const Registros = () => {
                 onChange={handleColoresChange}
                 placeholder="Buscar y seleccionar colores..."
                 searchPlaceholder="Buscar color..."
-                emptyMessage="No se encontraron colores."
+                emptyMessage="No hay colores definidos en la regla de este modelo."
               />
               <p className="text-xs text-muted-foreground mt-2">
-                El primer color seleccionado recibe todo el total automáticamente.
+                Solo se muestran los colores permitidos por la regla de marca, tipo y entalle.
               </p>
             </div>
 
@@ -1190,7 +1217,7 @@ export const Registros = () => {
                                 className="w-5 h-5 rounded border shrink-0"
                                 style={{ backgroundColor: color.codigo_hex || '#ccc' }}
                               />
-                              <span className="font-medium text-sm">{color.nombre}</span>
+                              <span className="font-medium text-sm">{formatColorName(color.nombre)}</span>
                             </div>
                           </td>
                           {colorEditItem.tallas.map((t) => (
@@ -1393,7 +1420,7 @@ export const Registros = () => {
                                 
                                 return Array.from(coloresUnicos.entries()).map(([colorId, colorNombre]) => (
                                   <tr key={colorId}>
-                                    <td className="bg-muted/30 p-2 border font-medium">{colorNombre}</td>
+                                    <td className="bg-muted/30 p-2 border font-medium">{formatColorName(colorNombre)}</td>
                                     {viewingItem.tallas.map((t) => {
                                       const distTalla = viewingItem.distribucion_colores.find(d => d.talla_id === t.talla_id);
                                       const colorData = (distTalla?.colores || []).find(c => c.color_id === colorId);

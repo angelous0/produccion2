@@ -1,5 +1,6 @@
 """Router for catalog CRUD endpoints (marcas, tipos, entalles, telas, hilos, tallas, colores, hilos-especificos, rutas, servicios, personas, lineas-negocio)."""
 import json
+import uuid
 from fastapi import APIRouter, HTTPException, Depends
 from db import get_pool
 from helpers import row_to_dict, parse_jsonb
@@ -16,7 +17,7 @@ from models import (
     LavadoCreate, Lavado,
 )
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 
 router = APIRouter(prefix="/api")
 
@@ -26,6 +27,16 @@ class ReorderItem(BaseModel):
 
 class ReorderRequest(BaseModel):
     items: List[ReorderItem]
+
+class ColorReglaInput(BaseModel):
+    nombre: str
+    marca_id: Optional[str] = None
+    tipo_id: Optional[str] = None
+    hilo_id: Optional[str] = None
+    entalle_ids: List[str] = []
+    color_ids: List[str] = []
+    activo: bool = True
+    orden: int = 0
 
 @router.get("/marcas")
 async def get_marcas():
@@ -407,30 +418,333 @@ async def delete_color_general(color_general_id: str, _u=Depends(get_current_use
 
 # ==================== ENDPOINTS COLOR CATALOGO ====================
 
+async def _tabla_existe(conn, tabla: str) -> bool:
+    return bool(await conn.fetchval("SELECT to_regclass($1) IS NOT NULL", tabla))
+
+
+async def _resolver_colores_permitidos(conn, marca_id: str = None, tipo_id: str = None, entalle_id: str = None, hilo_id: str = None):
+    """Devuelve colores permitidos por la regla más específica disponible.
+
+    Especificidad (score = suma de matches):
+      marca = +4 · tipo = +2 · entalle = +1 · hilo = +1
+      Si la regla especifica un campo distinto al provisto → score -100 (descartada).
+      Si la regla no especifica un campo → 0 (no penaliza, sigue siendo candidata).
+    Si no hay regla nueva, cae a la relación antigua prod_color_tipo.
+    """
+    if not await _tabla_existe(conn, 'prod_color_reglas'):
+        return {"color_ids": set(), "reglas": [], "source": None}
+
+    reglas = await conn.fetch(
+        """
+        WITH candidatas AS (
+            SELECT r.*,
+                   (
+                     CASE
+                       WHEN r.marca_id IS NOT NULL AND r.marca_id = $1 THEN 4
+                       WHEN r.marca_id IS NULL THEN 0
+                       ELSE -100
+                     END
+                     +
+                     CASE
+                       WHEN r.tipo_id IS NOT NULL AND r.tipo_id = $2 THEN 2
+                       WHEN r.tipo_id IS NULL THEN 0
+                       ELSE -100
+                     END
+                     +
+                     CASE
+                       WHEN COALESCE(jsonb_array_length(r.entalle_ids), 0) > 0
+                            AND $3::text IS NOT NULL
+                            AND r.entalle_ids ? $3 THEN 1
+                       WHEN COALESCE(jsonb_array_length(r.entalle_ids), 0) = 0 THEN 0
+                       ELSE -100
+                     END
+                     +
+                     CASE
+                       WHEN r.hilo_id IS NOT NULL AND r.hilo_id = $4 THEN 1
+                       WHEN r.hilo_id IS NULL THEN 0
+                       ELSE -100
+                     END
+                   ) AS score
+              FROM prod_color_reglas r
+             WHERE r.activo = TRUE
+               AND (r.marca_id IS NULL OR ($1::text IS NOT NULL AND r.marca_id = $1))
+               AND (r.tipo_id  IS NULL OR ($2::text IS NOT NULL AND r.tipo_id  = $2))
+               AND (
+                    COALESCE(jsonb_array_length(r.entalle_ids), 0) = 0
+                    OR ($3::text IS NOT NULL AND r.entalle_ids ? $3)
+               )
+               AND (r.hilo_id  IS NULL OR ($4::text IS NOT NULL AND r.hilo_id  = $4))
+        )
+        SELECT *
+          FROM candidatas
+         WHERE score >= 0
+         ORDER BY score DESC, orden ASC, created_at DESC
+        """,
+        marca_id, tipo_id, entalle_id, hilo_id,
+    )
+
+    if reglas:
+        mejor_score = reglas[0]["score"]
+        mejores = [r for r in reglas if r["score"] == mejor_score]
+        regla_ids = [r["id"] for r in mejores]
+        color_rows = await conn.fetch(
+            """
+            SELECT color_id
+              FROM prod_color_regla_colores
+             WHERE regla_id = ANY($1::text[])
+             ORDER BY orden ASC
+            """,
+            regla_ids,
+        )
+        color_ids_ordenados = [r["color_id"] for r in color_rows]
+        return {
+            "color_ids": set(color_ids_ordenados),
+            "color_ids_ordenados": color_ids_ordenados,
+            "reglas": [row_to_dict(r) for r in mejores],
+            "source": "reglas",
+        }
+
+    if tipo_id and await _tabla_existe(conn, 'prod_color_tipo'):
+        legacy = await conn.fetch(
+            "SELECT color_id FROM prod_color_tipo WHERE tipo_id = $1 ORDER BY orden ASC",
+            tipo_id,
+        )
+        if legacy:
+            color_ids_ordenados = [r["color_id"] for r in legacy]
+            return {
+                "color_ids": set(color_ids_ordenados),
+                "color_ids_ordenados": color_ids_ordenados,
+                "reglas": [{"id": f"legacy-tipo-{tipo_id}", "nombre": "Regla antigua por tipo"}],
+                "source": "legacy",
+            }
+
+    return {"color_ids": set(), "color_ids_ordenados": [], "reglas": [], "source": None}
+
+
 @router.get("/colores-catalogo")
-async def get_colores_catalogo(tipo_id: str = None):
-    """Lista colores del catálogo. Si se pasa tipo_id, filtra solo los asignados a ese tipo."""
+async def get_colores_catalogo(
+    tipo_id: str = None,
+    marca_id: str = None,
+    entalle_id: str = None,
+    hilo_id: str = None,
+    incluir_todos: bool = False,
+    solo_regla: bool = False,
+):
+    """Lista colores del catálogo.
+
+    Con marca/tipo/entalle/hilo resuelve reglas flexibles. Si incluir_todos=true,
+    devuelve todo el catálogo pero marca qué colores son sugeridos/permitidos.
+    Si solo_regla=true, devuelve únicamente colores cubiertos por la regla
+    aplicable; si no hay regla aplicable, devuelve una lista vacía.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        if tipo_id:
-            rows = await conn.fetch("""
-                SELECT c.* FROM prod_colores_catalogo c
-                JOIN prod_color_tipo ct ON ct.color_id = c.id
-                WHERE ct.tipo_id = $1
-                ORDER BY ct.orden ASC, c.nombre ASC
-            """, tipo_id)
+        scope_activo = bool(tipo_id or marca_id or entalle_id or hilo_id)
+        scope = await _resolver_colores_permitidos(conn, marca_id, tipo_id, entalle_id, hilo_id) if scope_activo else None
+        permitidos = scope["color_ids"] if scope else set()
+        permitidos_ordenados = scope.get("color_ids_ordenados", []) if scope else []
+
+        if solo_regla and (not scope_activo or not scope or not scope["source"] or not permitidos_ordenados):
+            return []
+
+        if scope_activo and permitidos_ordenados and (solo_regla or not incluir_todos):
+            rows = await conn.fetch(
+                """
+                SELECT c.*, cg.nombre AS color_general_nombre
+                  FROM prod_colores_catalogo c
+                  LEFT JOIN prod_colores_generales cg ON cg.id = c.color_general_id
+                 WHERE c.id = ANY($1::text[])
+                 ORDER BY array_position($1::text[], c.id), c.orden ASC, c.nombre ASC
+                """,
+                permitidos_ordenados,
+            )
         else:
-            rows = await conn.fetch("SELECT * FROM prod_colores_catalogo ORDER BY orden ASC, nombre ASC")
+            rows = await conn.fetch(
+                """
+                SELECT c.*, cg.nombre AS color_general_nombre
+                  FROM prod_colores_catalogo c
+                  LEFT JOIN prod_colores_generales cg ON cg.id = c.color_general_id
+                 ORDER BY c.orden ASC, c.nombre ASC
+                """
+            )
         result = []
         for r in rows:
             d = row_to_dict(r)
-            if d.get('color_general_id'):
-                cg = await conn.fetchrow("SELECT nombre FROM prod_colores_generales WHERE id = $1", d['color_general_id'])
-                d['color_general_nombre'] = cg['nombre'] if cg else None
-            else:
-                d['color_general_nombre'] = None
+            if scope_activo:
+                # Si no hay regla todavía, no bloqueamos el catálogo: todo queda sugerido.
+                d['permitido'] = True if not scope["source"] else d['id'] in permitidos
+                d['regla_color_source'] = scope["source"]
+                d['regla_color_nombre'] = ", ".join([regla.get("nombre", "") for regla in scope["reglas"] if regla.get("nombre")]) or None
             result.append(d)
         return result
+
+
+# ─── Reglas flexibles de colores ───
+
+async def _enriquecer_reglas(conn, rows):
+    reglas = [row_to_dict(r) for r in rows]
+    if not reglas:
+        return []
+
+    regla_ids = [r["id"] for r in reglas]
+    colores_rows = await conn.fetch(
+        """
+        SELECT regla_id, color_id
+          FROM prod_color_regla_colores
+         WHERE regla_id = ANY($1::text[])
+         ORDER BY orden ASC
+        """,
+        regla_ids,
+    )
+    colores_por_regla = {}
+    for r in colores_rows:
+        colores_por_regla.setdefault(r["regla_id"], []).append(r["color_id"])
+
+    entalle_ids = []
+    for r in reglas:
+        ids = parse_jsonb(r.get("entalle_ids")) or []
+        r["entalle_ids"] = ids
+        entalle_ids.extend(ids)
+
+    entalle_map = {}
+    if entalle_ids:
+        entalle_rows = await conn.fetch(
+            "SELECT id, nombre FROM prod_entalles WHERE id = ANY($1::text[])",
+            list(set(entalle_ids)),
+        )
+        entalle_map = {r["id"]: r["nombre"] for r in entalle_rows}
+
+    for r in reglas:
+        r["color_ids"] = colores_por_regla.get(r["id"], [])
+        r["colores_count"] = len(r["color_ids"])
+        r["entalle_nombres"] = [entalle_map.get(eid, eid) for eid in r["entalle_ids"]]
+    return reglas
+
+
+@router.get("/colores-reglas")
+async def get_colores_reglas(_u=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT r.*,
+                   m.nombre AS marca_nombre,
+                   t.nombre AS tipo_nombre,
+                   h.nombre AS hilo_nombre
+              FROM prod_color_reglas r
+              LEFT JOIN prod_marcas m ON m.id = r.marca_id
+              LEFT JOIN prod_tipos t ON t.id = r.tipo_id
+              LEFT JOIN prod_hilos h ON h.id = r.hilo_id
+             ORDER BY r.orden ASC, r.created_at DESC
+            """
+        )
+        return await _enriquecer_reglas(conn, rows)
+
+
+@router.post("/colores-reglas")
+async def create_colores_regla(input: ColorReglaInput, _u=Depends(get_current_user)):
+    regla_id = str(uuid.uuid4())
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                """
+                INSERT INTO prod_color_reglas
+                    (id, nombre, marca_id, tipo_id, hilo_id, entalle_ids, activo, orden)
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+                """,
+                regla_id,
+                input.nombre.strip(),
+                input.marca_id or None,
+                input.tipo_id or None,
+                input.hilo_id or None,
+                json.dumps(input.entalle_ids or []),
+                input.activo,
+                input.orden,
+            )
+            for i, color_id in enumerate(input.color_ids or []):
+                await conn.execute(
+                    """
+                    INSERT INTO prod_color_regla_colores (regla_id, color_id, orden)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (regla_id, color_id) DO UPDATE SET orden = EXCLUDED.orden
+                    """,
+                    regla_id, color_id, i,
+                )
+        row = await conn.fetchrow(
+            """
+            SELECT r.*, m.nombre AS marca_nombre, t.nombre AS tipo_nombre, h.nombre AS hilo_nombre
+              FROM prod_color_reglas r
+              LEFT JOIN prod_marcas m ON m.id = r.marca_id
+              LEFT JOIN prod_tipos t ON t.id = r.tipo_id
+              LEFT JOIN prod_hilos h ON h.id = r.hilo_id
+             WHERE r.id = $1
+            """,
+            regla_id,
+        )
+        return (await _enriquecer_reglas(conn, [row]))[0]
+
+
+@router.put("/colores-reglas/{regla_id}")
+async def update_colores_regla(regla_id: str, input: ColorReglaInput, _u=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        existe = await conn.fetchval("SELECT 1 FROM prod_color_reglas WHERE id = $1", regla_id)
+        if not existe:
+            raise HTTPException(status_code=404, detail="Regla de color no encontrada")
+        async with conn.transaction():
+            await conn.execute(
+                """
+                UPDATE prod_color_reglas
+                   SET nombre = $1,
+                       marca_id = $2,
+                       tipo_id = $3,
+                       hilo_id = $4,
+                       entalle_ids = $5::jsonb,
+                       activo = $6,
+                       orden = $7,
+                       updated_at = CURRENT_TIMESTAMP
+                 WHERE id = $8
+                """,
+                input.nombre.strip(),
+                input.marca_id or None,
+                input.tipo_id or None,
+                input.hilo_id or None,
+                json.dumps(input.entalle_ids or []),
+                input.activo,
+                input.orden,
+                regla_id,
+            )
+            await conn.execute("DELETE FROM prod_color_regla_colores WHERE regla_id = $1", regla_id)
+            for i, color_id in enumerate(input.color_ids or []):
+                await conn.execute(
+                    "INSERT INTO prod_color_regla_colores (regla_id, color_id, orden) VALUES ($1, $2, $3)",
+                    regla_id, color_id, i,
+                )
+        row = await conn.fetchrow(
+            """
+            SELECT r.*, m.nombre AS marca_nombre, t.nombre AS tipo_nombre, h.nombre AS hilo_nombre
+              FROM prod_color_reglas r
+              LEFT JOIN prod_marcas m ON m.id = r.marca_id
+              LEFT JOIN prod_tipos t ON t.id = r.tipo_id
+              LEFT JOIN prod_hilos h ON h.id = r.hilo_id
+             WHERE r.id = $1
+            """,
+            regla_id,
+        )
+        return (await _enriquecer_reglas(conn, [row]))[0]
+
+
+@router.delete("/colores-reglas/{regla_id}")
+async def delete_colores_regla(regla_id: str, _u=Depends(get_current_user)):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute("DELETE FROM prod_color_regla_colores WHERE regla_id = $1", regla_id)
+            result = await conn.execute("DELETE FROM prod_color_reglas WHERE id = $1", regla_id)
+            if result == "DELETE 0":
+                raise HTTPException(status_code=404, detail="Regla de color no encontrada")
+    return {"ok": True}
 
 
 # ─── Color por Tipo (relación N a N) ───
@@ -470,6 +784,35 @@ async def set_colores_por_tipo(tipo_id: str, body: dict, _u=Depends(get_current_
                     await conn.execute(
                         "INSERT INTO prod_color_tipo (color_id, tipo_id, orden) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
                         cid, tipo_id, i)
+            if await _tabla_existe(conn, 'prod_color_reglas'):
+                tipo_nombre = await conn.fetchval("SELECT nombre FROM prod_tipos WHERE id = $1", tipo_id)
+                regla_id = await conn.fetchval(
+                    """
+                    SELECT id FROM prod_color_reglas
+                     WHERE tipo_id = $1
+                       AND marca_id IS NULL
+                       AND COALESCE(jsonb_array_length(entalle_ids), 0) = 0
+                     ORDER BY created_at ASC
+                     LIMIT 1
+                    """,
+                    tipo_id,
+                )
+                if not regla_id:
+                    regla_id = f"legacy-tipo-{tipo_id}" if len(f"legacy-tipo-{tipo_id}") < 120 else str(uuid.uuid4())
+                    await conn.execute(
+                        """
+                        INSERT INTO prod_color_reglas (id, nombre, tipo_id, entalle_ids, activo, orden)
+                        VALUES ($1, $2, $3, '[]'::jsonb, TRUE, 0)
+                        ON CONFLICT (id) DO NOTHING
+                        """,
+                        regla_id, f"General {tipo_nombre or tipo_id}", tipo_id,
+                    )
+                await conn.execute("DELETE FROM prod_color_regla_colores WHERE regla_id = $1", regla_id)
+                for i, cid in enumerate(color_ids):
+                    await conn.execute(
+                        "INSERT INTO prod_color_regla_colores (regla_id, color_id, orden) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                        regla_id, cid, i,
+                    )
     return {"ok": True, "tipo_id": tipo_id, "colores_asignados": len(color_ids)}
 
 @router.post("/colores-catalogo")

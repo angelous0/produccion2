@@ -18,7 +18,7 @@ import { Separator } from '../ui/separator';
 import { NumericInput as NumInput } from '../ui/numeric-input';
 import { MultiSelectColors } from '../MultiSelectColors';
 import { Divide, ArrowRight, Check, ChevronsUpDown, Scissors, Trash2, Plus, Pencil, ArrowLeft, Lock, DollarSign, X, RotateCcw, AlertTriangle } from 'lucide-react';
-import { formatCurrency as fmtCur } from '../../lib/utils';
+import { formatCurrency as fmtCur, formatColorName } from '../../lib/utils';
 
 /**
  * Colores Distribution Dialog
@@ -45,9 +45,11 @@ export const ColoresDialog = ({
             onChange={onColoresChange}
             placeholder="Buscar y seleccionar colores..."
             searchPlaceholder="Buscar color..."
-            emptyMessage="No se encontraron colores."
+            emptyMessage="No hay colores definidos en la regla de este modelo."
           />
-          <p className="text-xs text-muted-foreground mt-2">El primer color seleccionado recibe todo el total automáticamente.</p>
+          <p className="text-xs text-muted-foreground mt-2">
+            Solo se muestran los colores permitidos por la regla de marca, tipo y entalle.
+          </p>
         </div>
         <Separator />
         {tallasSeleccionadas.length > 0 && coloresSeleccionados.length > 0 ? (
@@ -78,7 +80,7 @@ export const ColoresDialog = ({
                       <td className="p-2 border-b">
                         <div className="flex items-center gap-2">
                           <div className="w-5 h-5 rounded border shrink-0" style={{ backgroundColor: color.codigo_hex || '#ccc' }} />
-                          <span className="font-medium text-sm">{color.nombre}</span>
+                          <span className="font-medium text-sm">{formatColorName(color.nombre)}</span>
                         </div>
                       </td>
                       {tallasSeleccionadas.map((t) => (

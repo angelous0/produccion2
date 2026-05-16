@@ -72,6 +72,9 @@ async def init_distribucion_pt_tables():
             DO $$
             BEGIN
                 IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'prod_registro_pt_relacion_cantidad_check'
+                ) AND NOT EXISTS (
                     SELECT 1 FROM pg_constraint con
                     JOIN pg_class rel ON rel.oid = con.conrelid
                     JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace

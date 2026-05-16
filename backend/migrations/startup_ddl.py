@@ -559,6 +559,67 @@ async def ensure_clasificacion_tables():
         await conn.execute(
             "ALTER TABLE prod_colores_catalogo ADD COLUMN IF NOT EXISTS categoria VARCHAR NOT NULL DEFAULT 'basico'"
         )
+        # ── Reglas flexibles de colores ─────────────────────────────────────
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_color_reglas (
+                id VARCHAR PRIMARY KEY,
+                nombre VARCHAR NOT NULL,
+                marca_id VARCHAR NULL,
+                tipo_id VARCHAR NULL,
+                entalle_ids JSONB DEFAULT '[]'::jsonb,
+                activo BOOLEAN DEFAULT TRUE,
+                orden INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_color_regla_colores (
+                regla_id VARCHAR NOT NULL,
+                color_id VARCHAR NOT NULL,
+                orden INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (regla_id, color_id)
+            )
+        """)
+        # hilo_id agregado a posteriori para reglas que dependen del hilo
+        # (ej: Pantalon hilo Negro vs hilo Color → paletas distintas).
+        await conn.execute(
+            "ALTER TABLE prod_color_reglas ADD COLUMN IF NOT EXISTS hilo_id VARCHAR NULL"
+        )
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_color_reglas_scope ON prod_color_reglas(marca_id, tipo_id, activo)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_color_reglas_hilo ON prod_color_reglas(hilo_id) WHERE hilo_id IS NOT NULL")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_color_regla_colores_color ON prod_color_regla_colores(color_id)")
+        legacy_color_tipo_exists = await conn.fetchval("SELECT to_regclass('prod_color_tipo') IS NOT NULL")
+        if legacy_color_tipo_exists:
+            await conn.execute("""
+                INSERT INTO prod_color_reglas (id, nombre, tipo_id, entalle_ids, activo, orden)
+                SELECT 'legacy-tipo-' || t.id,
+                       'General ' || t.nombre,
+                       t.id,
+                       '[]'::jsonb,
+                       TRUE,
+                       COALESCE(t.orden, 0)
+                  FROM prod_tipos t
+                 WHERE EXISTS (SELECT 1 FROM prod_color_tipo ct WHERE ct.tipo_id = t.id)
+	                   AND NOT EXISTS (
+	                        SELECT 1 FROM prod_color_reglas r
+	                         WHERE r.tipo_id = t.id
+	                           AND r.marca_id IS NULL
+	                           AND COALESCE(jsonb_array_length(r.entalle_ids), 0) = 0
+	                   )
+	                ON CONFLICT (id) DO NOTHING
+	            """)
+            await conn.execute("""
+                INSERT INTO prod_color_regla_colores (regla_id, color_id, orden)
+                SELECT r.id, ct.color_id, COALESCE(ct.orden, 0)
+                  FROM prod_color_tipo ct
+                  JOIN prod_color_reglas r
+                    ON r.tipo_id = ct.tipo_id
+                   AND r.marca_id IS NULL
+                   AND COALESCE(jsonb_array_length(r.entalle_ids), 0) = 0
+             ON CONFLICT DO NOTHING
+            """)
         # ── Lavados ─────────────────────────────────────────────────────────
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS prod_lavados (

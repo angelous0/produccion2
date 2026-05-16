@@ -6,6 +6,7 @@ Cumplimiento de Ruta, Balance Terceros, Lotes Fraccionados.
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional, List
 from datetime import date, datetime, timezone
+from pydantic import BaseModel
 import json
 import unicodedata
 
@@ -60,6 +61,16 @@ ESTADOS_MATRIZ_ORDEN = [
     "Para Acabado", "Acabado", "Producto Terminado", "Almacén PT",
     "Tienda",
 ]
+
+# Ubicaciones de Odoo (stock_location.x_nombre) que cuentan como "tienda real" para
+# los reportes de Almacén PT / Tienda. Se excluyen ubicaciones virtuales (Customers,
+# Vendors, Ajuste, Abastecimiento, Proveedores, Fallados), almacén AP y REMATE.
+TIENDAS_VALIDAS_X_NOMBRE = (
+    'AZUL', 'BOOSH',
+    'GM207', 'GM209', 'GM218',
+    'GR238', 'GR55',
+    'ZAP', 'TALLER',
+)
 
 
 # ==================== 1. DASHBOARD KPIs ====================
@@ -1617,6 +1628,506 @@ async def matriz_produccion(
                 "modelos": [{"id": r["id"], "nombre": r["nombre"]} for r in modelos],
             },
         }
+
+
+# ==================== FICHA DETALLADA POR ÍTEM (color × talla) ====================
+
+@router.get("/ficha-item")
+async def ficha_item_detail(
+    ids: str = Query(..., description="IDs de registros separados por coma"),
+    empresa_id: int = Query(7),
+):
+    """
+    Devuelve la ficha color × talla de un ítem:
+    - grupos_taller:      cortes en etapas pre-lavandería (n_corte × talla)
+    - colores_lavanderia: colores asignados en lavandería (color × talla)
+    - colores_almacen:    colores en almacén PT + tienda  (color × talla)
+    - sin_color:          cortes en etapas post-lavandería sin colores asignados
+    """
+    id_list = [i.strip() for i in (ids or "").split(",") if i.strip()]
+    if not id_list:
+        return {"tallas": [], "grupos_taller": [], "colores_lavanderia": [], "colores_almacen": [], "sin_color": []}
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT
+                r.id,
+                r.n_corte,
+                r.estado,
+                r.distribucion_colores,
+                r.tallas AS tallas_jsonb,
+                COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') AS modelo_nombre
+            FROM prod_registros r
+            LEFT JOIN prod_modelos m ON m.id = r.modelo_id
+            WHERE r.id = ANY($1::varchar[])
+              AND r.empresa_id = $2
+            ORDER BY r.n_corte
+        """, id_list, empresa_id)
+
+        tallas_cat = await conn.fetch(
+            "SELECT nombre, orden FROM prod_tallas_catalogo ORDER BY orden"
+        )
+
+    talla_orden = {t["nombre"]: t["orden"] for t in tallas_cat}
+
+    ESTADOS_TALLER   = {"Para Lavandería", "Para Atraque", "Atraque", "Muestra Lavanderia"}
+    # Proceso intermedio: en lavandería y/o acabado. Ahí debe poder asignarse el color.
+    ESTADOS_LAV      = {"Lavandería", "Para Acabado", "Acabado"}
+    # Stock en almacén: producto listo / en almacén. La tienda se trae directo
+    # de Odoo (stock_quant) para evitar doble conteo con los registros.
+    ESTADOS_ALMACEN  = {"Producto Terminado", "Almacén PT"}
+
+    all_tallas: set = set()
+    grupos_taller: list = []
+    colores_lav: dict = {}   # color_nombre -> {talla_nombre -> cantidad}
+    colores_alm: dict = {}   # color_nombre -> {talla_nombre -> cantidad}
+    sin_color: list = []
+    fuera_regla_lav: dict = {}
+    fuera_regla_alm: dict = {}
+
+    for r in rows:
+        estado = r["estado"] or "Sin estado"
+        dist_raw = parse_jsonb(r["distribucion_colores"])
+
+        talla_totales: dict = {}
+        has_colors = False
+
+        for entry in dist_raw:
+            tn = entry.get("talla_nombre") or str(entry.get("talla_id", ""))
+            ct = safe_int(entry.get("cantidad_total", 0))
+            colores_entry = entry.get("colores") or []
+
+            if tn:
+                talla_totales[tn] = talla_totales.get(tn, 0) + ct
+                all_tallas.add(tn)
+
+            for c in colores_entry:
+                cn = c.get("color_nombre") or ""
+                qty = safe_int(c.get("cantidad", 0))
+                if not cn or qty == 0:
+                    continue
+                has_colors = True
+                if tn:
+                    all_tallas.add(tn)
+
+                if estado in ESTADOS_LAV:
+                    if cn not in colores_lav:
+                        colores_lav[cn] = {}
+                    colores_lav[cn][tn] = colores_lav[cn].get(tn, 0) + qty
+
+                elif estado in ESTADOS_ALMACEN:
+                    if cn not in colores_alm:
+                        colores_alm[cn] = {}
+                    colores_alm[cn][tn] = colores_alm[cn].get(tn, 0) + qty
+
+        if estado in ESTADOS_TALLER:
+            # Fallback a tallas_jsonb si distribucion_colores vacía
+            if not talla_totales:
+                for t in parse_jsonb(r["tallas_jsonb"]):
+                    tn = t.get("talla_nombre", "")
+                    qty = safe_int(t.get("cantidad", 0))
+                    if tn:
+                        talla_totales[tn] = qty
+                        all_tallas.add(tn)
+            grupos_taller.append({
+                "id": r["id"],
+                "n_corte": r["n_corte"],
+                "modelo": r["modelo_nombre"] or "",
+                "estado": estado,
+                "tallas": talla_totales,
+            })
+
+        elif estado in ESTADOS_LAV and not has_colors:
+            # Sin colores y debería tenerlos: está en lavandería / acabado.
+            prendas = sum(talla_totales.values())
+            if prendas == 0:
+                prendas = sum(safe_int(t.get("cantidad", 0)) for t in parse_jsonb(r["tallas_jsonb"]))
+            sin_color.append({
+                "id": r["id"],
+                "n_corte": r["n_corte"],
+                "modelo": r["modelo_nombre"] or "",
+                "estado": estado,
+                "prendas": prendas,
+            })
+
+    sorted_tallas = sorted(all_tallas, key=lambda t: (talla_orden.get(t, 999), t))
+
+    # ── Asegurar que aparezcan todos los colores de la regla, aunque tengan
+    #    cantidad 0, para que la vista los muestre como filas vacías.
+    #    Además, en "Almacén PT / Tienda" sumamos también los colores que
+    #    Odoo tiene clasificados para esta combinación marca/tipo/entalle/tela
+    #    (prod_odoo_productos_enriq + prod_odoo_color_mapping).
+    if rows:
+        async with pool.acquire() as conn:
+            ref = await conn.fetchrow("""
+                SELECT
+                    COALESCE(m.marca_id,   r.modelo_manual->>'marca_id')   AS marca_id,
+                    COALESCE(m.tipo_id,    r.modelo_manual->>'tipo_id')    AS tipo_id,
+                    COALESCE(m.entalle_id, r.modelo_manual->>'entalle_id') AS entalle_id,
+                    COALESCE(m.tela_id,    r.modelo_manual->>'tela_id')    AS tela_id,
+                    COALESCE(r.hilo_especifico_id, m.hilo_id,
+                             r.modelo_manual->>'hilo_id')                  AS hilo_id
+                FROM prod_registros r
+                LEFT JOIN prod_modelos m ON m.id = r.modelo_id
+                WHERE r.id = $1
+            """, rows[0]["id"])
+
+            rule_color_rows = await conn.fetch("""
+                WITH candidatas AS (
+                    SELECT r.id,
+                           (CASE WHEN r.marca_id = $1 THEN 4
+                                 WHEN r.marca_id IS NULL THEN 0 ELSE -100 END
+                          + CASE WHEN r.tipo_id  = $2 THEN 2
+                                 WHEN r.tipo_id IS NULL THEN 0 ELSE -100 END
+                          + CASE WHEN COALESCE(jsonb_array_length(r.entalle_ids), 0) > 0
+                                      AND $3::text IS NOT NULL
+                                      AND r.entalle_ids ? $3 THEN 1
+                                 WHEN COALESCE(jsonb_array_length(r.entalle_ids), 0) = 0 THEN 0
+                                 ELSE -100 END
+                          + CASE WHEN r.hilo_id = $4 THEN 1
+                                 WHEN r.hilo_id IS NULL THEN 0 ELSE -100 END) AS score
+                      FROM prod_color_reglas r
+                     WHERE r.activo = TRUE
+                       AND (r.marca_id IS NULL OR ($1::text IS NOT NULL AND r.marca_id = $1))
+                       AND (r.tipo_id  IS NULL OR ($2::text IS NOT NULL AND r.tipo_id  = $2))
+                       AND (COALESCE(jsonb_array_length(r.entalle_ids), 0) = 0
+                            OR ($3::text IS NOT NULL AND r.entalle_ids ? $3))
+                       AND (r.hilo_id  IS NULL OR ($4::text IS NOT NULL AND r.hilo_id  = $4))
+                ),
+                mejor_score AS (
+                    SELECT MAX(score) AS s FROM candidatas WHERE score >= 0
+                )
+                SELECT DISTINCT cc.nombre, COALESCE(cc.orden, 0) AS orden
+                  FROM candidatas c
+                  JOIN mejor_score m ON c.score = m.s
+                  JOIN prod_color_regla_colores rc ON rc.regla_id = c.id
+                  JOIN prod_colores_catalogo cc ON cc.id = rc.color_id
+                 ORDER BY orden, cc.nombre
+            """, ref["marca_id"], ref["tipo_id"], ref["entalle_id"], ref["hilo_id"])
+
+            # Si la regla no devolvió nada, usar todo el catálogo activo como fallback.
+            has_rule_match = bool(rule_color_rows)
+            if not rule_color_rows:
+                rule_color_rows = await conn.fetch("""
+                    SELECT nombre, COALESCE(orden, 0) AS orden
+                      FROM prod_colores_catalogo
+                     ORDER BY orden, nombre
+                """)
+
+            # Colores extra de Odoo PT clasificados con esta marca/tipo/entalle/tela.
+            # Aceptamos 'clasificado' y 'parcial' (al menos algún campo encaja).
+            # Puede no existir la tabla enriq o el mapping; lo ejecutamos con try.
+            odoo_color_rows = []
+            odoo_stock_rows = []
+            odoo_sin_clasificar_rows = []
+            try:
+                odoo_color_rows = await conn.fetch("""
+                    SELECT DISTINCT cc.nombre, COALESCE(cc.orden, 0) AS orden
+                      FROM prod_odoo_productos_enriq enr
+                      JOIN odoo.product_product pp ON pp.product_tmpl_id = enr.odoo_template_id
+                      JOIN prod_odoo_color_mapping mc ON mc.odoo_product_id = pp.odoo_id
+                      JOIN prod_colores_catalogo cc ON cc.id = mc.color_id
+                     WHERE COALESCE(enr.estado, '') <> 'excluido'
+                       AND ($1::text IS NULL OR enr.marca_id   = $1)
+                       AND ($2::text IS NULL OR enr.tipo_id    = $2)
+                       AND ($3::text IS NULL OR enr.entalle_id = $3)
+                       AND ($4::text IS NULL OR enr.tela_id    = $4)
+                       AND ($5::text IS NULL OR enr.hilo_id    = $5)
+                """, ref["marca_id"], ref["tipo_id"], ref["entalle_id"], ref["tela_id"], ref["hilo_id"])
+
+                # Stock real en tienda (stock_quant en locations con x_nombre válido)
+                # por color × talla.
+                odoo_stock_rows = await conn.fetch("""
+                    SELECT cc.nombre AS color_nombre,
+                           mc.talla_odoo AS talla_nombre,
+                           SUM(sq.qty - COALESCE(sq.reserved_qty, 0))::int AS qty
+                      FROM prod_odoo_productos_enriq enr
+                      JOIN odoo.product_product pp ON pp.product_tmpl_id = enr.odoo_template_id
+                      JOIN prod_odoo_color_mapping mc ON mc.odoo_product_id = pp.odoo_id
+                      JOIN prod_colores_catalogo cc ON cc.id = mc.color_id
+                      JOIN odoo.stock_quant sq ON sq.product_id = pp.odoo_id
+                      JOIN odoo.stock_location sl ON sl.odoo_id = sq.location_id
+                     WHERE COALESCE(enr.estado, '') <> 'excluido'
+                       AND ($1::text IS NULL OR enr.marca_id   = $1)
+                       AND ($2::text IS NULL OR enr.tipo_id    = $2)
+                       AND ($3::text IS NULL OR enr.entalle_id = $3)
+                       AND ($4::text IS NULL OR enr.tela_id    = $4)
+                       AND ($6::text IS NULL OR enr.hilo_id    = $6)
+                       AND mc.talla_odoo IS NOT NULL
+                       AND sl.x_nombre = ANY($5::text[])
+                     GROUP BY cc.nombre, mc.talla_odoo
+                    HAVING SUM(sq.qty - COALESCE(sq.reserved_qty, 0)) > 0
+                """, ref["marca_id"], ref["tipo_id"], ref["entalle_id"], ref["tela_id"],
+                     list(TIENDAS_VALIDAS_X_NOMBRE), ref["hilo_id"])
+
+                # PT de Odoo SIN color mapeado — agrupados por (template, color_odoo).
+                # Le sumamos el stock real para que el usuario priorice los grandes.
+                odoo_sin_clasificar_rows = await conn.fetch("""
+                    WITH templates AS (
+                        SELECT DISTINCT enr.odoo_template_id
+                          FROM prod_odoo_productos_enriq enr
+                         WHERE COALESCE(enr.estado,'') <> 'excluido'
+                           AND ($1::text IS NULL OR enr.marca_id   = $1)
+                           AND ($2::text IS NULL OR enr.tipo_id    = $2)
+                           AND ($3::text IS NULL OR enr.entalle_id = $3)
+                           AND ($4::text IS NULL OR enr.tela_id    = $4)
+                           AND ($6::text IS NULL OR enr.hilo_id    = $6)
+                    ),
+                    variantes_sin_color AS (
+                        SELECT t.odoo_template_id,
+                               pt.name AS template_name,
+                               vf.product_product_id,
+                               vf.talla,
+                               vf.color AS color_odoo
+                          FROM templates t
+                          JOIN odoo.v_product_variant_flat vf
+                            ON vf.product_tmpl_id = t.odoo_template_id
+                          JOIN odoo.product_template pt
+                            ON pt.odoo_id = t.odoo_template_id
+                          LEFT JOIN prod_odoo_color_mapping mc
+                            ON mc.odoo_product_id = vf.product_product_id
+                         WHERE mc.color_id IS NULL
+                           AND vf.color IS NOT NULL
+                           AND TRIM(vf.color) <> ''
+                    ),
+                    stock_variantes AS (
+                        SELECT sq.product_id,
+                               -- Solo tiendas reales (incluye TALLER). Excluye virtuales:
+                               -- Customers, Ajuste, Proveedores, Fallados, AP, REMATE, etc.
+                               SUM(sq.qty - COALESCE(sq.reserved_qty, 0)) AS stock
+                          FROM odoo.stock_quant sq
+                          JOIN odoo.stock_location sl ON sl.odoo_id = sq.location_id
+                         WHERE sq.product_id IN (SELECT product_product_id FROM variantes_sin_color)
+                           AND sl.x_nombre = ANY($5::text[])
+                         GROUP BY sq.product_id
+                    )
+                    SELECT v.odoo_template_id AS template_id,
+                           v.template_name,
+                           v.color_odoo,
+                           ARRAY_AGG(v.product_product_id ORDER BY v.talla) AS product_ids,
+                           ARRAY_AGG(v.talla ORDER BY v.talla) AS tallas,
+                           COALESCE(SUM(sv.stock), 0)::int AS stock_total
+                      FROM variantes_sin_color v
+                      LEFT JOIN stock_variantes sv ON sv.product_id = v.product_product_id
+                     GROUP BY v.odoo_template_id, v.template_name, v.color_odoo
+                    HAVING COALESCE(SUM(sv.stock), 0) > 0
+                     ORDER BY stock_total DESC, v.template_name, v.color_odoo
+                """, ref["marca_id"], ref["tipo_id"], ref["entalle_id"], ref["tela_id"],
+                     list(TIENDAS_VALIDAS_X_NOMBRE), ref["hilo_id"])
+            except Exception:
+                odoo_color_rows = []
+                odoo_stock_rows = []
+                odoo_sin_clasificar_rows = []
+
+        # Si la regla actual viene de una regla aplicable (no fallback al catálogo
+        # completo), la usamos como FILTRO restrictivo: solo se muestran colores
+        # incluidos en la regla. Los que tengan stock real fuera de la regla se
+        # mueven a "fuera_regla" para informar al usuario sin contaminar la matriz.
+        rule_color_set = {cr["nombre"] for cr in rule_color_rows if cr.get("nombre")}
+
+        if has_rule_match and rule_color_set:
+            # Saca a "fuera_regla" lo que ya estaba en colores_lav/alm pero no encaja
+            for cn in list(colores_lav.keys()):
+                if cn not in rule_color_set:
+                    fuera_regla_lav[cn] = colores_lav.pop(cn)
+            for cn in list(colores_alm.keys()):
+                if cn not in rule_color_set:
+                    fuera_regla_alm[cn] = colores_alm.pop(cn)
+            # Inyecta colores de la regla como filas vacías si no tienen cantidad
+            for cn in rule_color_set:
+                colores_lav.setdefault(cn, {})
+                colores_alm.setdefault(cn, {})
+            # Odoo PT clasificado: solo el subset que está en la regla
+            for cr in odoo_color_rows:
+                cn = cr["nombre"]
+                if cn and cn in rule_color_set:
+                    colores_alm.setdefault(cn, {})
+        else:
+            # Sin regla aplicable: comportamiento previo (no filtra)
+            for cr in rule_color_rows:
+                cn = cr["nombre"]
+                if cn:
+                    colores_lav.setdefault(cn, {})
+                    colores_alm.setdefault(cn, {})
+            for cr in odoo_color_rows:
+                cn = cr["nombre"]
+                if cn:
+                    colores_alm.setdefault(cn, {})
+
+        # Sumar el stock real de tienda (Odoo) en el cuadro Almacén PT / Tienda.
+        # Si una talla viene de Odoo y no estaba antes, la añadimos al set global.
+        # Si hay regla aplicable, los colores fuera de regla van a fuera_regla_alm
+        # en vez de colores_alm.
+        for sr in odoo_stock_rows:
+            cn = sr["color_nombre"]
+            tn = sr["talla_nombre"]
+            qty = safe_int(sr["qty"])
+            if not cn or not tn or qty == 0:
+                continue
+            all_tallas.add(tn)
+            destino = colores_alm
+            if has_rule_match and rule_color_set and cn not in rule_color_set:
+                destino = fuera_regla_alm
+            if cn not in destino:
+                destino[cn] = {}
+            destino[cn][tn] = destino[cn].get(tn, 0) + qty
+
+    # Recomputar tallas ordenadas ahora que pueden haberse agregado las de Odoo
+    sorted_tallas = sorted(all_tallas, key=lambda t: (talla_orden.get(t, 999), t))
+
+    odoo_sin_clasificar = []
+    if rows:
+        for r in odoo_sin_clasificar_rows:
+            odoo_sin_clasificar.append({
+                "template_id": r["template_id"],
+                "template_name": r["template_name"],
+                "color_odoo": r["color_odoo"],
+                "product_ids": list(r["product_ids"]) if r["product_ids"] else [],
+                "tallas": list(r["tallas"]) if r["tallas"] else [],
+                "stock_total": safe_int(r["stock_total"]),
+            })
+
+    # Scope (marca/tipo/entalle/tela/hilo) que define la regla aplicable.
+    # El frontend lo usa para filtrar el catálogo de colores en popovers.
+    scope = {}
+    if rows:
+        scope = {
+            "marca_id":   ref["marca_id"],
+            "tipo_id":    ref["tipo_id"],
+            "entalle_id": ref["entalle_id"],
+            "tela_id":    ref["tela_id"],
+            "hilo_id":    ref["hilo_id"],
+        }
+
+    return {
+        "tallas": sorted_tallas,
+        "scope": scope,
+        "grupos_taller": sorted(grupos_taller, key=lambda x: x.get("n_corte") or ""),
+        "colores_lavanderia": [{"color": k, "tallas": v} for k, v in sorted(colores_lav.items())],
+        "colores_almacen":    [{"color": k, "tallas": v} for k, v in sorted(colores_alm.items())],
+        "fuera_regla_lavanderia": [{"color": k, "tallas": v} for k, v in sorted(fuera_regla_lav.items())],
+        "fuera_regla_almacen":    [{"color": k, "tallas": v} for k, v in sorted(fuera_regla_alm.items())],
+        "sin_color": sin_color,
+        "odoo_sin_clasificar": odoo_sin_clasificar,
+    }
+
+
+# ==================== ASIGNACIÓN DE COLORES POR REGISTRO ====================
+
+@router.get("/registro-colores/{registro_id}")
+async def get_registro_colores(registro_id: str):
+    """
+    Datos para la matriz de asignación color × talla de un registro:
+    - modelo, n_corte, marca/tipo/entalle (para filtrar colores disponibles)
+    - tallas con su cantidad_total (límite por columna)
+    - distribucion_actual: lo ya asignado
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        reg = await conn.fetchrow("""
+            SELECT
+                r.id, r.n_corte, r.estado,
+                r.distribucion_colores,
+                r.tallas AS tallas_jsonb,
+                r.modelo_id,
+                COALESCE(m.nombre,    r.modelo_manual->>'nombre_modelo') AS modelo_nombre,
+                COALESCE(m.marca_id,  r.modelo_manual->>'marca_id')      AS marca_id,
+                COALESCE(m.tipo_id,   r.modelo_manual->>'tipo_id')       AS tipo_id,
+                COALESCE(m.entalle_id,r.modelo_manual->>'entalle_id')    AS entalle_id,
+                COALESCE(r.hilo_especifico_id, m.hilo_id,
+                         r.modelo_manual->>'hilo_id')                    AS hilo_id
+            FROM prod_registros r
+            LEFT JOIN prod_modelos m ON m.id = r.modelo_id
+            WHERE r.id = $1
+        """, registro_id)
+        if not reg:
+            raise HTTPException(status_code=404, detail="Registro no encontrado")
+
+        # Sumar cantidad_real por talla (tabla normalizada). Fallback a tallas JSONB.
+        talla_rows = await conn.fetch("""
+            SELECT rt.talla_id, t.nombre AS talla_nombre, t.orden, SUM(rt.cantidad_real) AS cantidad
+            FROM prod_registro_tallas rt
+            JOIN prod_tallas_catalogo t ON t.id = rt.talla_id
+            WHERE rt.registro_id = $1
+            GROUP BY rt.talla_id, t.nombre, t.orden
+            ORDER BY t.orden
+        """, registro_id)
+
+        tallas: list = []
+        if talla_rows:
+            tallas = [
+                {"talla_id": r["talla_id"], "talla_nombre": r["talla_nombre"], "cantidad_total": safe_int(r["cantidad"])}
+                for r in talla_rows
+            ]
+        else:
+            for t in parse_jsonb(reg["tallas_jsonb"]):
+                tid = t.get("talla_id")
+                tn = t.get("talla_nombre") or ""
+                qty = safe_int(t.get("cantidad", 0))
+                if tid and qty > 0:
+                    tallas.append({"talla_id": tid, "talla_nombre": tn, "cantidad_total": qty})
+
+    distribucion_actual = parse_jsonb(reg["distribucion_colores"])
+
+    return {
+        "id": reg["id"],
+        "n_corte": reg["n_corte"],
+        "estado": reg["estado"],
+        "modelo_id": reg["modelo_id"],
+        "modelo_nombre": reg["modelo_nombre"],
+        "marca_id": reg["marca_id"],
+        "tipo_id": reg["tipo_id"],
+        "entalle_id": reg["entalle_id"],
+        "hilo_id": reg["hilo_id"],
+        "tallas": tallas,
+        "distribucion_actual": distribucion_actual,
+    }
+
+
+class _ColorAsignacionItem(BaseModel):
+    color_id: str
+    color_nombre: str = ""
+    cantidad: int = 0
+
+
+class _TallaAsignacion(BaseModel):
+    talla_id: str
+    talla_nombre: str = ""
+    cantidad_total: int = 0
+    colores: List[_ColorAsignacionItem] = []
+
+
+class _DistribucionColoresInput(BaseModel):
+    distribucion: List[_TallaAsignacion]
+
+
+@router.put("/registro-colores/{registro_id}")
+async def update_registro_colores(registro_id: str, payload: _DistribucionColoresInput):
+    """
+    Reemplaza el JSONB distribucion_colores del registro.
+    Valida que la suma de colores por talla no exceda cantidad_total.
+    """
+    # Validación: ningún talla debe excederse
+    for t in payload.distribucion:
+        suma = sum(safe_int(c.cantidad) for c in t.colores)
+        if suma > t.cantidad_total:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Talla {t.talla_nombre or t.talla_id}: suma de colores ({suma}) excede el total ({t.cantidad_total})",
+            )
+
+    serializable = [t.model_dump() for t in payload.distribucion]
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "UPDATE prod_registros SET distribucion_colores = $1::jsonb WHERE id = $2",
+            json.dumps(serializable), registro_id,
+        )
+        if result.endswith(" 0"):
+            raise HTTPException(status_code=404, detail="Registro no encontrado")
+
+    return {"ok": True, "registro_id": registro_id, "items": len(serializable)}
 
 
 # ==================== REPORTE OPERATIVO DE COSTURA ====================

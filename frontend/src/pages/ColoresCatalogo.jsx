@@ -26,6 +26,7 @@ import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SortableRow, useSortableTable, SortableTableWrapper } from '../components/SortableTable';
 import { ColorGeneralCombobox } from '../components/ColorGeneralCombobox';
+import { formatColorName } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -69,7 +70,7 @@ export const ColoresCatalogo = () => {
     e.preventDefault();
     try {
       const payload = {
-        nombre: formData.nombre,
+        nombre: formatColorName(formData.nombre),
         codigo_hex: '',
         color_general_id: formData.color_general_id || null,
         categoria: formData.categoria || 'basico',
@@ -95,7 +96,7 @@ export const ColoresCatalogo = () => {
   const handleEdit = (item) => {
     setEditingItem(item);
     setFormData({
-      nombre: item.nombre,
+      nombre: formatColorName(item.nombre),
       color_general_id: item.color_general_id || '',
       categoria: item.categoria || 'basico',
       orden: item.orden || 0,
@@ -172,8 +173,8 @@ export const ColoresCatalogo = () => {
                 >
                   {items.map((item) => (
                     <SortableRow key={item.id} id={item.id}>
-                      <TableCell className="font-medium">{item.nombre}</TableCell>
-                      <TableCell className="text-muted-foreground">{item.color_general_nombre || '-'}</TableCell>
+                      <TableCell className="font-medium">{formatColorName(item.nombre)}</TableCell>
+                      <TableCell className="text-muted-foreground">{item.color_general_nombre ? formatColorName(item.color_general_nombre) : '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{item.modelo || '-'}</TableCell>
                       <TableCell>
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -259,7 +260,7 @@ export const ColoresCatalogo = () => {
                   value={formData.color_general_id}
                   onChange={(id) => setFormData({ ...formData, color_general_id: id })}
                   onCreate={async (nombre) => {
-                    const res = await axios.post(`${API}/colores-generales`, { nombre, orden: 0 });
+                    const res = await axios.post(`${API}/colores-generales`, { nombre: formatColorName(nombre), orden: 0 });
                     const created = res.data;
 
                     // Optimista: incluirlo de inmediato para que se vea seleccionado al instante

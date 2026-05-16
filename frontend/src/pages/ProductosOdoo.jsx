@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -47,6 +47,7 @@ const ProductosOdoo = () => {
   // Facets: IDs de cada dimensión que aparecen en algún producto con los filtros actuales
   const [facets, setFacets] = useState({ marca: null, tipo: null, tela: null, entalle: null, hilo: null });
   const [editing, setEditing] = useState(null);
+  const listRequestRef = useRef(0);
 
   const limit = 50;
 
@@ -60,6 +61,8 @@ const ProductosOdoo = () => {
   }, []);
 
   const fetchList = useCallback(async () => {
+    const requestId = listRequestRef.current + 1;
+    listRequestRef.current = requestId;
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -77,12 +80,17 @@ const ProductosOdoo = () => {
         params.append('sort_dir', sortDir);
       }
       const res = await axios.get(`${API}/odoo-enriq?${params.toString()}`);
+      if (requestId !== listRequestRef.current) return;
       setItems(res.data.items || []);
       setTotal(res.data.total || 0);
     } catch (err) {
-      toast.error('Error al cargar productos');
+      if (requestId === listRequestRef.current) {
+        toast.error('Error al cargar productos');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === listRequestRef.current) {
+        setLoading(false);
+      }
     }
   }, [tab, page, q, filtroMarca, filtroTipo, filtroTelaGeneral, filtroEntalle, filtroHilo, sortBy, sortDir]);
 

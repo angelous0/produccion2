@@ -5,6 +5,19 @@ export function cn(...inputs) {
   return twMerge(clsx(inputs))
 }
 
+export const toTitleCase = (value) => {
+  if (value == null) return '';
+  const text = String(value).trim().replace(/\s+/g, ' ');
+  if (!text) return '';
+  return text
+    .toLocaleLowerCase('es-PE')
+    .replace(/(^|[\s./-])(\p{L}|\p{N})/gu, (_, separator, char) => (
+      `${separator}${char.toLocaleUpperCase('es-PE')}`
+    ));
+};
+
+export const formatColorName = toTitleCase;
+
 export const getStatusClass = (estado) => {
   const estadoLower = estado.toLowerCase();
   if (estadoLower.includes('corte')) return 'status-corte';

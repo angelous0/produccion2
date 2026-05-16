@@ -15,9 +15,12 @@ import {
   ArrowLeft, Settings2, ChevronRight,
   ExternalLink, Eye, EyeOff, MoveLeft, MoveRight,
   Merge, X, Palette, ArrowDownWideNarrow, ArrowUpWideNarrow,
+  TableProperties,
 } from 'lucide-react';
+import { FichaItemModal } from '../components/FichaItemModal';
 
 import { formatDate } from '../lib/dateUtils';
+import { formatColorName } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const STORAGE_KEY = 'matriz-produccion-prefs';
@@ -25,6 +28,24 @@ const COL_WIDTHS_KEY = 'matriz-produccion-col-widths';
 const VISTA_MODO_KEY = 'matriz-produccion-vista-modo';
 const DEFAULT_COL_WIDTHS = { __item: 280, __hilo: 90, __total: 80 };
 const MIN_COL_WIDTH = 50;
+
+// Columnas ocultas y fusiones por defecto (cuando no hay prefs guardadas)
+const COLS_HIDDEN_BY_DEFAULT = ['Para Estampado', 'Estampado'];
+const MERGES_BY_DEFAULT = {
+  'Para Lavandería': ['Atraque', 'Para Atraque'],
+  'Almacén PT': ['Producto Terminado'],
+};
+
+function getDefaultPrefs(apiCols) {
+  const validMerged = Object.fromEntries(
+    Object.entries(MERGES_BY_DEFAULT)
+      .filter(([target]) => apiCols.includes(target))
+      .map(([target, cols]) => [target, cols.filter(c => apiCols.includes(c))])
+      .filter(([, cols]) => cols.length > 0)
+  );
+  const visible = apiCols.filter(c => !COLS_HIDDEN_BY_DEFAULT.includes(c));
+  return { visible, order: apiCols, merged: validMerged };
+}
 
 // Calcula para cada fila qué celdas pintar y con qué rowSpan en cada nivel.
 // Asume que las filas ya vienen ordenadas por los niveles.
@@ -156,7 +177,7 @@ const ColoresTable = ({ registros }) => {
               <td className="p-2.5 font-semibold" colSpan={2}>
                 <div className="flex items-center gap-2">
                   <Palette className="h-3.5 w-3.5 text-primary" />
-                  {grupo.nombre}
+                  {formatColorName(grupo.nombre)}
                 </div>
               </td>
               <td className="p-2.5 text-center font-semibold">{grupo.totalRegistros}</td>
@@ -166,7 +187,7 @@ const ColoresTable = ({ registros }) => {
             {grupo.colores.map(c => (
               <tr key={c.color} className="border-b hover:bg-muted/10">
                 <td className="p-2.5 pl-8 text-muted-foreground">↳</td>
-                <td className="p-2.5">{c.color}</td>
+                <td className="p-2.5">{formatColorName(c.color)}</td>
                 <td className="p-2.5 text-center font-mono">{c.registros}</td>
                 <td className="p-2.5 text-right font-mono">{c.cantidad.toLocaleString()}</td>
               </tr>
@@ -353,10 +374,14 @@ export const MatrizProduccion = () => {
   const [mergeMode, setMergeMode] = useState(false);
   const [mergeSelection, setMergeSelection] = useState([]);
 
-  // Modal
+  // Modal detalle
   const [modalOpen, setModalOpen] = useState(false);
   const [modalRegistros, setModalRegistros] = useState([]);
   const [modalTitulo, setModalTitulo] = useState('');
+
+  // Ficha de ítem (color × talla)
+  const [fichaOpen, setFichaOpen] = useState(false);
+  const [fichaFila, setFichaFila] = useState(null);
 
   // ── Fetch ───────────────────────────────────────────────────
   const fetchData = useCallback(() => {
@@ -387,9 +412,10 @@ export const MatrizProduccion = () => {
           setColOrder(so?.length ? [...so, ...miss] : apiCols);
           setMergedCols(validMerged);
         } else {
-          setVisibleCols(apiCols);
-          setColOrder(apiCols);
-          setMergedCols({});
+          const defs = getDefaultPrefs(apiCols);
+          setVisibleCols(defs.visible);
+          setColOrder(defs.order);
+          setMergedCols(defs.merged);
         }
       })
       .catch(err => console.error(err))
@@ -1017,14 +1043,24 @@ export const MatrizProduccion = () => {
                               className="p-2.5 sticky left-0 bg-background z-10 border-r"
                               style={{ width: getColWidth('__item'), minWidth: getColWidth('__item'), maxWidth: getColWidth('__item') }}
                             >
-                              <button
-                                className="flex items-center gap-1.5 text-left w-full group hover:text-primary transition-colors"
-                                onClick={() => openModal(fila, null)}
-                                data-testid={`item-click-${idx}`}
-                              >
-                                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 group-hover:text-primary" />
-                                <span className="font-medium truncate">{fila.item}</span>
-                              </button>
+                              <div className="flex items-center gap-1 w-full">
+                                <button
+                                  className="flex items-center gap-1.5 text-left flex-1 min-w-0 group hover:text-primary transition-colors"
+                                  onClick={() => openModal(fila, null)}
+                                  data-testid={`item-click-${idx}`}
+                                >
+                                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 group-hover:text-primary" />
+                                  <span className="font-medium truncate">{fila.item}</span>
+                                </button>
+                                <button
+                                  className="flex-shrink-0 p-0.5 rounded text-muted-foreground/50 hover:text-primary hover:bg-muted transition-colors"
+                                  onClick={() => { setFichaFila(fila); setFichaOpen(true); }}
+                                  title="Ver ficha de colores × tallas"
+                                  data-testid={`ficha-btn-${idx}`}
+                                >
+                                  <TableProperties className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                             </td>
                             <td
                               className="p-2.5 sticky bg-background z-10 border-r text-muted-foreground truncate"
@@ -1116,6 +1152,13 @@ export const MatrizProduccion = () => {
         registros={modalRegistros}
         titulo={modalTitulo}
         navigate={navigate}
+      />
+
+      {/* ── Ficha de ítem: colores × tallas ──────────────────── */}
+      <FichaItemModal
+        open={fichaOpen}
+        onClose={() => setFichaOpen(false)}
+        fila={fichaFila}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Check, ChevronsUpDown, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatColorName } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -26,6 +26,9 @@ export const MultiSelectColors = ({
   emptyMessage = "No se encontraron resultados.",
 }) => {
   const [open, setOpen] = React.useState(false);
+  const hasRuleFlags = options.some((option) => typeof option.permitido === 'boolean');
+  const suggestedOptions = hasRuleFlags ? options.filter((option) => option.permitido) : options;
+  const otherOptions = hasRuleFlags ? options.filter((option) => !option.permitido) : [];
 
   const handleSelect = (option) => {
     const isSelected = selected.find((s) => s.id === option.id);
@@ -39,6 +42,37 @@ export const MultiSelectColors = ({
   const handleRemove = (e, optionId) => {
     e.stopPropagation();
     onChange(selected.filter((s) => s.id !== optionId));
+  };
+
+  const renderItem = (option) => {
+    const isSelected = selected.find((s) => s.id === option.id);
+    return (
+      <CommandItem
+        key={option.id}
+        value={`${formatColorName(option.nombre || '')} ${formatColorName(option.color_general_nombre || '')}`}
+        onSelect={() => handleSelect(option)}
+        className="cursor-pointer"
+      >
+        <div
+          className={cn(
+            "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
+            isSelected
+              ? "bg-primary border-primary text-primary-foreground"
+              : "opacity-50"
+          )}
+        >
+          {isSelected && <Check className="h-3 w-3" />}
+        </div>
+        <div className="min-w-0">
+          <span className="truncate block">{formatColorName(option.nombre)}</span>
+          {option.color_general_nombre && (
+            <span className="text-[10px] text-muted-foreground block truncate">
+              {formatColorName(option.color_general_nombre)}
+            </span>
+          )}
+        </div>
+      </CommandItem>
+    );
   };
 
   return (
@@ -61,11 +95,7 @@ export const MultiSelectColors = ({
                   variant="secondary"
                   className="flex items-center gap-1 pr-1"
                 >
-                  <div
-                    className="w-3 h-3 rounded-sm border"
-                    style={{ backgroundColor: option.codigo_hex || "#ccc" }}
-                  />
-                  <span className="text-xs">{option.nombre}</span>
+                  <span className="text-xs">{formatColorName(option.nombre)}</span>
                   <button
                     type="button"
                     onClick={(e) => handleRemove(e, option.id)}
@@ -85,35 +115,14 @@ export const MultiSelectColors = ({
           <CommandInput placeholder={searchPlaceholder} />
           <CommandList>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
-            <CommandGroup>
-              {options.map((option) => {
-                const isSelected = selected.find((s) => s.id === option.id);
-                return (
-                  <CommandItem
-                    key={option.id}
-                    value={option.nombre}
-                    onSelect={() => handleSelect(option)}
-                    className="cursor-pointer"
-                  >
-                    <div
-                      className={cn(
-                        "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border",
-                        isSelected
-                          ? "bg-primary border-primary text-primary-foreground"
-                          : "opacity-50"
-                      )}
-                    >
-                      {isSelected && <Check className="h-3 w-3" />}
-                    </div>
-                    <div
-                      className="w-5 h-5 rounded border mr-2"
-                      style={{ backgroundColor: option.codigo_hex || "#ccc" }}
-                    />
-                    <span>{option.nombre}</span>
-                  </CommandItem>
-                );
-              })}
+            <CommandGroup heading={hasRuleFlags ? "Sugeridos por regla" : undefined}>
+              {suggestedOptions.map(renderItem)}
             </CommandGroup>
+            {otherOptions.length > 0 && (
+              <CommandGroup heading="Otros colores">
+                {otherOptions.map(renderItem)}
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>
