@@ -291,8 +291,13 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
     const pat = parseInt(resolucionForm.cantidad_pasa_a_tela) || 0;
     const mer = parseInt(resolucionForm.cantidad_merma) || 0;
     const suma = rec + liq + pat + mer;
-    if (suma !== selectedArreglo.cantidad) {
-      toast.error(`La suma debe ser ${selectedArreglo.cantidad}, hay ${suma}`);
+    // Aceptamos parciales (suma <= cantidad). Sólo bloqueamos si excede.
+    if (suma > selectedArreglo.cantidad) {
+      toast.error(`La suma (${suma}) excede la cantidad enviada (${selectedArreglo.cantidad})`);
+      return;
+    }
+    if (suma === 0) {
+      toast.error('Indica al menos una cantidad > 0');
       return;
     }
     setSaving(true);
@@ -303,9 +308,14 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
         cantidad_pasa_a_tela: pat,
         cantidad_merma: mer,
       }, { headers: hdrs() });
-      toast.success(pat > 0
-        ? `Resolución guardada · ${pat} pasaron a evaluación de tela`
-        : 'Resolución guardada');
+      const cierra = suma === selectedArreglo.cantidad;
+      if (cierra) {
+        toast.success(pat > 0
+          ? `Entrega cerrada · ${pat} pasaron a evaluación de tela`
+          : 'Entrega cerrada');
+      } else {
+        toast.success(`Resolución parcial guardada · pendiente: ${selectedArreglo.cantidad - suma}`);
+      }
       setResolucionDialogOpen(false);
       setSelectedArreglo(null);
       fetchAll();
@@ -936,18 +946,23 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
                 <Input type="number" min={0} max={resCantidad} value={resolucionForm.cantidad_merma} onChange={e => setResolucionForm({ ...resolucionForm, cantidad_merma: e.target.value })} data-testid="input-res-merma" />
               </div>
             )}
-            {/* Barra de progreso */}
+            {/* Barra de progreso · ahora soporta parciales */}
             <div className="pt-1">
               <div className="flex justify-between text-[10px] mb-1">
                 <span>Asignado: {resTotal} / {resCantidad}</span>
                 <span className={resExcede ? 'text-red-600 font-semibold' : resFalta ? 'text-amber-600' : 'text-emerald-600 font-semibold'}>
-                  {resExcede ? `EXCEDE +${resTotal - resCantidad}` : resFalta ? `Faltan ${resCantidad - resTotal}` : 'COMPLETO'}
+                  {resExcede ? `EXCEDE +${resTotal - resCantidad}` : resFalta ? `Pendiente ${resCantidad - resTotal}` : 'COMPLETO'}
                 </span>
               </div>
               <div className="w-full bg-zinc-200 dark:bg-zinc-700 rounded-full h-2">
                 <div className={`h-2 rounded-full transition-all ${resExcede ? 'bg-red-500' : resTotal === resCantidad ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(Math.round(resTotal / Math.max(resCantidad, 1) * 100), 100)}%` }} />
               </div>
             </div>
+            {resFalta && !resExcede && resTotal > 0 && (
+              <div className="text-[11px] bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-2 py-1.5 rounded text-amber-700 dark:text-amber-300">
+                Vas a guardar una <strong>resolución parcial</strong>. El envío seguirá EN_ARREGLO hasta que completes las {resCantidad - resTotal} restantes.
+              </div>
+            )}
             {resPat > 0 && (
               <div className="text-[11px] bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-2 py-1.5 rounded text-blue-700 dark:text-blue-300">
                 ℹ Se creará automáticamente un fallado de tela por {resPat} prendas en evaluación.
@@ -956,7 +971,16 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" size="sm" onClick={() => setResolucionDialogOpen(false)}>Cancelar</Button>
-            <Button type="button" size="sm" onClick={handleSaveResolucion} disabled={saving || resTotal !== resCantidad} data-testid="btn-guardar-resolucion">{saving ? 'Guardando...' : 'Confirmar entrega'}</Button>
+            <Button
+              type="button" size="sm"
+              onClick={handleSaveResolucion}
+              disabled={saving || resExcede || resTotal === 0}
+              data-testid="btn-guardar-resolucion"
+            >
+              {saving
+                ? 'Guardando...'
+                : (resTotal === resCantidad ? 'Confirmar entrega' : 'Guardar parcial')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
