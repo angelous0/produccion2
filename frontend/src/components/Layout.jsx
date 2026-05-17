@@ -69,6 +69,7 @@ import {
   BarChart2,
   Search,
   Building2,
+  MapPin,
   AlertTriangle,
   FlaskConical,
   Receipt,
@@ -186,6 +187,7 @@ const maestrosItems = [
 
 const configItems = [
   { to: '/config-empresa', icon: Building2, label: 'Empresa' },
+  { to: '/config/locations-ingreso', icon: MapPin, label: 'Locations Ingreso PT' },
   { to: '/usuarios', icon: Shield, label: 'Usuarios' },
   { to: '/historial-actividad', icon: History, label: 'Historial' },
   { to: '/auditoria', icon: ShieldCheck, label: 'Auditoría' },

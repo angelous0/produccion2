@@ -157,20 +157,27 @@ export const DistribucionPTPanel = ({ registroId }) => {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // Buscar ajustes disponibles
+  // Buscar ajustes disponibles. Pasamos registro_id para que el backend
+  // filtre estricto a los ajustes que mueven al menos uno de los templates
+  // declarados en la distribución del corte (cualquier tipo_salida).
   useEffect(() => {
     if (!ajustePopoverOpen) return;
     const timer = setTimeout(async () => {
       try {
+        const params = new URLSearchParams({
+          search: ajusteSearch,
+          limit: '30',
+        });
+        if (registroId) params.set('registro_id', registroId);
         const res = await axios.get(
-          `${API}/odoo/stock-inventories?solo_produccion=true&search=${encodeURIComponent(ajusteSearch)}&limit=30`,
+          `${API}/odoo/stock-inventories?${params.toString()}`,
           { headers: getAuthHeader() }
         );
         setAjustesDisponibles(res.data);
       } catch { /* ignore */ }
     }, 300);
     return () => clearTimeout(timer);
-  }, [ajusteSearch, ajustePopoverOpen, getAuthHeader]);
+  }, [ajusteSearch, ajustePopoverOpen, getAuthHeader, registroId]);
 
   const addLinea = () => {
     setLineas(prev => [...prev, { tipo_salida: 'normal', product_template_id_odoo: null, cantidad: 0 }]);
@@ -542,29 +549,52 @@ export const DistribucionPTPanel = ({ registroId }) => {
                   <Search className="h-3 w-3" /> Vincular Ajuste
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[380px] p-0" align="end">
+              <PopoverContent className="w-[440px] p-0" align="end">
                 <Command shouldFilter={false}>
                   <CommandInput placeholder="Buscar ajuste por nombre o ID..." value={ajusteSearch} onValueChange={setAjusteSearch} />
                   <CommandList>
-                    <CommandEmpty>Sin ajustes de produccion encontrados</CommandEmpty>
+                    <CommandEmpty>
+                      {lineas.length === 0
+                        ? 'Primero declara la distribución del corte (templates Odoo) para ver ajustes candidatos.'
+                        : 'Sin ajustes de los últimos 120 días que muevan estos templates.'}
+                    </CommandEmpty>
                     <CommandGroup>
                       {ajustesDisponibles.map(a => (
                         <CommandItem key={a.odoo_id} value={String(a.odoo_id)} disabled={!a.disponible || vinculando}
                           onSelect={() => { if (a.disponible && !vinculando) vincularAjuste(a.odoo_id); }}
                           className={!a.disponible || vinculando ? 'opacity-50' : ''}>
-                          <div className="flex flex-col flex-1">
-                            <span className="text-xs font-medium">{a.name}</span>
+                          <div className="flex flex-col flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium truncate">{a.name}</span>
+                              {a.templates_total > 0 && (
+                                <Badge variant="outline" className="text-[9px] shrink-0 bg-blue-50 text-blue-700 border-blue-300">
+                                  {a.templates_match}/{a.templates_total} match
+                                </Badge>
+                              )}
+                            </div>
                             <span className="text-[10px] text-muted-foreground">
-                              ID: {a.odoo_id} | Qty: {a.total_qty} | {a.date ? new Date(a.date).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : ''}
+                              ID: {a.odoo_id} · {a.date ? new Date(a.date).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : ''} · Total: {a.total_qty}
+                              {a.qty_para_corte > 0 && <> · <span className="text-blue-700 dark:text-blue-300 font-semibold">Tuyas: {a.qty_para_corte}</span></>}
                             </span>
+                            {/* Desglose por template del corte */}
+                            {(a.templates_detalle || []).length > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {a.templates_detalle.map(td => (
+                                  <span key={td.template_id}
+                                    className="text-[9px] px-1.5 py-0.5 rounded-md border border-blue-200 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:border-blue-900 dark:text-blue-300">
+                                    {td.nombre || `#${td.template_id}`}: {td.qty}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
                           {!a.disponible && (
-                            <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-300 shrink-0">
+                            <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-300 shrink-0 ml-2">
                               Vinculado a otro
                             </Badge>
                           )}
                           {a.disponible && vinculando && (
-                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />
+                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0 ml-2" />
                           )}
                         </CommandItem>
                       ))}

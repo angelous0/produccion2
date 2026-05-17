@@ -527,30 +527,104 @@ async def buscar_product_templates(
 @router.get("/odoo/stock-inventories")
 async def buscar_stock_inventories(
     search: str = Query("", min_length=0),
-    solo_produccion: bool = Query(True),
+    registro_id: Optional[str] = Query(None, description="Si se pasa, filtra solo ajustes que muevan algún template declarado en la distribución del corte"),
+    dias_ventana: int = Query(120, ge=1, le=730, description="Solo ajustes con fecha en los últimos N días"),
+    incluir_legacy_flag: bool = Query(False, description="Si True, también incluye ajustes con x_es_ingreso_produccion=true aunque no estén en una location de ingreso configurada (compat hacia atrás)"),
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user)
 ):
-    """Retorna ajustes de inventario de Odoo disponibles para vincular."""
+    """Lista ajustes de inventario de Odoo candidatos para vincular con un corte.
+
+    Reglas nuevas (post-016_locations_ingreso_produccion):
+      - Solo ajustes `state='done'` en una de las locations marcadas
+        como "ingreso de producción" (tabla prod_locations_ingreso_produccion).
+      - Solo ajustes dentro de los últimos `dias_ventana` días (default 120).
+      - Si se pasa `registro_id`: solo aparecen los que mueven al menos un
+        product_template_id_odoo declarado en la distribución del corte
+        (cualquier tipo_salida).
+      - `incluir_legacy_flag=true` añade los que tienen el flag manual
+        `x_es_ingreso_produccion=true` (compat con setup viejo).
+
+    Devuelve por cada ajuste:
+      - total_qty: cantidad total movida (todos los productos)
+      - qty_para_corte: cantidad movida SOLO de los templates del corte
+      - templates_detalle: lista de [{template_id, nombre, qty}] de las
+        líneas que coinciden con templates declarados del corte
+      - templates_match / templates_total: para chip "2/3 match"
+      - vinculado_a_registro / disponible: si ya está tomado por otro corte
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # 1) Templates declarados en la distribución del corte (cualquier tipo)
+        template_ids_corte: List[int] = []
+        if registro_id:
+            rows_tpl = await conn.fetch(
+                """SELECT DISTINCT product_template_id_odoo
+                   FROM produccion.prod_registro_pt_relacion
+                   WHERE registro_id = $1""",
+                registro_id,
+            )
+            template_ids_corte = [int(r['product_template_id_odoo']) for r in rows_tpl]
+            # Modo estricto: si pidió por corte pero el corte no tiene
+            # distribución todavía, devolvemos lista vacía (no tiene sentido
+            # mostrar ajustes random hasta que declare templates).
+            if not template_ids_corte:
+                return []
+
+        # 2) Locations configuradas como ingreso de producción
+        loc_rows = await conn.fetch(
+            """SELECT odoo_location_id FROM produccion.prod_locations_ingreso_produccion
+               WHERE activo = TRUE"""
+        )
+        location_ids = [int(r['odoo_location_id']) for r in loc_rows]
+
+        # Si no hay locations configuradas y tampoco fallback al flag legacy,
+        # no hay forma de filtrar — devolvemos vacío con un hint en el log.
+        if not location_ids and not incluir_legacy_flag:
+            return []
+
+        # 3) Armar WHERE
         conditions = ["si.state = 'done'"]
-        params = []
-        param_idx = 1
+        params: list = []
+        idx = 1
 
-        if solo_produccion:
-            conditions.append("si.x_es_ingreso_produccion = true")
+        # Ventana temporal (default 120 días)
+        params.append(dias_ventana)
+        conditions.append(f"si.date >= NOW() - (${idx} * INTERVAL '1 day')")
+        idx += 1
 
+        # Origen: location configurada (siempre) ó flag legacy (opcional)
+        origen_clauses = []
+        if location_ids:
+            params.append(location_ids)
+            origen_clauses.append(f"si.location_id = ANY(${idx}::int[])")
+            idx += 1
+        if incluir_legacy_flag:
+            origen_clauses.append("si.x_es_ingreso_produccion = true")
+        conditions.append("(" + " OR ".join(origen_clauses) + ")")
+
+        # Filtro estricto por templates del corte
+        if template_ids_corte:
+            params.append(template_ids_corte)
+            conditions.append(
+                f"EXISTS (SELECT 1 FROM odoo.stock_move sm "
+                f"        WHERE sm.inventory_id = si.odoo_id AND sm.state = 'done' "
+                f"          AND sm.product_tmpl_id = ANY(${idx}::int[]))"
+            )
+            idx += 1
+
+        # Búsqueda por texto (nombre o id)
         if search:
-            conditions.append(f"(LOWER(si.name) LIKE ${param_idx} OR CAST(si.odoo_id AS TEXT) LIKE ${param_idx})")
             params.append(f"%{search.lower()}%")
-            param_idx += 1
+            conditions.append(f"(LOWER(si.name) LIKE ${idx} OR CAST(si.odoo_id AS TEXT) LIKE ${idx})")
+            idx += 1
 
         where_clause = " AND ".join(conditions)
         params.append(limit)
+        limit_idx = idx
 
         rows = await conn.fetch(f"""
-            SELECT si.odoo_id, si.name, si.date, si.state,
+            SELECT si.odoo_id, si.name, si.date, si.state, si.location_id,
                    (SELECT COALESCE(SUM(sm.product_qty), 0)
                     FROM odoo.stock_move sm
                     WHERE sm.inventory_id = si.odoo_id AND sm.state = 'done') as total_qty,
@@ -561,18 +635,204 @@ async def buscar_stock_inventories(
             FROM odoo.stock_inventory si
             WHERE {where_clause}
             ORDER BY si.date DESC
-            LIMIT ${param_idx}
+            LIMIT ${limit_idx}
         """, *params)
 
-        return [
-            {
+        # 4) Si filtramos por corte, obtener detalle por template para cada ajuste
+        result = []
+        for r in rows:
+            base = {
                 "odoo_id": r['odoo_id'],
                 "name": r['name'],
                 "date": r['date'].isoformat() if r['date'] else None,
                 "state": r['state'],
+                "location_id": r['location_id'],
                 "total_qty": float(r['total_qty']),
                 "vinculado_a_registro": r['vinculado_a_registro'],
                 "disponible": r['vinculado_a_registro'] is None,
+                "qty_para_corte": 0.0,
+                "templates_detalle": [],
+                "templates_match": 0,
+                "templates_total": len(template_ids_corte),
+            }
+            if template_ids_corte:
+                detalle_rows = await conn.fetch(
+                    """SELECT sm.product_tmpl_id, SUM(sm.product_qty) as qty,
+                              pt.name as nombre
+                       FROM odoo.stock_move sm
+                       LEFT JOIN odoo.product_template pt ON pt.odoo_id = sm.product_tmpl_id
+                       WHERE sm.inventory_id = $1 AND sm.state = 'done'
+                         AND sm.product_tmpl_id = ANY($2::int[])
+                       GROUP BY sm.product_tmpl_id, pt.name
+                       ORDER BY qty DESC""",
+                    r['odoo_id'], template_ids_corte,
+                )
+                base["templates_detalle"] = [
+                    {
+                        "template_id": d['product_tmpl_id'],
+                        "nombre": d['nombre'],
+                        "qty": float(d['qty']),
+                    } for d in detalle_rows
+                ]
+                base["qty_para_corte"] = sum(d['qty'] for d in base["templates_detalle"])
+                base["templates_match"] = len(detalle_rows)
+            result.append(base)
+        return result
+
+
+# ======================== LOCATIONS DE INGRESO DE PRODUCCIÓN ========================
+# CRUD para la tabla prod_locations_ingreso_produccion. Sirve para que un
+# admin marque qué locations de Odoo cuentan como "ingreso de producción"
+# (el lugar físico donde aterrizan las prendas que vienen de planta).
+
+class LocationIngresoInput(BaseModel):
+    odoo_location_id: int = Field(gt=0)
+    nombre: str = Field(min_length=1, max_length=40)
+    alias_grupo: Optional[str] = Field(default=None, max_length=40)
+    activo: bool = True
+    notas: Optional[str] = None
+
+
+class LocationIngresoUpdate(BaseModel):
+    nombre: Optional[str] = Field(default=None, max_length=40)
+    alias_grupo: Optional[str] = Field(default=None, max_length=40)
+    activo: Optional[bool] = None
+    notas: Optional[str] = None
+
+
+@router.get("/locations-ingreso-produccion")
+async def listar_locations_ingreso(current_user: dict = Depends(get_current_user)):
+    """Lista las locations marcadas como ingreso de producción.
+    Devuelve también el nombre/x_nombre real desde odoo.stock_location para
+    facilitar identificarlas en la UI.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT lp.id, lp.odoo_location_id, lp.nombre, lp.alias_grupo,
+                      lp.activo, lp.notas, lp.created_at,
+                      sl.complete_name AS location_complete_name,
+                      COALESCE(NULLIF(sl.x_nombre, ''), sl.name) AS location_label,
+                      sl.usage AS location_usage
+               FROM produccion.prod_locations_ingreso_produccion lp
+               LEFT JOIN odoo.stock_location sl ON sl.odoo_id = lp.odoo_location_id
+               ORDER BY lp.activo DESC, lp.nombre"""
+        )
+        return [
+            {
+                **dict(r),
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
             }
             for r in rows
         ]
+
+
+@router.post("/locations-ingreso-produccion")
+async def crear_location_ingreso(
+    data: LocationIngresoInput,
+    current_user: dict = Depends(get_current_user),
+):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Verificar que la location exista en Odoo
+        exists = await conn.fetchval(
+            "SELECT 1 FROM odoo.stock_location WHERE odoo_id = $1", data.odoo_location_id
+        )
+        if not exists:
+            raise HTTPException(404, f"La location odoo_id={data.odoo_location_id} no existe en odoo.stock_location")
+        # Duplicado
+        ya = await conn.fetchval(
+            "SELECT id FROM produccion.prod_locations_ingreso_produccion WHERE odoo_location_id = $1",
+            data.odoo_location_id,
+        )
+        if ya:
+            raise HTTPException(400, "Esta location ya está registrada")
+        row = await conn.fetchrow(
+            """INSERT INTO produccion.prod_locations_ingreso_produccion
+               (odoo_location_id, nombre, alias_grupo, activo, notas)
+               VALUES ($1, $2, $3, $4, $5) RETURNING id""",
+            data.odoo_location_id, data.nombre, data.alias_grupo, data.activo, data.notas,
+        )
+        return {"ok": True, "id": row["id"]}
+
+
+@router.patch("/locations-ingreso-produccion/{loc_id}")
+async def actualizar_location_ingreso(
+    loc_id: int,
+    data: LocationIngresoUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        existing = await conn.fetchrow(
+            "SELECT * FROM produccion.prod_locations_ingreso_produccion WHERE id = $1", loc_id
+        )
+        if not existing:
+            raise HTTPException(404, "Location no encontrada")
+
+        sets, params = [], []
+        for field, val in [
+            ("nombre", data.nombre),
+            ("alias_grupo", data.alias_grupo),
+            ("activo", data.activo),
+            ("notas", data.notas),
+        ]:
+            if val is not None:
+                params.append(val)
+                sets.append(f"{field} = ${len(params)}")
+        if not sets:
+            return {"ok": True, "noop": True}
+        params.append(loc_id)
+        await conn.execute(
+            f"UPDATE produccion.prod_locations_ingreso_produccion SET {', '.join(sets)} WHERE id = ${len(params)}",
+            *params,
+        )
+        return {"ok": True}
+
+
+@router.delete("/locations-ingreso-produccion/{loc_id}")
+async def eliminar_location_ingreso(
+    loc_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "DELETE FROM produccion.prod_locations_ingreso_produccion WHERE id = $1", loc_id
+        )
+        return {"ok": True}
+
+
+@router.get("/odoo/stock-locations/buscar")
+async def buscar_stock_locations(
+    search: str = Query("", min_length=0),
+    limit: int = Query(30, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+):
+    """Helper para la pantalla admin: busca locations de Odoo por nombre/x_nombre/id
+    para poder agregarlas a la tabla `prod_locations_ingreso_produccion`.
+    Excluye las que ya están registradas.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        params: list = []
+        conditions = ["sl.active = TRUE", "sl.usage IN ('internal', 'view')"]
+        if search:
+            params.append(f"%{search.lower()}%")
+            conditions.append(
+                f"(LOWER(COALESCE(sl.name,'')) LIKE ${len(params)} "
+                f"OR LOWER(COALESCE(sl.x_nombre,'')) LIKE ${len(params)} "
+                f"OR CAST(sl.odoo_id AS TEXT) LIKE ${len(params)})"
+            )
+        params.append(limit)
+        rows = await conn.fetch(
+            f"""SELECT sl.odoo_id, sl.name, sl.x_nombre, sl.complete_name, sl.usage,
+                       (SELECT id FROM produccion.prod_locations_ingreso_produccion
+                        WHERE odoo_location_id = sl.odoo_id LIMIT 1) AS ya_registrada_id
+                FROM odoo.stock_location sl
+                WHERE {' AND '.join(conditions)}
+                ORDER BY sl.odoo_id
+                LIMIT ${len(params)}""",
+            *params,
+        )
+        return [dict(r) for r in rows]
