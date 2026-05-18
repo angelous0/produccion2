@@ -17,7 +17,7 @@ import {
 } from '../components/ui/select';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { Plus, Pencil, Trash2, Package, AlertTriangle, Layers, Info, ChevronDown, ChevronUp, Search, X, PackageX, BookOpen, Eye } from 'lucide-react';
+import { Plus, Pencil, Trash2, Package, AlertTriangle, Layers, Info, ChevronDown, ChevronUp, Search, X, PackageX, BookOpen, Eye, Store } from 'lucide-react';
 import { toast } from 'sonner';
 import { ExportButton } from '../components/ExportButton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
@@ -550,6 +550,11 @@ export const Inventario = () => {
                             <Button variant="ghost" size="icon" className="h-7 w-7 hidden sm:inline-flex" onClick={() => navigate(`/inventario/kardex?item=${item.id}`)} title="Ver Kardex" data-testid={`kardex-item-${item.id}`}>
                               <BookOpen className="h-3.5 w-3.5 text-primary" />
                             </Button>
+                            {item.tipo_item === 'PT' && (
+                              <Button variant="ghost" size="icon" className="h-7 w-7 hidden sm:inline-flex" onClick={() => navigate(`/inventario/pt/${item.id}/stock-vivo`)} title="Stock vivo (Odoo)" data-testid={`stock-vivo-${item.id}`}>
+                                <Store className="h-3.5 w-3.5 text-emerald-600" />
+                              </Button>
+                            )}
                             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenDialog(item)} data-testid={`edit-item-${item.id}`}>
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>

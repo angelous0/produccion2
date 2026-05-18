@@ -200,7 +200,9 @@ async def guardar_distribucion_pt(
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
-        reg = await conn.fetchrow("SELECT id FROM prod_registros WHERE id = $1", registro_id)
+        reg = await conn.fetchrow(
+            "SELECT id, pt_item_id FROM prod_registros WHERE id = $1", registro_id
+        )
         if not reg:
             raise HTTPException(404, "Registro no encontrado")
 
@@ -259,7 +261,29 @@ async def guardar_distribucion_pt(
                 """, registro_id, tipo, prod_id, cantidad,
                    datetime.now(timezone.utc).replace(tzinfo=None), current_user.get('username'))
 
-        # Hook automático: tras guardar la distribución, intentar detectar el
+        # Hook 1: auto-vincular PT ↔ templates Odoo si el corte tiene
+        # pt_item_id. Cada par (template_id, tipo_salida) declarado para este
+        # corte se registra en prod_pt_odoo_templates con auto_vinculado=TRUE.
+        # Si ya existía el par, no se duplica. Permite calcular stock vivo
+        # del PT consultando Odoo (lo que vive en stock_quant + ventas POS).
+        pt_links_creados = 0
+        if reg.get("pt_item_id"):
+            try:
+                for (tipo, prod_id), _cant in agrupado.items():
+                    res = await conn.execute(
+                        """INSERT INTO produccion.prod_pt_odoo_templates
+                           (pt_item_id, odoo_template_id, tipo_salida, auto_vinculado, created_by)
+                           VALUES ($1, $2, $3, TRUE, $4)
+                           ON CONFLICT (pt_item_id, odoo_template_id) DO NOTHING""",
+                        reg["pt_item_id"], prod_id, tipo, current_user.get('username'),
+                    )
+                    if res and res.startswith('INSERT') and not res.endswith(' 0'):
+                        pt_links_creados += 1
+            except Exception as e:
+                # No bloqueamos el guardado por un fallo del hook.
+                print(f"[distribucion_pt] aviso: link PT↔templates falló para {registro_id}: {e}")
+
+        # Hook 2: tras guardar la distribución, intentar detectar el
         # primer movimiento done a una tienda comercial usando los templates
         # con tipo_salida='normal'. Si lo encuentra, marca estado='Tienda' y
         # setea fecha_envio_tienda (respeta la edición manual del usuario —
@@ -277,6 +301,7 @@ async def guardar_distribucion_pt(
             "total_distribuido": total_distribuido,
             "total_producido": total_producido,
             "sync_tienda": sync_cambios,  # [] si no detectó nada o sólo respeto manual
+            "pt_links_creados": pt_links_creados,  # cuántos vínculos PT↔template nuevos
         }
 
 

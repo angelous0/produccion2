@@ -272,10 +272,10 @@ async def _validar_pre_cierre(conn, reg, qty_terminada):
     if qty_terminada <= 0:
         errores.append("La cantidad terminada real debe ser mayor a 0.")
 
-    # PT asignado
-    if not reg.get("pt_item_id"):
-        errores.append("Debe asignar un articulo de Producto Terminado (PT) antes de cerrar.")
-    else:
+    # PT asignado — si falta, NO bloqueamos: el cierre lo auto-crea con
+    # _ensure_pt_item() heredando del modelo o generando PT-XXX nuevo.
+    # Solo validamos consistencia si ya existe.
+    if reg.get("pt_item_id"):
         pt = await conn.fetchrow("SELECT id FROM prod_inventario WHERE id = $1", reg["pt_item_id"])
         if not pt:
             errores.append(f"El item PT asignado ({reg['pt_item_id']}) no existe en inventario.")
@@ -286,6 +286,83 @@ async def _validar_pre_cierre(conn, reg, qty_terminada):
         errores.append(f"El registro esta en estado '{reg['estado']}', no se puede cerrar.")
 
     return errores
+
+
+# ==================== HELPERS DE PT ====================
+
+async def _ensure_pt_item(conn, reg):
+    """Garantiza que el registro tenga pt_item_id, creando uno si hace falta.
+
+    Orden de resolución:
+      1. Si reg.pt_item_id existe → retorna ese.
+      2. Si el modelo del corte (reg.modelo_id) ya tiene pt_item_id → lo
+         hereda en el registro y lo retorna.
+      3. Sin modelo: crea un PT nuevo PT-XXX con el nombre del modelo
+         (o "PT corte {n_corte}" como fallback) y lo vincula al registro.
+    Devuelve el pt_item_id final (UUID en str).
+    """
+    import uuid
+    existing = reg.get("pt_item_id")
+    if existing:
+        ok = await conn.fetchval("SELECT id FROM prod_inventario WHERE id = $1", existing)
+        if ok:
+            return existing
+        # Si la FK quedó huérfana, seguimos como si no tuviera
+
+    # Intentar heredar del modelo
+    modelo = None
+    if reg.get("modelo_id"):
+        modelo = await conn.fetchrow(
+            "SELECT id, nombre, pt_item_id, linea_negocio_id FROM prod_modelos WHERE id = $1",
+            reg["modelo_id"],
+        )
+        if modelo and modelo.get("pt_item_id"):
+            pt_existe = await conn.fetchval(
+                "SELECT id FROM prod_inventario WHERE id = $1", modelo["pt_item_id"]
+            )
+            if pt_existe:
+                await conn.execute(
+                    "UPDATE prod_registros SET pt_item_id = $1 WHERE id = $2",
+                    modelo["pt_item_id"], reg["id"],
+                )
+                return modelo["pt_item_id"]
+
+    # Auto-crear PT-XXX nuevo
+    max_code = await conn.fetchval(
+        "SELECT codigo FROM prod_inventario WHERE tipo_item = 'PT' AND codigo LIKE 'PT-%' ORDER BY codigo DESC LIMIT 1"
+    )
+    next_num = 1
+    if max_code and max_code.startswith('PT-'):
+        try:
+            next_num = int(max_code.replace('PT-', '')) + 1
+        except ValueError:
+            pass
+    nuevo_codigo = f"PT-{next_num:03d}"
+    nuevo_id = str(uuid.uuid4())
+    nombre_pt = (
+        (modelo and modelo.get("nombre"))
+        or (reg.get("modelo_manual") or {}).get("nombre_modelo") if isinstance(reg.get("modelo_manual"), dict) else None
+    ) or f"PT corte {reg.get('n_corte') or ''}".strip()
+    linea_id = (modelo and modelo.get("linea_negocio_id")) or reg.get("linea_negocio_id")
+    empresa_id = reg.get("empresa_id") or 7
+    await conn.execute(
+        """INSERT INTO prod_inventario
+           (id, codigo, nombre, tipo_item, categoria, unidad_medida,
+            empresa_id, stock_actual, activo, linea_negocio_id)
+           VALUES ($1, $2, $3, 'PT', 'PT', 'unidad', $4, 0, TRUE, $5)""",
+        nuevo_id, nuevo_codigo, nombre_pt, empresa_id, linea_id,
+    )
+    await conn.execute(
+        "UPDATE prod_registros SET pt_item_id = $1 WHERE id = $2",
+        nuevo_id, reg["id"],
+    )
+    # Si el modelo no tenía PT, también se lo asignamos (próximos cortes lo heredan)
+    if modelo and not modelo.get("pt_item_id"):
+        await conn.execute(
+            "UPDATE prod_modelos SET pt_item_id = $1 WHERE id = $2",
+            nuevo_id, modelo["id"],
+        )
+    return nuevo_id
 
 
 # ==================== ENDPOINTS ====================
@@ -458,13 +535,24 @@ async def preview_cierre(registro_id: str, current_user: dict = Depends(get_curr
 
 @router.post("/registros/{registro_id}/cierre-produccion")
 async def ejecutar_cierre(registro_id: str, data: CierreRegistroInput, current_user: dict = Depends(get_current_user)):
-    """Ejecuta el cierre: calcula costos, congela snapshot, crea ingreso PT, marca estado."""
+    """Ejecuta el cierre: calcula costos, congela snapshot, crea ingreso PT, marca estado.
+
+    Si el registro no tiene pt_item_id, se auto-asigna (herencia del
+    modelo o auto-creación de PT-XXX nuevo) antes de validar. Así
+    nunca falla por "Falta artículo PT".
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
             reg = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
             if not reg:
                 raise HTTPException(status_code=404, detail="Registro no encontrado")
+
+            # Auto-asegurar PT (hereda del modelo o crea PT-XXX nuevo).
+            # Convertimos a dict mutable y refrescamos pt_item_id.
+            reg = dict(reg)
+            pt_id = await _ensure_pt_item(conn, reg)
+            reg["pt_item_id"] = pt_id
 
             # Calcular qty
             if data.qty_terminada and data.qty_terminada > 0:

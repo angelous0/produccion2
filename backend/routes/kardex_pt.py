@@ -343,3 +343,206 @@ async def get_kardex_pt_filtros(current_user: dict = Depends(get_current_user)):
                 {"value": "TRANSFERENCIA", "label": "Transferencia"},
             ]
         }
+
+
+# ====================================================================
+# GET /api/inventario-pt/{pt_id}/stock-vivo
+# ====================================================================
+# Devuelve la vista REAL del PT cruzando datos del ERP propio (cierres,
+# costos congelados) con datos vivos de Odoo (stock_quant, pos_order_line).
+#
+# Sirve para reemplazar el "stock_actual" legacy de prod_inventario que
+# solo suma con cierres pero nunca baja con ventas reales en Odoo.
+#
+# Requiere que el PT tenga al menos un vínculo en
+# produccion.prod_pt_odoo_templates (el hook en distribucion_pt los crea
+# automáticamente cuando se distribuye un corte con pt_item_id).
+# ====================================================================
+@router.get("/inventario-pt/{pt_id}/stock-vivo")
+async def get_stock_vivo_pt(
+    pt_id: str,
+    dias_ventas: int = Query(30, ge=1, le=365),
+    current_user: dict = Depends(get_current_user),
+):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        pt = await conn.fetchrow(
+            """SELECT id, codigo, nombre, stock_actual, costo_promedio, linea_negocio_id, empresa_id
+               FROM prod_inventario WHERE id = $1 AND tipo_item = 'PT'""",
+            pt_id,
+        )
+        if not pt:
+            from fastapi import HTTPException
+            raise HTTPException(404, "Artículo PT no encontrado")
+
+        # Templates vinculados
+        templates = await conn.fetch(
+            """SELECT link.odoo_template_id, link.tipo_salida, link.auto_vinculado,
+                      t.name AS template_name, t.marca, t.tipo, t.tela, t.entalle
+               FROM produccion.prod_pt_odoo_templates link
+               LEFT JOIN odoo.product_template t ON t.odoo_id = link.odoo_template_id
+               WHERE link.pt_item_id = $1
+               ORDER BY link.tipo_salida, t.name""",
+            pt_id,
+        )
+
+        # Ingresos del PT (cierres por corte)
+        ingresos = await conn.fetch(
+            """SELECT ing.id, ing.cantidad, ing.cantidad_disponible, ing.costo_unitario,
+                      ing.fecha, ing.fin_origen_id, ing.fin_numero_doc,
+                      ing.fin_origen_tipo, ing.numero_documento
+               FROM prod_inventario_ingresos ing
+               WHERE ing.item_id = $1
+               ORDER BY ing.fecha DESC, ing.id DESC""",
+            pt_id,
+        )
+
+        producido_total = float(sum(float(r["cantidad"] or 0) for r in ingresos))
+        # Costo promedio ponderado por las cantidades de los ingresos
+        if producido_total > 0:
+            suma_pesada = sum(float(r["cantidad"] or 0) * float(r["costo_unitario"] or 0) for r in ingresos)
+            costo_prom = suma_pesada / producido_total
+        else:
+            costo_prom = float(pt["costo_promedio"] or 0)
+
+        template_ids = [t["odoo_template_id"] for t in templates]
+
+        stock_por_location = []
+        stock_vivo_total = 0.0
+        vendido_total_periodo = 0.0
+        vendido_total_historico = 0.0
+        salida_a_clientes_historica = 0.0
+
+        if template_ids:
+            # Stock vivo por location (suma de variantes de todos los templates)
+            stock_rows = await conn.fetch(
+                """
+                WITH variantes AS (
+                  SELECT pp.odoo_id FROM odoo.product_product pp
+                  WHERE pp.product_tmpl_id = ANY($1::int[])
+                )
+                SELECT sl.odoo_id AS location_id,
+                       COALESCE(NULLIF(sl.x_nombre, ''), sl.name) AS location_name,
+                       sl.complete_name AS location_complete_name,
+                       sl.usage,
+                       SUM(sq.qty) AS qty
+                FROM odoo.stock_quant sq
+                JOIN variantes v ON v.odoo_id = sq.product_id
+                JOIN odoo.stock_location sl ON sl.odoo_id = sq.location_id
+                WHERE sl.usage = 'internal'
+                GROUP BY sl.odoo_id, sl.x_nombre, sl.name, sl.complete_name, sl.usage
+                HAVING SUM(sq.qty) > 0
+                ORDER BY qty DESC
+                """,
+                template_ids,
+            )
+            for r in stock_rows:
+                qty = float(r["qty"] or 0)
+                stock_por_location.append({
+                    "location_id": r["location_id"],
+                    "location_name": r["location_name"],
+                    "location_complete_name": r["location_complete_name"],
+                    "qty": qty,
+                })
+                stock_vivo_total += qty
+
+            # Ventas POS últimos N días + histórico
+            ventas_periodo = await conn.fetchval(
+                """
+                WITH variantes AS (
+                  SELECT pp.odoo_id FROM odoo.product_product pp
+                  WHERE pp.product_tmpl_id = ANY($1::int[])
+                )
+                SELECT COALESCE(SUM(pl.qty), 0)
+                FROM odoo.pos_order_line pl
+                JOIN variantes v ON v.odoo_id = pl.product_id
+                JOIN odoo.pos_order po ON po.odoo_id = pl.order_id
+                                       AND po.company_key = pl.company_key
+                WHERE po.date_order >= NOW() - ($2 || ' days')::INTERVAL
+                """,
+                template_ids, str(dias_ventas),
+            )
+            vendido_total_periodo = float(ventas_periodo or 0)
+
+            ventas_historico = await conn.fetchval(
+                """
+                WITH variantes AS (
+                  SELECT pp.odoo_id FROM odoo.product_product pp
+                  WHERE pp.product_tmpl_id = ANY($1::int[])
+                )
+                SELECT COALESCE(SUM(pl.qty), 0)
+                FROM odoo.pos_order_line pl
+                JOIN variantes v ON v.odoo_id = pl.product_id
+                """,
+                template_ids,
+            )
+            vendido_total_historico = float(ventas_historico or 0)
+
+            # Salidas históricas a clientes (vía stock_move done de internal → customer)
+            salidas_clientes = await conn.fetchval(
+                """
+                WITH variantes AS (
+                  SELECT pp.odoo_id FROM odoo.product_product pp
+                  WHERE pp.product_tmpl_id = ANY($1::int[])
+                )
+                SELECT COALESCE(SUM(sm.product_qty), 0)
+                FROM odoo.stock_move sm
+                JOIN variantes v ON v.odoo_id = sm.product_id
+                JOIN odoo.stock_location lo ON lo.odoo_id = sm.location_id
+                JOIN odoo.stock_location ld ON ld.odoo_id = sm.location_dest_id
+                WHERE sm.state = 'done'
+                  AND lo.usage = 'internal'
+                  AND ld.usage = 'customer'
+                """,
+                template_ids,
+            )
+            salida_a_clientes_historica = float(salidas_clientes or 0)
+
+        # Diferencia / merma inferida = producido - vivo - salidas_clientes_históricas
+        # (lo que ni quedó en stock ni se vendió oficialmente)
+        diferencia_inferida = producido_total - stock_vivo_total - salida_a_clientes_historica
+
+        return {
+            "pt": {
+                "id": pt["id"],
+                "codigo": pt["codigo"],
+                "nombre": pt["nombre"],
+                "linea_negocio_id": pt["linea_negocio_id"],
+                "stock_actual_legacy": float(pt["stock_actual"] or 0),
+                "costo_promedio_legacy": float(pt["costo_promedio"] or 0),
+            },
+            "vinculado_a_odoo": len(templates) > 0,
+            "templates_vinculados": [
+                {
+                    "odoo_template_id": t["odoo_template_id"],
+                    "tipo_salida": t["tipo_salida"],
+                    "auto_vinculado": t["auto_vinculado"],
+                    "name": t["template_name"],
+                    "marca": t["marca"],
+                    "tela": t["tela"],
+                    "entalle": t["entalle"],
+                } for t in templates
+            ],
+            "producido_total": producido_total,
+            "costo_unitario_promedio": round(costo_prom, 4),
+            "valor_stock_vivo": round(stock_vivo_total * costo_prom, 2),
+            "stock_vivo_total": stock_vivo_total,
+            "stock_por_location": stock_por_location,
+            "vendido_total_historico": vendido_total_historico,
+            "vendido_total_periodo": vendido_total_periodo,
+            "dias_ventas": dias_ventas,
+            "salida_a_clientes_historica": salida_a_clientes_historica,
+            "diferencia_inferida": diferencia_inferida,
+            "ingresos_cierre": [
+                {
+                    "id": r["id"],
+                    "cantidad": float(r["cantidad"] or 0),
+                    "cantidad_disponible": float(r["cantidad_disponible"] or 0),
+                    "costo_unitario": float(r["costo_unitario"] or 0),
+                    "fecha": r["fecha"].isoformat() if r["fecha"] else None,
+                    "fin_origen_id": r["fin_origen_id"],
+                    "fin_origen_tipo": r["fin_origen_tipo"],
+                    "fin_numero_doc": r["fin_numero_doc"] or r["numero_documento"],
+                } for r in ingresos
+            ],
+        }
