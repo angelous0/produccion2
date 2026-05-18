@@ -4,7 +4,6 @@ import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { Skeleton } from '../components/ui/skeleton';
 import {
   Package, Store, ShoppingCart, TrendingUp, AlertTriangle, MapPin,
   ArrowLeft, RefreshCw, Layers, Info, Loader2,
@@ -54,9 +53,9 @@ const PTStockVivo = () => {
   if (loading) {
     return (
       <div className="space-y-4">
-        <Skeleton className="h-8 w-1/3" />
-        <Skeleton className="h-32" />
-        <Skeleton className="h-48" />
+        <div className="h-8 w-1/3 rounded-md bg-muted animate-pulse" />
+        <div className="h-32 rounded-md bg-muted animate-pulse" />
+        <div className="h-48 rounded-md bg-muted animate-pulse" />
       </div>
     );
   }
