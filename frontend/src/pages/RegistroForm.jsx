@@ -104,6 +104,9 @@ export const RegistroForm = () => {
   const [matrizCantidades, setMatrizCantidades] = useState({});
   const [proporcionesPorColor, setProporcionesPorColor] = useState({});  // color_id -> peso (default 1)
   const [distribucionColores, setDistribucionColores] = useState([]);
+  // Aprobado state para distribucion_colores
+  const [coloresAprobado, setColoresAprobado] = useState({ aprobados: false, at: null, por: null });
+  const [aprobandoColores, setAprobandoColores] = useState(false);
 
   const [tallasCatalogo, setTallasCatalogo] = useState([]);
   const [coloresCatalogo, setColoresCatalogo] = useState([]);
@@ -323,6 +326,11 @@ export const RegistroForm = () => {
       }
       setTallasSeleccionadas(registro.tallas || []);
       setDistribucionColores(registro.distribucion_colores || []);
+      setColoresAprobado({
+        aprobados: !!registro.colores_aprobados,
+        at: registro.colores_aprobados_at || null,
+        por: registro.colores_aprobados_por || null,
+      });
       // Usar modelos ya cargados por fetchRelatedData (evita llamada duplicada)
       if (modelos.length > 0) {
         const modelo = modelos.find(m => m.id === registro.modelo_id);
@@ -730,6 +738,75 @@ export const RegistroForm = () => {
       colores: coloresSeleccionados.map(c => ({ color_id: c.id, color_nombre: formatColorName(c.nombre), cantidad: getCantidadMatriz(c.id, t.talla_id) })).filter(c => c.cantidad > 0)
     }));
     setDistribucionColores(distribucion); setColoresDialogOpen(false); toast.success('Distribución de colores guardada');
+  };
+
+  // Reemplaza un color manteniendo las cantidades del color anterior.
+  const handleSwapColor = (oldColorId, nuevoColor) => {
+    // Reescribir matriz: mover keys oldColorId_* a nuevoColor.id_*
+    const nuevaMatriz = { ...matrizCantidades };
+    tallasSeleccionadas.forEach(t => {
+      const oldKey = `${oldColorId}_${t.talla_id}`;
+      const newKey = `${nuevoColor.id}_${t.talla_id}`;
+      if (oldKey in nuevaMatriz) {
+        nuevaMatriz[newKey] = nuevaMatriz[oldKey];
+        delete nuevaMatriz[oldKey];
+      }
+    });
+    setMatrizCantidades(nuevaMatriz);
+    // Reemplazar en coloresSeleccionados
+    setColoresSeleccionados(prev => prev.map(c => c.id === oldColorId ? nuevoColor : c));
+    // Mover proporción
+    setProporcionesPorColor(prev => {
+      const next = { ...prev };
+      if (oldColorId in next) {
+        next[nuevoColor.id] = next[oldColorId];
+        delete next[oldColorId];
+      }
+      return next;
+    });
+    toast.success(`Color reemplazado por ${formatColorName(nuevoColor.nombre)}`);
+  };
+
+  const handleAprobarColores = async () => {
+    if (!id) {
+      toast.error('Guarda el registro antes de aprobar los colores');
+      return;
+    }
+    setAprobandoColores(true);
+    try {
+      // Primero guardar la distribución actual en el registro
+      const distribucion = tallasSeleccionadas.map(t => ({
+        talla_id: t.talla_id, talla_nombre: t.talla_nombre, cantidad_total: t.cantidad,
+        colores: coloresSeleccionados.map(c => ({ color_id: c.id, color_nombre: formatColorName(c.nombre), cantidad: getCantidadMatriz(c.id, t.talla_id) })).filter(c => c.cantidad > 0)
+      }));
+      await axios.put(`${API}/reportes-produccion/registro-colores/${id}`, { distribucion });
+      const res = await axios.put(`${API}/reportes-produccion/registro-colores/${id}/aprobar`);
+      setColoresAprobado({
+        aprobados: true,
+        at: res.data?.colores_aprobados_at || new Date().toISOString(),
+        por: res.data?.colores_aprobados_por || null,
+      });
+      setDistribucionColores(distribucion);
+      toast.success('Colores aprobados. La distribución quedó bloqueada.');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Error al aprobar colores');
+    } finally {
+      setAprobandoColores(false);
+    }
+  };
+
+  const handleDesaprobarColores = async () => {
+    if (!id) return;
+    setAprobandoColores(true);
+    try {
+      await axios.put(`${API}/reportes-produccion/registro-colores/${id}/desaprobar`);
+      setColoresAprobado({ aprobados: false, at: null, por: null });
+      toast.success('Aprobación retirada. La distribución vuelve a ser editable.');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Error al desaprobar colores');
+    } finally {
+      setAprobandoColores(false);
+    }
   };
   const tieneColores = useMemo(() => distribucionColores && distribucionColores.some(t => t.colores && t.colores.length > 0), [distribucionColores]);
 
@@ -1534,6 +1611,12 @@ export const RegistroForm = () => {
         getTotalTallaAsignado={getTotalTallaAsignado} getTotalGeneralAsignado={getTotalGeneralAsignado}
         onProrratear={handleProrratear} onSave={handleSaveColores}
         proporciones={proporcionesPorColor} onProporcionChange={handleProporcionChange}
+        aprobado={coloresAprobado}
+        isAdmin={perms.isAdmin}
+        onAprobar={handleAprobarColores}
+        onDesaprobar={handleDesaprobarColores}
+        aprobando={aprobandoColores}
+        onSwapColor={handleSwapColor}
       />
 
       <SalidaInventarioDialog

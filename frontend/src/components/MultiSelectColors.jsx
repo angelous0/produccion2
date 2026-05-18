@@ -24,6 +24,7 @@ export const MultiSelectColors = ({
   placeholder = "Seleccionar...",
   searchPlaceholder = "Buscar...",
   emptyMessage = "No se encontraron resultados.",
+  disabled = false,
 }) => {
   const [open, setOpen] = React.useState(false);
   const hasRuleFlags = options.some((option) => typeof option.permitido === 'boolean');
@@ -76,13 +77,14 @@ export const MultiSelectColors = ({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open && !disabled} onOpenChange={(v) => !disabled && setOpen(v)}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-full justify-between h-auto min-h-10"
+          disabled={disabled}
+          className="w-full justify-between h-auto min-h-10 disabled:opacity-70"
           data-testid="multiselect-colors-trigger"
         >
           <div className="flex flex-wrap gap-1 flex-1">
@@ -96,13 +98,15 @@ export const MultiSelectColors = ({
                   className="flex items-center gap-1 pr-1"
                 >
                   <span className="text-xs">{formatColorName(option.nombre)}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => handleRemove(e, option.id)}
-                    className="ml-1 hover:bg-muted rounded-full p-0.5"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
+                  {!disabled && (
+                    <button
+                      type="button"
+                      onClick={(e) => handleRemove(e, option.id)}
+                      className="ml-1 hover:bg-muted rounded-full p-0.5"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
                 </Badge>
               ))
             )}

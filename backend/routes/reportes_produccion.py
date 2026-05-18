@@ -1657,6 +1657,9 @@ async def ficha_item_detail(
                 r.estado,
                 r.distribucion_colores,
                 r.tallas AS tallas_jsonb,
+                r.colores_aprobados,
+                r.colores_aprobados_at,
+                r.colores_aprobados_por,
                 COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') AS modelo_nombre
             FROM prod_registros r
             LEFT JOIN prod_modelos m ON m.id = r.modelo_id
@@ -1745,6 +1748,9 @@ async def ficha_item_detail(
                 "modelo": r["modelo_nombre"] or "",
                 "estado": estado,
                 "tallas": talla_totales,
+                "colores_aprobados": bool(r["colores_aprobados"]),
+                "colores_aprobados_at": r["colores_aprobados_at"].isoformat() if r["colores_aprobados_at"] else None,
+                "colores_aprobados_por": r["colores_aprobados_por"],
             })
 
         elif estado in ESTADOS_LAV and not has_colors:
@@ -1758,6 +1764,9 @@ async def ficha_item_detail(
                 "modelo": r["modelo_nombre"] or "",
                 "estado": estado,
                 "prendas": prendas,
+                "colores_aprobados": bool(r["colores_aprobados"]),
+                "colores_aprobados_at": r["colores_aprobados_at"].isoformat() if r["colores_aprobados_at"] else None,
+                "colores_aprobados_por": r["colores_aprobados_por"],
             })
 
     sorted_tallas = sorted(all_tallas, key=lambda t: (talla_orden.get(t, 999), t))
@@ -2111,6 +2120,9 @@ async def get_registro_colores(registro_id: str):
                 r.distribucion_colores,
                 r.tallas AS tallas_jsonb,
                 r.modelo_id,
+                r.colores_aprobados,
+                r.colores_aprobados_at,
+                r.colores_aprobados_por,
                 COALESCE(m.nombre,    r.modelo_manual->>'nombre_modelo') AS modelo_nombre,
                 COALESCE(m.marca_id,  r.modelo_manual->>'marca_id')      AS marca_id,
                 COALESCE(m.tipo_id,   r.modelo_manual->>'tipo_id')       AS tipo_id,
@@ -2162,6 +2174,9 @@ async def get_registro_colores(registro_id: str):
         "hilo_id": reg["hilo_id"],
         "tallas": tallas,
         "distribucion_actual": distribucion_actual,
+        "colores_aprobados": bool(reg["colores_aprobados"]),
+        "colores_aprobados_at": reg["colores_aprobados_at"].isoformat() if reg["colores_aprobados_at"] else None,
+        "colores_aprobados_por": reg["colores_aprobados_por"],
     }
 
 
@@ -2183,11 +2198,30 @@ class _DistribucionColoresInput(BaseModel):
 
 
 @router.put("/registro-colores/{registro_id}")
-async def update_registro_colores(registro_id: str, payload: _DistribucionColoresInput):
+async def update_registro_colores(
+    registro_id: str,
+    payload: _DistribucionColoresInput,
+    current_user: dict = Depends(get_current_user),
+):
     """
     Reemplaza el JSONB distribucion_colores del registro.
     Valida que la suma de colores por talla no exceda cantidad_total.
+    Si colores_aprobados=true, solo admin puede modificar.
     """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        reg = await conn.fetchrow(
+            "SELECT colores_aprobados FROM prod_registros WHERE id = $1",
+            registro_id,
+        )
+        if not reg:
+            raise HTTPException(status_code=404, detail="Registro no encontrado")
+        if reg["colores_aprobados"] and current_user.get("rol") != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Los colores fueron aprobados. Solo un admin puede modificarlos.",
+            )
+
     # Validación: ningún talla debe excederse
     for t in payload.distribucion:
         suma = sum(safe_int(c.cantidad) for c in t.colores)
@@ -2198,7 +2232,6 @@ async def update_registro_colores(registro_id: str, payload: _DistribucionColore
             )
 
     serializable = [t.model_dump() for t in payload.distribucion]
-    pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.execute(
             "UPDATE prod_registros SET distribucion_colores = $1::jsonb WHERE id = $2",
@@ -2208,6 +2241,49 @@ async def update_registro_colores(registro_id: str, payload: _DistribucionColore
             raise HTTPException(status_code=404, detail="Registro no encontrado")
 
     return {"ok": True, "registro_id": registro_id, "items": len(serializable)}
+
+
+@router.put("/registro-colores/{registro_id}/aprobar")
+async def aprobar_colores(registro_id: str, current_user: dict = Depends(get_current_user)):
+    """Marca la distribución de colores como aprobada (bloquea ediciones futuras
+    salvo para admin)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            """
+            UPDATE prod_registros
+               SET colores_aprobados = TRUE,
+                   colores_aprobados_at = NOW(),
+                   colores_aprobados_por = $1
+             WHERE id = $2
+            """,
+            current_user.get("username"), registro_id,
+        )
+        if result.endswith(" 0"):
+            raise HTTPException(status_code=404, detail="Registro no encontrado")
+    return {"ok": True, "registro_id": registro_id, "aprobado": True}
+
+
+@router.put("/registro-colores/{registro_id}/desaprobar")
+async def desaprobar_colores(registro_id: str, current_user: dict = Depends(get_current_user)):
+    """Desbloquea la edición. Solo admin."""
+    if current_user.get("rol") != "admin":
+        raise HTTPException(status_code=403, detail="Solo un admin puede desaprobar colores")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            """
+            UPDATE prod_registros
+               SET colores_aprobados = FALSE,
+                   colores_aprobados_at = NULL,
+                   colores_aprobados_por = NULL
+             WHERE id = $1
+            """,
+            registro_id,
+        )
+        if result.endswith(" 0"):
+            raise HTTPException(status_code=404, detail="Registro no encontrado")
+    return {"ok": True, "registro_id": registro_id, "aprobado": False}
 
 
 class _ColorProporcionInput(BaseModel):

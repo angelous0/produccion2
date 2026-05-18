@@ -15,9 +15,10 @@ import {
   ArrowLeft, Settings2, ChevronRight,
   ExternalLink, Eye, EyeOff, MoveLeft, MoveRight,
   Merge, X, Palette, ArrowDownWideNarrow, ArrowUpWideNarrow,
-  TableProperties,
+  TableProperties, FlaskConical, Loader2, Send, CheckCircle2, XCircle, AlertCircle,
 } from 'lucide-react';
 import { FichaItemModal } from '../components/FichaItemModal';
+import { AsignarColoresModal } from '../components/AsignarColoresModal';
 
 import { formatDate } from '../lib/dateUtils';
 import { formatColorName } from '../lib/utils';
@@ -206,9 +207,151 @@ const ColoresTable = ({ registros }) => {
   );
 };
 
+// ── MuestrasPopup ───────────────────────────────────────────────
+// Vista de solo lectura de las muestras de lavandería de un corte:
+// fecha de envío, destino, estado, colores con sus cantidades y decisión.
+const ESTADO_MUESTRA_BADGE = {
+  enviada:            { label: 'Enviada',    classes: 'bg-blue-100 text-blue-700 border-blue-300',     icon: Send },
+  pendiente_decision: { label: 'Pendiente',  classes: 'bg-orange-100 text-orange-700 border-orange-300', icon: AlertCircle },
+  aprobada:           { label: 'Aprobada',   classes: 'bg-emerald-100 text-emerald-700 border-emerald-300', icon: CheckCircle2 },
+  rechazada:          { label: 'Rechazada',  classes: 'bg-red-100 text-red-700 border-red-300',         icon: XCircle },
+  parcial:            { label: 'Parcial',    classes: 'bg-amber-100 text-amber-700 border-amber-300',   icon: AlertCircle },
+};
+
+const DECISION_BADGE = {
+  aprobado:  { label: 'Aprobado',  classes: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
+  rechazado: { label: 'Rechazado', classes: 'bg-red-100 text-red-700 border-red-300' },
+};
+
+const MuestrasPopup = ({ open, onClose, registroId, nCorte, modelo }) => {
+  const [loading, setLoading] = useState(false);
+  const [muestras, setMuestras] = useState([]);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!open || !registroId) return;
+    setLoading(true);
+    setError('');
+    axios.get(`${API}/registros/${registroId}/muestras-lavanderia`)
+      .then(r => setMuestras(Array.isArray(r.data) ? r.data : []))
+      .catch(e => setError(e?.response?.data?.detail || 'Error al cargar muestras'))
+      .finally(() => setLoading(false));
+  }, [open, registroId]);
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden p-0">
+        <DialogHeader className="px-4 pt-4 pb-2 border-b">
+          <DialogTitle className="text-base flex items-center gap-1.5">
+            <FlaskConical className="h-4 w-4 text-sky-600" />
+            Muestras del Corte {nCorte}
+            {modelo && <span className="text-muted-foreground font-normal text-sm">· {modelo}</span>}
+          </DialogTitle>
+          <p className="text-[11px] text-muted-foreground">
+            Envíos de muestras a lavandería con los colores y decisión por cada uno.
+          </p>
+        </DialogHeader>
+        <div className="overflow-auto max-h-[calc(85vh-90px)] p-3">
+          {loading && (
+            <div className="flex items-center justify-center gap-2 h-32 text-muted-foreground text-sm">
+              <Loader2 className="h-4 w-4 animate-spin" /> Cargando muestras...
+            </div>
+          )}
+          {!loading && error && (
+            <div className="text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded p-2">
+              {error}
+            </div>
+          )}
+          {!loading && !error && muestras.length === 0 && (
+            <div className="text-center py-8 text-sm text-muted-foreground border rounded-lg bg-muted/20">
+              Este corte aún no tiene muestras enviadas.
+            </div>
+          )}
+          {!loading && !error && muestras.length > 0 && (
+            <div className="space-y-3">
+              {muestras.map(m => {
+                const estadoCfg = ESTADO_MUESTRA_BADGE[m.estado] || ESTADO_MUESTRA_BADGE.enviada;
+                const EstadoIcon = estadoCfg.icon;
+                return (
+                  <div key={m.id} className="rounded-md border bg-background">
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-muted/30">
+                      <div className="flex items-center gap-2 text-xs">
+                        <Badge variant="outline" className={`gap-1 ${estadoCfg.classes}`}>
+                          <EstadoIcon className="h-3 w-3" /> {estadoCfg.label}
+                        </Badge>
+                        <span className="text-muted-foreground">Enviada:</span>
+                        <span className="font-mono">{formatDate(m.fecha_envio)}</span>
+                        {m.fecha_retorno && (
+                          <>
+                            <span className="text-muted-foreground">· Retorno:</span>
+                            <span className="font-mono">{formatDate(m.fecha_retorno)}</span>
+                          </>
+                        )}
+                        {m.destino && (
+                          <>
+                            <span className="text-muted-foreground">· Destino:</span>
+                            <span>{m.destino}</span>
+                          </>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground font-mono">
+                        {m.cantidad_total} prenda{m.cantidad_total === 1 ? '' : 's'}
+                      </div>
+                    </div>
+                    {m.observaciones && (
+                      <div className="px-3 py-1.5 text-[11px] text-muted-foreground border-b bg-muted/10">
+                        <span className="font-medium">Obs:</span> {m.observaciones}
+                      </div>
+                    )}
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/40">
+                        <tr>
+                          <th className="text-left p-2 font-medium">Color</th>
+                          <th className="text-right p-2 font-medium w-[70px]">Cantidad</th>
+                          <th className="text-left p-2 font-medium">Obs. envío</th>
+                          <th className="text-left p-2 font-medium w-[110px]">Decisión</th>
+                          <th className="text-left p-2 font-medium">Correcciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(m.colores || []).map(c => {
+                          const decCfg = c.decision ? DECISION_BADGE[c.decision] : null;
+                          return (
+                            <tr key={c.id} className="border-t hover:bg-muted/10">
+                              <td className="p-2 font-medium">{formatColorName(c.color_nombre)}</td>
+                              <td className="p-2 text-right font-mono">{c.cantidad}</td>
+                              <td className="p-2 text-muted-foreground">{c.observaciones_envio || '—'}</td>
+                              <td className="p-2">
+                                {decCfg ? (
+                                  <Badge variant="outline" className={`text-[10px] ${decCfg.classes}`}>{decCfg.label}</Badge>
+                                ) : (
+                                  <span className="text-[10px] text-muted-foreground italic">pendiente</span>
+                                )}
+                              </td>
+                              <td className="p-2 text-muted-foreground">{c.correcciones || '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 // ── DetalleModal (tabla tipo Excel) ────────────────────────────
 const DetalleModal = ({ open, onClose, registros, titulo, navigate }) => {
   const [vista, setVista] = useState('registros');
+  // Muestras popup: { id, n_corte, modelo } | null
+  const [muestrasReg, setMuestrasReg] = useState(null);
+  // Matriz color × talla popup: registro_id | null
+  const [matrizColorReg, setMatrizColorReg] = useState(null);
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) { onClose(); setVista('registros'); } }}>
@@ -247,8 +390,6 @@ const DetalleModal = ({ open, onClose, registros, titulo, navigate }) => {
                   <th className="text-right p-2 font-semibold border-b whitespace-nowrap">Prendas</th>
                   <th className="text-left p-2 font-semibold border-b whitespace-nowrap">Curva</th>
                   <th className="text-left p-2 font-semibold border-b whitespace-nowrap">Hilo Esp.</th>
-                  <th className="text-left p-2 font-semibold border-b whitespace-nowrap">Ruta</th>
-                  <th className="text-center p-2 font-semibold border-b whitespace-nowrap">Entrega</th>
                   <th className="text-center p-2 font-semibold border-b whitespace-nowrap">Inicio Prod.</th>
                   <th className="text-center p-2 font-semibold border-b whitespace-nowrap">Días</th>
                   <th className="text-left p-2 font-semibold border-b whitespace-nowrap">Últ. Mov</th>
@@ -266,10 +407,6 @@ const DetalleModal = ({ open, onClose, registros, titulo, navigate }) => {
                     <td className="p-2 text-right font-mono">{d.prendas.toLocaleString()}</td>
                     <td className="p-2 font-mono text-muted-foreground whitespace-nowrap">{d.curva || '-'}</td>
                     <td className="p-2 whitespace-nowrap">{d.hilo_especifico || '-'}</td>
-                    <td className="p-2 text-muted-foreground whitespace-nowrap">{d.ruta || '-'}</td>
-                    <td className={`p-2 text-center font-mono whitespace-nowrap ${isOverdue(d.fecha_entrega) ? 'text-destructive font-semibold' : ''}`}>
-                      {formatDate(d.fecha_entrega)}
-                    </td>
                     <td className="p-2 text-center font-mono whitespace-nowrap">{formatDate(d.fecha_inicio_prod)}</td>
                     <td className="p-2 text-center font-mono">{d.dias_proceso > 0 ? `${d.dias_proceso}d` : '-'}</td>
                     <td className="p-2 whitespace-nowrap">
@@ -286,6 +423,26 @@ const DetalleModal = ({ open, onClose, registros, titulo, navigate }) => {
                     </td>
                     <td className="p-2 text-center whitespace-nowrap">
                       <div className="flex justify-center gap-0.5">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-violet-700 hover:text-violet-800 hover:bg-violet-50"
+                          onClick={() => setMatrizColorReg(d.id)}
+                          title="Ver / editar matriz color × talla"
+                          data-testid={`btn-matriz-color-${d.n_corte}`}
+                        >
+                          <TableProperties className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-sky-700 hover:text-sky-800 hover:bg-sky-50"
+                          onClick={() => setMuestrasReg({ id: d.id, n_corte: d.n_corte, modelo: d.modelo })}
+                          title="Ver muestras de lavandería"
+                          data-testid={`btn-muestras-${d.n_corte}`}
+                        >
+                          <FlaskConical className="h-3 w-3" />
+                        </Button>
                         <Button variant="ghost" size="sm" className="h-6 text-[10px] px-1.5" onClick={() => { onClose(); navigate(`/reportes/trazabilidad/${d.id}`); }}>
                           Traza
                         </Button>
@@ -297,13 +454,26 @@ const DetalleModal = ({ open, onClose, registros, titulo, navigate }) => {
                   </tr>
                 ))}
                 {(!registros || registros.length === 0) && (
-                  <tr><td colSpan={14} className="p-6 text-center text-muted-foreground">Sin registros</td></tr>
+                  <tr><td colSpan={12} className="p-6 text-center text-muted-foreground">Sin registros</td></tr>
                 )}
               </tbody>
             </table>
           )}
         </div>
       </DialogContent>
+      <MuestrasPopup
+        open={!!muestrasReg}
+        onClose={() => setMuestrasReg(null)}
+        registroId={muestrasReg?.id}
+        nCorte={muestrasReg?.n_corte}
+        modelo={muestrasReg?.modelo}
+      />
+      <AsignarColoresModal
+        open={!!matrizColorReg}
+        registroId={matrizColorReg}
+        onClose={() => setMatrizColorReg(null)}
+        onSaved={() => {/* refresca al cerrar; el padre recargará al cerrar el detalle */}}
+      />
     </Dialog>
   );
 };
@@ -919,7 +1089,7 @@ export const MatrizProduccion = () => {
                         <th className="text-left p-2 font-semibold sticky top-0 bg-muted z-30 border-r border-b" style={{ width: 90, minWidth: 90 }}>Tipo</th>
                         <th className="text-left p-2 font-semibold sticky top-0 bg-muted z-30 border-r border-b" style={{ width: 110, minWidth: 110 }}>Entalle</th>
                         <th className="text-left p-2 font-semibold sticky top-0 bg-muted z-30 border-r border-b" style={{ width: 100, minWidth: 100 }}>Tela</th>
-                        <th className="text-left p-2 font-semibold sticky top-0 bg-muted z-30 border-r border-b" style={{ width: 80, minWidth: 80 }}>Hilo</th>
+                        <th className="text-left p-2 font-semibold sticky top-0 bg-muted z-30 border-r border-b" style={{ width: 110, minWidth: 110 }}>Hilo</th>
                       </>
                     ) : (
                       <>
@@ -1033,8 +1203,18 @@ export const MatrizProduccion = () => {
                                 {fila.tela || '—'}
                               </td>
                             )}
-                            <td className="p-2 border-r text-muted-foreground" style={{ width: 80, minWidth: 80 }}>
-                              {fila.hilo || '—'}
+                            <td className="p-2 border-r text-muted-foreground" style={{ width: 110, minWidth: 110 }}>
+                              <div className="flex items-center gap-1 justify-between">
+                                <span className="truncate">{fila.hilo || '—'}</span>
+                                <button
+                                  className="flex-shrink-0 p-0.5 rounded text-muted-foreground/50 hover:text-primary hover:bg-muted transition-colors"
+                                  onClick={(e) => { e.stopPropagation(); setFichaFila(fila); setFichaOpen(true); }}
+                                  title="Ver ficha de colores × tallas"
+                                  data-testid={`ficha-btn-jerarquica-${idx}`}
+                                >
+                                  <TableProperties className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                             </td>
                           </>
                         ) : (
@@ -1114,7 +1294,7 @@ export const MatrizProduccion = () => {
                     <td
                       className="p-2.5 sticky left-0 bg-muted/40 z-10 border-r"
                       colSpan={vistaModo === 'jerarquica' ? 5 : 2}
-                      style={{ minWidth: vistaModo === 'jerarquica' ? 510 : (getColWidth('__item') + getColWidth('__hilo')) }}
+                      style={{ minWidth: vistaModo === 'jerarquica' ? 540 : (getColWidth('__item') + getColWidth('__hilo')) }}
                     >
                       TOTALES
                     </td>

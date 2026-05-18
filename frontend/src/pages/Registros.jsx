@@ -24,7 +24,7 @@ import {
 } from '../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Separator } from '../components/ui/separator';
-import { Plus, Pencil, Trash2, AlertTriangle, Eye, Palette, Scissors, Package, Cog, Clock, PauseCircle, PlayCircle, FileWarning, Calendar, User, Search, X, Filter, ChevronRight, FileSpreadsheet, Divide } from 'lucide-react';
+import { Plus, Pencil, Trash2, AlertTriangle, Eye, Palette, Scissors, Package, Cog, Clock, PauseCircle, PlayCircle, FileWarning, Calendar, User, Search, X, Filter, ChevronRight, FileSpreadsheet, Divide, ArrowLeftRight, Lock, Unlock, CheckCircle2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
 import { formatColorName, getStatusClass } from '../lib/utils';
@@ -85,7 +85,7 @@ export const Registros = () => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const { saving, guard } = useSaving();
-  const { canCreate, canEdit, canDelete } = usePermissions('registros');
+  const { canCreate, canEdit, canDelete, isAdmin } = usePermissions('registros');
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [coloresDialogOpen, setColoresDialogOpen] = useState(false);
   const [viewingItem, setViewingItem] = useState(null);
@@ -96,6 +96,11 @@ export const Registros = () => {
   const [matrizCantidades, setMatrizCantidades] = useState({});
   const [proporcionesPorColor, setProporcionesPorColor] = useState({});  // color_id -> peso (default 1)
   const [coloresCatalogo, setColoresCatalogo] = useState([]);
+  // Aprobado lock state + swap picker
+  const [coloresAprobado, setColoresAprobado] = useState({ aprobados: false, at: null, por: null });
+  const [aprobandoColores, setAprobandoColores] = useState(false);
+  const [swapColorId, setSwapColorId] = useState(null);
+  const [swapSearch, setSwapSearch] = useState('');
   
   // Control de producción
   const [controlDialogOpen, setControlDialogOpen] = useState(false);
@@ -251,6 +256,13 @@ export const Registros = () => {
       return;
     }
     setColorEditItem(item);
+    setColoresAprobado({
+      aprobados: !!item.colores_aprobados,
+      at: item.colores_aprobados_at || null,
+      por: item.colores_aprobados_por || null,
+    });
+    setSwapColorId(null);
+    setSwapSearch('');
 
     let catalogo = [];
     try {
@@ -260,7 +272,7 @@ export const Registros = () => {
       setColoresCatalogo([]);
       toast.error('No se pudieron cargar los colores de la regla');
     }
-    
+
     if (item.distribucion_colores && item.distribucion_colores.length > 0) {
       const coloresUnicos = [];
       const matriz = {};
@@ -477,9 +489,104 @@ export const Registros = () => {
       setMatrizCantidades({});
       fetchItems();
     } catch (error) {
-      toast.error('Error al guardar distribución de colores');
+      toast.error(error?.response?.data?.detail || 'Error al guardar distribución de colores');
     }
   });
+
+  // ── Swap: reemplazar un color manteniendo cantidades ─────────
+  const handleSwapColor = (oldColorId, nuevoColor) => {
+    if (coloresSeleccionados.find(c => c.id === nuevoColor.id)) {
+      toast.error('Ese color ya está en la matriz');
+      return;
+    }
+    const nuevaMatriz = { ...matrizCantidades };
+    (colorEditItem?.tallas || []).forEach(t => {
+      const oldKey = `${oldColorId}_${t.talla_id}`;
+      const newKey = `${nuevoColor.id}_${t.talla_id}`;
+      if (oldKey in nuevaMatriz) {
+        nuevaMatriz[newKey] = nuevaMatriz[oldKey];
+        delete nuevaMatriz[oldKey];
+      }
+    });
+    setMatrizCantidades(nuevaMatriz);
+    setColoresSeleccionados(prev => prev.map(c => c.id === oldColorId ? nuevoColor : c));
+    setProporcionesPorColor(prev => {
+      const next = { ...prev };
+      if (oldColorId in next) {
+        next[nuevoColor.id] = next[oldColorId];
+        delete next[oldColorId];
+      }
+      return next;
+    });
+    setSwapColorId(null);
+    setSwapSearch('');
+    toast.success(`Color reemplazado por ${formatColorName(nuevoColor.nombre)}`);
+  };
+
+  // ── Aprobar / desaprobar colores ─────────────────────────────
+  const handleAprobarColores = async () => {
+    if (!colorEditItem?.id) return;
+    setAprobandoColores(true);
+    try {
+      // Guardar primero la distribución actual
+      const distribucion = (colorEditItem?.tallas || []).map(t => ({
+        talla_id: t.talla_id,
+        talla_nombre: t.talla_nombre,
+        cantidad_total: t.cantidad,
+        colores: coloresSeleccionados.map(c => ({
+          color_id: c.id,
+          color_nombre: formatColorName(c.nombre),
+          cantidad: getCantidadMatriz(c.id, t.talla_id)
+        })).filter(c => c.cantidad > 0)
+      }));
+      await axios.put(`${API}/reportes-produccion/registro-colores/${colorEditItem.id}`, { distribucion });
+      const res = await axios.put(`${API}/reportes-produccion/registro-colores/${colorEditItem.id}/aprobar`);
+      setColoresAprobado({
+        aprobados: true,
+        at: res.data?.colores_aprobados_at || new Date().toISOString(),
+        por: res.data?.colores_aprobados_por || null,
+      });
+      toast.success('Colores aprobados. La distribución quedó bloqueada.');
+      fetchItems();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Error al aprobar colores');
+    } finally {
+      setAprobandoColores(false);
+    }
+  };
+
+  const handleDesaprobarColores = async () => {
+    if (!colorEditItem?.id) return;
+    setAprobandoColores(true);
+    try {
+      await axios.put(`${API}/reportes-produccion/registro-colores/${colorEditItem.id}/desaprobar`);
+      setColoresAprobado({ aprobados: false, at: null, por: null });
+      toast.success('Aprobación retirada. La distribución vuelve a ser editable.');
+      fetchItems();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Error al desaprobar colores');
+    } finally {
+      setAprobandoColores(false);
+    }
+  };
+
+  const formatFechaAprobado = (iso) => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch { return iso; }
+  };
+
+  const coloresParaSwap = (() => {
+    const yaPuestos = new Set(coloresSeleccionados.map(c => c.id));
+    const term = (swapSearch || '').trim().toLowerCase();
+    return (coloresCatalogo || [])
+      .filter(c => !yaPuestos.has(c.id))
+      .filter(c => !term || (c.nombre || '').toLowerCase().includes(term));
+  })();
+
+  const bloqueadoColores = coloresAprobado.aprobados && !isAdmin;
 
   const handleView = (item) => {
     setViewingItem(item);
@@ -1199,6 +1306,29 @@ export const Registros = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-4">
+            {coloresAprobado.aprobados && (
+              <div className={`rounded-md border px-3 py-2 flex items-center justify-between gap-3 text-xs ${
+                bloqueadoColores ? 'border-amber-300 bg-amber-50' : 'border-emerald-300 bg-emerald-50'
+              }`}>
+                <div className="flex items-center gap-2">
+                  {bloqueadoColores
+                    ? <Lock className="h-3.5 w-3.5 text-amber-700" />
+                    : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" />}
+                  <span className={bloqueadoColores ? 'text-amber-800' : 'text-emerald-800'}>
+                    <strong>Colores aprobados</strong>
+                    {coloresAprobado.por && <> · por <strong>{coloresAprobado.por}</strong></>}
+                    {coloresAprobado.at && <> · {formatFechaAprobado(coloresAprobado.at)}</>}
+                    {bloqueadoColores && ' · Solo lectura'}
+                  </span>
+                </div>
+                {isAdmin && (
+                  <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1" onClick={handleDesaprobarColores} disabled={aprobandoColores}>
+                    {aprobandoColores ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlock className="h-3 w-3" />}
+                    Desaprobar
+                  </Button>
+                )}
+              </div>
+            )}
             {/* Selector de colores múltiple con buscador */}
             <div>
               <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">
@@ -1211,6 +1341,7 @@ export const Registros = () => {
                 placeholder="Buscar y seleccionar colores..."
                 searchPlaceholder="Buscar color..."
                 emptyMessage="No hay colores definidos en la regla de este modelo."
+                disabled={bloqueadoColores}
               />
               <p className="text-xs text-muted-foreground mt-2">
                 Solo se muestran los colores permitidos por la regla de marca, tipo y entalle.
@@ -1226,7 +1357,7 @@ export const Registros = () => {
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                     Distribución por Talla y Color
                   </h3>
-                  <Button type="button" variant="outline" size="sm" onClick={handleProrratear} data-testid="btn-prorratear-colores">
+                  <Button type="button" variant="outline" size="sm" onClick={handleProrratear} disabled={bloqueadoColores} data-testid="btn-prorratear-colores">
                     <Divide className="h-4 w-4 mr-1" /> Prorratear
                   </Button>
                 </div>
@@ -1254,10 +1385,61 @@ export const Registros = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {coloresSeleccionados.map((color, colorIndex) => (
+                      {coloresSeleccionados.map((color, colorIndex) => {
+                        const swapAbierto = swapColorId === color.id;
+                        return (
                         <tr key={color.id} className={colorIndex % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
                           <td className="p-2 border-b">
-                            <span className="font-medium text-sm">{formatColorName(color.nombre)}</span>
+                            <div className="flex items-center gap-1.5 relative">
+                              <span className="font-medium text-sm">{formatColorName(color.nombre)}</span>
+                              {!bloqueadoColores && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSwapColorId(swapAbierto ? null : color.id);
+                                    setSwapSearch('');
+                                  }}
+                                  className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-primary transition-colors"
+                                  title="Reemplazar este color (mantiene las cantidades)"
+                                  data-testid={`swap-${color.id}`}
+                                >
+                                  <ArrowLeftRight className="h-3 w-3" />
+                                </button>
+                              )}
+                              {swapAbierto && (
+                                <div className="absolute z-30 top-full left-0 mt-1 w-[260px] bg-background border rounded-md shadow-lg p-2">
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[11px] font-medium">Reemplazar por</span>
+                                    <button type="button" onClick={() => { setSwapColorId(null); setSwapSearch(''); }} className="text-muted-foreground hover:text-foreground">
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={swapSearch}
+                                    onChange={(e) => setSwapSearch(e.target.value)}
+                                    placeholder="Buscar color..."
+                                    className="w-full text-[11px] px-2 py-1 rounded border border-input bg-background mb-1.5"
+                                    autoFocus
+                                  />
+                                  <div className="max-h-[180px] overflow-auto flex flex-wrap gap-1">
+                                    {coloresParaSwap.length === 0 && (
+                                      <p className="text-[11px] text-muted-foreground italic p-1">Sin colores disponibles en la regla</p>
+                                    )}
+                                    {coloresParaSwap.map((c) => (
+                                      <button
+                                        key={c.id}
+                                        type="button"
+                                        onClick={() => handleSwapColor(color.id, c)}
+                                        className="text-[11px] px-2 py-1 rounded border hover:bg-muted hover:border-primary"
+                                      >
+                                        {formatColorName(c.nombre)}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="p-1 border-b">
                             <NumericInput
@@ -1270,6 +1452,7 @@ export const Registros = () => {
                                 const n = parseFloat(e.target.value);
                                 if (!isFinite(n) || n <= 0) handleProporcionChange(color.id, 1);
                               }}
+                              disabled={bloqueadoColores}
                               className="w-full font-mono text-center h-10"
                               placeholder="1"
                               data-testid={`prop-${color.id}`}
@@ -1281,6 +1464,7 @@ export const Registros = () => {
                                 min="0"
                                 value={getCantidadMatriz(color.id, t.talla_id)}
                                 onChange={(e) => handleMatrizChange(color.id, t.talla_id, e.target.value)}
+                                disabled={bloqueadoColores}
                                 className="w-full font-mono text-center h-10"
                                 placeholder="0"
                                 data-testid={`matriz-${color.id}-${t.talla_id}`}
@@ -1291,7 +1475,7 @@ export const Registros = () => {
                             {getTotalColor(color.id)}
                           </td>
                         </tr>
-                      ))}
+                      );})}
                       <tr className="bg-muted/50">
                         <td className="p-3 font-semibold text-sm" colSpan={2}>Asignado</td>
                         {colorEditItem.tallas.map((t) => {
@@ -1326,15 +1510,31 @@ export const Registros = () => {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setColoresDialogOpen(false)}>
-              Cancelar
+              {bloqueadoColores ? 'Cerrar' : 'Cancelar'}
             </Button>
-            <Button 
-              onClick={handleSaveColores} 
-              disabled={saving || coloresSeleccionados.length === 0}
-              data-testid="btn-guardar-colores"
-            >
-              Guardar Distribución
-            </Button>
+            {!bloqueadoColores && !coloresAprobado.aprobados && coloresSeleccionados.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleAprobarColores}
+                disabled={aprobandoColores || saving}
+                className="gap-1.5 border-emerald-400 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                data-testid="btn-aprobar-colores"
+                title="Guarda y bloquea esta distribución. Solo admin podrá modificar después."
+              >
+                {aprobandoColores ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Aprobar colores
+              </Button>
+            )}
+            {!bloqueadoColores && (
+              <Button
+                onClick={handleSaveColores}
+                disabled={saving || coloresSeleccionados.length === 0}
+                data-testid="btn-guardar-colores"
+              >
+                Guardar Distribución
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

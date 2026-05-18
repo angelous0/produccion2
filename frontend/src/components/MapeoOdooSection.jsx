@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -17,6 +17,18 @@ export const MapeoOdooSection = ({ items, scope = {}, onMapped }) => {
   const [expandedId, setExpandedId] = useState(null);
   const [detailById, setDetailById] = useState({});      // templateId → full variantes data
   const [detailLoading, setDetailLoading] = useState(null);
+  // Debounce del reload del padre: agrupa varios mapeos seguidos en 1 sola recarga
+  const reloadTimerRef = useRef(null);
+  const scheduleParentReload = () => {
+    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+    reloadTimerRef.current = setTimeout(() => {
+      onMapped?.();
+      reloadTimerRef.current = null;
+    }, 1500);
+  };
+  useEffect(() => () => {
+    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+  }, []);
 
   // Cargar catálogo respetando la regla aplicable (marca/tipo/entalle/hilo).
   // Si la regla no devuelve nada, fallback al catálogo completo.
@@ -111,8 +123,37 @@ export const MapeoOdooSection = ({ items, scope = {}, onMapped }) => {
 
   const handleMap = async (templateId, colorOdoo, productIds, color) => {
     const key = `${templateId}-${colorOdoo}`;
-    setLoadingKey(key);
     setError('');
+
+    // 1) Update optimista: la fila se marca Mapeado al instante.
+    //    Marcamos cada product_id con un objeto mapeo truthy para que
+    //    `allMapped = product_ids.every(p => p.mapeo)` evalúe a true.
+    setDetailById(prev => {
+      const cur = prev[templateId];
+      if (!cur) return prev;
+      return {
+        ...prev,
+        [templateId]: {
+          ...cur,
+          colores: (cur.colores || []).map(cg => {
+            if (cg.color_odoo !== colorOdoo) return cg;
+            return {
+              ...cg,
+              product_ids: (cg.product_ids || []).map(p => ({
+                ...p,
+                mapeo: p.mapeo || { color_id: color.id, color_nombre: color.nombre, _optimistic: true },
+              })),
+            };
+          }),
+        },
+      };
+    });
+
+    // 2) Cierra popover inmediatamente — puedes seguir mapeando otros.
+    setOpenKey(null);
+    setSearch('');
+    setLoadingKey(key);  // muestra spinner pequeño en la fila por si la red está lenta
+
     try {
       await axios.post(`${API}/odoo-enriq/color-mapping`, {
         template_id: templateId,
@@ -120,17 +161,17 @@ export const MapeoOdooSection = ({ items, scope = {}, onMapped }) => {
         color_id: color.id,
         product_ids: productIds,
       });
-      setOpenKey(null);
-      setSearch('');
-      // Refresca detalle del modelo
+      // 3) Reload del padre con debounce: agrupa mapeos consecutivos.
+      scheduleParentReload();
+    } catch (e) {
+      setError(e?.response?.data?.detail || 'Error al mapear color');
+      // Rollback: re-fetch del detalle del modelo para restaurar el estado real.
       delete detailById[templateId];
       setDetailById({ ...detailById });
       cargarDetalleModelo(templateId);
-      onMapped?.();
-    } catch (e) {
-      setError(e?.response?.data?.detail || 'Error al mapear color');
     } finally {
-      setLoadingKey(null);
+      // Limpia el spinner solo si seguimos en esta key (otra request podría haberlo cambiado).
+      setLoadingKey(k => (k === key ? null : k));
     }
   };
 

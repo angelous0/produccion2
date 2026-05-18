@@ -3,13 +3,15 @@ import axios from 'axios';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Loader2, Plus, Trash2, X, Divide, Copy } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Divide, Copy, ArrowLeftRight, Lock, Unlock, CheckCircle2 } from 'lucide-react';
 import { formatColorName } from '../lib/utils';
 import { toast } from 'sonner';
+import { usePermissions } from '../hooks/usePermissions';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosCortes = [] }) => {
+  const { isAdmin } = usePermissions('registros');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -22,6 +24,15 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkSelected, setBulkSelected] = useState(new Set());
   const [savingBulk, setSavingBulk] = useState(false);
+  // Aprobado: { aprobados: bool, at: ISO, por: username }
+  const [aprobado, setAprobado] = useState({ aprobados: false, at: null, por: null });
+  const [aprobando, setAprobando] = useState(false);
+  // Swap color: cuando se hace click en ⇄ de una fila, abre picker
+  const [swapColorId, setSwapColorId] = useState(null);
+  const [swapSearch, setSwapSearch] = useState('');
+
+  // bloqueado = aprobado y no admin → solo lectura
+  const bloqueado = aprobado.aprobados && !isAdmin;
 
   // ── Carga inicial ──────────────────────────────────────────
   useEffect(() => {
@@ -32,10 +43,19 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
     setAddOpen(false);
     setSearch('');
 
+    setAprobado({ aprobados: false, at: null, por: null });
+    setSwapColorId(null);
+    setSwapSearch('');
+
     axios.get(`${API}/reportes-produccion/registro-colores/${registroId}`)
       .then(async (res) => {
         const d = res.data;
         setData(d);
+        setAprobado({
+          aprobados: !!d.colores_aprobados,
+          at: d.colores_aprobados_at || null,
+          por: d.colores_aprobados_por || null,
+        });
 
         // 1) Cargar colores disponibles según la regla marca/tipo/entalle.
         //    Si la regla no devuelve nada, fallback al catálogo completo.
@@ -223,11 +243,89 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
       .filter(c => !search.trim() || (c.nombre || '').toLowerCase().includes(search.trim().toLowerCase()));
   }, [coloresDisp, matriz, search]);
 
+  // ── Reemplazar (swap) un color ─────────────────────────────
+  // Mantiene las mismas cantidades por talla, solo cambia el color_id y nombre.
+  const coloresParaSwap = useMemo(() => {
+    const yaPuestos = new Set(Object.keys(matriz));
+    return coloresDisp
+      .filter(c => !yaPuestos.has(c.id))
+      .filter(c => !swapSearch.trim() || (c.nombre || '').toLowerCase().includes(swapSearch.trim().toLowerCase()));
+  }, [coloresDisp, matriz, swapSearch]);
+
+  const reemplazarColor = (oldId, nuevoColor) => {
+    setMatriz((prev) => {
+      const row = prev[oldId];
+      if (!row) return prev;
+      const next = { ...prev };
+      delete next[oldId];
+      next[nuevoColor.id] = {
+        color_id: nuevoColor.id,
+        color_nombre: nuevoColor.nombre,
+        peso: row.peso ?? 1,
+        cantidades: { ...(row.cantidades || {}) },
+      };
+      return next;
+    });
+    setSwapColorId(null);
+    setSwapSearch('');
+  };
+
+  // ── Aprobar / desaprobar colores ───────────────────────────
+  const aprobarColores = async () => {
+    if (algunExcedido) {
+      toast.error('Hay tallas con cantidades excedidas. Ajusta antes de aprobar.');
+      return;
+    }
+    setAprobando(true);
+    try {
+      // Si hay cambios pendientes, guardarlos primero
+      if (!aprobado.aprobados) {
+        await guardar({ skipClose: true });
+      }
+      const res = await axios.put(`${API}/reportes-produccion/registro-colores/${registroId}/aprobar`);
+      setAprobado({
+        aprobados: true,
+        at: res.data?.colores_aprobados_at || new Date().toISOString(),
+        por: res.data?.colores_aprobados_por || null,
+      });
+      toast.success('Colores aprobados. La distribución quedó bloqueada.');
+      onSaved?.();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Error al aprobar colores');
+    } finally {
+      setAprobando(false);
+    }
+  };
+
+  const desaprobarColores = async () => {
+    setAprobando(true);
+    try {
+      await axios.put(`${API}/reportes-produccion/registro-colores/${registroId}/desaprobar`);
+      setAprobado({ aprobados: false, at: null, por: null });
+      toast.success('Aprobación retirada. La distribución vuelve a ser editable.');
+      onSaved?.();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Error al desaprobar colores');
+    } finally {
+      setAprobando(false);
+    }
+  };
+
+  const formatFecha = (iso) => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch {
+      return iso;
+    }
+  };
+
   // ── Guardar ────────────────────────────────────────────────
-  const guardar = async () => {
+  const guardar = async ({ skipClose = false } = {}) => {
     if (algunExcedido) {
       setError('Hay tallas con cantidades que exceden el total. Ajusta antes de guardar.');
-      return;
+      throw new Error('excedido');
     }
     setSaving(true);
     setError('');
@@ -244,9 +342,10 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
     try {
       await axios.put(`${API}/reportes-produccion/registro-colores/${registroId}`, { distribucion });
       onSaved?.();
-      onClose();
+      if (!skipClose) onClose();
     } catch (e) {
       setError(e?.response?.data?.detail || 'Error al guardar');
+      throw e;
     } finally {
       setSaving(false);
     }
@@ -284,6 +383,33 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
         {!loading && data && (
           <div className="flex flex-col overflow-hidden max-h-[calc(92vh-90px)]">
             <div className="overflow-auto p-4 flex-1">
+              {aprobado.aprobados && (
+                <div className={`mb-3 rounded-md border px-3 py-2 flex items-center justify-between gap-3 text-xs ${
+                  bloqueado ? 'border-amber-300 bg-amber-50' : 'border-emerald-300 bg-emerald-50'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {bloqueado ? <Lock className="h-3.5 w-3.5 text-amber-700" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" />}
+                    <span className={bloqueado ? 'text-amber-800' : 'text-emerald-800'}>
+                      <strong>Colores aprobados</strong>
+                      {aprobado.por && <> · por <strong>{aprobado.por}</strong></>}
+                      {aprobado.at && <> · {formatFecha(aprobado.at)}</>}
+                      {bloqueado && ' · Solo lectura'}
+                    </span>
+                  </div>
+                  {isAdmin && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[11px] gap-1"
+                      onClick={desaprobarColores}
+                      disabled={aprobando}
+                    >
+                      {aprobando ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlock className="h-3 w-3" />}
+                      Desaprobar
+                    </Button>
+                  )}
+                </div>
+              )}
               <div className="overflow-auto rounded-md border">
                 <table className="w-full text-xs border-collapse">
                   <thead className="sticky top-0 bg-muted/90 backdrop-blur z-10">
@@ -317,9 +443,65 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
                     )}
                     {filas.map((row) => {
                       const totalFila = tallas.reduce((s, t) => s + (row.cantidades?.[t.talla_id] || 0), 0);
+                      const swapAbierto = swapColorId === row.color_id;
                       return (
                         <tr key={row.color_id} className="border-b hover:bg-muted/20">
-                          <td className="p-2 font-medium">{formatColorName(row.color_nombre)}</td>
+                          <td className="p-2 font-medium">
+                            <div className="flex items-center gap-1.5 relative">
+                              <span>{formatColorName(row.color_nombre)}</span>
+                              {!bloqueado && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSwapColorId(swapAbierto ? null : row.color_id);
+                                    setSwapSearch('');
+                                  }}
+                                  className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-primary transition-colors"
+                                  title="Reemplazar este color (mantiene las cantidades)"
+                                  data-testid={`swap-${row.color_id}`}
+                                >
+                                  <ArrowLeftRight className="h-3 w-3" />
+                                </button>
+                              )}
+                              {swapAbierto && (
+                                <div className="absolute z-30 top-full left-0 mt-1 w-[260px] bg-background border rounded-md shadow-lg p-2">
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[11px] font-medium">Reemplazar por</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setSwapColorId(null); setSwapSearch(''); }}
+                                      className="text-muted-foreground hover:text-foreground"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={swapSearch}
+                                    onChange={(e) => setSwapSearch(e.target.value)}
+                                    placeholder="Buscar color..."
+                                    className="w-full text-[11px] px-2 py-1 rounded border border-input bg-background mb-1.5"
+                                    autoFocus
+                                  />
+                                  <div className="max-h-[180px] overflow-auto flex flex-wrap gap-1">
+                                    {coloresParaSwap.length === 0 && (
+                                      <p className="text-[11px] text-muted-foreground italic p-1">Sin colores disponibles en la regla</p>
+                                    )}
+                                    {coloresParaSwap.map((c) => (
+                                      <button
+                                        key={c.id}
+                                        type="button"
+                                        onClick={() => reemplazarColor(row.color_id, c)}
+                                        className="text-[11px] px-2 py-1 rounded border hover:bg-muted hover:border-primary"
+                                      >
+                                        {formatColorName(c.nombre)}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
                           <td className="p-1 text-center">
                             <input
                               type="number"
@@ -330,7 +512,8 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
                               onChange={(e) => setPesoRaw(row.color_id, e.target.value)}
                               onFocus={(e) => e.target.select()}
                               onBlur={() => commitPeso(row.color_id)}
-                              className="w-16 mx-auto px-1.5 py-1 text-center text-xs font-mono rounded border border-input bg-background"
+                              disabled={bloqueado}
+                              className="w-16 mx-auto px-1.5 py-1 text-center text-xs font-mono rounded border border-input bg-background disabled:opacity-60 disabled:cursor-not-allowed"
                               data-testid={`peso-${row.color_id}`}
                             />
                           </td>
@@ -348,7 +531,8 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
                                   value={val || ''}
                                   placeholder="0"
                                   onChange={(e) => setCantidad(row.color_id, t.talla_id, e.target.value)}
-                                  className={`w-full max-w-[80px] mx-auto px-1.5 py-1 text-center text-xs font-mono rounded border ${
+                                  disabled={bloqueado}
+                                  className={`w-full max-w-[80px] mx-auto px-1.5 py-1 text-center text-xs font-mono rounded border disabled:opacity-60 disabled:cursor-not-allowed ${
                                     excedido
                                       ? 'border-destructive bg-destructive/10 text-destructive'
                                       : val
@@ -367,6 +551,7 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
                               size="icon"
                               className="h-6 w-6 text-muted-foreground hover:text-destructive"
                               onClick={() => eliminarColor(row.color_id)}
+                              disabled={bloqueado}
                               title="Quitar color de la matriz"
                             >
                               <Trash2 className="h-3 w-3" />
@@ -417,6 +602,7 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
                       size="sm"
                       className="text-xs h-8 gap-1"
                       onClick={() => setAddOpen(true)}
+                      disabled={bloqueado}
                       data-testid="btn-add-color"
                     >
                       <Plus className="h-3.5 w-3.5" />
@@ -428,7 +614,7 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
                       size="sm"
                       className="text-xs h-8 gap-1"
                       onClick={prorratear}
-                      disabled={Object.keys(matriz).length === 0}
+                      disabled={bloqueado || Object.keys(matriz).length === 0}
                       title="Distribuye el total de cada talla en partes iguales entre los colores seleccionados"
                       data-testid="btn-prorratear-asignar"
                     >
@@ -497,7 +683,7 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
                       setBulkSelected(new Set(otrosCortes.map(c => c.id)));
                       setBulkOpen(true);
                     }}
-                    disabled={saving || algunExcedido}
+                    disabled={saving || algunExcedido || bloqueado}
                     title="Aplicar estos colores y proporciones a otros cortes del ítem"
                   >
                     <Copy className="h-3.5 w-3.5 mr-1.5" />
@@ -505,17 +691,33 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
                   </Button>
                 )}
                 <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
-                  Cancelar
+                  {bloqueado ? 'Cerrar' : 'Cancelar'}
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={guardar}
-                  disabled={saving || algunExcedido}
-                  data-testid="btn-save-colores"
-                >
-                  {saving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
-                  Guardar distribución
-                </Button>
+                {!bloqueado && !aprobado.aprobados && Object.keys(matriz).length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={aprobarColores}
+                    disabled={saving || aprobando || algunExcedido}
+                    title="Guarda y bloquea esta distribución. Solo admin podrá modificar después."
+                    data-testid="btn-aprobar-colores"
+                    className="gap-1.5 border-emerald-400 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                  >
+                    {aprobando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                    Aprobar colores
+                  </Button>
+                )}
+                {!bloqueado && (
+                  <Button
+                    size="sm"
+                    onClick={() => guardar()}
+                    disabled={saving || algunExcedido}
+                    data-testid="btn-save-colores"
+                  >
+                    {saving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+                    Guardar distribución
+                  </Button>
+                )}
               </div>
             </div>
           </div>

@@ -628,6 +628,15 @@ async def ensure_clasificacion_tables():
             "ALTER TABLE prod_registro_muestra_colores ADD COLUMN IF NOT EXISTS observaciones_envio TEXT"
         )
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestra_colores_muestra ON prod_registro_muestra_colores(muestra_id)")
+
+        # ── Aprobación de colores ──────────────────────────────────────────
+        # Una vez aprobado, solo admin puede desbloquear y editar.
+        await conn.execute("""
+            ALTER TABLE prod_registros
+                ADD COLUMN IF NOT EXISTS colores_aprobados BOOLEAN NOT NULL DEFAULT FALSE
+        """)
+        await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS colores_aprobados_at TIMESTAMP")
+        await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS colores_aprobados_por VARCHAR")
         legacy_color_tipo_exists = await conn.fetchval("SELECT to_regclass('prod_color_tipo') IS NOT NULL")
         if legacy_color_tipo_exists:
             await conn.execute("""

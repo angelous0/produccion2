@@ -712,6 +712,22 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
         if not result:
             raise HTTPException(status_code=404, detail="Registro no encontrado")
 
+        # ── Bloqueo de distribución_colores si está aprobada ────────────────
+        # Si los colores fueron aprobados y se está intentando cambiar la
+        # distribución, solo admin puede pasar. Se compara JSON normalizado
+        # para no bloquear cuando el frontend manda exactamente lo mismo.
+        if bool(result.get('colores_aprobados')) and current_user.get('rol') != 'admin':
+            try:
+                new_dist = json.dumps([d.model_dump() for d in input.distribucion_colores], sort_keys=True)
+                old_dist = json.dumps(parse_jsonb(result.get('distribucion_colores')) or [], sort_keys=True)
+            except Exception:
+                new_dist, old_dist = '_new', '_old'
+            if new_dist != old_dist:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Los colores fueron aprobados. Solo un admin puede modificar la distribución.",
+                )
+
         # ── Control de permisos para PUT /registros ─────────────────────────
         # Admin: pasa todo. Lectura: bloqueado siempre. Resto: requiere
         # `registros.editar` para cambios normales, o `cambiar_estados` +
