@@ -78,10 +78,7 @@ export const ColoresDialog = ({
                   {coloresSeleccionados.map((color, colorIndex) => (
                     <tr key={color.id} className={colorIndex % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
                       <td className="p-2 border-b">
-                        <div className="flex items-center gap-2">
-                          <div className="w-5 h-5 rounded border shrink-0" style={{ backgroundColor: color.codigo_hex || '#ccc' }} />
-                          <span className="font-medium text-sm">{formatColorName(color.nombre)}</span>
-                        </div>
+                        <span className="font-medium text-sm">{formatColorName(color.nombre)}</span>
                       </td>
                       {tallasSeleccionadas.map((t) => (
                         <td key={t.talla_id} className="p-1 border-b">

@@ -611,9 +611,14 @@ export const RegistroForm = () => {
     const marcaId = modeloSeleccionado?.marca_id || (modoManual && modeloManualForm.marca_modo === 'select' ? modeloManualForm.marca_id : '');
     const tipoId = modeloSeleccionado?.tipo_id || (modoManual && modeloManualForm.tipo_modo === 'select' ? modeloManualForm.tipo_id : '');
     const entalleId = modeloSeleccionado?.entalle_id || (modoManual && modeloManualForm.entalle_modo === 'select' ? modeloManualForm.entalle_id : '');
+    // Hilo: prioridad form > modeloSeleccionado > modeloManualForm
+    const hiloId = formData?.hilo_especifico_id
+      || modeloSeleccionado?.hilo_id
+      || (modoManual && modeloManualForm.hilo_modo === 'select' ? modeloManualForm.hilo_id : '');
     if (marcaId) params.set('marca_id', marcaId);
     if (tipoId) params.set('tipo_id', tipoId);
     if (entalleId) params.set('entalle_id', entalleId);
+    if (hiloId) params.set('hilo_id', hiloId);
     return params;
   };
 

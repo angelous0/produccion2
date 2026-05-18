@@ -805,10 +805,28 @@ async def actualizar_costo(
 
 # ─── Mapeo de colores por variante (product_id) ──────────────────────
 
+# Mismas tiendas reales que usa el reporte de Almacén PT / Tienda (ficha-item).
+# Si esta lista cambia, también actualizar TIENDAS_VALIDAS_X_NOMBRE en reportes_produccion.py.
+_TIENDAS_REALES_X_NOMBRE = (
+    'AZUL', 'BOOSH',
+    'GM207', 'GM209', 'GM218',
+    'GR238', 'GR55',
+    'ZAP', 'TALLER',
+)
+
+
 @router.get("/{template_id}/variantes")
-async def get_variantes(template_id: int, current_user: dict = Depends(get_current_user)):
+async def get_variantes(
+    template_id: int,
+    solo_tiendas: bool = False,
+    current_user: dict = Depends(get_current_user),
+):
     """Devuelve las variantes de un template agrupadas por color Odoo,
-    con stock / ventas / tallas / estado de mapeo."""
+    con stock / ventas / tallas / estado de mapeo.
+
+    Si `solo_tiendas=true`, el stock solo cuenta ubicaciones reales de venta
+    (tiendas físicas + TALLER), excluyendo virtuales, AP, REMATE, fallados.
+    """
     empresa_id = current_user.get("empresa_id") or 7
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -829,12 +847,23 @@ async def get_variantes(template_id: int, current_user: dict = Depends(get_curre
 
         product_ids = [v['product_id'] for v in variantes]
 
-        stock_rows = await conn.fetch("""
-            SELECT product_id, COALESCE(SUM(qty - COALESCE(reserved_qty, 0)), 0) AS stock
-            FROM odoo.stock_quant
-            WHERE product_id = ANY($1::int[])
-            GROUP BY product_id
-        """, product_ids)
+        if solo_tiendas:
+            stock_rows = await conn.fetch("""
+                SELECT sq.product_id,
+                       COALESCE(SUM(sq.qty - COALESCE(sq.reserved_qty, 0)), 0) AS stock
+                FROM odoo.stock_quant sq
+                JOIN odoo.stock_location sl ON sl.odoo_id = sq.location_id
+                WHERE sq.product_id = ANY($1::int[])
+                  AND sl.x_nombre = ANY($2::text[])
+                GROUP BY sq.product_id
+            """, product_ids, list(_TIENDAS_REALES_X_NOMBRE))
+        else:
+            stock_rows = await conn.fetch("""
+                SELECT product_id, COALESCE(SUM(qty - COALESCE(reserved_qty, 0)), 0) AS stock
+                FROM odoo.stock_quant
+                WHERE product_id = ANY($1::int[])
+                GROUP BY product_id
+            """, product_ids)
         stock_map = {int(r['product_id']): float(r['stock']) for r in stock_rows}
 
         ventas_rows = await conn.fetch("""

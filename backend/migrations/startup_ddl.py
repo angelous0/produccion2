@@ -590,6 +590,40 @@ async def ensure_clasificacion_tables():
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_color_reglas_scope ON prod_color_reglas(marca_id, tipo_id, activo)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_color_reglas_hilo ON prod_color_reglas(hilo_id) WHERE hilo_id IS NOT NULL")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_color_regla_colores_color ON prod_color_regla_colores(color_id)")
+
+        # ── Muestras de lavandería ──────────────────────────────────────────
+        # Envíos parciales para probar colores antes de procesar el corte completo.
+        # La cantidad de cada muestra se considera "fuera del corte" mientras
+        # fecha_retorno IS NULL; al volver se reintegra al stock disponible.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_registro_muestras (
+                id SERIAL PRIMARY KEY,
+                registro_id VARCHAR NOT NULL,
+                fecha_envio DATE NOT NULL,
+                fecha_retorno DATE,
+                destino VARCHAR DEFAULT 'lavanderia',
+                observaciones TEXT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                created_by VARCHAR
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestras_registro ON prod_registro_muestras(registro_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestras_activas ON prod_registro_muestras(registro_id) WHERE fecha_retorno IS NULL")
+
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_registro_muestra_colores (
+                id SERIAL PRIMARY KEY,
+                muestra_id INTEGER NOT NULL REFERENCES prod_registro_muestras(id) ON DELETE CASCADE,
+                color_id VARCHAR,
+                color_nombre VARCHAR NOT NULL,
+                cantidad INTEGER NOT NULL CHECK(cantidad > 0),
+                decision VARCHAR CHECK(decision IS NULL OR decision IN ('aprobado','rechazado')),
+                correcciones TEXT,
+                decidido_at TIMESTAMP,
+                decidido_por VARCHAR
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestra_colores_muestra ON prod_registro_muestra_colores(muestra_id)")
         legacy_color_tipo_exists = await conn.fetchval("SELECT to_regclass('prod_color_tipo') IS NOT NULL")
         if legacy_color_tipo_exists:
             await conn.execute("""

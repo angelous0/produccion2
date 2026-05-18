@@ -8,6 +8,7 @@ import { ExternalLink, Layers, Loader2, Palette } from 'lucide-react';
 import { formatColorName } from '../lib/utils';
 import { AsignarColoresModal } from './AsignarColoresModal';
 import { MapeoOdooSection } from './MapeoOdooSection';
+import { MuestrasLavanderiaSection } from './MuestrasLavanderiaSection';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -330,6 +331,19 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
                 )}
               </div>
             </div>
+
+            {/* ── Muestras de lavandería (envíos parciales para probar colores) ── */}
+            <MuestrasLavanderiaSection
+              muestras={data?.muestras || []}
+              cortes={(data?.grupos_taller || []).map(g => ({
+                id: g.id,
+                n_corte: g.n_corte,
+                modelo: g.modelo,
+                estado: g.estado,
+              }))}
+              scope={data?.scope}
+              onChanged={reload}
+            />
 
             {/* ── Dos columnas: pendientes de color a la izquierda · PT sin clasificar a la derecha ── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">

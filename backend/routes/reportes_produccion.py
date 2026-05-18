@@ -1680,11 +1680,20 @@ async def ficha_item_detail(
 
     all_tallas: set = set()
     grupos_taller: list = []
-    colores_lav: dict = {}   # color_nombre -> {talla_nombre -> cantidad}
-    colores_alm: dict = {}   # color_nombre -> {talla_nombre -> cantidad}
+    colores_lav: dict = {}   # color_nombre (UPPERCASE) -> {talla_nombre -> cantidad}
+    colores_alm: dict = {}   # color_nombre (UPPERCASE) -> {talla_nombre -> cantidad}
     sin_color: list = []
     fuera_regla_lav: dict = {}
     fuera_regla_alm: dict = {}
+
+    # Normaliza nombre de color para comparaciones y deduplicación.
+    # Datos provienen de 3 fuentes con casing distinto:
+    #   - prod_colores_catalogo (UPPERCASE)
+    #   - distribucion_colores JSONB (formato Title Case del frontend)
+    #   - prod_odoo_color_mapping (UPPERCASE del catálogo)
+    # Sin normalizar, "Carbon" y "CARBON" generan dos filas duplicadas.
+    def _nc(name):
+        return (name or '').strip().upper()
 
     for r in rows:
         estado = r["estado"] or "Sin estado"
@@ -1703,7 +1712,7 @@ async def ficha_item_detail(
                 all_tallas.add(tn)
 
             for c in colores_entry:
-                cn = c.get("color_nombre") or ""
+                cn = _nc(c.get("color_nombre"))
                 qty = safe_int(c.get("cantidad", 0))
                 if not cn or qty == 0:
                     continue
@@ -1924,7 +1933,7 @@ async def ficha_item_detail(
         # completo), la usamos como FILTRO restrictivo: solo se muestran colores
         # incluidos en la regla. Los que tengan stock real fuera de la regla se
         # mueven a "fuera_regla" para informar al usuario sin contaminar la matriz.
-        rule_color_set = {cr["nombre"] for cr in rule_color_rows if cr.get("nombre")}
+        rule_color_set = {_nc(cr["nombre"]) for cr in rule_color_rows if cr.get("nombre")}
 
         if has_rule_match and rule_color_set:
             # Saca a "fuera_regla" lo que ya estaba en colores_lav/alm pero no encaja
@@ -1940,18 +1949,18 @@ async def ficha_item_detail(
                 colores_alm.setdefault(cn, {})
             # Odoo PT clasificado: solo el subset que está en la regla
             for cr in odoo_color_rows:
-                cn = cr["nombre"]
+                cn = _nc(cr["nombre"])
                 if cn and cn in rule_color_set:
                     colores_alm.setdefault(cn, {})
         else:
             # Sin regla aplicable: comportamiento previo (no filtra)
             for cr in rule_color_rows:
-                cn = cr["nombre"]
+                cn = _nc(cr["nombre"])
                 if cn:
                     colores_lav.setdefault(cn, {})
                     colores_alm.setdefault(cn, {})
             for cr in odoo_color_rows:
-                cn = cr["nombre"]
+                cn = _nc(cr["nombre"])
                 if cn:
                     colores_alm.setdefault(cn, {})
 
@@ -1960,7 +1969,7 @@ async def ficha_item_detail(
         # Si hay regla aplicable, los colores fuera de regla van a fuera_regla_alm
         # en vez de colores_alm.
         for sr in odoo_stock_rows:
-            cn = sr["color_nombre"]
+            cn = _nc(sr["color_nombre"])
             tn = sr["talla_nombre"]
             qty = safe_int(sr["qty"])
             if not cn or not tn or qty == 0:
@@ -2000,6 +2009,74 @@ async def ficha_item_detail(
             "hilo_id":    ref["hilo_id"],
         }
 
+    # Muestras de lavandería de cualquier corte de este ítem. La cantidad de
+    # las muestras activas (fecha_retorno IS NULL) está "fuera del corte".
+    muestras_payload = []
+    if id_list:
+        async with pool.acquire() as conn:
+            m_rows = await conn.fetch("""
+                SELECT m.id, m.registro_id, m.fecha_envio, m.fecha_retorno,
+                       m.destino, m.observaciones, m.created_at, m.created_by,
+                       r.n_corte,
+                       COALESCE(mo.nombre, r.modelo_manual->>'nombre_modelo') AS modelo_nombre
+                  FROM prod_registro_muestras m
+                  JOIN prod_registros r ON r.id = m.registro_id
+                  LEFT JOIN prod_modelos mo ON mo.id = r.modelo_id
+                 WHERE m.registro_id = ANY($1::varchar[])
+                 ORDER BY m.fecha_envio DESC, m.id DESC
+            """, id_list)
+            if m_rows:
+                color_rows = await conn.fetch("""
+                    SELECT id, muestra_id, color_id, color_nombre, cantidad,
+                           decision, correcciones, decidido_at, decidido_por
+                      FROM prod_registro_muestra_colores
+                     WHERE muestra_id = ANY($1::int[])
+                     ORDER BY id
+                """, [m["id"] for m in m_rows])
+                por_muestra: dict = {}
+                for c in color_rows:
+                    por_muestra.setdefault(c["muestra_id"], []).append({
+                        "id": c["id"],
+                        "color_id": c["color_id"],
+                        "color_nombre": c["color_nombre"],
+                        "cantidad": c["cantidad"],
+                        "decision": c["decision"],
+                        "correcciones": c["correcciones"],
+                        "decidido_at": c["decidido_at"].isoformat() if c["decidido_at"] else None,
+                        "decidido_por": c["decidido_por"],
+                    })
+                for m in m_rows:
+                    cols = por_muestra.get(m["id"], [])
+                    if m["fecha_retorno"] is None:
+                        estado = "enviada"
+                    else:
+                        deciciones = [c.get("decision") for c in cols]
+                        pendientes = sum(1 for d in deciciones if d is None)
+                        aprobados = sum(1 for d in deciciones if d == "aprobado")
+                        rechazados = sum(1 for d in deciciones if d == "rechazado")
+                        total = len(cols)
+                        if pendientes > 0:
+                            estado = "pendiente_decision"
+                        elif total > 0 and aprobados == total:
+                            estado = "aprobada"
+                        elif total > 0 and rechazados == total:
+                            estado = "rechazada"
+                        else:
+                            estado = "parcial"
+                    muestras_payload.append({
+                        "id": m["id"],
+                        "registro_id": m["registro_id"],
+                        "n_corte": m["n_corte"],
+                        "modelo": m["modelo_nombre"] or "",
+                        "fecha_envio": m["fecha_envio"].isoformat() if m["fecha_envio"] else None,
+                        "fecha_retorno": m["fecha_retorno"].isoformat() if m["fecha_retorno"] else None,
+                        "destino": m["destino"],
+                        "observaciones": m["observaciones"],
+                        "estado": estado,
+                        "cantidad_total": sum(c["cantidad"] for c in cols),
+                        "colores": cols,
+                    })
+
     return {
         "tallas": sorted_tallas,
         "scope": scope,
@@ -2010,6 +2087,7 @@ async def ficha_item_detail(
         "fuera_regla_almacen":    [{"color": k, "tallas": v} for k, v in sorted(fuera_regla_alm.items())],
         "sin_color": sin_color,
         "odoo_sin_clasificar": odoo_sin_clasificar,
+        "muestras": muestras_payload,
     }
 
 

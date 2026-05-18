@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Loader2, Plus, Trash2, X } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Divide } from 'lucide-react';
 import { formatColorName } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -59,17 +59,14 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved }) => {
         }
         setColoresDisp(coloresFromRule);
 
-        // 2) Construir matriz precargada con TODOS los colores de la regla,
-        //    rellenando los que ya tienen distribución.
+        // 2) Construir matriz solo con los colores que YA tienen distribución
+        //    guardada. Para agregar nuevos colores, usar el botón "Agregar color".
+        //    peso=1 por defecto; cambiarlo pondera el prorrateo (ej. 2 = doble).
         const initial = {};
-        coloresFromRule.forEach((c) => {
-          initial[c.id] = { color_id: c.id, color_nombre: c.nombre || '', cantidades: {} };
-        });
         (d.distribucion_actual || []).forEach((t) => {
           (t.colores || []).forEach((c) => {
             if (!initial[c.color_id]) {
-              // Color asignado fuera de la regla actual: lo conservamos para no perder datos
-              initial[c.color_id] = { color_id: c.color_id, color_nombre: c.color_nombre || '', cantidades: {} };
+              initial[c.color_id] = { color_id: c.color_id, color_nombre: c.color_nombre || '', peso: 1, cantidades: {} };
             }
             initial[c.color_id].cantidades[t.talla_id] = c.cantidad;
           });
@@ -131,6 +128,46 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved }) => {
     });
   };
 
+  // Prorrateo ponderado por columna "Proporción":
+  // peso=1 reparte por igual, peso=2 da el doble de unidades a ese color, etc.
+  const prorratear = () => {
+    const filas = Object.values(matriz);
+    if (filas.length === 0 || tallas.length === 0) return;
+    const pesos = filas.map(f => Math.max(0, parseFloat(f.peso) || 1));
+    const totalPeso = pesos.reduce((a, b) => a + b, 0);
+    if (totalPeso <= 0) return;
+
+    setMatriz((prev) => {
+      const next = {};
+      filas.forEach((f) => {
+        next[f.color_id] = {
+          color_id: f.color_id,
+          color_nombre: f.color_nombre,
+          peso: f.peso || 1,
+          cantidades: {},
+        };
+      });
+      tallas.forEach((t) => {
+        const total = t.cantidad_total || 0;
+        // Cuota ideal por color (con fracciones)
+        const shares = filas.map((f, i) => {
+          const ideal = total * (pesos[i] / totalPeso);
+          const base = Math.floor(ideal);
+          return { color_id: f.color_id, base, frac: ideal - base };
+        });
+        const restoTotal = total - shares.reduce((a, s) => a + s.base, 0);
+        // Asigna los enteros y reparte el resto a los de mayor fracción
+        const orden = shares
+          .map((s, i) => ({ ...s, idx: i }))
+          .sort((a, b) => b.frac - a.frac || a.idx - b.idx);
+        orden.forEach((s, rank) => {
+          next[s.color_id].cantidades[t.talla_id] = s.base + (rank < restoTotal ? 1 : 0);
+        });
+      });
+      return next;
+    });
+  };
+
   const eliminarColor = (color_id) => {
     setMatriz((prev) => {
       const next = { ...prev };
@@ -144,10 +181,35 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved }) => {
     if (matriz[cid]) return;
     setMatriz((prev) => ({
       ...prev,
-      [cid]: { color_id: cid, color_nombre: color.nombre, cantidades: {} },
+      [cid]: { color_id: cid, color_nombre: color.nombre, peso: 1, cantidades: {} },
     }));
     setAddOpen(false);
     setSearch('');
+  };
+
+  // Acepta string vacío durante la edición; commitPeso normaliza al hacer blur.
+  const setPesoRaw = (color_id, value) => {
+    setMatriz((prev) => {
+      const next = { ...prev };
+      const row = { ...(next[color_id] || { color_id, color_nombre: '', peso: 1, cantidades: {} }) };
+      row.pesoStr = value;  // lo que muestra el input mientras escribe
+      const n = parseFloat(value);
+      if (isFinite(n) && n > 0) row.peso = n;  // sin reemplazar peso si el valor es inválido (mientras escribe)
+      next[color_id] = row;
+      return next;
+    });
+  };
+
+  const commitPeso = (color_id) => {
+    setMatriz((prev) => {
+      const next = { ...prev };
+      const row = { ...(next[color_id] || { color_id, color_nombre: '', peso: 1, cantidades: {} }) };
+      const n = parseFloat(row.pesoStr ?? row.peso);
+      row.peso = isFinite(n) && n > 0 ? n : 1;
+      row.pesoStr = undefined;  // ya commited, volvemos a usar row.peso para display
+      next[color_id] = row;
+      return next;
+    });
   };
 
   const coloresFiltradosParaAgregar = useMemo(() => {
@@ -223,6 +285,12 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved }) => {
                   <thead className="sticky top-0 bg-muted/90 backdrop-blur z-10">
                     <tr>
                       <th className="text-left p-2 border-b font-medium min-w-[180px]">Color</th>
+                      <th
+                        className="text-center p-2 border-b font-medium min-w-[80px]"
+                        title="Peso del color en el prorrateo. Por defecto 1. Si pones 2, ese color recibe el doble que los demás."
+                      >
+                        Proporción
+                      </th>
                       {tallas.map(t => (
                         <th key={t.talla_id} className="text-center p-2 border-b font-medium min-w-[80px]">
                           {t.talla_nombre}
@@ -238,7 +306,7 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved }) => {
                   <tbody>
                     {filas.length === 0 && (
                       <tr>
-                        <td colSpan={tallas.length + 3} className="p-6 text-center text-muted-foreground italic">
+                        <td colSpan={tallas.length + 4} className="p-6 text-center text-muted-foreground italic">
                           Sin colores aún. Usa "Agregar color" para empezar.
                         </td>
                       </tr>
@@ -248,6 +316,20 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved }) => {
                       return (
                         <tr key={row.color_id} className="border-b hover:bg-muted/20">
                           <td className="p-2 font-medium">{formatColorName(row.color_nombre)}</td>
+                          <td className="p-1 text-center">
+                            <input
+                              type="number"
+                              min={0.1}
+                              step="0.5"
+                              placeholder="1"
+                              value={row.pesoStr !== undefined ? row.pesoStr : (row.peso ?? 1)}
+                              onChange={(e) => setPesoRaw(row.color_id, e.target.value)}
+                              onFocus={(e) => e.target.select()}
+                              onBlur={() => commitPeso(row.color_id)}
+                              className="w-16 mx-auto px-1.5 py-1 text-center text-xs font-mono rounded border border-input bg-background"
+                              data-testid={`peso-${row.color_id}`}
+                            />
+                          </td>
                           {tallas.map((t) => {
                             const val = row.cantidades?.[t.talla_id] || 0;
                             const otros = (totalUsadoPorTalla[t.talla_id] || 0) - val;
@@ -293,6 +375,7 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved }) => {
                   <tfoot>
                     <tr className="bg-muted/40 font-semibold border-t-2">
                       <td className="p-2">Usado / Total</td>
+                      <td className="p-2" />
                       {tallas.map((t) => {
                         const usado = totalUsadoPorTalla[t.talla_id] || 0;
                         const tot   = t.cantidad_total || 0;
@@ -321,19 +404,34 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved }) => {
                 </table>
               </div>
 
-              {/* Agregar color */}
-              <div className="mt-3 relative">
+              {/* Agregar color + Prorratear */}
+              <div className="mt-3 relative flex items-center gap-2 flex-wrap">
                 {!addOpen ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-xs h-8 gap-1"
-                    onClick={() => setAddOpen(true)}
-                    data-testid="btn-add-color"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Agregar color
-                  </Button>
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-8 gap-1"
+                      onClick={() => setAddOpen(true)}
+                      data-testid="btn-add-color"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Agregar color
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-8 gap-1"
+                      onClick={prorratear}
+                      disabled={Object.keys(matriz).length === 0}
+                      title="Distribuye el total de cada talla en partes iguales entre los colores seleccionados"
+                      data-testid="btn-prorratear-asignar"
+                    >
+                      <Divide className="h-3.5 w-3.5" />
+                      Prorratear
+                    </Button>
+                  </>
                 ) : (
                   <div className="border rounded-md p-3 bg-background shadow-sm">
                     <div className="flex items-center justify-between mb-2">

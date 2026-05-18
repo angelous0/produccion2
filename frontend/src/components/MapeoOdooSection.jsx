@@ -79,7 +79,9 @@ export const MapeoOdooSection = ({ items, scope = {}, onMapped }) => {
     if (detailById[templateId]) return;
     setDetailLoading(templateId);
     try {
-      const res = await axios.get(`${API}/odoo-enriq/${templateId}/variantes`);
+      // solo_tiendas=true ⇒ stock cuenta solo ubicaciones de venta reales
+      // (tiendas físicas + taller), igual que el resumen del modelo.
+      const res = await axios.get(`${API}/odoo-enriq/${templateId}/variantes?solo_tiendas=true`);
       setDetailById(prev => ({ ...prev, [templateId]: res.data }));
     } catch (e) {
       console.error(e);
@@ -152,9 +154,9 @@ export const MapeoOdooSection = ({ items, scope = {}, onMapped }) => {
         </div>
       )}
 
-      <div className="overflow-auto max-h-[420px] rounded-md border bg-background">
+      <div className="overflow-x-auto rounded-md border bg-background">
         <table className="w-full text-xs border-collapse">
-          <thead className="sticky top-0 bg-muted/95 backdrop-blur z-10">
+          <thead className="bg-muted/95">
             <tr>
               <th className="text-left p-2 border-b font-medium">Modelo</th>
               <th className="text-center p-2 border-b font-medium">Pendientes</th>

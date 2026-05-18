@@ -24,7 +24,7 @@ import {
 } from '../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Separator } from '../components/ui/separator';
-import { Plus, Pencil, Trash2, AlertTriangle, Eye, Palette, Scissors, Package, Cog, Clock, PauseCircle, PlayCircle, FileWarning, Calendar, User, Search, X, Filter, ChevronRight, FileSpreadsheet } from 'lucide-react';
+import { Plus, Pencil, Trash2, AlertTriangle, Eye, Palette, Scissors, Package, Cog, Clock, PauseCircle, PlayCircle, FileWarning, Calendar, User, Search, X, Filter, ChevronRight, FileSpreadsheet, Divide } from 'lucide-react';
 import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
 import { formatColorName, getStatusClass } from '../lib/utils';
@@ -199,9 +199,11 @@ export const Registros = () => {
     const marcaId = item?.marca_id || manual.marca_id || '';
     const tipoId = item?.tipo_id || manual.tipo_id || '';
     const entalleId = item?.entalle_id || manual.entalle_id || '';
+    const hiloId = item?.hilo_id || item?.hilo_especifico_id || manual.hilo_id || '';
     if (marcaId) params.set('marca_id', marcaId);
     if (tipoId) params.set('tipo_id', tipoId);
     if (entalleId) params.set('entalle_id', entalleId);
+    if (hiloId) params.set('hilo_id', hiloId);
     return params;
   };
 
@@ -354,6 +356,22 @@ export const Registros = () => {
 
   const getCantidadMatriz = (colorId, tallaId) => {
     return matrizCantidades[`${colorId}_${tallaId}`] || 0;
+  };
+
+  const handleProrratear = () => {
+    if (!colorEditItem?.tallas?.length || coloresSeleccionados.length === 0) return;
+    const nuevaMatriz = {};
+    colorEditItem.tallas.forEach(t => {
+      const totalTalla = t.cantidad || 0;
+      const numColores = coloresSeleccionados.length;
+      const base = Math.floor(totalTalla / numColores);
+      const resto = totalTalla % numColores;
+      coloresSeleccionados.forEach((color, index) => {
+        nuevaMatriz[`${color.id}_${t.talla_id}`] = base + (index < resto ? 1 : 0);
+      });
+    });
+    setMatrizCantidades(nuevaMatriz);
+    toast.success('Cantidades prorrateadas equitativamente');
   };
 
   const handleMatrizChange = (colorId, tallaId, valor) => {
@@ -1184,10 +1202,14 @@ export const Registros = () => {
             {/* Matriz de cantidades */}
             {colorEditItem?.tallas?.length > 0 && coloresSeleccionados.length > 0 ? (
               <div>
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                  Distribución por Talla y Color
-                </h3>
-                
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                    Distribución por Talla y Color
+                  </h3>
+                  <Button type="button" variant="outline" size="sm" onClick={handleProrratear} data-testid="btn-prorratear-colores">
+                    <Divide className="h-4 w-4 mr-1" /> Prorratear
+                  </Button>
+                </div>
                 <div className="border rounded-lg overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -1212,13 +1234,7 @@ export const Registros = () => {
                       {coloresSeleccionados.map((color, colorIndex) => (
                         <tr key={color.id} className={colorIndex % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
                           <td className="p-2 border-b">
-                            <div className="flex items-center gap-2">
-                              <div 
-                                className="w-5 h-5 rounded border shrink-0"
-                                style={{ backgroundColor: color.codigo_hex || '#ccc' }}
-                              />
-                              <span className="font-medium text-sm">{formatColorName(color.nombre)}</span>
-                            </div>
+                            <span className="font-medium text-sm">{formatColorName(color.nombre)}</span>
                           </td>
                           {colorEditItem.tallas.map((t) => (
                             <td key={t.talla_id} className="p-1 border-b">
