@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import {
   ChevronRight, ChevronDown, Plus, Check, X, Loader2, FlaskConical,
   CheckCircle2, XCircle, AlertCircle, Send, Trash2,
@@ -28,7 +29,12 @@ const formatFecha = (iso) => {
 };
 
 export const MuestrasLavanderiaSection = ({ muestras = [], cortes = [], scope, onChanged }) => {
-  const [expandedId, setExpandedId] = useState(null);
+  const [detalleId, setDetalleId] = useState(null);
+  // Muestra mostrada en el modal — siempre la versión más fresca por id
+  const detalleMuestra = useMemo(
+    () => (detalleId != null ? muestras.find(m => m.id === detalleId) || null : null),
+    [detalleId, muestras]
+  );
   const [colores, setColores] = useState([]);
   const [openNew, setOpenNew] = useState(false);
 
@@ -68,22 +74,32 @@ export const MuestrasLavanderiaSection = ({ muestras = [], cortes = [], scope, o
           size="sm"
           variant="outline"
           className="h-7 text-[11px] gap-1"
-          onClick={() => setOpenNew(o => !o)}
+          onClick={() => setOpenNew(true)}
           data-testid="btn-enviar-muestra"
         >
-          {openNew ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-          {openNew ? 'Cerrar' : 'Enviar muestra'}
+          <Plus className="h-3 w-3" />
+          Enviar muestra
         </Button>
       </div>
 
-      {openNew && (
-        <NuevaMuestraForm
-          cortes={cortes}
-          colores={colores}
-          onCancel={() => setOpenNew(false)}
-          onCreated={() => { setOpenNew(false); onChanged?.(); }}
-        />
-      )}
+      <Dialog open={openNew} onOpenChange={setOpenNew}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Enviar muestra a lavandería</DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              Registro de envío parcial para probar colores antes del proceso completo.
+            </p>
+          </DialogHeader>
+          {openNew && (
+            <NuevaMuestraForm
+              cortes={cortes}
+              colores={colores}
+              onCancel={() => setOpenNew(false)}
+              onCreated={() => { setOpenNew(false); onChanged?.(); }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {muestras.length === 0 && !openNew && (
         <p className="text-xs text-muted-foreground italic">
@@ -92,17 +108,17 @@ export const MuestrasLavanderiaSection = ({ muestras = [], cortes = [], scope, o
       )}
 
       {muestras.length > 0 && (
-        <div className="overflow-x-auto rounded-md border bg-background">
-          <table className="w-full text-xs border-collapse">
+        <div className="rounded-md border bg-background">
+          <table className="w-full text-[11px] border-collapse table-fixed">
             <thead className="bg-muted/95">
               <tr>
-                <th className="text-left p-2 border-b font-medium w-[140px]">Corte</th>
-                <th className="text-left p-2 border-b font-medium">Modelo</th>
-                <th className="text-center p-2 border-b font-medium">Cantidad</th>
-                <th className="text-center p-2 border-b font-medium">Enviada</th>
-                <th className="text-center p-2 border-b font-medium">Devuelta</th>
-                <th className="text-center p-2 border-b font-medium">Estado</th>
-                <th className="text-right p-2 border-b font-medium w-[60px]"></th>
+                <th className="text-left p-1.5 border-b font-medium w-[55px]">Corte</th>
+                <th className="text-left p-1.5 border-b font-medium">Modelo</th>
+                <th className="text-center p-1.5 border-b font-medium w-[40px]">Cant</th>
+                <th className="text-center p-1.5 border-b font-medium w-[60px]">Envío</th>
+                <th className="text-center p-1.5 border-b font-medium w-[80px]">Devuelta</th>
+                <th className="text-center p-1.5 border-b font-medium w-[80px]">Estado</th>
+                <th className="text-right p-1.5 border-b font-medium w-[32px]"></th>
               </tr>
             </thead>
             <tbody>
@@ -110,8 +126,7 @@ export const MuestrasLavanderiaSection = ({ muestras = [], cortes = [], scope, o
                 <MuestraRow
                   key={m.id}
                   muestra={m}
-                  isExpanded={expandedId === m.id}
-                  onToggle={() => setExpandedId(expandedId === m.id ? null : m.id)}
+                  onOpenDetalle={() => setDetalleId(m.id)}
                   onChanged={onChanged}
                 />
               ))}
@@ -119,13 +134,32 @@ export const MuestrasLavanderiaSection = ({ muestras = [], cortes = [], scope, o
           </table>
         </div>
       )}
+
+      {/* Modal de detalle: tabla completa de colores con decisiones/correcciones */}
+      <Dialog open={!!detalleMuestra} onOpenChange={(v) => !v && setDetalleId(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>
+              Muestra · Corte {detalleMuestra?.n_corte} · {detalleMuestra?.modelo || '—'}
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              Enviada {formatFecha(detalleMuestra?.fecha_envio)}
+              {detalleMuestra?.fecha_retorno && ` · Devuelta ${formatFecha(detalleMuestra.fecha_retorno)}`}
+              {' · '}{detalleMuestra?.cantidad_total} prendas
+            </p>
+          </DialogHeader>
+          {detalleMuestra && (
+            <DetalleColores muestra={detalleMuestra} onChanged={onChanged} />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
 // ──────────────── Fila de muestra + detalle ────────────────
 
-const MuestraRow = ({ muestra, isExpanded, onToggle, onChanged }) => {
+const MuestraRow = ({ muestra, onOpenDetalle, onChanged }) => {
   const estadoCfg = ESTADO_BADGE[muestra.estado] || ESTADO_BADGE.enviada;
   const EstadoIcon = estadoCfg.icon;
   const [savingRetorno, setSavingRetorno] = useState(false);
@@ -163,63 +197,55 @@ const MuestraRow = ({ muestra, isExpanded, onToggle, onChanged }) => {
   };
 
   return (
-    <Fragment>
-      <tr
-        className={`border-b cursor-pointer hover:bg-muted/30 ${isExpanded ? 'bg-muted/30' : ''}`}
-        onClick={onToggle}
-      >
-        <td className="p-2 font-mono">
-          <div className="flex items-center gap-1.5">
-            {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            {muestra.n_corte}
-          </div>
-        </td>
-        <td className="p-2">{muestra.modelo || '—'}</td>
-        <td className="p-2 text-center font-mono">{muestra.cantidad_total}</td>
-        <td className="p-2 text-center text-[11px]">{formatFecha(muestra.fecha_envio)}</td>
-        <td className="p-2 text-center text-[11px]">
-          {muestra.fecha_retorno
-            ? formatFecha(muestra.fecha_retorno)
-            : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-6 text-[10px] px-2"
-                onClick={marcarRetorno}
-                disabled={savingRetorno}
-              >
-                {savingRetorno ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Marcar devuelta'}
-              </Button>
-            )
-          }
-        </td>
-        <td className="p-2 text-center">
-          <Badge className={`text-[9px] px-1.5 ${estadoCfg.classes}`}>
-            <EstadoIcon className="h-2.5 w-2.5 mr-0.5" />
-            {estadoCfg.label}
-          </Badge>
-        </td>
-        <td className="p-2 text-right">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={eliminar}
-            disabled={savingDelete}
-            title="Eliminar muestra"
-          >
-            <Trash2 className="h-3 w-3 text-muted-foreground" />
-          </Button>
-        </td>
-      </tr>
-      {isExpanded && (
-        <tr className="border-b bg-muted/10">
-          <td colSpan={7} className="p-2">
-            <DetalleColores muestra={muestra} onChanged={onChanged} />
-          </td>
-        </tr>
-      )}
-    </Fragment>
+    <tr
+      className="border-b cursor-pointer hover:bg-muted/30"
+      onClick={onOpenDetalle}
+      title="Ver detalle de la muestra"
+    >
+      <td className="p-1.5 font-mono">
+        <div className="flex items-center gap-1">
+          <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+          {muestra.n_corte}
+        </div>
+      </td>
+      <td className="p-1.5 truncate" title={muestra.modelo || ''}>{muestra.modelo || '—'}</td>
+      <td className="p-1.5 text-center font-mono">{muestra.cantidad_total}</td>
+      <td className="p-1.5 text-center text-[10px]">{formatFecha(muestra.fecha_envio)}</td>
+      <td className="p-1.5 text-center text-[10px]">
+        {muestra.fecha_retorno
+          ? formatFecha(muestra.fecha_retorno)
+          : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-5 text-[9px] px-1.5"
+              onClick={marcarRetorno}
+              disabled={savingRetorno}
+            >
+              {savingRetorno ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Devolver'}
+            </Button>
+          )
+        }
+      </td>
+      <td className="p-1.5 text-center">
+        <Badge className={`text-[9px] px-1 ${estadoCfg.classes}`}>
+          <EstadoIcon className="h-2.5 w-2.5 mr-0.5" />
+          {estadoCfg.label}
+        </Badge>
+      </td>
+      <td className="p-1.5 text-right">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-5 w-5"
+          onClick={eliminar}
+          disabled={savingDelete}
+          title="Eliminar muestra"
+        >
+          <Trash2 className="h-3 w-3 text-muted-foreground" />
+        </Button>
+      </td>
+    </tr>
   );
 };
 
@@ -232,7 +258,8 @@ const DetalleColores = ({ muestra, onChanged }) => {
         <thead className="bg-muted/60">
           <tr>
             <th className="text-left p-1.5 border-b font-medium">Color</th>
-            <th className="text-right p-1.5 border-b font-medium w-[80px]">Cantidad</th>
+            <th className="text-right p-1.5 border-b font-medium w-[70px]">Cant</th>
+            <th className="text-left p-1.5 border-b font-medium">Obs. envío</th>
             <th className="text-center p-1.5 border-b font-medium w-[200px]">Decisión</th>
             <th className="text-left p-1.5 border-b font-medium">Correcciones</th>
           </tr>
@@ -288,6 +315,9 @@ const ColorDecisionRow = ({ colorRow, disabled, onChanged }) => {
     <tr className="border-b last:border-b-0 hover:bg-muted/20">
       <td className="p-1.5 font-medium">{formatColorName(colorRow.color_nombre)}</td>
       <td className="p-1.5 text-right font-mono">{colorRow.cantidad}</td>
+      <td className="p-1.5 text-[11px] text-muted-foreground">
+        {colorRow.observaciones_envio || '—'}
+      </td>
       <td className="p-1.5 text-center">
         {colorRow.decision === 'aprobado' && (
           <Badge className="text-[9px] px-1.5 bg-emerald-100 text-emerald-700 border-emerald-300">
@@ -384,6 +414,7 @@ const NuevaMuestraForm = ({ cortes, colores, onCancel, onCreated }) => {
       color_id: color.id,
       color_nombre: color.nombre,
       cantidad: 1,
+      observaciones_envio: '',
     }]);
     setColorPickerOpen(false);
     setColorSearch('');
@@ -391,6 +422,10 @@ const NuevaMuestraForm = ({ cortes, colores, onCancel, onCreated }) => {
 
   const setCantidad = (idx, val) => {
     setLineas(prev => prev.map((l, i) => i === idx ? { ...l, cantidad: Math.max(0, parseInt(val || '0', 10) || 0) } : l));
+  };
+
+  const setObservacion = (idx, val) => {
+    setLineas(prev => prev.map((l, i) => i === idx ? { ...l, observaciones_envio: val } : l));
   };
 
   const quitarLinea = (idx) => {
@@ -413,6 +448,7 @@ const NuevaMuestraForm = ({ cortes, colores, onCancel, onCreated }) => {
           color_id: l.color_id,
           color_nombre: formatColorName(l.color_nombre),
           cantidad: l.cantidad,
+          observaciones_envio: l.observaciones_envio?.trim() || null,
         })),
       });
       toast.success('Muestra creada');
@@ -425,7 +461,7 @@ const NuevaMuestraForm = ({ cortes, colores, onCancel, onCreated }) => {
   };
 
   return (
-    <div className="rounded-md border bg-background p-3 mb-2 space-y-2">
+    <div className="space-y-3">
       <div className="grid grid-cols-12 gap-2">
         <div className="col-span-6">
           <label className="text-[10px] text-muted-foreground font-medium">Corte</label>
@@ -462,19 +498,20 @@ const NuevaMuestraForm = ({ cortes, colores, onCancel, onCreated }) => {
         <table className="w-full text-xs">
           <thead className="bg-muted/60">
             <tr>
-              <th className="text-left p-1.5 font-medium">Color</th>
-              <th className="text-right p-1.5 font-medium w-[100px]">Cantidad</th>
+              <th className="text-left p-1.5 font-medium w-[160px]">Color</th>
+              <th className="text-right p-1.5 font-medium w-[90px]">Cantidad</th>
+              <th className="text-left p-1.5 font-medium">Observaciones</th>
               <th className="w-[40px]"></th>
             </tr>
           </thead>
           <tbody>
             {lineas.length === 0 && (
-              <tr><td colSpan={3} className="p-2 text-center text-muted-foreground italic">Agrega colores ↓</td></tr>
+              <tr><td colSpan={4} className="p-2 text-center text-muted-foreground italic">Agrega colores ↓</td></tr>
             )}
             {lineas.map((l, idx) => (
               <tr key={idx} className="border-t">
-                <td className="p-1.5">{formatColorName(l.color_nombre)}</td>
-                <td className="p-1.5">
+                <td className="p-1.5 align-top">{formatColorName(l.color_nombre)}</td>
+                <td className="p-1.5 align-top">
                   <input
                     type="number"
                     min={1}
@@ -484,7 +521,16 @@ const NuevaMuestraForm = ({ cortes, colores, onCancel, onCreated }) => {
                     className="w-full text-xs px-2 py-1 rounded border border-input bg-background text-right font-mono"
                   />
                 </td>
-                <td className="p-1.5 text-right">
+                <td className="p-1.5 align-top">
+                  <input
+                    type="text"
+                    value={l.observaciones_envio || ''}
+                    onChange={e => setObservacion(idx, e.target.value)}
+                    placeholder='ej: "más oscuro", "lavado 30 min"'
+                    className="w-full text-xs px-2 py-1 rounded border border-input bg-background"
+                  />
+                </td>
+                <td className="p-1.5 text-right align-top">
                   <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => quitarLinea(idx)}>
                     <X className="h-3 w-3 text-muted-foreground" />
                   </Button>

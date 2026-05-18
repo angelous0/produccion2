@@ -27,6 +27,7 @@ class ColorMuestraInput(BaseModel):
     color_id: Optional[str] = None
     color_nombre: str
     cantidad: int = Field(gt=0)
+    observaciones_envio: Optional[str] = None
 
 
 class MuestraCreateInput(BaseModel):
@@ -72,6 +73,7 @@ async def _enriquecer_muestras(conn, muestras: list) -> list:
     muestra_ids = [m['id'] for m in muestras]
     colores = await conn.fetch("""
         SELECT id, muestra_id, color_id, color_nombre, cantidad,
+               observaciones_envio,
                decision, correcciones, decidido_at, decidido_por
           FROM prod_registro_muestra_colores
          WHERE muestra_id = ANY($1::int[])
@@ -135,9 +137,9 @@ async def crear_muestra(
             for c in input.colores:
                 await conn.execute("""
                     INSERT INTO prod_registro_muestra_colores
-                        (muestra_id, color_id, color_nombre, cantidad)
-                    VALUES ($1, $2, $3, $4)
-                """, muestra_id, c.color_id, c.color_nombre, c.cantidad)
+                        (muestra_id, color_id, color_nombre, cantidad, observaciones_envio)
+                    VALUES ($1, $2, $3, $4, $5)
+                """, muestra_id, c.color_id, c.color_nombre, c.cantidad, c.observaciones_envio)
 
             row = await conn.fetchrow("""
                 SELECT id, registro_id, fecha_envio, fecha_retorno, destino,

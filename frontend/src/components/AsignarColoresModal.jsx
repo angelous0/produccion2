@@ -3,12 +3,13 @@ import axios from 'axios';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Loader2, Plus, Trash2, X, Divide } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Divide, Copy } from 'lucide-react';
 import { formatColorName } from '../lib/utils';
+import { toast } from 'sonner';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-export const AsignarColoresModal = ({ open, registroId, onClose, onSaved }) => {
+export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosCortes = [] }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -18,6 +19,9 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved }) => {
   const [matriz, setMatriz] = useState({});
   const [addOpen, setAddOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState(new Set());
+  const [savingBulk, setSavingBulk] = useState(false);
 
   // ── Carga inicial ──────────────────────────────────────────
   useEffect(() => {
@@ -485,6 +489,21 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved }) => {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {otrosCortes.length > 0 && Object.keys(matriz).length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setBulkSelected(new Set(otrosCortes.map(c => c.id)));
+                      setBulkOpen(true);
+                    }}
+                    disabled={saving || algunExcedido}
+                    title="Aplicar estos colores y proporciones a otros cortes del ítem"
+                  >
+                    <Copy className="h-3.5 w-3.5 mr-1.5" />
+                    Aplicar a otros cortes
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
                   Cancelar
                 </Button>
@@ -502,6 +521,107 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved }) => {
           </div>
         )}
       </DialogContent>
+
+      {/* Dialog secundario: aplicar masivamente a otros cortes */}
+      <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Aplicar a otros cortes</DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              Reparte los mismos <strong>colores</strong> con sus <strong>proporciones</strong> en los cortes seleccionados.
+              Las cantidades se ajustan al tope de cada talla de cada corte (no se copian iguales).
+            </p>
+          </DialogHeader>
+          <div className="max-h-[280px] overflow-auto rounded border bg-background">
+            <table className="w-full text-xs">
+              <thead className="bg-muted/60">
+                <tr>
+                  <th className="p-2 text-left w-[40px]">
+                    <input
+                      type="checkbox"
+                      checked={bulkSelected.size === otrosCortes.length && otrosCortes.length > 0}
+                      onChange={(e) => {
+                        setBulkSelected(e.target.checked
+                          ? new Set(otrosCortes.map(c => c.id))
+                          : new Set());
+                      }}
+                    />
+                  </th>
+                  <th className="p-2 text-left">Corte</th>
+                  <th className="p-2 text-left">Modelo</th>
+                  <th className="p-2 text-left">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {otrosCortes.map(c => (
+                  <tr key={c.id} className="border-t hover:bg-muted/20">
+                    <td className="p-2">
+                      <input
+                        type="checkbox"
+                        checked={bulkSelected.has(c.id)}
+                        onChange={(e) => {
+                          setBulkSelected(prev => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(c.id);
+                            else next.delete(c.id);
+                            return next;
+                          });
+                        }}
+                      />
+                    </td>
+                    <td className="p-2 font-mono">{c.n_corte}</td>
+                    <td className="p-2">{c.modelo || '—'}</td>
+                    <td className="p-2">
+                      <Badge variant="outline" className="text-[9px] px-1">{c.estado}</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-[11px] text-muted-foreground">
+            {bulkSelected.size} de {otrosCortes.length} seleccionados.
+            Los cortes con distribución existente <strong>serán sobrescritos</strong>.
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setBulkOpen(false)} disabled={savingBulk}>
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              disabled={savingBulk || bulkSelected.size === 0}
+              onClick={async () => {
+                setSavingBulk(true);
+                try {
+                  // Construye el patrón de colores+pesos desde la matriz actual
+                  const colores = Object.values(matriz).map(r => ({
+                    color_id: r.color_id,
+                    color_nombre: r.color_nombre || '',
+                    peso: r.peso ?? 1,
+                  }));
+                  const res = await axios.post(
+                    `${API}/reportes-produccion/registro-colores/aplicar-bulk`,
+                    {
+                      registro_ids: Array.from(bulkSelected),
+                      colores,
+                    }
+                  );
+                  toast.success(`Aplicado a ${res.data?.actualizados ?? bulkSelected.size} cortes`);
+                  setBulkOpen(false);
+                  onSaved?.();
+                } catch (e) {
+                  toast.error(e?.response?.data?.detail || 'Error al aplicar masivamente');
+                } finally {
+                  setSavingBulk(false);
+                }
+              }}
+            >
+              {savingBulk && <Loader2 className="h-3 w-3 animate-spin mr-1.5" />}
+              Aplicar a {bulkSelected.size} corte{bulkSelected.size === 1 ? '' : 's'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 };

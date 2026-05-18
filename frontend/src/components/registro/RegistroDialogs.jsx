@@ -29,6 +29,7 @@ export const ColoresDialog = ({
   matrizCantidades, onColoresChange, onMatrizChange,
   getCantidadMatriz, getTotalColor, getTotalTallaAsignado, getTotalGeneralAsignado,
   onProrratear, onSave,
+  proporciones = {}, onProporcionChange,
 }) => (
   <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
@@ -65,6 +66,9 @@ export const ColoresDialog = ({
                 <thead>
                   <tr>
                     <th className="bg-muted/50 p-3 text-left text-xs font-semibold uppercase tracking-wider border-b min-w-[120px]">Color</th>
+                    {onProporcionChange && (
+                      <th className="bg-muted/50 p-3 text-center text-xs font-semibold uppercase tracking-wider border-b min-w-[90px]" title="Peso del color al prorratear. Default 1. Ej: 2 = doble que los demás.">Proporción</th>
+                    )}
                     {tallasSeleccionadas.map((t) => (
                       <th key={t.talla_id} className="bg-muted/50 p-3 text-center text-xs font-semibold uppercase tracking-wider border-b min-w-[100px]">
                         <div>{t.talla_nombre}</div>
@@ -80,6 +84,24 @@ export const ColoresDialog = ({
                       <td className="p-2 border-b">
                         <span className="font-medium text-sm">{formatColorName(color.nombre)}</span>
                       </td>
+                      {onProporcionChange && (
+                        <td className="p-1 border-b">
+                          <NumericInput
+                            min="0.1"
+                            step="0.5"
+                            value={proporciones[color.id] ?? 1}
+                            onChange={(e) => onProporcionChange(color.id, e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            onBlur={(e) => {
+                              const n = parseFloat(e.target.value);
+                              if (!isFinite(n) || n <= 0) onProporcionChange(color.id, 1);
+                            }}
+                            className="w-full font-mono text-center h-10"
+                            placeholder="1"
+                            data-testid={`prop-${color.id}`}
+                          />
+                        </td>
+                      )}
                       {tallasSeleccionadas.map((t) => (
                         <td key={t.talla_id} className="p-1 border-b">
                           <NumericInput
@@ -96,7 +118,7 @@ export const ColoresDialog = ({
                     </tr>
                   ))}
                   <tr className="bg-muted/50">
-                    <td className="p-3 font-semibold text-sm">Asignado</td>
+                    <td className="p-3 font-semibold text-sm" colSpan={onProporcionChange ? 2 : 1}>Asignado</td>
                     {tallasSeleccionadas.map((t) => {
                       const asignado = getTotalTallaAsignado(t.talla_id);
                       const completo = asignado === t.cantidad;

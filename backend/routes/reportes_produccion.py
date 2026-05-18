@@ -2028,6 +2028,7 @@ async def ficha_item_detail(
             if m_rows:
                 color_rows = await conn.fetch("""
                     SELECT id, muestra_id, color_id, color_nombre, cantidad,
+                           observaciones_envio,
                            decision, correcciones, decidido_at, decidido_por
                       FROM prod_registro_muestra_colores
                      WHERE muestra_id = ANY($1::int[])
@@ -2040,6 +2041,7 @@ async def ficha_item_detail(
                         "color_id": c["color_id"],
                         "color_nombre": c["color_nombre"],
                         "cantidad": c["cantidad"],
+                        "observaciones_envio": c["observaciones_envio"],
                         "decision": c["decision"],
                         "correcciones": c["correcciones"],
                         "decidido_at": c["decidido_at"].isoformat() if c["decidido_at"] else None,
@@ -2206,6 +2208,97 @@ async def update_registro_colores(registro_id: str, payload: _DistribucionColore
             raise HTTPException(status_code=404, detail="Registro no encontrado")
 
     return {"ok": True, "registro_id": registro_id, "items": len(serializable)}
+
+
+class _ColorProporcionInput(BaseModel):
+    color_id: str
+    color_nombre: str = ""
+    peso: float = 1.0
+
+
+class _AplicarBulkInput(BaseModel):
+    registro_ids: List[str]
+    colores: List[_ColorProporcionInput]
+
+
+@router.post("/registro-colores/aplicar-bulk")
+async def aplicar_distribucion_bulk(payload: _AplicarBulkInput):
+    """
+    Aplica un patrón de colores+proporciones a múltiples cortes a la vez.
+    Para cada registro destino:
+      - Lee sus tallas (cantidad_total por talla).
+      - Para cada talla, reparte el total entre los colores según sus pesos.
+      - Reemplaza distribucion_colores con el resultado.
+
+    El reparto usa redondeo Hamilton para asegurar que la suma cuadre exactamente
+    con cantidad_total (sin perder/sobrar prendas por redondeo).
+    """
+    if not payload.registro_ids:
+        raise HTTPException(400, "Sin registros destino")
+    colores = [c for c in payload.colores if c.peso > 0]
+    if not colores:
+        raise HTTPException(400, "Sin colores con peso > 0")
+    suma_pesos = sum(c.peso for c in colores)
+
+    pool = await get_pool()
+    actualizados = 0
+    async with pool.acquire() as conn:
+        for reg_id in payload.registro_ids:
+            # Fetch tallas del corte (cantidad por talla)
+            reg = await conn.fetchrow(
+                "SELECT id, tallas FROM prod_registros WHERE id = $1", reg_id
+            )
+            if not reg:
+                continue
+            tallas_jsonb = parse_jsonb(reg["tallas"])
+            if not tallas_jsonb:
+                continue
+
+            distribucion = []
+            for t in tallas_jsonb:
+                talla_id = t.get("talla_id") or t.get("talla_nombre")
+                talla_nombre = t.get("talla_nombre") or ""
+                cantidad_total = safe_int(t.get("cantidad", 0))
+                if cantidad_total <= 0 or not talla_id:
+                    continue
+
+                # Reparto Hamilton: floor + remainder distribuido por mayor decimal
+                exactos = [cantidad_total * c.peso / suma_pesos for c in colores]
+                base = [int(v) for v in exactos]
+                resto = cantidad_total - sum(base)
+                # ordenar por parte decimal descendente; asignar el resto en ese orden
+                decimales_sorted = sorted(
+                    enumerate(exactos),
+                    key=lambda x: (x[1] - int(x[1])),
+                    reverse=True,
+                )
+                for i in range(resto):
+                    idx = decimales_sorted[i % len(decimales_sorted)][0]
+                    base[idx] += 1
+
+                colores_out = []
+                for c, qty in zip(colores, base):
+                    if qty > 0:
+                        colores_out.append({
+                            "color_id": c.color_id,
+                            "color_nombre": c.color_nombre or "",
+                            "cantidad": qty,
+                        })
+                distribucion.append({
+                    "talla_id": talla_id,
+                    "talla_nombre": talla_nombre,
+                    "cantidad_total": cantidad_total,
+                    "colores": colores_out,
+                })
+
+            result = await conn.execute(
+                "UPDATE prod_registros SET distribucion_colores = $1::jsonb WHERE id = $2",
+                json.dumps(distribucion), reg_id,
+            )
+            if not result.endswith(" 0"):
+                actualizados += 1
+
+    return {"ok": True, "actualizados": actualizados, "solicitados": len(payload.registro_ids)}
 
 
 # ==================== REPORTE OPERATIVO DE COSTURA ====================

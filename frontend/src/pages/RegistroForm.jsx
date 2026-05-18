@@ -13,6 +13,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Save, Scissors, FileText } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { MuestrasLavanderiaSection } from '../components/MuestrasLavanderiaSection';
 import { ClipboardList, Play, ShieldAlert, Package, Activity, Clock, AlertTriangle as AlertTriangleIcon, ArrowRight, MessageCircle, Cog } from 'lucide-react';
 import { toast } from 'sonner';
 import { SalidaRollosDialog } from '../components/SalidaRollosDialog';
@@ -101,10 +102,12 @@ export const RegistroForm = () => {
   const [coloresDialogOpen, setColoresDialogOpen] = useState(false);
   const [coloresSeleccionados, setColoresSeleccionados] = useState([]);
   const [matrizCantidades, setMatrizCantidades] = useState({});
+  const [proporcionesPorColor, setProporcionesPorColor] = useState({});  // color_id -> peso (default 1)
   const [distribucionColores, setDistribucionColores] = useState([]);
 
   const [tallasCatalogo, setTallasCatalogo] = useState([]);
   const [coloresCatalogo, setColoresCatalogo] = useState([]);
+  const [muestrasLav, setMuestrasLav] = useState([]);
   const [modelos, setModelos] = useState([]);
   const [lineasNegocio, setLineasNegocio] = useState([]);
   const [estados, setEstados] = useState([]);
@@ -278,6 +281,16 @@ export const RegistroForm = () => {
     try { const r = await axios.get(`${API}/registros/${id}/divisiones`); setDivisionInfo(r.data); } catch {}
   };
 
+  const cargarMuestrasLav = useCallback(async () => {
+    if (!id) { setMuestrasLav([]); return; }
+    try {
+      const r = await axios.get(`${API}/registros/${id}/muestras-lavanderia`);
+      setMuestrasLav(Array.isArray(r.data) ? r.data : []);
+    } catch {
+      setMuestrasLav([]);
+    }
+  }, [id]);
+
   const fetchRegistro = async () => {
     if (!id) { setLoadingData(false); return; }
     try {
@@ -398,6 +411,7 @@ export const RegistroForm = () => {
     fetchRelatedData();
     if (id) {
       fetchRegistro();
+      cargarMuestrasLav();
       // Datos ligeros necesarios para el panel lateral
       fetchMovimientosProduccion();
       fetchIncidencias();
@@ -676,13 +690,39 @@ export const RegistroForm = () => {
   const getTotalGeneralAsignado = () => { let total = 0; coloresSeleccionados.forEach(c => { total += getTotalColor(c.id); }); return total; };
   const handleProrratear = () => {
     if (coloresSeleccionados.length === 0 || tallasSeleccionadas.length === 0) return;
+    const pesos = coloresSeleccionados.map(c => Math.max(0.0001, parseFloat(proporcionesPorColor[c.id] ?? 1) || 1));
+    const sumaPesos = pesos.reduce((s, p) => s + p, 0);
     const nuevaMatriz = {};
     tallasSeleccionadas.forEach(t => {
-      const totalTalla = t.cantidad || 0; const numColores = coloresSeleccionados.length;
-      const base = Math.floor(totalTalla / numColores); const resto = totalTalla % numColores;
-      coloresSeleccionados.forEach((color, index) => { nuevaMatriz[`${color.id}_${t.talla_id}`] = base + (index < resto ? 1 : 0); });
+      const totalTalla = t.cantidad || 0;
+      // Reparto Hamilton: floor + sobrante a los de mayor decimal
+      const exactos = pesos.map(p => totalTalla * p / sumaPesos);
+      const base = exactos.map(v => Math.floor(v));
+      let resto = totalTalla - base.reduce((s, b) => s + b, 0);
+      const decimales = exactos
+        .map((v, i) => ({ i, dec: v - Math.floor(v) }))
+        .sort((a, b) => b.dec - a.dec);
+      for (let k = 0; k < resto; k++) base[decimales[k % decimales.length].i] += 1;
+      coloresSeleccionados.forEach((color, idx) => {
+        nuevaMatriz[`${color.id}_${t.talla_id}`] = base[idx];
+      });
     });
-    setMatrizCantidades(nuevaMatriz); toast.success('Cantidades prorrateadas equitativamente');
+    setMatrizCantidades(nuevaMatriz);
+    toast.success('Cantidades prorrateadas según proporciones');
+  };
+
+  const handleProporcionChange = (colorId, value) => {
+    setProporcionesPorColor(prev => {
+      const next = { ...prev };
+      // Aceptamos string vacío mientras editan; convertimos al validar
+      if (value === '' || value === null || value === undefined) {
+        next[colorId] = '';
+      } else {
+        const n = parseFloat(value);
+        next[colorId] = isFinite(n) && n > 0 ? n : 1;
+      }
+      return next;
+    });
   };
   const handleSaveColores = () => {
     const distribucion = tallasSeleccionadas.map(t => ({
@@ -1363,6 +1403,31 @@ export const RegistroForm = () => {
                     onRemoveTalla={handleRemoveTalla} tieneColores={tieneColores}
                     onOpenColoresDialog={handleOpenColoresDialog} distribucionColores={distribucionColores}
                   />
+
+                  {isEditing && (
+                    <MuestrasLavanderiaSection
+                      muestras={muestrasLav}
+                      cortes={[{
+                        id,
+                        n_corte: formData.n_corte,
+                        modelo: modeloSeleccionado?.nombre
+                          || formData.modelo_manual?.nombre_modelo
+                          || modeloManualForm.nombre_modelo
+                          || '',
+                        estado: formData.estado,
+                      }]}
+                      scope={{
+                        marca_id:   modeloSeleccionado?.marca_id   || (modoManual ? modeloManualForm.marca_id   : '') || '',
+                        tipo_id:    modeloSeleccionado?.tipo_id    || (modoManual ? modeloManualForm.tipo_id    : '') || '',
+                        entalle_id: modeloSeleccionado?.entalle_id || (modoManual ? modeloManualForm.entalle_id : '') || '',
+                        hilo_id:    formData.hilo_especifico_id
+                                    || modeloSeleccionado?.hilo_id
+                                    || (modoManual && modeloManualForm.hilo_modo === 'select' ? modeloManualForm.hilo_id : '')
+                                    || '',
+                      }}
+                      onChanged={cargarMuestrasLav}
+                    />
+                  )}
                 </TabsContent>
 
                 {/* TAB MATERIALES */}
@@ -1468,6 +1533,7 @@ export const RegistroForm = () => {
         getCantidadMatriz={getCantidadMatriz} getTotalColor={getTotalColor}
         getTotalTallaAsignado={getTotalTallaAsignado} getTotalGeneralAsignado={getTotalGeneralAsignado}
         onProrratear={handleProrratear} onSave={handleSaveColores}
+        proporciones={proporcionesPorColor} onProporcionChange={handleProporcionChange}
       />
 
       <SalidaInventarioDialog

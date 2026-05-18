@@ -193,10 +193,13 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
         )}
 
         {!loading && data && (
-          <div className="overflow-auto max-h-[calc(92vh-90px)] p-5 space-y-6">
-            {/* ── Tres secciones ── */}
-            <div className="grid grid-cols-3 gap-6 min-w-[820px]">
-              {/* 1. Cortes en taller — clickeables para asignar colores */}
+          <div className="overflow-auto max-h-[calc(92vh-90px)] p-5">
+            {/* ── 3 columnas: cada una con su tabla principal arriba y la
+                  sección complementaria abajo (taller+muestras · lav+sin color
+                  · almacén+PT sin clasificar). ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-w-[820px] items-start">
+              {/* ─── COLUMNA 1: En taller + Muestras de lavandería ─── */}
+              <div className="flex flex-col gap-4">
               <TallaTable
                 title="En taller — lavandería / atraque"
                 subtitle="Click en un corte para asignar colores"
@@ -207,7 +210,22 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
                 headerLabel="Modelo · Corte"
                 onRowClick={abrirAsignar}
               />
+                {/* Muestras de lavandería relacionadas a los cortes en taller */}
+                <MuestrasLavanderiaSection
+                  muestras={data?.muestras || []}
+                  cortes={(data?.grupos_taller || []).map(g => ({
+                    id: g.id,
+                    n_corte: g.n_corte,
+                    modelo: g.modelo,
+                    estado: g.estado,
+                  }))}
+                  scope={data?.scope}
+                  onChanged={reload}
+                />
+              </div>
 
+              {/* ─── COLUMNA 2: Colores en lavandería/acabado + Sin colores ─── */}
+              <div className="flex flex-col gap-4">
               {/* 2. Colores en lavandería + acabado */}
               <div className="flex flex-col gap-1.5">
                 <TallaTable
@@ -236,6 +254,76 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
                 )}
               </div>
 
+                {/* Sin colores en lavandería / acabado — pareja de la tabla Colores en lav */}
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/15 dark:border-amber-900 p-3">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                    Sin colores en lavandería / acabado — {(data.sin_color || []).length} {((data.sin_color || []).length === 1) ? 'corte' : 'cortes'}
+                  </p>
+                  <p className="text-[10px] font-normal text-amber-600 dark:text-amber-500 mb-2">
+                    Click "Asignar colores" para abrir la matriz talla × color
+                  </p>
+                  {(data.sin_color || []).length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic">Todos los cortes en estos estados tienen colores asignados</p>
+                  ) : (
+                    <div className="overflow-auto max-h-[300px] rounded-md border bg-background">
+                      <table className="w-full text-xs border-collapse">
+                        <thead className="sticky top-0 bg-muted/95 backdrop-blur z-10">
+                          <tr>
+                            <th className="text-left p-2 border-b font-medium">Modelo</th>
+                            <th className="text-left p-2 border-b font-medium">Corte</th>
+                            <th className="text-left p-2 border-b font-medium">Estado</th>
+                            <th className="text-right p-2 border-b font-medium">Prn</th>
+                            <th className="text-center p-2 border-b font-medium w-[110px]">Acción</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.sin_color.map(sc => (
+                            <tr
+                              key={sc.id}
+                              className="border-b hover:bg-muted/30 cursor-pointer"
+                              onClick={() => abrirAsignar({ id: sc.id })}
+                              data-testid={`sin-color-${sc.id}`}
+                            >
+                              <td className="p-2 font-medium">{sc.modelo || '—'}</td>
+                              <td className="p-2 font-mono">{sc.n_corte}</td>
+                              <td className="p-2">
+                                <Badge variant="outline" className="text-[9px] px-1">{sc.estado}</Badge>
+                              </td>
+                              <td className="p-2 text-right font-mono">{sc.prendas}</td>
+                              <td className="p-2 text-center">
+                                <div className="flex items-center justify-center gap-0.5">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 text-[10px] px-1.5 gap-1"
+                                    onClick={(e) => { e.stopPropagation(); abrirAsignar({ id: sc.id }); }}
+                                    title="Abrir matriz talla × color"
+                                  >
+                                    <Palette className="h-3 w-3" />
+                                    Asignar
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={(e) => { e.stopPropagation(); onClose(); navigate(`/registros/editar/${sc.id}`); }}
+                                    title="Abrir registro completo"
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ─── COLUMNA 3: Almacén PT/Tienda + PT sin clasificar ─── */}
+              <div className="flex flex-col gap-4">
               {/* 3. Almacén PT + Tienda */}
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
@@ -330,97 +418,14 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
                   </details>
                 )}
               </div>
-            </div>
 
-            {/* ── Muestras de lavandería (envíos parciales para probar colores) ── */}
-            <MuestrasLavanderiaSection
-              muestras={data?.muestras || []}
-              cortes={(data?.grupos_taller || []).map(g => ({
-                id: g.id,
-                n_corte: g.n_corte,
-                modelo: g.modelo,
-                estado: g.estado,
-              }))}
-              scope={data?.scope}
-              onChanged={reload}
-            />
-
-            {/* ── Dos columnas: pendientes de color a la izquierda · PT sin clasificar a la derecha ── */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-              {/* Sin colores en lavandería/acabado — formato tabla */}
-              <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/15 dark:border-amber-900 p-3">
-                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
-                  Sin colores en lavandería / acabado — {(data.sin_color || []).length} {((data.sin_color || []).length === 1) ? 'corte' : 'cortes'}
-                </p>
-                <p className="text-[10px] font-normal text-amber-600 dark:text-amber-500 mb-2">
-                  Lavandería · Para Acabado · Acabado — click "Asignar colores" para abrir la matriz talla × color
-                </p>
-                {(data.sin_color || []).length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic">Todos los cortes en estos estados tienen colores asignados</p>
-                ) : (
-                  <div className="overflow-auto max-h-[300px] rounded-md border bg-background">
-                    <table className="w-full text-xs border-collapse">
-                      <thead className="sticky top-0 bg-muted/95 backdrop-blur z-10">
-                        <tr>
-                          <th className="text-left p-2 border-b font-medium">Modelo</th>
-                          <th className="text-left p-2 border-b font-medium">Corte</th>
-                          <th className="text-left p-2 border-b font-medium">Estado</th>
-                          <th className="text-right p-2 border-b font-medium">Prendas</th>
-                          <th className="text-center p-2 border-b font-medium w-[140px]">Acción</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.sin_color.map(sc => (
-                          <tr
-                            key={sc.id}
-                            className="border-b hover:bg-muted/30 cursor-pointer"
-                            onClick={() => abrirAsignar({ id: sc.id })}
-                            data-testid={`sin-color-${sc.id}`}
-                            title="Click para abrir la matriz de colores"
-                          >
-                            <td className="p-2 font-medium">{sc.modelo || '—'}</td>
-                            <td className="p-2 font-mono">{sc.n_corte}</td>
-                            <td className="p-2">
-                              <Badge variant="outline" className="text-[9px] px-1">{sc.estado}</Badge>
-                            </td>
-                            <td className="p-2 text-right font-mono">{sc.prendas}</td>
-                            <td className="p-2 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-6 text-[10px] px-2 gap-1"
-                                  onClick={(e) => { e.stopPropagation(); abrirAsignar({ id: sc.id }); }}
-                                  title="Abrir matriz talla × color"
-                                >
-                                  <Palette className="h-3 w-3" />
-                                  Asignar colores
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6"
-                                  onClick={(e) => { e.stopPropagation(); onClose(); navigate(`/registros/editar/${sc.id}`); }}
-                                  title="Abrir registro completo"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                {/* PT sin clasificar en Odoo — pareja de Almacén PT/Tienda */}
+                <MapeoOdooSection
+                  items={data.odoo_sin_clasificar || []}
+                  scope={data.scope || {}}
+                  onMapped={reload}
+                />
               </div>
-
-              {/* PT sin clasificar en Odoo */}
-              <MapeoOdooSection
-                items={data.odoo_sin_clasificar || []}
-                scope={data.scope || {}}
-                onMapped={reload}
-              />
             </div>
           </div>
         )}
@@ -437,6 +442,17 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
         registroId={asignarRegistroId}
         onClose={() => setAsignarOpen(false)}
         onSaved={reload}
+        otrosCortes={[
+          ...(data?.grupos_taller || []),
+          ...(data?.sin_color || []),
+        ]
+          .filter(c => c.id && c.id !== asignarRegistroId)
+          .map(c => ({
+            id: c.id,
+            n_corte: c.n_corte,
+            modelo: c.modelo,
+            estado: c.estado,
+          }))}
       />
     </Dialog>
   );

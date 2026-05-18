@@ -617,12 +617,16 @@ async def ensure_clasificacion_tables():
                 color_id VARCHAR,
                 color_nombre VARCHAR NOT NULL,
                 cantidad INTEGER NOT NULL CHECK(cantidad > 0),
+                observaciones_envio TEXT,
                 decision VARCHAR CHECK(decision IS NULL OR decision IN ('aprobado','rechazado')),
                 correcciones TEXT,
                 decidido_at TIMESTAMP,
                 decidido_por VARCHAR
             )
         """)
+        await conn.execute(
+            "ALTER TABLE prod_registro_muestra_colores ADD COLUMN IF NOT EXISTS observaciones_envio TEXT"
+        )
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestra_colores_muestra ON prod_registro_muestra_colores(muestra_id)")
         legacy_color_tipo_exists = await conn.fetchval("SELECT to_regclass('prod_color_tipo') IS NOT NULL")
         if legacy_color_tipo_exists:

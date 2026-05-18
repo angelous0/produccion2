@@ -94,6 +94,7 @@ export const Registros = () => {
   // Datos para distribución de colores
   const [coloresSeleccionados, setColoresSeleccionados] = useState([]);
   const [matrizCantidades, setMatrizCantidades] = useState({});
+  const [proporcionesPorColor, setProporcionesPorColor] = useState({});  // color_id -> peso (default 1)
   const [coloresCatalogo, setColoresCatalogo] = useState([]);
   
   // Control de producción
@@ -360,18 +361,37 @@ export const Registros = () => {
 
   const handleProrratear = () => {
     if (!colorEditItem?.tallas?.length || coloresSeleccionados.length === 0) return;
+    const pesos = coloresSeleccionados.map(c => Math.max(0.0001, parseFloat(proporcionesPorColor[c.id] ?? 1) || 1));
+    const sumaPesos = pesos.reduce((s, p) => s + p, 0);
     const nuevaMatriz = {};
     colorEditItem.tallas.forEach(t => {
       const totalTalla = t.cantidad || 0;
-      const numColores = coloresSeleccionados.length;
-      const base = Math.floor(totalTalla / numColores);
-      const resto = totalTalla % numColores;
-      coloresSeleccionados.forEach((color, index) => {
-        nuevaMatriz[`${color.id}_${t.talla_id}`] = base + (index < resto ? 1 : 0);
+      const exactos = pesos.map(p => totalTalla * p / sumaPesos);
+      const base = exactos.map(v => Math.floor(v));
+      const resto = totalTalla - base.reduce((s, b) => s + b, 0);
+      const decimales = exactos
+        .map((v, i) => ({ i, dec: v - Math.floor(v) }))
+        .sort((a, b) => b.dec - a.dec);
+      for (let k = 0; k < resto; k++) base[decimales[k % decimales.length].i] += 1;
+      coloresSeleccionados.forEach((color, idx) => {
+        nuevaMatriz[`${color.id}_${t.talla_id}`] = base[idx];
       });
     });
     setMatrizCantidades(nuevaMatriz);
-    toast.success('Cantidades prorrateadas equitativamente');
+    toast.success('Cantidades prorrateadas según proporciones');
+  };
+
+  const handleProporcionChange = (colorId, value) => {
+    setProporcionesPorColor(prev => {
+      const next = { ...prev };
+      if (value === '' || value === null || value === undefined) {
+        next[colorId] = '';
+      } else {
+        const n = parseFloat(value);
+        next[colorId] = isFinite(n) && n > 0 ? n : 1;
+      }
+      return next;
+    });
   };
 
   const handleMatrizChange = (colorId, tallaId, valor) => {
@@ -1217,6 +1237,9 @@ export const Registros = () => {
                         <th className="bg-muted/50 p-3 text-left text-xs font-semibold uppercase tracking-wider border-b min-w-[120px]">
                           Color
                         </th>
+                        <th className="bg-muted/50 p-3 text-center text-xs font-semibold uppercase tracking-wider border-b min-w-[90px]" title="Peso del color al prorratear (default 1)">
+                          Proporción
+                        </th>
                         {colorEditItem.tallas.map((t) => (
                           <th key={t.talla_id} className="bg-muted/50 p-3 text-center text-xs font-semibold uppercase tracking-wider border-b min-w-[100px]">
                             <div>{t.talla_nombre}</div>
@@ -1236,6 +1259,22 @@ export const Registros = () => {
                           <td className="p-2 border-b">
                             <span className="font-medium text-sm">{formatColorName(color.nombre)}</span>
                           </td>
+                          <td className="p-1 border-b">
+                            <NumericInput
+                              min="0.1"
+                              step="0.5"
+                              value={proporcionesPorColor[color.id] ?? 1}
+                              onChange={(e) => handleProporcionChange(color.id, e.target.value)}
+                              onFocus={(e) => e.target.select()}
+                              onBlur={(e) => {
+                                const n = parseFloat(e.target.value);
+                                if (!isFinite(n) || n <= 0) handleProporcionChange(color.id, 1);
+                              }}
+                              className="w-full font-mono text-center h-10"
+                              placeholder="1"
+                              data-testid={`prop-${color.id}`}
+                            />
+                          </td>
                           {colorEditItem.tallas.map((t) => (
                             <td key={t.talla_id} className="p-1 border-b">
                               <NumericInput
@@ -1254,7 +1293,7 @@ export const Registros = () => {
                         </tr>
                       ))}
                       <tr className="bg-muted/50">
-                        <td className="p-3 font-semibold text-sm">Asignado</td>
+                        <td className="p-3 font-semibold text-sm" colSpan={2}>Asignado</td>
                         {colorEditItem.tallas.map((t) => {
                           const asignado = getTotalTallaAsignado(t.talla_id);
                           const completo = asignado === t.cantidad;
