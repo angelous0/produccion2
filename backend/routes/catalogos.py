@@ -35,6 +35,9 @@ class ColorReglaInput(BaseModel):
     hilo_id: Optional[str] = None
     entalle_ids: List[str] = []
     color_ids: List[str] = []
+    # Subset de color_ids marcados como "estrella" (deben tener stock siempre).
+    # Se valida y persiste solo si el color_id está también en color_ids.
+    estrella_ids: List[str] = []
     activo: bool = True
     orden: int = 0
 
@@ -589,7 +592,7 @@ async def _enriquecer_reglas(conn, rows):
     regla_ids = [r["id"] for r in reglas]
     colores_rows = await conn.fetch(
         """
-        SELECT regla_id, color_id
+        SELECT regla_id, color_id, COALESCE(es_estrella, FALSE) AS es_estrella
           FROM prod_color_regla_colores
          WHERE regla_id = ANY($1::text[])
          ORDER BY orden ASC
@@ -597,8 +600,11 @@ async def _enriquecer_reglas(conn, rows):
         regla_ids,
     )
     colores_por_regla = {}
+    estrellas_por_regla = {}
     for r in colores_rows:
         colores_por_regla.setdefault(r["regla_id"], []).append(r["color_id"])
+        if r["es_estrella"]:
+            estrellas_por_regla.setdefault(r["regla_id"], []).append(r["color_id"])
 
     entalle_ids = []
     for r in reglas:
@@ -616,6 +622,7 @@ async def _enriquecer_reglas(conn, rows):
 
     for r in reglas:
         r["color_ids"] = colores_por_regla.get(r["id"], [])
+        r["estrella_ids"] = estrellas_por_regla.get(r["id"], [])
         r["colores_count"] = len(r["color_ids"])
         r["entalle_nombres"] = [entalle_map.get(eid, eid) for eid in r["entalle_ids"]]
     return reglas
@@ -662,14 +669,18 @@ async def create_colores_regla(input: ColorReglaInput, _u=Depends(get_current_us
                 input.activo,
                 input.orden,
             )
+            estrella_set = set(input.estrella_ids or [])
             for i, color_id in enumerate(input.color_ids or []):
+                es_estrella = color_id in estrella_set
                 await conn.execute(
                     """
-                    INSERT INTO prod_color_regla_colores (regla_id, color_id, orden)
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT (regla_id, color_id) DO UPDATE SET orden = EXCLUDED.orden
+                    INSERT INTO prod_color_regla_colores (regla_id, color_id, orden, es_estrella)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (regla_id, color_id) DO UPDATE
+                        SET orden = EXCLUDED.orden,
+                            es_estrella = EXCLUDED.es_estrella
                     """,
-                    regla_id, color_id, i,
+                    regla_id, color_id, i, es_estrella,
                 )
         row = await conn.fetchrow(
             """
@@ -716,10 +727,12 @@ async def update_colores_regla(regla_id: str, input: ColorReglaInput, _u=Depends
                 regla_id,
             )
             await conn.execute("DELETE FROM prod_color_regla_colores WHERE regla_id = $1", regla_id)
+            estrella_set = set(input.estrella_ids or [])
             for i, color_id in enumerate(input.color_ids or []):
+                es_estrella = color_id in estrella_set
                 await conn.execute(
-                    "INSERT INTO prod_color_regla_colores (regla_id, color_id, orden) VALUES ($1, $2, $3)",
-                    regla_id, color_id, i,
+                    "INSERT INTO prod_color_regla_colores (regla_id, color_id, orden, es_estrella) VALUES ($1, $2, $3, $4)",
+                    regla_id, color_id, i, es_estrella,
                 )
         row = await conn.fetchrow(
             """

@@ -322,6 +322,15 @@ async def eliminar_distribucion_pt(registro_id: str, current_user: dict = Depend
 async def get_vinculos_odoo(registro_id: str, current_user: dict = Depends(get_current_user)):
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # Templates declarados en la distribución del corte (para calcular match)
+        tpl_rows = await conn.fetch(
+            """SELECT DISTINCT product_template_id_odoo
+               FROM produccion.prod_registro_pt_relacion
+               WHERE registro_id = $1""",
+            registro_id,
+        )
+        template_ids_corte = [int(r['product_template_id_odoo']) for r in tpl_rows]
+
         vinculos = await conn.fetch("""
             SELECT v.id, v.stock_inventory_odoo_id, v.created_at, v.created_by,
                    si.name as ajuste_nombre, si.date as ajuste_fecha, si.state as ajuste_estado,
@@ -335,8 +344,26 @@ async def get_vinculos_odoo(registro_id: str, current_user: dict = Depends(get_c
             ORDER BY v.created_at DESC
         """, registro_id)
 
-        return [
-            {
+        result = []
+        for v in vinculos:
+            templates_detalle = []
+            if template_ids_corte:
+                detalle_rows = await conn.fetch(
+                    """SELECT sm.product_tmpl_id, SUM(sm.product_qty) as qty,
+                              pt.name as nombre
+                       FROM odoo.stock_move sm
+                       LEFT JOIN odoo.product_template pt ON pt.odoo_id = sm.product_tmpl_id
+                       WHERE sm.inventory_id = $1 AND sm.state = 'done'
+                         AND sm.product_tmpl_id = ANY($2::int[])
+                       GROUP BY sm.product_tmpl_id, pt.name
+                       ORDER BY qty DESC""",
+                    v['stock_inventory_odoo_id'], template_ids_corte,
+                )
+                templates_detalle = [
+                    {"template_id": d['product_tmpl_id'], "nombre": d['nombre'], "qty": float(d['qty'])}
+                    for d in detalle_rows
+                ]
+            result.append({
                 "id": v['id'],
                 "stock_inventory_odoo_id": v['stock_inventory_odoo_id'],
                 "ajuste_nombre": v['ajuste_nombre'],
@@ -345,9 +372,11 @@ async def get_vinculos_odoo(registro_id: str, current_user: dict = Depends(get_c
                 "total_moves_qty": float(v['total_moves_qty']),
                 "created_at": v['created_at'].isoformat() if v['created_at'] else None,
                 "created_by": v['created_by'],
-            }
-            for v in vinculos
-        ]
+                "templates_detalle": templates_detalle,
+                "templates_match": len(templates_detalle),
+                "templates_total": len(template_ids_corte),
+            })
+        return result
 
 
 @router.post("/registros/{registro_id}/vinculos-odoo")

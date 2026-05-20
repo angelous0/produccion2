@@ -766,6 +766,103 @@ async def incluir_producto(enriq_id: str, current_user: dict = Depends(get_curre
         return {"message": "Producto incluido", "estado": nuevo_estado, "campos_pendientes": pendientes}
 
 
+# ─── Bulk: aplicar plantilla a productos del mismo tipo ──────────────
+
+@router.post("/bulk-aplicar-template-polo")
+async def bulk_aplicar_template_polo(current_user: dict = Depends(get_current_user)):
+    """
+    Aplica de una sola vez los defaults típicos de un Polo a todos los
+    productos enriquecidos con tipo='Polo' que estén en estado
+    'pendiente' o 'parcial':
+        - Tela General = "Jersey"
+        - Tela         = "Jersey 24/1"
+        - Cuello       = "Redondo"
+    Usa COALESCE: no pisa valores ya seteados manualmente.
+    Recalcula `estado` y `campos_pendientes` de cada producto al final.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # 1) Resolver IDs de catálogo por nombre (case-insensitive)
+        tipo_polo_id = await conn.fetchval(
+            "SELECT id FROM prod_tipos WHERE LOWER(nombre) = LOWER($1) LIMIT 1",
+            'Polo',
+        )
+        if not tipo_polo_id:
+            raise HTTPException(404, "No existe el tipo 'Polo' en el catálogo")
+
+        tela_general_id = await conn.fetchval(
+            "SELECT id FROM prod_telas_general WHERE LOWER(nombre) = LOWER($1) LIMIT 1",
+            'Jersey',
+        )
+        tela_id = await conn.fetchval(
+            "SELECT id FROM prod_telas WHERE LOWER(nombre) = LOWER($1) LIMIT 1",
+            'Jersey 24/1',
+        )
+        cuello_id = await conn.fetchval(
+            "SELECT id FROM prod_cuellos WHERE LOWER(nombre) = LOWER($1) LIMIT 1",
+            'Redondo',
+        )
+
+        faltantes = []
+        if not tela_general_id: faltantes.append("Tela General 'Jersey'")
+        if not tela_id:         faltantes.append("Tela 'Jersey 24/1'")
+        if not cuello_id:       faltantes.append("Cuello 'Redondo'")
+        if faltantes:
+            raise HTTPException(
+                404,
+                "Faltan catálogos: " + ", ".join(faltantes) +
+                ". Crea estos valores primero en los catálogos.",
+            )
+
+        # 2) UPDATE con COALESCE (no pisa). Retorna filas afectadas con sus FKs
+        rows = await conn.fetch("""
+            UPDATE prod_odoo_productos_enriq SET
+                tela_general_id = COALESCE(tela_general_id, $1),
+                tela_id         = COALESCE(tela_id,         $2),
+                cuello_id       = COALESCE(cuello_id,       $3),
+                classified_by   = $4,
+                classified_at   = NOW(),
+                updated_at      = NOW()
+            WHERE tipo_id = $5
+              AND estado IN ('pendiente', 'parcial')
+              AND (tela_general_id IS NULL OR tela_id IS NULL OR cuello_id IS NULL)
+            RETURNING id, marca_id, tipo_id, tela_general_id, tela_id,
+                      entalle_id, genero_id, cuello_id
+        """, tela_general_id, tela_id, cuello_id, current_user.get('username'), tipo_polo_id)
+
+        # 3) Recalcular estado de cada producto afectado
+        completos = 0
+        parciales = 0
+        for r in rows:
+            vals = {
+                'marca_id': r['marca_id'], 'tipo_id': r['tipo_id'],
+                'tela_general_id': r['tela_general_id'], 'tela_id': r['tela_id'],
+                'entalle_id': r['entalle_id'], 'genero_id': r['genero_id'],
+                'cuello_id': r['cuello_id'],
+            }
+            nuevo_estado, pendientes = _recalcular_estado(vals, 'Polo')
+            await conn.execute("""
+                UPDATE prod_odoo_productos_enriq SET
+                    estado = $1,
+                    campos_pendientes = $2::jsonb,
+                    updated_at = NOW()
+                WHERE id = $3
+            """, nuevo_estado, json.dumps(pendientes), r['id'])
+            if nuevo_estado == 'completo': completos += 1
+            elif nuevo_estado == 'parcial': parciales += 1
+
+        return {
+            "aplicados": len(rows),
+            "completados": completos,
+            "siguen_parciales": parciales,
+            "valores_aplicados": {
+                "tela_general": "Jersey",
+                "tela": "Jersey 24/1",
+                "cuello": "Redondo",
+            },
+        }
+
+
 # ─── Costo manual ────────────────────────────────────────────────────
 
 @router.patch("/{enriq_id}/costo")

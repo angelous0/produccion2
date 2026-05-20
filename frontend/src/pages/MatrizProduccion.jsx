@@ -15,10 +15,12 @@ import {
   ArrowLeft, Settings2, ChevronRight,
   ExternalLink, Eye, EyeOff, MoveLeft, MoveRight,
   Merge, X, Palette, ArrowDownWideNarrow, ArrowUpWideNarrow,
-  TableProperties, FlaskConical, Loader2, Send, CheckCircle2, XCircle, AlertCircle,
+  TableProperties, FlaskConical, Loader2, Send, CheckCircle2, XCircle, AlertCircle, Plus,
 } from 'lucide-react';
 import { FichaItemModal } from '../components/FichaItemModal';
 import { AsignarColoresModal } from '../components/AsignarColoresModal';
+import { NuevaMuestraForm } from '../components/MuestrasLavanderiaSection';
+import { useAuth } from '../context/AuthContext';
 
 import { formatDate } from '../lib/dateUtils';
 import { formatColorName } from '../lib/utils';
@@ -227,30 +229,123 @@ const MuestrasPopup = ({ open, onClose, registroId, nCorte, modelo }) => {
   const [loading, setLoading] = useState(false);
   const [muestras, setMuestras] = useState([]);
   const [error, setError] = useState('');
+  // Scope (marca/tipo/entalle/hilo) + catálogo de colores de la regla
+  // — necesarios para el formulario de nueva muestra.
+  const [colores, setColores] = useState([]);
+  // Estado del propio corte (para mostrarlo en el <select> de NuevaMuestraForm)
+  const [corteMeta, setCorteMeta] = useState(null);
+  const [openNew, setOpenNew] = useState(false);
+
+  const fetchMuestras = useCallback(() => {
+    if (!registroId) return;
+    return axios.get(`${API}/registros/${registroId}/muestras-lavanderia`)
+      .then(r => setMuestras(Array.isArray(r.data) ? r.data : []))
+      .catch(e => setError(e?.response?.data?.detail || 'Error al cargar muestras'));
+  }, [registroId]);
 
   useEffect(() => {
     if (!open || !registroId) return;
     setLoading(true);
     setError('');
-    axios.get(`${API}/registros/${registroId}/muestras-lavanderia`)
-      .then(r => setMuestras(Array.isArray(r.data) ? r.data : []))
-      .catch(e => setError(e?.response?.data?.detail || 'Error al cargar muestras'))
-      .finally(() => setLoading(false));
-  }, [open, registroId]);
+    setOpenNew(false);
+
+    // 1) Muestras existentes
+    // 2) Scope del corte (marca/tipo/entalle/hilo) — necesario para el catálogo de colores
+    //    y para mostrar el estado/modelo en el form.
+    Promise.all([
+      fetchMuestras(),
+      axios.get(`${API}/reportes-produccion/registro-colores/${registroId}`)
+        .then(async (r) => {
+          const d = r.data || {};
+          setCorteMeta({
+            id: d.id,
+            n_corte: d.n_corte,
+            modelo: d.modelo_nombre,
+            estado: d.estado,
+            marca_id: d.marca_id,
+            tipo_id: d.tipo_id,
+            entalle_id: d.entalle_id,
+            hilo_id: d.hilo_id,
+          });
+          // Cargar colores de la regla; fallback a catálogo completo si la regla está vacía.
+          const baseParams = new URLSearchParams();
+          if (d.marca_id) baseParams.append('marca_id', d.marca_id);
+          if (d.tipo_id) baseParams.append('tipo_id', d.tipo_id);
+          if (d.entalle_id) baseParams.append('entalle_id', d.entalle_id);
+          if (d.hilo_id) baseParams.append('hilo_id', d.hilo_id);
+          const tryParams = new URLSearchParams(baseParams);
+          tryParams.append('solo_regla', 'true');
+          try {
+            let cr = await axios.get(`${API}/colores-catalogo?${tryParams}`);
+            let list = Array.isArray(cr.data) ? cr.data : [];
+            if (list.length === 0) {
+              const fb = new URLSearchParams(baseParams);
+              fb.append('incluir_todos', 'true');
+              cr = await axios.get(`${API}/colores-catalogo?${fb}`);
+              list = Array.isArray(cr.data) ? cr.data : [];
+            }
+            setColores(list);
+          } catch {
+            setColores([]);
+          }
+        })
+        .catch(() => { setCorteMeta(null); setColores([]); }),
+    ]).finally(() => setLoading(false));
+  }, [open, registroId, fetchMuestras]);
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
       <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden p-0">
         <DialogHeader className="px-4 pt-4 pb-2 border-b">
-          <DialogTitle className="text-base flex items-center gap-1.5">
-            <FlaskConical className="h-4 w-4 text-sky-600" />
-            Muestras del Corte {nCorte}
-            {modelo && <span className="text-muted-foreground font-normal text-sm">· {modelo}</span>}
-          </DialogTitle>
-          <p className="text-[11px] text-muted-foreground">
-            Envíos de muestras a lavandería con los colores y decisión por cada uno.
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <DialogTitle className="text-base flex items-center gap-1.5">
+                <FlaskConical className="h-4 w-4 text-sky-600" />
+                Muestras del Corte {nCorte}
+                {modelo && <span className="text-muted-foreground font-normal text-sm">· {modelo}</span>}
+              </DialogTitle>
+              <p className="text-[11px] text-muted-foreground">
+                Envíos de muestras a lavandería con los colores y decisión por cada uno.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-[11px] gap-1 shrink-0"
+              onClick={() => setOpenNew(true)}
+              disabled={loading || !corteMeta}
+              title="Registrar nuevo envío parcial a lavandería"
+              data-testid="btn-nueva-muestra-popup"
+            >
+              <Plus className="h-3 w-3" /> Enviar muestra
+            </Button>
+          </div>
         </DialogHeader>
+
+        {/* Dialog anidado: formulario de nueva muestra. Reusa NuevaMuestraForm de
+            MuestrasLavanderiaSection — mismo POST y validaciones. */}
+        <Dialog open={openNew} onOpenChange={setOpenNew}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Enviar muestra a lavandería</DialogTitle>
+              <p className="text-xs text-muted-foreground">
+                Registro de envío parcial para probar colores antes del proceso completo.
+              </p>
+            </DialogHeader>
+            {openNew && corteMeta && (
+              <NuevaMuestraForm
+                cortes={[corteMeta]}
+                colores={colores}
+                onCancel={() => setOpenNew(false)}
+                onCreated={async () => {
+                  setOpenNew(false);
+                  await fetchMuestras();
+                }}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+
         <div className="overflow-auto max-h-[calc(85vh-90px)] p-3">
           {loading && (
             <div className="flex items-center justify-center gap-2 h-32 text-muted-foreground text-sm">
@@ -481,6 +576,7 @@ const DetalleModal = ({ open, onClose, registros, titulo, navigate }) => {
 // ── Componente principal ──────────────────────────────────────
 export const MatrizProduccion = () => {
   const navigate = useNavigate();
+  const { empresaId } = useAuth();
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -560,6 +656,7 @@ export const MatrizProduccion = () => {
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== '' && v !== false) params.append(k, String(v));
     });
+    params.set('empresa_id', String(empresaId || 7));
     axios.get(`${API}/reportes-produccion/matriz?${params}`)
       .then(res => {
         setData(res.data);
@@ -590,7 +687,7 @@ export const MatrizProduccion = () => {
       })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
-  }, [filters, prefsScope]);
+  }, [filters, prefsScope, empresaId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

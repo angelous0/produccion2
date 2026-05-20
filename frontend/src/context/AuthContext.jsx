@@ -17,9 +17,14 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('token'));
+  // Empresa fija en 7 (AMBISSION INDUSTRIES S.A.C.). Es la única con datos
+  // reales y evita confusiones por cambios accidentales en localStorage.
+  // Si en el futuro se necesita multi-empresa, basta con quitar este lock.
+  const EMPRESA_FIJA = 7;
   const [empresaId, setEmpresaId] = useState(() => {
-    const saved = localStorage.getItem('empresa_id');
-    return saved ? parseInt(saved, 10) : null;
+    // Sobrescribe cualquier valor previo (puede haber quedado un 8 viejo)
+    localStorage.setItem('empresa_id', String(EMPRESA_FIJA));
+    return EMPRESA_FIJA;
   });
 
   // Configurar axios con el token
@@ -77,17 +82,11 @@ export const AuthProvider = ({ children }) => {
         setUser(response.data);
         setToken(savedToken);
 
-        // Cargar empresa activa si no hay guardada
-        if (!localStorage.getItem('empresa_id')) {
-          try {
-            const empRes = await axios.get(`${API}/configuracion/empresa`);
-            if (empRes.data.empresa_actual_id) {
-              const eid = empRes.data.empresa_actual_id;
-              localStorage.setItem('empresa_id', eid);
-              setEmpresaId(eid);
-            }
-          } catch (_) { /* ignore */ }
-        }
+        // Empresa fija en EMPRESA_FIJA (7). No se consulta el backend.
+        // Garantiza que cada sesión arranque con la empresa correcta sin
+        // depender de localStorage previo.
+        localStorage.setItem('empresa_id', String(EMPRESA_FIJA));
+        setEmpresaId(EMPRESA_FIJA);
       } catch (error) {
         localStorage.removeItem('token');
         setToken(null);
@@ -140,9 +139,13 @@ export const AuthProvider = ({ children }) => {
 
   const isAdmin = () => user?.rol === 'admin';
 
-  const updateEmpresaId = (id) => {
-    localStorage.setItem('empresa_id', id);
-    setEmpresaId(parseInt(id, 10));
+  // updateEmpresaId quedó bloqueada por la decisión de fijar empresa en 7.
+  // Cualquier intento de cambio (ej. desde ConfigEmpresa) se ignora.
+  // Para volver a habilitar multi-empresa, restaurar el cuerpo previo.
+  // eslint-disable-next-line no-unused-vars
+  const updateEmpresaId = (_id) => {
+    localStorage.setItem('empresa_id', String(EMPRESA_FIJA));
+    setEmpresaId(EMPRESA_FIJA);
   };
 
   const value = {

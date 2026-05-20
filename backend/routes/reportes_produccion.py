@@ -64,12 +64,13 @@ ESTADOS_MATRIZ_ORDEN = [
 
 # Ubicaciones de Odoo (stock_location.x_nombre) que cuentan como "tienda real" para
 # los reportes de Almacén PT / Tienda. Se excluyen ubicaciones virtuales (Customers,
-# Vendors, Ajuste, Abastecimiento, Proveedores, Fallados), almacén AP y REMATE.
+# Vendors, Ajuste, Abastecimiento, Proveedores, Fallados), almacén AP, REMATE y ZAP.
+# (ZAP no es tienda comercial — se alinea con el criterio del Reporte Stock de Ventas).
 TIENDAS_VALIDAS_X_NOMBRE = (
     'AZUL', 'BOOSH',
     'GM207', 'GM209', 'GM218',
     'GR238', 'GR55',
-    'ZAP', 'TALLER',
+    'TALLER',
 )
 
 
@@ -1636,6 +1637,13 @@ async def matriz_produccion(
 async def ficha_item_detail(
     ids: str = Query(..., description="IDs de registros separados por coma"),
     empresa_id: int = Query(7),
+    ocultar_liquidacion: bool = Query(
+        True,
+        description=(
+            "Si True (default), oculta modelos con sufijo -LQ (liquidaciones) en "
+            "Almacén PT/Tienda y en PT sin clasificar. No afecta cortes en taller/lavandería."
+        ),
+    ),
 ):
     """
     Devuelve la ficha color × talla de un ítem:
@@ -1644,6 +1652,14 @@ async def ficha_item_detail(
     - colores_almacen:    colores en almacén PT + tienda  (color × talla)
     - sin_color:          cortes en etapas post-lavandería sin colores asignados
     """
+    # Heurística de modelos -LQ: termina con "-LQ", o contiene "-LQ " o "-LQ-".
+    # Aplica solo si `ocultar_liquidacion` está activo. Pensado para filtrar
+    # variantes de liquidación que ya no son producción activa.
+    def _es_liquidacion(nombre: str) -> bool:
+        if not nombre:
+            return False
+        s = nombre.upper()
+        return s.endswith("-LQ") or "-LQ " in s or "-LQ-" in s
     id_list = [i.strip() for i in (ids or "").split(",") if i.strip()]
     if not id_list:
         return {"tallas": [], "grupos_taller": [], "colores_lavanderia": [], "colores_almacen": [], "sin_color": []}
@@ -1681,6 +1697,7 @@ async def ficha_item_detail(
     # de Odoo (stock_quant) para evitar doble conteo con los registros.
     ESTADOS_ALMACEN  = {"Producto Terminado", "Almacén PT"}
 
+    estrella_set: set = set()  # colores ⭐ de la regla aplicable; se llena dentro de "if rows:"
     all_tallas: set = set()
     grupos_taller: list = []
     colores_lav: dict = {}   # color_nombre (UPPERCASE) -> {talla_nombre -> cantidad}
@@ -1701,8 +1718,14 @@ async def ficha_item_detail(
     for r in rows:
         estado = r["estado"] or "Sin estado"
         dist_raw = parse_jsonb(r["distribucion_colores"])
+        # ¿Este corte es de un modelo -LQ? Solo se usa para excluirlo de la matriz
+        # de Almacén PT/Tienda cuando `ocultar_liquidacion` está activo. Los cortes
+        # en taller / lavandería se siguen mostrando sin importar el flag.
+        es_lq = ocultar_liquidacion and _es_liquidacion(r["modelo_nombre"])
 
         talla_totales: dict = {}
+        # cantidades asignadas a colores por talla (para chequear distribución 100%)
+        asignado_por_talla: dict = {}
         has_colors = False
 
         for entry in dist_raw:
@@ -1722,6 +1745,7 @@ async def ficha_item_detail(
                 has_colors = True
                 if tn:
                     all_tallas.add(tn)
+                    asignado_por_talla[tn] = asignado_por_talla.get(tn, 0) + qty
 
                 if estado in ESTADOS_LAV:
                     if cn not in colores_lav:
@@ -1729,6 +1753,9 @@ async def ficha_item_detail(
                     colores_lav[cn][tn] = colores_lav[cn].get(tn, 0) + qty
 
                 elif estado in ESTADOS_ALMACEN:
+                    # Excluye liquidaciones (-LQ) de la matriz de Almacén PT/Tienda
+                    if es_lq:
+                        continue
                     if cn not in colores_alm:
                         colores_alm[cn] = {}
                     colores_alm[cn][tn] = colores_alm[cn].get(tn, 0) + qty
@@ -1742,12 +1769,20 @@ async def ficha_item_detail(
                     if tn:
                         talla_totales[tn] = qty
                         all_tallas.add(tn)
+            # ¿Distribución de colores al 100%? Hay colores asignados Y, para cada
+            # talla con cantidad_total > 0, la suma asignada a colores iguala el
+            # total. Si una talla tiene total=0, se ignora.
+            tallas_con_total = [(tn, tot) for tn, tot in talla_totales.items() if tot > 0]
+            colores_completos = bool(has_colors) and bool(tallas_con_total) and all(
+                asignado_por_talla.get(tn, 0) == tot for tn, tot in tallas_con_total
+            )
             grupos_taller.append({
                 "id": r["id"],
                 "n_corte": r["n_corte"],
                 "modelo": r["modelo_nombre"] or "",
                 "estado": estado,
                 "tallas": talla_totales,
+                "colores_completos": colores_completos,
                 "colores_aprobados": bool(r["colores_aprobados"]),
                 "colores_aprobados_at": r["colores_aprobados_at"].isoformat() if r["colores_aprobados_at"] else None,
                 "colores_aprobados_por": r["colores_aprobados_por"],
@@ -1816,11 +1851,13 @@ async def ficha_item_detail(
                 mejor_score AS (
                     SELECT MAX(score) AS s FROM candidatas WHERE score >= 0
                 )
-                SELECT DISTINCT cc.nombre, COALESCE(cc.orden, 0) AS orden
+                SELECT cc.nombre, COALESCE(cc.orden, 0) AS orden,
+                       BOOL_OR(COALESCE(rc.es_estrella, FALSE)) AS es_estrella
                   FROM candidatas c
                   JOIN mejor_score m ON c.score = m.s
                   JOIN prod_color_regla_colores rc ON rc.regla_id = c.id
                   JOIN prod_colores_catalogo cc ON cc.id = rc.color_id
+                 GROUP BY cc.nombre, cc.orden
                  ORDER BY orden, cc.nombre
             """, ref["marca_id"], ref["tipo_id"], ref["entalle_id"], ref["hilo_id"])
 
@@ -1840,10 +1877,23 @@ async def ficha_item_detail(
             odoo_stock_rows = []
             odoo_sin_clasificar_rows = []
             try:
-                odoo_color_rows = await conn.fetch("""
+                # Filtro -LQ aplicable a pt.name. Cuando ocultar_liquidacion=False,
+                # el predicado es TRUE para todos los registros (no filtra).
+                # El número de placeholder varía por query (se inyecta como Python str).
+                def _lq_predicate(n):
+                    return (
+                        f"(NOT ${n}::bool OR ("
+                        f" pt.name NOT ILIKE '%-LQ'"
+                        f" AND pt.name NOT ILIKE '%-LQ %'"
+                        f" AND pt.name NOT ILIKE '%-LQ-%'"
+                        f"))"
+                    )
+
+                odoo_color_rows = await conn.fetch(f"""
                     SELECT DISTINCT cc.nombre, COALESCE(cc.orden, 0) AS orden
                       FROM prod_odoo_productos_enriq enr
                       JOIN odoo.product_product pp ON pp.product_tmpl_id = enr.odoo_template_id
+                      JOIN odoo.product_template pt ON pt.odoo_id = enr.odoo_template_id
                       JOIN prod_odoo_color_mapping mc ON mc.odoo_product_id = pp.odoo_id
                       JOIN prod_colores_catalogo cc ON cc.id = mc.color_id
                      WHERE COALESCE(enr.estado, '') <> 'excluido'
@@ -1852,16 +1902,19 @@ async def ficha_item_detail(
                        AND ($3::text IS NULL OR enr.entalle_id = $3)
                        AND ($4::text IS NULL OR enr.tela_id    = $4)
                        AND ($5::text IS NULL OR enr.hilo_id    = $5)
-                """, ref["marca_id"], ref["tipo_id"], ref["entalle_id"], ref["tela_id"], ref["hilo_id"])
+                       AND {_lq_predicate(6)}
+                """, ref["marca_id"], ref["tipo_id"], ref["entalle_id"], ref["tela_id"],
+                     ref["hilo_id"], bool(ocultar_liquidacion))
 
                 # Stock real en tienda (stock_quant en locations con x_nombre válido)
                 # por color × talla.
-                odoo_stock_rows = await conn.fetch("""
+                odoo_stock_rows = await conn.fetch(f"""
                     SELECT cc.nombre AS color_nombre,
                            mc.talla_odoo AS talla_nombre,
                            SUM(sq.qty - COALESCE(sq.reserved_qty, 0))::int AS qty
                       FROM prod_odoo_productos_enriq enr
                       JOIN odoo.product_product pp ON pp.product_tmpl_id = enr.odoo_template_id
+                      JOIN odoo.product_template pt ON pt.odoo_id = enr.odoo_template_id
                       JOIN prod_odoo_color_mapping mc ON mc.odoo_product_id = pp.odoo_id
                       JOIN prod_colores_catalogo cc ON cc.id = mc.color_id
                       JOIN odoo.stock_quant sq ON sq.product_id = pp.odoo_id
@@ -1874,10 +1927,11 @@ async def ficha_item_detail(
                        AND ($6::text IS NULL OR enr.hilo_id    = $6)
                        AND mc.talla_odoo IS NOT NULL
                        AND sl.x_nombre = ANY($5::text[])
+                       AND {_lq_predicate(7)}
                      GROUP BY cc.nombre, mc.talla_odoo
                     HAVING SUM(sq.qty - COALESCE(sq.reserved_qty, 0)) > 0
                 """, ref["marca_id"], ref["tipo_id"], ref["entalle_id"], ref["tela_id"],
-                     list(TIENDAS_VALIDAS_X_NOMBRE), ref["hilo_id"])
+                     list(TIENDAS_VALIDAS_X_NOMBRE), ref["hilo_id"], bool(ocultar_liquidacion))
 
                 # PT de Odoo SIN color mapeado — agrupados por (template, color_odoo).
                 # Le sumamos el stock real para que el usuario priorice los grandes.
@@ -1908,6 +1962,13 @@ async def ficha_item_detail(
                          WHERE mc.color_id IS NULL
                            AND vf.color IS NOT NULL
                            AND TRIM(vf.color) <> ''
+                           AND (
+                               NOT $7::bool OR (
+                                   pt.name NOT ILIKE '%-LQ'
+                                   AND pt.name NOT ILIKE '%-LQ %'
+                                   AND pt.name NOT ILIKE '%-LQ-%'
+                               )
+                           )
                     ),
                     stock_variantes AS (
                         SELECT sq.product_id,
@@ -1932,8 +1993,10 @@ async def ficha_item_detail(
                     HAVING COALESCE(SUM(sv.stock), 0) > 0
                      ORDER BY stock_total DESC, v.template_name, v.color_odoo
                 """, ref["marca_id"], ref["tipo_id"], ref["entalle_id"], ref["tela_id"],
-                     list(TIENDAS_VALIDAS_X_NOMBRE), ref["hilo_id"])
-            except Exception:
+                     list(TIENDAS_VALIDAS_X_NOMBRE), ref["hilo_id"], bool(ocultar_liquidacion))
+            except Exception as _e:
+                import logging
+                logging.exception("ficha-item: error en queries Odoo (silenced)")
                 odoo_color_rows = []
                 odoo_stock_rows = []
                 odoo_sin_clasificar_rows = []
@@ -1943,6 +2006,12 @@ async def ficha_item_detail(
         # incluidos en la regla. Los que tengan stock real fuera de la regla se
         # mueven a "fuera_regla" para informar al usuario sin contaminar la matriz.
         rule_color_set = {_nc(cr["nombre"]) for cr in rule_color_rows if cr.get("nombre")}
+        # Set de nombres marcados como ⭐ estrella (subset de rule_color_set).
+        # El fallback al catálogo no tiene es_estrella → keys ausentes evaluan a falso.
+        estrella_set = {
+            _nc(cr["nombre"]) for cr in rule_color_rows
+            if cr.get("nombre") and cr.get("es_estrella")
+        }
 
         if has_rule_match and rule_color_set:
             # Saca a "fuera_regla" lo que ya estaba en colores_lav/alm pero no encaja
@@ -2018,9 +2087,16 @@ async def ficha_item_detail(
             "hilo_id":    ref["hilo_id"],
         }
 
-    # Muestras de lavandería de cualquier corte de este ítem. La cantidad de
-    # las muestras activas (fecha_retorno IS NULL) está "fuera del corte".
+    # Muestras de lavandería — visibles mientras NO se cumplan las DOS condiciones:
+    #   (A) el corte ya salió de taller (avanzó a Lavandería o más adelante), Y
+    #   (B) todos los checks de los colores de la muestra están cerrados
+    #       (decisión aprobado/rechazado en cada uno; estados aprobada/rechazada/parcial).
+    # Si cualquiera de las dos no se cumple, la muestra sigue mostrándose:
+    # - Corte aún en taller → siempre visible
+    # - Corte avanzó pero la muestra está 'enviada' (sin retorno) o 'pendiente_decision'
+    #   (algún color sin decisión) → sigue visible para que puedas cerrarla.
     muestras_payload = []
+    cortes_taller_set = {g["id"] for g in grupos_taller}
     if id_list:
         async with pool.acquire() as conn:
             m_rows = await conn.fetch("""
@@ -2074,6 +2150,14 @@ async def ficha_item_detail(
                             estado = "rechazada"
                         else:
                             estado = "parcial"
+                    # Filtro: ocultar si el corte ya salió de taller Y todos los checks
+                    # están cerrados (estado ∈ {aprobada, rechazada, parcial}).
+                    # 'enviada' y 'pendiente_decision' SIEMPRE se muestran porque
+                    # todavía requieren acción del usuario.
+                    en_taller = m["registro_id"] in cortes_taller_set
+                    checks_completos = estado in ("aprobada", "rechazada", "parcial")
+                    if not en_taller and checks_completos:
+                        continue
                     muestras_payload.append({
                         "id": m["id"],
                         "registro_id": m["registro_id"],
@@ -2093,7 +2177,10 @@ async def ficha_item_detail(
         "scope": scope,
         "grupos_taller": sorted(grupos_taller, key=lambda x: x.get("n_corte") or ""),
         "colores_lavanderia": [{"color": k, "tallas": v} for k, v in sorted(colores_lav.items())],
-        "colores_almacen":    [{"color": k, "tallas": v} for k, v in sorted(colores_alm.items())],
+        "colores_almacen":    [
+            {"color": k, "tallas": v, "es_estrella": k in estrella_set}
+            for k, v in sorted(colores_alm.items())
+        ],
         "fuera_regla_lavanderia": [{"color": k, "tallas": v} for k, v in sorted(fuera_regla_lav.items())],
         "fuera_regla_almacen":    [{"color": k, "tallas": v} for k, v in sorted(fuera_regla_alm.items())],
         "sin_color": sin_color,

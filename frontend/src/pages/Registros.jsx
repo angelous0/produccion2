@@ -36,6 +36,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
 import usePermissions from '../hooks/usePermissions';
+import { useAuth } from '../context/AuthContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -86,6 +87,7 @@ export const Registros = () => {
   const [loading, setLoading] = useState(true);
   const { saving, guard } = useSaving();
   const { canCreate, canEdit, canDelete, isAdmin } = usePermissions('registros');
+  const { empresaId } = useAuth();
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [coloresDialogOpen, setColoresDialogOpen] = useState(false);
   const [viewingItem, setViewingItem] = useState(null);
@@ -168,6 +170,7 @@ export const Registros = () => {
       if (filtroTipos.length > 0) params.set('tipo_id', filtroTipos.join(','));
       if (filtroEntalles.length > 0) params.set('entalle_id', filtroEntalles.join(','));
       if (filtroTelas.length > 0) params.set('tela_id', filtroTelas.join(','));
+      params.set('empresa_id', String(empresaId || 7));
       const response = await axios.get(`${API}/registros?${params.toString()}`);
       const data = response.data;
       if (append) {
@@ -246,7 +249,7 @@ export const Registros = () => {
   // Reload when filters change
   useEffect(() => {
     fetchItems(false);
-  }, [searchDebounced, estadosExcluidos, estadosIncluidos, modoFiltro, filtroOperativo, filtroModeloId, filtroLinea, filtroMarcas, filtroTipos, filtroEntalles, filtroTelas]);
+  }, [searchDebounced, estadosExcluidos, estadosIncluidos, modoFiltro, filtroOperativo, filtroModeloId, filtroLinea, filtroMarcas, filtroTipos, filtroEntalles, filtroTelas, empresaId]);
 
   // ========== LÓGICA DE COLORES ==========
 

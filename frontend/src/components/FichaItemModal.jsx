@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { ExternalLink, Layers, Loader2, Palette } from 'lucide-react';
+import { ExternalLink, Layers, Loader2, Palette, Star } from 'lucide-react';
 import { formatColorName } from '../lib/utils';
 import { AsignarColoresModal } from './AsignarColoresModal';
 import { MapeoOdooSection } from './MapeoOdooSection';
@@ -56,7 +56,14 @@ const TallaTable = ({ title, subtitle, items, tallas, emptyMsg, rowLabel = 'colo
                     <td className="p-1.5 truncate max-w-[200px]" title={row.label}>
                       {clickable ? (
                         <span className="inline-flex items-center gap-1.5 group">
-                          <Palette className="h-3 w-3 text-primary opacity-60 group-hover:opacity-100" />
+                          <Palette
+                            className={`h-3 w-3 group-hover:opacity-100 ${
+                              row.colores_completos
+                                ? 'text-primary opacity-80'
+                                : 'text-muted-foreground/60 opacity-70'
+                            }`}
+                            aria-label={row.colores_completos ? 'Colores completos' : 'Colores pendientes'}
+                          />
                           <span className="font-medium">{row.label}</span>
                         </span>
                       ) : (
@@ -97,9 +104,11 @@ const TallaTable = ({ title, subtitle, items, tallas, emptyMsg, rowLabel = 'colo
 };
 
 // ── Merge colores lavandería + almacén ────────────────────────────────────
-// Acepta items con `label` o `color` (igualan al nombre del color).
+// Acepta items con `label` o `color`. Preserva el flag `es_estrella` si
+// alguna de las entradas para ese color lo tiene en true.
 function mergeColores(a, b) {
   const m = {};
+  const stars = new Set();
   [...a, ...b].forEach((item) => {
     const key = item.label ?? item.color ?? '';
     if (!key) return;
@@ -107,11 +116,16 @@ function mergeColores(a, b) {
     Object.entries(item.tallas || {}).forEach(([t, q]) => {
       m[key][t] = (m[key][t] || 0) + q;
     });
+    if (item.es_estrella) stars.add(key);
   });
   return Object.entries(m)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([label, tallas]) => ({ label, tallas }));
+    .map(([label, tallas]) => ({ label, tallas, es_estrella: stars.has(label) }));
 }
+
+// Preferencia para ocultar/mostrar modelos -LQ en la matriz de Almacén PT/Tienda.
+// Persiste en localStorage entre sesiones. Default = ocultos.
+const LQ_STORAGE_KEY = 'fichaItem.ocultarLQ';
 
 // ── Componente principal ──────────────────────────────────────────────────
 export const FichaItemModal = ({ open, onClose, fila }) => {
@@ -119,6 +133,16 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [sumarLav, setSumarLav] = useState(false);
+  const [ocultarLQ, setOcultarLQ] = useState(() => {
+    try {
+      const v = localStorage.getItem(LQ_STORAGE_KEY);
+      return v === null ? true : v === 'true';
+    } catch { return true; }
+  });
+  // Persiste la preferencia
+  useEffect(() => {
+    try { localStorage.setItem(LQ_STORAGE_KEY, String(ocultarLQ)); } catch {}
+  }, [ocultarLQ]);
 
   useEffect(() => {
     if (!open || !fila) return;
@@ -128,11 +152,13 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
     setLoading(true);
     setData(null);
     setSumarLav(false);
-    axios.get(`${API}/reportes-produccion/ficha-item`, { params: { ids: ids.join(',') } })
+    axios.get(`${API}/reportes-produccion/ficha-item`, {
+      params: { ids: ids.join(','), ocultar_liquidacion: ocultarLQ },
+    })
       .then(r => setData(r.data))
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
-  }, [open, fila]);
+  }, [open, fila, ocultarLQ]);
 
   const tallas = data?.tallas || [];
 
@@ -140,6 +166,9 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
     id: g.id,
     label: `${g.modelo || '—'} · ${g.n_corte}`,
     tallas: g.tallas,
+    // True si la distribución de colores cubre 100% de cada talla.
+    // Lo usa el ícono Palette: azul cuando está completo, gris cuando falta asignar.
+    colores_completos: !!g.colores_completos,
   }));
 
   // Recarga datos del backend (tras guardar colores)
@@ -147,10 +176,12 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
     if (!fila) return;
     const ids = (fila.detalle || []).map(d => d.id).filter(Boolean);
     if (!ids.length) return;
-    axios.get(`${API}/reportes-produccion/ficha-item`, { params: { ids: ids.join(',') } })
+    axios.get(`${API}/reportes-produccion/ficha-item`, {
+      params: { ids: ids.join(','), ocultar_liquidacion: ocultarLQ },
+    })
       .then(r => setData(r.data))
       .catch(err => console.error(err));
-  }, [fila]);
+  }, [fila, ocultarLQ]);
 
   const [asignarOpen, setAsignarOpen] = useState(false);
   const [asignarRegistroId, setAsignarRegistroId] = useState(null);
@@ -161,10 +192,39 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
 
   const lavRows = (data?.colores_lavanderia || []).map(c => ({ label: formatColorName(c.color), tallas: c.tallas }));
 
-  const almacenBase = (data?.colores_almacen || []).map(c => ({ label: formatColorName(c.color), tallas: c.tallas }));
+  const almacenBase = (data?.colores_almacen || []).map(c => ({
+    label: formatColorName(c.color),
+    tallas: c.tallas,
+    es_estrella: !!c.es_estrella,
+  }));
   const almacenRows = sumarLav
-    ? mergeColores(almacenBase, (data?.colores_lavanderia || []).map(c => ({ color: formatColorName(c.color), tallas: c.tallas })))
+    ? mergeColores(
+        almacenBase,
+        (data?.colores_lavanderia || []).map(c => ({ color: formatColorName(c.color), tallas: c.tallas })),
+      )
     : almacenBase;
+
+  // DEBUG temporal — quitar después de validar discrepancia 1600 vs 2843
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!data) return;
+    const totalAlm = (data.colores_almacen || []).reduce(
+      (s, c) => s + Object.values(c.tallas || {}).reduce((a, b) => a + b, 0), 0);
+    const totalLav = (data.colores_lavanderia || []).reduce(
+      (s, c) => s + Object.values(c.tallas || {}).reduce((a, b) => a + b, 0), 0);
+    const totalSin = (data.odoo_sin_clasificar || []).reduce((s, r) => s + (r.stock_total || 0), 0);
+    // eslint-disable-next-line no-console
+    console.log('[FichaItemModal DEBUG]', {
+      sumarLav,
+      total_colores_almacen: totalAlm,
+      total_colores_lavanderia: totalLav,
+      total_pt_sin_clasificar: totalSin,
+      total_visible_almacen_PT: sumarLav ? totalAlm + totalLav : totalAlm,
+      items_almacen: (data.colores_almacen || []).length,
+      items_lav: (data.colores_lavanderia || []).length,
+      url_actual: window.location.href,
+    });
+  }, [data, sumarLav]);
 
   // Colores con stock pero fuera de la regla aplicable (informativo)
   const fueraReglaAlm = (data?.fuera_regla_almacen || [])
@@ -181,7 +241,10 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
         data-testid="ficha-item-modal"
       >
         <DialogHeader className="px-5 pt-4 pb-3 border-b shrink-0">
-          <DialogTitle className="text-base">{fila?.item}</DialogTitle>
+          <DialogTitle className="text-base">
+            {fila?.item}
+            {fila?.hilo && <span className="text-muted-foreground font-normal"> · {fila.hilo}</span>}
+          </DialogTitle>
           <p className="text-[11px] text-muted-foreground">Seguimiento de colores por etapa de producción</p>
         </DialogHeader>
 
@@ -326,23 +389,39 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
               <div className="flex flex-col gap-4">
               {/* 3. Almacén PT + Tienda */}
               <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between">
+                <div className="flex items-start justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-semibold">Almacén PT / Tienda</h3>
                     <p className="text-[10px] text-muted-foreground">PT (registros) + stock real de tienda desde Odoo</p>
                   </div>
-                  <button
-                    className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-colors ${
-                      sumarLav
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'hover:bg-muted border-border'
-                    }`}
-                    onClick={() => setSumarLav(p => !p)}
-                    title="Suma las prendas en lavandería al cuadro de almacén"
-                  >
-                    <Layers className="h-3 w-3" />
-                    + Lavandería
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-colors ${
+                        ocultarLQ
+                          ? 'bg-amber-500/90 text-white border-amber-500'
+                          : 'hover:bg-muted border-border'
+                      }`}
+                      onClick={() => setOcultarLQ(p => !p)}
+                      title={ocultarLQ
+                        ? 'Liquidaciones (-LQ) ocultas. Click para incluirlas.'
+                        : 'Liquidaciones (-LQ) visibles. Click para ocultarlas.'}
+                      data-testid="toggle-lq"
+                    >
+                      {ocultarLQ ? 'Sin -LQ' : 'Con -LQ'}
+                    </button>
+                    <button
+                      className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-colors ${
+                        sumarLav
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'hover:bg-muted border-border'
+                      }`}
+                      onClick={() => setSumarLav(p => !p)}
+                      title="Suma las prendas en lavandería al cuadro de almacén"
+                    >
+                      <Layers className="h-3 w-3" />
+                      + Lavandería
+                    </button>
+                  </div>
                 </div>
                 {almacenRows.length === 0 ? (
                   <p className="text-xs text-muted-foreground italic">Sin stock en almacén o tienda</p>
@@ -361,9 +440,27 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
                       <tbody>
                         {almacenRows.map((row, i) => {
                           const rowTotal = tallas.reduce((s, t) => s + (row.tallas?.[t] || 0), 0);
+                          const isStar = !!row.es_estrella;
                           return (
-                            <tr key={i} className="border-b hover:bg-muted/20">
-                              <td className="p-1.5">{row.label}</td>
+                            <tr
+                              key={i}
+                              className={`border-b ${
+                                isStar
+                                  ? 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/20 dark:hover:bg-amber-950/30'
+                                  : 'hover:bg-muted/20'
+                              }`}
+                              title={isStar ? 'Color estrella — debe tener stock siempre' : undefined}
+                            >
+                              <td className="p-1.5">
+                                <div className="flex items-center gap-1">
+                                  {isStar && (
+                                    <Star className="h-3 w-3 shrink-0 text-amber-500 fill-amber-400" />
+                                  )}
+                                  <span className={isStar ? 'font-medium text-amber-900 dark:text-amber-300' : ''}>
+                                    {row.label}
+                                  </span>
+                                </div>
+                              </td>
                               {tallas.map(t => {
                                 const v = row.tallas?.[t] || 0;
                                 return (

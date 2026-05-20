@@ -121,6 +121,7 @@ export const DistribucionPTPanel = ({ registroId }) => {
   const [ajustePopoverOpen, setAjustePopoverOpen] = useState(false);
   const [vinculando, setVinculando] = useState(false);
   const [desvinculando, setDesvinculando] = useState(null);
+  const [autoMatching, setAutoMatching] = useState(false);
   const [trazabilidad, setTrazabilidad] = useState(null);
 
   const getAuthHeader = useCallback(() => {
@@ -148,14 +149,94 @@ export const DistribucionPTPanel = ({ registroId }) => {
         producto_nombre: l.producto_nombre,
       })));
       setDirty(false);
+      return { vinculos: vincRes.data, distribucion: distRes.data };
     } catch (err) {
       toast.error('Error cargando datos de distribucion PT');
+      return null;
     } finally {
       setLoading(false);
     }
   }, [registroId, getAuthHeader]);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  // ── Auto-match: vincular ajustes con match completo ───────────────
+  // Desvincula primero los huérfanos (templates ya no en la distribución)
+  // y luego vincula los ajustes disponibles cuyos templates coincidan 100%.
+  const runAutoMatch = useCallback(async ({ silent = false } = {}) => {
+    if (autoMatching) return;
+    setAutoMatching(true);
+    let vinculados = 0;
+    let desvinculados = 0;
+    try {
+      const headers = getAuthHeader();
+
+      // 1) Refrescar vínculos para tener templates_match actualizado
+      const vincRes = await axios.get(`${API}/registros/${registroId}/vinculos-odoo`, { headers });
+      const vincActuales = vincRes.data || [];
+
+      // 2) Desvincular huérfanos: templates_match=0 con templates_total>0
+      //    (el corte tiene distribución pero el ajuste ya no mueve ninguno)
+      const huerfanos = vincActuales.filter(v => v.templates_total > 0 && v.templates_match === 0);
+      for (const v of huerfanos) {
+        try {
+          await axios.delete(`${API}/registros/${registroId}/vinculos-odoo/${v.id}`, { headers });
+          desvinculados += 1;
+        } catch { /* ignore */ }
+      }
+
+      // 3) Buscar candidatos y vincular los que matchean al menos 1 template del corte.
+      //    Match parcial: en la práctica los ajustes Odoo vienen separados por producto
+      //    (uno por BONETY, otro por BONETY-LQ, etc.), así que un único ajuste rara vez
+      //    cubre toda la distribución. Vinculamos cada uno que toque al menos 1 template
+      //    del corte y esté libre.
+      const ajustesRes = await axios.get(
+        `${API}/odoo/stock-inventories?registro_id=${registroId}&limit=200`,
+        { headers }
+      );
+      const candidatos = (ajustesRes.data || []).filter(a =>
+        a.disponible && a.templates_match > 0
+      );
+      for (const a of candidatos) {
+        try {
+          await axios.post(`${API}/registros/${registroId}/vinculos-odoo`,
+            { stock_inventory_odoo_id: a.odoo_id }, { headers });
+          vinculados += 1;
+        } catch { /* ignore — probablemente ya vinculado */ }
+      }
+
+      if (vinculados > 0 || desvinculados > 0) {
+        await fetchAll();
+      }
+      if (!silent || vinculados > 0 || desvinculados > 0) {
+        const partes = [];
+        if (vinculados > 0) partes.push(`${vinculados} vinculado${vinculados > 1 ? 's' : ''}`);
+        if (desvinculados > 0) partes.push(`${desvinculados} desvinculado${desvinculados > 1 ? 's' : ''}`);
+        if (partes.length) {
+          toast.success(`Auto-match: ${partes.join(', ')}`);
+        } else if (!silent) {
+          toast.info('Sin ajustes con match completo disponibles');
+        }
+      }
+    } catch {
+      if (!silent) toast.error('Error en auto-match');
+    } finally {
+      setAutoMatching(false);
+    }
+  }, [registroId, getAuthHeader, fetchAll, autoMatching]);
+
+  // Carga inicial + auto-match silencioso
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetchAll();
+      if (cancelled || !res) return;
+      // Solo ejecutar auto-match si el corte tiene distribución declarada
+      if ((res.distribucion?.lineas || []).length > 0) {
+        runAutoMatch({ silent: true });
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registroId]);
 
   // Buscar ajustes disponibles. Pasamos registro_id para que el backend
   // filtre estricto a los ajustes que mueven al menos uno de los templates
@@ -255,6 +336,8 @@ export const DistribucionPTPanel = ({ registroId }) => {
       }
 
       await fetchAll();
+      // Re-evaluar matches: si se agregaron/quitaron templates, vincular/desvincular automáticamente.
+      runAutoMatch({ silent: true });
     } catch (err) {
       const detail = err.response?.data?.detail;
       let msg = 'Error al guardar distribucion';
@@ -543,12 +626,26 @@ export const DistribucionPTPanel = ({ registroId }) => {
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Link2 className="h-4 w-4" /> Ajustes Odoo Vinculados
             </CardTitle>
-            <Popover open={ajustePopoverOpen} onOpenChange={setAjustePopoverOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1" data-testid="btn-buscar-ajuste">
-                  <Search className="h-3 w-3" /> Vincular Ajuste
-                </Button>
-              </PopoverTrigger>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => runAutoMatch({ silent: false })}
+                disabled={autoMatching || lineas.length === 0}
+                title={lineas.length === 0 ? 'Declara la distribución para usar auto-match' : 'Vincula todos los ajustes disponibles con match 100%'}
+                data-testid="btn-auto-match"
+              >
+                {autoMatching ? <Loader2 className="h-3 w-3 animate-spin" /> : <Activity className="h-3 w-3" />}
+                Vincular todos
+              </Button>
+              <Popover open={ajustePopoverOpen} onOpenChange={setAjustePopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1" data-testid="btn-buscar-ajuste">
+                    <Search className="h-3 w-3" /> Vincular Ajuste
+                  </Button>
+                </PopoverTrigger>
               <PopoverContent className="w-[440px] p-0" align="end">
                 <Command shouldFilter={false}>
                   <CommandInput placeholder="Buscar ajuste por nombre o ID..." value={ajusteSearch} onValueChange={setAjusteSearch} />
@@ -603,6 +700,7 @@ export const DistribucionPTPanel = ({ registroId }) => {
                 </Command>
               </PopoverContent>
             </Popover>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="pt-0 px-4 pb-4">

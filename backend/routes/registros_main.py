@@ -225,14 +225,15 @@ async def get_registros(
     tipo_id: str = "",
     entalle_id: str = "",
     tela_id: str = "",
+    empresa_id: int = 7,
     _u=Depends(require_permission("registros", "ver")),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
         # Build WHERE clause dynamically
-        conditions = []
-        params = []
-        param_idx = 1
+        conditions = [f"r.empresa_id = $1"]
+        params = [empresa_id]
+        param_idx = 2
 
         if search:
             # Busca en: n_corte, nombre de modelo catálogo y nombre de modelo manual (JSONB)

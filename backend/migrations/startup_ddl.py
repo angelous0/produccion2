@@ -590,6 +590,11 @@ async def ensure_clasificacion_tables():
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_color_reglas_scope ON prod_color_reglas(marca_id, tipo_id, activo)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_color_reglas_hilo ON prod_color_reglas(hilo_id) WHERE hilo_id IS NOT NULL")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_color_regla_colores_color ON prod_color_regla_colores(color_id)")
+        # Colores ⭐ "estrella": dentro de una regla, los marcados deben tener stock siempre.
+        # El frontend (FichaItemModal) los resalta con fondo amarillo + ícono en Almacén PT/Tienda.
+        await conn.execute(
+            "ALTER TABLE prod_color_regla_colores ADD COLUMN IF NOT EXISTS es_estrella BOOLEAN NOT NULL DEFAULT FALSE"
+        )
 
         # ── Muestras de lavandería ──────────────────────────────────────────
         # Envíos parciales para probar colores antes de procesar el corte completo.

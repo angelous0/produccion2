@@ -387,7 +387,7 @@ const ColorDecisionRow = ({ colorRow, disabled, onChanged }) => {
 
 // ──────────────── Formulario para nueva muestra ────────────────
 
-const NuevaMuestraForm = ({ cortes, colores, onCancel, onCreated }) => {
+export const NuevaMuestraForm = ({ cortes, colores, onCancel, onCreated }) => {
   const [registroId, setRegistroId] = useState(cortes[0]?.id || '');
   const [fechaEnvio, setFechaEnvio] = useState(hoyISO());
   const [observaciones, setObservaciones] = useState('');

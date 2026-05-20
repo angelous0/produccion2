@@ -9,10 +9,11 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '../components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Package, RefreshCw, Search, Pencil, Loader2, Ban, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Palette, Check } from 'lucide-react';
+import { Package, RefreshCw, Search, Pencil, Loader2, Ban, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown, Palette, Check, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import ProductoOdooModal from '../components/ProductoOdooModal';
 import ExportButton from '../components/ExportButton';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../components/ui/dialog';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -29,6 +30,9 @@ const ProductosOdoo = () => {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [tplPoloOpen, setTplPoloOpen] = useState(false);
+  const [tplPoloLoading, setTplPoloLoading] = useState(false);
+  const [tplPoloResult, setTplPoloResult] = useState(null);
   const [tab, setTab] = useState('pendiente');
   const [page, setPage] = useState(1);
   const [q, setQ] = useState('');
@@ -161,6 +165,28 @@ const ProductosOdoo = () => {
     }
   };
 
+  // Aplica plantilla Polo (Jersey / Jersey 24/1 / Redondo) a todos los polos
+  // pendientes/parciales. COALESCE: no pisa valores ya seteados.
+  const handleAplicarTemplatePolo = async () => {
+    if (tplPoloLoading) return;
+    setTplPoloLoading(true);
+    try {
+      const res = await axios.post(`${API}/odoo-enriq/bulk-aplicar-template-polo`);
+      setTplPoloResult(res.data);
+      toast.success(
+        `Plantilla aplicada a ${res.data.aplicados} polo${res.data.aplicados === 1 ? '' : 's'} ` +
+        `· ${res.data.completados} completados`
+      );
+      await fetchStats();
+      await fetchList();
+    } catch (err) {
+      const msg = typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'Error al aplicar plantilla';
+      toast.error(msg);
+    } finally {
+      setTplPoloLoading(false);
+    }
+  };
+
   const toggleSort = (col) => {
     if (sortBy === col) {
       // mismo col: alterna dirección; si ya está en desc, vuelve a default
@@ -198,6 +224,15 @@ const ProductosOdoo = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => { setTplPoloResult(null); setTplPoloOpen(true); }}
+            data-testid="btn-template-polo"
+            title="Aplicar Jersey · Jersey 24/1 · Redondo a polos pendientes/parciales"
+          >
+            <Wand2 className="h-4 w-4 mr-2" />
+            Plantilla Polo
+          </Button>
           <ExportButton
             tabla="productos_odoo"
             label="Exportar"
@@ -372,6 +407,63 @@ const ProductosOdoo = () => {
           onSaved={handleSaved}
         />
       )}
+
+      {/* Dialog: Aplicar plantilla a polos */}
+      <Dialog open={tplPoloOpen} onOpenChange={(v) => { if (!v && !tplPoloLoading) setTplPoloOpen(false); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="h-5 w-5 text-violet-600" />
+              Plantilla Polo
+            </DialogTitle>
+            <DialogDescription>
+              Rellena en bulk los campos típicos de un Polo en todos los productos
+              tipo Polo que estén <strong>pendientes</strong> o <strong>parciales</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!tplPoloResult ? (
+            <div className="space-y-3 py-2">
+              <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-1.5">
+                <div className="flex justify-between"><span className="text-muted-foreground">Tela General</span><span className="font-medium">Jersey</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Tela</span><span className="font-medium">Jersey 24/1</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Cuello</span><span className="font-medium">Redondo</span></div>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Solo se rellenan campos vacíos — no se sobreescribe nada ya configurado.
+                Los productos cuyo estado pase a <em>completo</em> se actualizan automáticamente.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2 py-2">
+              <div className="rounded-md border border-emerald-200 bg-emerald-50/60 dark:bg-emerald-950/15 p-3 text-sm">
+                <p className="font-medium text-emerald-700 dark:text-emerald-400">
+                  ✓ Plantilla aplicada
+                </p>
+                <ul className="text-xs text-emerald-700/90 dark:text-emerald-300/80 mt-1 space-y-0.5">
+                  <li>{tplPoloResult.aplicados} producto{tplPoloResult.aplicados === 1 ? '' : 's'} actualizado{tplPoloResult.aplicados === 1 ? '' : 's'}</li>
+                  <li>{tplPoloResult.completados} pasaron a estado <strong>completo</strong></li>
+                  <li>{tplPoloResult.siguen_parciales} siguen parciales (les falta otro campo)</li>
+                </ul>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            {!tplPoloResult ? (
+              <>
+                <Button variant="outline" onClick={() => setTplPoloOpen(false)} disabled={tplPoloLoading}>Cancelar</Button>
+                <Button onClick={handleAplicarTemplatePolo} disabled={tplPoloLoading} data-testid="btn-aplicar-template-polo">
+                  {tplPoloLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Aplicar a polos pendientes
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => setTplPoloOpen(false)}>Cerrar</Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import axios from 'axios';
 import {
   Palette, Save, Search, Loader2, Plus, Trash2,
-  Check, Layers,
+  Check, Layers, Star,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -27,6 +27,7 @@ const emptyRule = (tipoId = '') => ({
   hilo_id: '',
   entalle_ids: [],
   color_ids: [],
+  estrella_ids: [],  // subset de color_ids: deben tener stock siempre (⭐ en Almacén PT)
   activo: true,
   orden: 0,
 });
@@ -140,6 +141,7 @@ export const ColoresPorTipo = () => {
       hilo_id: regla.hilo_id || '',
       entalle_ids: regla.entalle_ids || [],
       color_ids: regla.color_ids || [],
+      estrella_ids: regla.estrella_ids || [],
       activo: regla.activo !== false,
       orden: regla.orden || 0,
     });
@@ -173,6 +175,25 @@ export const ColoresPorTipo = () => {
         color_ids: exists
           ? prev.color_ids.filter(id => id !== colorId)
           : [...prev.color_ids, colorId],
+        // Si quitamos un color de la regla, también lo quitamos de estrellas
+        estrella_ids: exists
+          ? prev.estrella_ids.filter(id => id !== colorId)
+          : prev.estrella_ids,
+      };
+    });
+    setTouched(true);
+  };
+
+  // Alterna ⭐ estrella SOLO si el color ya está en la regla
+  const toggleEstrella = (colorId) => {
+    setForm(prev => {
+      if (!prev.color_ids.includes(colorId)) return prev;
+      const isStar = prev.estrella_ids.includes(colorId);
+      return {
+        ...prev,
+        estrella_ids: isStar
+          ? prev.estrella_ids.filter(id => id !== colorId)
+          : [...prev.estrella_ids, colorId],
       };
     });
     setTouched(true);
@@ -200,11 +221,16 @@ export const ColoresPorTipo = () => {
   const marcarColores = (ids, checked) => {
     setForm(prev => {
       const actual = new Set(prev.color_ids);
+      const estrellas = new Set(prev.estrella_ids);
       ids.forEach(id => {
         if (checked) actual.add(id);
-        else actual.delete(id);
+        else { actual.delete(id); estrellas.delete(id); }
       });
-      return { ...prev, color_ids: Array.from(actual) };
+      return {
+        ...prev,
+        color_ids: Array.from(actual),
+        estrella_ids: Array.from(estrellas),
+      };
     });
     setTouched(true);
   };
@@ -212,7 +238,12 @@ export const ColoresPorTipo = () => {
   const copiarDesde = (reglaId) => {
     const regla = reglas.find(r => r.id === reglaId);
     if (!regla) return;
-    setField('color_ids', regla.color_ids || []);
+    setForm(prev => ({
+      ...prev,
+      color_ids: regla.color_ids || [],
+      estrella_ids: regla.estrella_ids || [],
+    }));
+    setTouched(true);
     toast.success(`Colores copiados desde ${regla.nombre}`);
   };
 
@@ -233,6 +264,8 @@ export const ColoresPorTipo = () => {
       hilo_id: form.hilo_id || null,
       entalle_ids: form.entalle_ids,
       color_ids: form.color_ids,
+      // Solo persistimos estrellas que sigan en la regla (defensivo)
+      estrella_ids: (form.estrella_ids || []).filter(id => form.color_ids.includes(id)),
       activo: form.activo,
       orden: form.orden || 0,
     };
@@ -468,18 +501,37 @@ export const ColoresPorTipo = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
                   {grupo.items.map(c => {
                     const checked = form.color_ids.includes(c.id);
+                    const isStar = form.estrella_ids.includes(c.id);
                     return (
-                      <button
+                      <div
                         key={c.id}
-                        type="button"
+                        role="button"
+                        tabIndex={0}
                         onClick={() => toggleColor(c.id)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleColor(c.id); } }}
                         aria-pressed={checked}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-md min-w-0 ${selectableButtonClass(checked)}`}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-md min-w-0 cursor-pointer ${
+                          isStar
+                            ? 'border border-amber-300 bg-amber-50 text-amber-950 shadow-sm ring-1 ring-amber-100 hover:bg-amber-100'
+                            : selectableButtonClass(checked)
+                        }`}
                         title={formatColorName(c.nombre)}
                       >
                         <span className="text-sm truncate font-medium flex-1">{formatColorName(c.nombre)}</span>
-                        {checked && <Check className="h-4 w-4 text-blue-600 shrink-0" />}
-                      </button>
+                        {checked && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); toggleEstrella(c.id); }}
+                            className={`shrink-0 p-0.5 rounded transition-colors ${
+                              isStar ? 'text-amber-500 hover:text-amber-600' : 'text-slate-300 hover:text-amber-400'
+                            }`}
+                            title={isStar ? 'Quitar estrella (no es obligatorio en PT)' : 'Marcar estrella (debe tener stock siempre)'}
+                          >
+                            <Star className={`h-4 w-4 ${isStar ? 'fill-amber-400' : ''}`} />
+                          </button>
+                        )}
+                        {checked && !isStar && <Check className="h-4 w-4 text-blue-600 shrink-0" />}
+                      </div>
                     );
                   })}
                 </div>
