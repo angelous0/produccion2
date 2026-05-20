@@ -4,16 +4,15 @@ import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { ExternalLink, Layers, Loader2, Palette, Star } from 'lucide-react';
+import { ExternalLink, FlaskConical, Layers, Loader2, Palette, Send, AlertCircle, Star } from 'lucide-react';
 import { formatColorName } from '../lib/utils';
 import { AsignarColoresModal } from './AsignarColoresModal';
 import { MapeoOdooSection } from './MapeoOdooSection';
-import { MuestrasLavanderiaSection } from './MuestrasLavanderiaSection';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 // ── Tabla color/corte × talla ──────────────────────────────────────────────
-const TallaTable = ({ title, subtitle, items, tallas, emptyMsg, rowLabel = 'color', onRowClick, headerLabel }) => {
+const TallaTable = ({ title, subtitle, items, tallas, emptyMsg, rowLabel = 'color', onRowClick, headerLabel, renderRowAction }) => {
   const grandTotals = {};
   tallas.forEach(t => {
     grandTotals[t] = items.reduce((s, row) => s + (row.tallas?.[t] || 0), 0);
@@ -53,22 +52,29 @@ const TallaTable = ({ title, subtitle, items, tallas, emptyMsg, rowLabel = 'colo
                     onClick={clickable ? () => onRowClick(row) : undefined}
                     data-testid={clickable ? `taller-row-${row.id}` : undefined}
                   >
-                    <td className="p-1.5 truncate max-w-[200px]" title={row.label}>
-                      {clickable ? (
-                        <span className="inline-flex items-center gap-1.5 group">
-                          <Palette
-                            className={`h-3 w-3 group-hover:opacity-100 ${
-                              row.colores_completos
-                                ? 'text-primary opacity-80'
-                                : 'text-muted-foreground/60 opacity-70'
-                            }`}
-                            aria-label={row.colores_completos ? 'Colores completos' : 'Colores pendientes'}
-                          />
-                          <span className="font-medium">{row.label}</span>
-                        </span>
-                      ) : (
-                        row.label
-                      )}
+                    <td className="p-1.5 truncate max-w-[240px]" title={row.label}>
+                      <div className="flex items-center justify-between gap-1.5">
+                        {clickable ? (
+                          <span className="inline-flex items-center gap-1.5 group min-w-0">
+                            <Palette
+                              className={`h-3 w-3 shrink-0 group-hover:opacity-100 ${
+                                row.colores_completos
+                                  ? 'text-primary opacity-80'
+                                  : 'text-muted-foreground/60 opacity-70'
+                              }`}
+                              aria-label={row.colores_completos ? 'Colores completos' : 'Colores pendientes'}
+                            />
+                            <span className="font-medium truncate">{row.label}</span>
+                          </span>
+                        ) : (
+                          <span className="truncate">{row.label}</span>
+                        )}
+                        {renderRowAction && row.id && (
+                          <span onClick={(e) => e.stopPropagation()} className="shrink-0">
+                            {renderRowAction(row)}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     {tallas.map(t => {
                       const v = row.tallas?.[t] || 0;
@@ -165,10 +171,13 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
   const tallerRows = (data?.grupos_taller || []).map(g => ({
     id: g.id,
     label: `${g.modelo || '—'} · ${g.n_corte}`,
+    n_corte: g.n_corte,
+    modelo: g.modelo,
     tallas: g.tallas,
     // True si la distribución de colores cubre 100% de cada talla.
     // Lo usa el ícono Palette: azul cuando está completo, gris cuando falta asignar.
     colores_completos: !!g.colores_completos,
+    muestras_count: (data?.muestras || []).filter(m => m.registro_id === g.id).length,
   }));
 
   // Recarga datos del backend (tras guardar colores)
@@ -261,11 +270,11 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
                   sección complementaria abajo (taller+muestras · lav+sin color
                   · almacén+PT sin clasificar). ── */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-w-[820px] items-start">
-              {/* ─── COLUMNA 1: En taller + Muestras de lavandería ─── */}
+              {/* ─── COLUMNA 1: En taller + muestras en proceso ─── */}
               <div className="flex flex-col gap-4">
               <TallaTable
                 title="En taller — lavandería / atraque"
-                subtitle="Click en un corte para asignar colores"
+                subtitle="Click en un corte para asignar colores y gestionar muestras"
                 items={tallerRows}
                 tallas={tallas}
                 emptyMsg="Sin cortes en lavandería o atraque"
@@ -273,18 +282,81 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
                 headerLabel="Modelo · Corte"
                 onRowClick={abrirAsignar}
               />
-                {/* Muestras de lavandería relacionadas a los cortes en taller */}
-                <MuestrasLavanderiaSection
-                  muestras={data?.muestras || []}
-                  cortes={(data?.grupos_taller || []).map(g => ({
-                    id: g.id,
-                    n_corte: g.n_corte,
-                    modelo: g.modelo,
-                    estado: g.estado,
-                  }))}
-                  scope={data?.scope}
-                  onChanged={reload}
-                />
+
+              {/* Muestras en proceso (enviada o pendiente de decisión) */}
+              {(() => {
+                const enProceso = (data?.muestras || []).filter(m =>
+                  m.estado === 'enviada' || m.estado === 'pendiente_decision'
+                );
+                return (
+                  <div
+                    className="rounded-lg border border-sky-200 bg-sky-50/40 dark:border-sky-900 dark:bg-sky-950/15 p-3"
+                    data-testid="muestras-en-proceso"
+                  >
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <FlaskConical className="h-4 w-4 text-sky-700 dark:text-sky-400" />
+                      <p className="text-xs font-semibold text-sky-700 dark:text-sky-400">
+                        Muestras en proceso — {enProceso.length} {enProceso.length === 1 ? 'pendiente' : 'pendientes'}
+                      </p>
+                    </div>
+                    <p className="text-[10px] font-normal text-sky-600 dark:text-sky-500 mb-2">
+                      Enviadas o devueltas sin decisión. Click para abrir el corte y gestionarlas.
+                    </p>
+                    {enProceso.length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic">
+                        Sin muestras pendientes. Las que se envíen aparecerán acá hasta aprobarlas o rechazarlas.
+                      </p>
+                    ) : (
+                      <div className="overflow-auto max-h-[220px] rounded-md border bg-background">
+                        <table className="w-full text-xs border-collapse">
+                          <thead className="sticky top-0 bg-muted/95 backdrop-blur z-10">
+                            <tr>
+                              <th className="text-left p-1.5 border-b font-medium">Corte</th>
+                              <th className="text-left p-1.5 border-b font-medium">Modelo</th>
+                              <th className="text-center p-1.5 border-b font-medium w-[40px]">Cant</th>
+                              <th className="text-center p-1.5 border-b font-medium w-[60px]">Envío</th>
+                              <th className="text-center p-1.5 border-b font-medium w-[90px]">Estado</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {enProceso.map(m => {
+                              const fechaEnvio = m.fecha_envio
+                                ? (() => { const [y, mo, d] = m.fecha_envio.split('-'); return `${d}/${mo}/${y.slice(2)}`; })()
+                                : '—';
+                              const esEnviada = m.estado === 'enviada';
+                              const StatusIcon = esEnviada ? Send : AlertCircle;
+                              const statusClasses = esEnviada
+                                ? 'bg-blue-100 text-blue-700 border-blue-300'
+                                : 'bg-orange-100 text-orange-700 border-orange-300';
+                              const statusLabel = esEnviada ? 'Enviada' : 'Pendiente';
+                              return (
+                                <tr
+                                  key={m.id}
+                                  className="border-b hover:bg-muted/30 cursor-pointer"
+                                  onClick={() => abrirAsignar({ id: m.registro_id })}
+                                  title="Abrir corte para gestionar muestras y colores"
+                                  data-testid={`muestra-proceso-${m.id}`}
+                                >
+                                  <td className="p-1.5 font-mono">{m.n_corte}</td>
+                                  <td className="p-1.5 truncate max-w-[160px]" title={m.modelo || ''}>{m.modelo || '—'}</td>
+                                  <td className="p-1.5 text-center font-mono">{m.cantidad_total}</td>
+                                  <td className="p-1.5 text-center text-[10px]">{fechaEnvio}</td>
+                                  <td className="p-1.5 text-center">
+                                    <Badge variant="outline" className={`text-[9px] px-1 gap-0.5 ${statusClasses}`}>
+                                      <StatusIcon className="h-2.5 w-2.5" />
+                                      {statusLabel}
+                                    </Badge>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               </div>
 
               {/* ─── COLUMNA 2: Colores en lavandería/acabado + Sin colores ─── */}
@@ -318,7 +390,7 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
               </div>
 
                 {/* Sin colores en lavandería / acabado — pareja de la tabla Colores en lav */}
-                <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/15 dark:border-amber-900 p-3">
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:bg-amber-950/15 dark:border-amber-900 p-3" data-testid="sin-color-section">
                   <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
                     Sin colores en lavandería / acabado — {(data.sin_color || []).length} {((data.sin_color || []).length === 1) ? 'corte' : 'cortes'}
                   </p>
@@ -378,6 +450,79 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
                               </td>
                             </tr>
                           ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Con colores en lavandería / acabado — espejo compacto de la tabla anterior */}
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/15 dark:border-emerald-900 p-3" data-testid="con-color-section">
+                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                    Con colores en lavandería / acabado — {(data.con_color || []).length} {((data.con_color || []).length === 1) ? 'corte' : 'cortes'}
+                  </p>
+                  <p className="text-[10px] font-normal text-emerald-600 dark:text-emerald-500 mb-2">
+                    Click en una fila para revisar o editar los colores asignados
+                  </p>
+                  {(data.con_color || []).length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic">Ningún corte en estos estados tiene colores asignados todavía</p>
+                  ) : (
+                    <div className="overflow-auto max-h-[300px] rounded-md border bg-background">
+                      <table className="w-full text-xs border-collapse">
+                        <thead className="sticky top-0 bg-muted/95 backdrop-blur z-10">
+                          <tr>
+                            <th className="text-left p-2 border-b font-medium">Modelo</th>
+                            <th className="text-left p-2 border-b font-medium">Corte</th>
+                            <th className="text-left p-2 border-b font-medium">Estado</th>
+                            <th className="text-right p-2 border-b font-medium">Prn</th>
+                            <th className="text-center p-2 border-b font-medium w-[110px]">Acción</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.con_color.map(cc => {
+                            const resumen = (cc.colores || [])
+                              .map(c => `${c.color}: ${c.cantidad}`)
+                              .join('\n');
+                            return (
+                              <tr
+                                key={cc.id}
+                                className="border-b hover:bg-muted/30 cursor-pointer"
+                                onClick={() => abrirAsignar({ id: cc.id })}
+                                title={resumen || 'Sin colores asignados'}
+                                data-testid={`con-color-${cc.id}`}
+                              >
+                                <td className="p-2 font-medium">{cc.modelo || '—'}</td>
+                                <td className="p-2 font-mono">{cc.n_corte}</td>
+                                <td className="p-2">
+                                  <Badge variant="outline" className="text-[9px] px-1">{cc.estado}</Badge>
+                                </td>
+                                <td className="p-2 text-right font-mono">{cc.prendas}</td>
+                                <td className="p-2 text-center">
+                                  <div className="flex items-center justify-center gap-0.5">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-6 text-[10px] px-1.5 gap-1"
+                                      onClick={(e) => { e.stopPropagation(); abrirAsignar({ id: cc.id }); }}
+                                      title="Abrir matriz talla × color"
+                                    >
+                                      <Palette className="h-3 w-3" />
+                                      Editar
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-6 w-6"
+                                      onClick={(e) => { e.stopPropagation(); onClose(); navigate(`/registros/editar/${cc.id}`); }}
+                                      title="Abrir registro completo"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -550,6 +695,9 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
             modelo: c.modelo,
             estado: c.estado,
           }))}
+        muestras={(data?.muestras || []).filter(m => m.registro_id === asignarRegistroId)}
+        scope={data?.scope}
+        onMuestrasChanged={reload}
       />
     </Dialog>
   );

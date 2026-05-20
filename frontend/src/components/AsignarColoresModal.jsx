@@ -3,14 +3,15 @@ import axios from 'axios';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Loader2, Plus, Trash2, X, Divide, Copy, ArrowLeftRight, Lock, Unlock, CheckCircle2 } from 'lucide-react';
+import { Loader2, Plus, Trash2, X, Divide, Copy, ArrowLeftRight, Lock, Unlock, CheckCircle2, FlaskConical } from 'lucide-react';
 import { formatColorName } from '../lib/utils';
 import { toast } from 'sonner';
 import { usePermissions } from '../hooks/usePermissions';
+import { MuestrasLavanderiaSection } from './MuestrasLavanderiaSection';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosCortes = [] }) => {
+export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosCortes = [], muestras = [], scope = null, onMuestrasChanged }) => {
   const { isAdmin } = usePermissions('registros');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -30,6 +31,8 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
   // Swap color: cuando se hace click en ⇄ de una fila, abre picker
   const [swapColorId, setSwapColorId] = useState(null);
   const [swapSearch, setSwapSearch] = useState('');
+  // Dialog de muestras del corte (abierto desde el header)
+  const [muestrasOpen, setMuestrasOpen] = useState(false);
 
   // bloqueado = aprobado y no admin → solo lectura
   const bloqueado = aprobado.aprobados && !isAdmin;
@@ -361,17 +364,37 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
         data-testid="asignar-colores-modal"
       >
         <DialogHeader className="px-5 pt-4 pb-3 border-b shrink-0">
-          <DialogTitle className="text-base">
-            Asignar colores
-            {data && (
-              <>
-                {' · '}<span className="text-muted-foreground font-normal">{data.modelo_nombre || '—'} · Corte {data.n_corte}</span>
-              </>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <DialogTitle className="text-base">
+                Asignar colores
+                {data && (
+                  <>
+                    {' · '}<span className="text-muted-foreground font-normal">{data.modelo_nombre || '—'} · Corte {data.n_corte}</span>
+                  </>
+                )}
+              </DialogTitle>
+              <p className="text-[11px] text-muted-foreground">
+                Las cantidades de cada talla no pueden exceder el total disponible.
+              </p>
+            </div>
+            {registroId && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1 shrink-0 mr-7"
+                onClick={() => setMuestrasOpen(true)}
+                title={muestras.length > 0
+                  ? `Ver ${muestras.length} muestra${muestras.length > 1 ? 's' : ''} de este corte · enviar nueva`
+                  : 'Enviar muestra a lavandería para este corte'}
+                data-testid="btn-abrir-muestras-asignar"
+              >
+                <FlaskConical className="h-3.5 w-3.5 text-sky-700 dark:text-sky-400" />
+                {muestras.length > 0 ? `Muestras (${muestras.length})` : 'Muestras'}
+              </Button>
             )}
-          </DialogTitle>
-          <p className="text-[11px] text-muted-foreground">
-            Las cantidades de cada talla no pueden exceder el total disponible.
-          </p>
+          </div>
         </DialogHeader>
 
         {loading && (
@@ -822,6 +845,39 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
               Aplicar a {bulkSelected.size} corte{bulkSelected.size === 1 ? '' : 's'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de muestras del corte actual (abierto desde el botón en el header) */}
+      <Dialog open={muestrasOpen} onOpenChange={setMuestrasOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FlaskConical className="h-4 w-4 text-sky-700 dark:text-sky-400" />
+              Muestras
+              {data && (
+                <span className="text-muted-foreground font-normal">
+                  · {data.modelo_nombre || '—'} · Corte {data.n_corte}
+                </span>
+              )}
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              Envía una nueva muestra a lavandería o revisa las ya registradas para este corte.
+            </p>
+          </DialogHeader>
+          {muestrasOpen && data && (
+            <MuestrasLavanderiaSection
+              muestras={muestras}
+              cortes={[{
+                id: registroId,
+                n_corte: data.n_corte,
+                modelo: data.modelo_nombre || '',
+                estado: data.estado || '',
+              }]}
+              scope={scope}
+              onChanged={onMuestrasChanged}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </Dialog>

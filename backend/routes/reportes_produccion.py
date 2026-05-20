@@ -1662,7 +1662,7 @@ async def ficha_item_detail(
         return s.endswith("-LQ") or "-LQ " in s or "-LQ-" in s
     id_list = [i.strip() for i in (ids or "").split(",") if i.strip()]
     if not id_list:
-        return {"tallas": [], "grupos_taller": [], "colores_lavanderia": [], "colores_almacen": [], "sin_color": []}
+        return {"tallas": [], "grupos_taller": [], "colores_lavanderia": [], "colores_almacen": [], "sin_color": [], "con_color": []}
 
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1703,6 +1703,7 @@ async def ficha_item_detail(
     colores_lav: dict = {}   # color_nombre (UPPERCASE) -> {talla_nombre -> cantidad}
     colores_alm: dict = {}   # color_nombre (UPPERCASE) -> {talla_nombre -> cantidad}
     sin_color: list = []
+    con_color: list = []
     fuera_regla_lav: dict = {}
     fuera_regla_alm: dict = {}
 
@@ -1727,6 +1728,8 @@ async def ficha_item_detail(
         # cantidades asignadas a colores por talla (para chequear distribución 100%)
         asignado_por_talla: dict = {}
         has_colors = False
+        # Resumen color -> cantidad para este corte (usado en con_color)
+        colores_por_corte: dict = {}
 
         for entry in dist_raw:
             tn = entry.get("talla_nombre") or str(entry.get("talla_id", ""))
@@ -1746,6 +1749,7 @@ async def ficha_item_detail(
                 if tn:
                     all_tallas.add(tn)
                     asignado_por_talla[tn] = asignado_por_talla.get(tn, 0) + qty
+                colores_por_corte[cn] = colores_por_corte.get(cn, 0) + qty
 
                 if estado in ESTADOS_LAV:
                     if cn not in colores_lav:
@@ -1799,6 +1803,27 @@ async def ficha_item_detail(
                 "modelo": r["modelo_nombre"] or "",
                 "estado": estado,
                 "prendas": prendas,
+                "colores_aprobados": bool(r["colores_aprobados"]),
+                "colores_aprobados_at": r["colores_aprobados_at"].isoformat() if r["colores_aprobados_at"] else None,
+                "colores_aprobados_por": r["colores_aprobados_por"],
+            })
+
+        elif estado in ESTADOS_LAV and has_colors:
+            # Con colores asignados en lavandería / acabado.
+            prendas = sum(talla_totales.values())
+            if prendas == 0:
+                prendas = sum(safe_int(t.get("cantidad", 0)) for t in parse_jsonb(r["tallas_jsonb"]))
+            colores_resumen = sorted(
+                ({"color": k, "cantidad": v} for k, v in colores_por_corte.items()),
+                key=lambda x: (-x["cantidad"], x["color"]),
+            )
+            con_color.append({
+                "id": r["id"],
+                "n_corte": r["n_corte"],
+                "modelo": r["modelo_nombre"] or "",
+                "estado": estado,
+                "prendas": prendas,
+                "colores": colores_resumen,
                 "colores_aprobados": bool(r["colores_aprobados"]),
                 "colores_aprobados_at": r["colores_aprobados_at"].isoformat() if r["colores_aprobados_at"] else None,
                 "colores_aprobados_por": r["colores_aprobados_por"],
@@ -2184,6 +2209,7 @@ async def ficha_item_detail(
         "fuera_regla_lavanderia": [{"color": k, "tallas": v} for k, v in sorted(fuera_regla_lav.items())],
         "fuera_regla_almacen":    [{"color": k, "tallas": v} for k, v in sorted(fuera_regla_alm.items())],
         "sin_color": sin_color,
+        "con_color": con_color,
         "odoo_sin_clasificar": odoo_sin_clasificar,
         "muestras": muestras_payload,
     }
