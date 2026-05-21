@@ -13,7 +13,6 @@ import { Loader2 } from "lucide-react";
 
 // Lazy imports - se cargan solo cuando se navega a la ruta
 const CostoPorLote = lazy(() => import('./pages/CostoPorLote'));
-const CostosProduccion = lazy(() => import('./pages/CostosProduccion'));
 const ReporteEntregas = lazy(() => import('./pages/ReporteEntregas'));
 const ReporteMuestrasLavanderia = lazy(() => import('./pages/ReporteMuestrasLavanderia'));
 const Usuarios = lazy(() => import("./pages/Usuarios").then(m => ({ default: m.Usuarios })));
@@ -203,7 +202,6 @@ function AppRoutes() {
 
         <Route path="reportes/agenda-entregas" element={<Navigate to="/reportes/entregas" replace />} />
         <Route path="reportes/costo-lote" element={<LazyWrap><CostoPorLote /></LazyWrap>} />
-        <Route path="reportes/costos-produccion" element={<LazyWrap><CostosProduccion /></LazyWrap>} />
         <Route path="reportes/tendencia-fallados" element={<Navigate to="/reportes/calidad?tab=fallados" replace />} />
         <Route path="reportes/entregas" element={<LazyWrap><ReporteEntregas /></LazyWrap>} />
         <Route path="reportes/muestras-lavanderia" element={<LazyWrap><ReporteMuestrasLavanderia /></LazyWrap>} />
