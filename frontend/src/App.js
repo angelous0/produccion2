@@ -78,6 +78,7 @@ const ValidacionRegistros = lazy(() => import("./pages/ValidacionRegistros").the
 const ReporteTrazabilidadKPIs = lazy(() => import("./pages/ReporteTrazabilidadKPIs").then(m => ({ default: m.ReporteTrazabilidadKPIs })));
 const SeguimientoTienda = lazy(() => import("./pages/SeguimientoTienda"));
 const ReporteCortes = lazy(() => import("./pages/ReporteCortes").then(m => ({ default: m.ReporteCortes })));
+const ConciliacionPendiente = lazy(() => import("./pages/ConciliacionPendiente").then(m => ({ default: m.ConciliacionPendiente })));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center h-64">
@@ -216,6 +217,7 @@ function AppRoutes() {
         <Route path="reportes/trazabilidad-kpis" element={<LazyWrap><ReporteTrazabilidadKPIs /></LazyWrap>} />
         <Route path="reportes/seguimiento-tienda" element={<LazyWrap><SeguimientoTienda /></LazyWrap>} />
         <Route path="reportes/cortes" element={<LazyWrap><ReporteCortes /></LazyWrap>} />
+        <Route path="reportes/conciliacion-pendiente" element={<LazyWrap><ConciliacionPendiente /></LazyWrap>} />
         {/* Legacy redirects */}
         <Route path="reportes/dashboard" element={<Navigate to="/" replace />} />
         <Route path="reportes/en-proceso" element={<Navigate to="/reportes/seguimiento" replace />} />

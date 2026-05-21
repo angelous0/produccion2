@@ -513,6 +513,82 @@ async def get_conciliacion_odoo(registro_id: str, current_user: dict = Depends(g
         else:
             estado_global = "COMPLETO"
 
+        # ===== Balance de diagnóstico =====
+        # Descompone el pendiente en sus causas reales: fallados sin enviar a
+        # arreglo, en proceso de arreglo, recuperadas sin ingresar a Odoo,
+        # a merma/tela, e inexplicable. Misma fórmula que el endpoint
+        # /reportes-produccion/conciliacion-pendiente.
+        balance = None
+        balance_raw = await conn.fetchrow("""
+            SELECT
+                COALESCE(fall.detectados, 0)                                AS fallados_detectados,
+                COALESCE(arr.enviadas, 0)                                   AS arreglos_enviadas,
+                COALESCE(arr.en_proceso, 0)                                 AS arreglos_en_proceso,
+                COALESCE(arr.recuperadas, 0)                                AS arreglos_recuperadas,
+                COALESCE(arr.a_liquidacion, 0)                              AS arreglos_a_liquidacion,
+                COALESCE(arr.a_merma, 0)                                    AS arreglos_a_merma,
+                COALESCE(arr.a_tela, 0)                                     AS arreglos_a_tela,
+                COALESCE(mer.total, 0)                                      AS mermas_directas,
+                r.fecha_creacion                                            AS fecha_creacion
+            FROM produccion.prod_registros r
+            LEFT JOIN LATERAL (
+                SELECT SUM(cantidad_detectada) AS detectados
+                FROM produccion.prod_fallados WHERE registro_id = r.id
+            ) fall ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT
+                    SUM(cantidad)                                                                  AS enviadas,
+                    SUM(CASE WHEN estado <> 'COMPLETADO' THEN cantidad ELSE 0 END)                 AS en_proceso,
+                    SUM(CASE WHEN estado  = 'COMPLETADO' THEN COALESCE(cantidad_recuperada,0) END) AS recuperadas,
+                    SUM(CASE WHEN estado  = 'COMPLETADO' THEN COALESCE(cantidad_liquidacion,0) END)AS a_liquidacion,
+                    SUM(CASE WHEN estado  = 'COMPLETADO' THEN COALESCE(cantidad_merma,0) END)      AS a_merma,
+                    SUM(CASE WHEN estado  = 'COMPLETADO' THEN COALESCE(cantidad_pasa_a_tela,0) END)AS a_tela
+                FROM produccion.prod_registro_arreglos WHERE registro_id = r.id
+            ) arr ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT SUM(cantidad) AS total
+                FROM produccion.prod_mermas WHERE registro_id = r.id
+            ) mer ON TRUE
+            WHERE r.id = $1
+        """, registro_id)
+
+        if balance_raw:
+            pendiente_total = max(0, int(total_esperado) - int(total_ingresado))
+            fall_det = int(balance_raw["fallados_detectados"] or 0)
+            arr_env  = int(balance_raw["arreglos_enviadas"] or 0)
+            arr_proc = int(balance_raw["arreglos_en_proceso"] or 0)
+            arr_mer  = int(balance_raw["arreglos_a_merma"] or 0)
+            arr_tel  = int(balance_raw["arreglos_a_tela"] or 0)
+
+            fallados_sin_enviar       = max(0, fall_det - arr_env)
+            en_arreglo_proceso        = arr_proc
+            a_merma_o_tela            = arr_mer + arr_tel
+            explicado_calidad         = fallados_sin_enviar + en_arreglo_proceso
+            recuperadas_sin_ingresar  = max(0, pendiente_total - explicado_calidad)
+            inexplicable              = max(0, pendiente_total - explicado_calidad - recuperadas_sin_ingresar)
+
+            from datetime import datetime, timezone
+            dias = None
+            if balance_raw["fecha_creacion"]:
+                dias = (datetime.now(timezone.utc).date() - balance_raw["fecha_creacion"].date()).days
+
+            balance = {
+                "pendiente_total":         pendiente_total,
+                "producido":               int(total_producido),
+                "fallados_detectados":     fall_det,
+                "arreglos_enviadas":       arr_env,
+                "arreglos_recuperadas":    int(balance_raw["arreglos_recuperadas"] or 0),
+                "arreglos_a_liquidacion":  int(balance_raw["arreglos_a_liquidacion"] or 0),
+                "mermas_directas":         int(balance_raw["mermas_directas"] or 0),
+                "dias_en_estado":          dias,
+                # Desglose accionable del pendiente
+                "fallados_sin_enviar":      fallados_sin_enviar,
+                "en_arreglo_proceso":       en_arreglo_proceso,
+                "recuperadas_sin_ingresar": recuperadas_sin_ingresar,
+                "a_merma_o_tela":           a_merma_o_tela,
+                "inexplicable":             inexplicable,
+            }
+
         return {
             "registro_id": registro_id,
             "total_producido": total_producido,
@@ -521,6 +597,7 @@ async def get_conciliacion_odoo(registro_id: str, current_user: dict = Depends(g
             "total_pendiente": total_esperado - total_ingresado,
             "estado": estado_global,
             "detalle": detalle,
+            "balance": balance,
         }
 
 

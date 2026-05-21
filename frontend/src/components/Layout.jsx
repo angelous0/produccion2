@@ -81,6 +81,7 @@ import {
   Layers3,
   ShieldAlert,
   TrendingDown,
+  AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -139,6 +140,7 @@ const inventarioItems = [
 
 const reportesItems = [
   { to: '/reportes/cortes', icon: Scissors, label: 'Listado de Cortes' },
+  { to: '/reportes/conciliacion-pendiente', icon: AlertCircle, label: 'Conciliación Pendiente' },
   { to: '/reportes/validacion-registros', icon: ShieldAlert, label: 'Validación MP/Servicios' },
   { to: '/reportes/seguimiento', icon: Activity, label: 'Seguimiento' },
   { to: '/reportes/entregas', icon: Truck, label: 'Entregas' },

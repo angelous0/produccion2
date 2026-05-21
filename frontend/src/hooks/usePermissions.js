@@ -160,6 +160,8 @@ export const RUTA_A_TABLA = {
   '/maestros/motivos-incidencia': 'motivos_incidencia',
   '/maestros/productividad': 'reporte_productividad',
   '/guias': 'guias_remision',
+  '/reportes/cortes': 'registros',
+  '/reportes/conciliacion-pendiente': 'registros',
   '/reportes/validacion-registros': 'reporte_validacion_registros',
   '/reportes/seguimiento': 'reporte_seguimiento',
   '/reportes/entregas': 'reporte_entregas',

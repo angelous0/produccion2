@@ -5592,6 +5592,7 @@ async def cortes_listado(
     tela_id: Optional[str] = Query(None),
     estado: Optional[str] = Query(None, description="Filtra por estado exacto (Para Corte, Costura, etc.)"),
     incluir_tienda: bool = Query(True, description="Si False, excluye cortes en estado 'Tienda'"),
+    solo_pendientes_conciliar: bool = Query(False, description="Si True, solo cortes en Almacén PT/Tienda con conciliación pendiente o parcial"),
     limit: int = Query(500, le=2000),
     offset: int = 0,
     _u: dict = Depends(get_current_user),
@@ -5602,6 +5603,12 @@ async def cortes_listado(
     - Orden: año del corte DESC, luego número DESC dentro del año (más nuevo arriba).
     - Soporta modelos normales y modelos manuales (modelo_manual JSONB).
     - Default: incluye cortes en Tienda (control total). Pasar incluir_tienda=false para ocultarlos.
+
+    Conciliación (solo para estados 'Almacén PT' y 'Tienda'):
+    - Compara Distribución Esperada (prod_registro_pt_relacion) vs Ingresado en Odoo
+      (stock_move 'done' vinculados al corte vía prod_registro_pt_odoo_vinculo).
+    - Devuelve estado: 'completo' | 'parcial' | 'pendiente' | 'sin_distribucion' | None.
+    - `solo_pendientes_conciliar=true` filtra solo los que aún tienen pendientes.
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -5635,6 +5642,16 @@ async def cortes_listado(
 
         where_clause = " AND ".join(conds)
 
+        # Filtro extra: solo cortes en Almacén PT/Tienda con conciliación pendiente.
+        # Se aplica DESPUÉS de calcular conc.* en el LATERAL — usamos un wrapper.
+        having_conciliacion = ""
+        if solo_pendientes_conciliar:
+            having_conciliacion = (
+                " AND r.estado IN ('Almacén PT','Tienda') "
+                " AND COALESCE(conc.total_esperado, 0) > 0 "
+                " AND COALESCE(conc.total_ingresado, 0) < COALESCE(conc.total_esperado, 0) "
+            )
+
         rows = await conn.fetch(f"""
             SELECT
                 r.id,
@@ -5655,7 +5672,25 @@ async def cortes_listado(
                 COUNT(*) OVER() AS _total_count,
                 (SELECT COALESCE(SUM(rt.cantidad_real), 0)
                    FROM prod_registro_tallas rt
-                  WHERE rt.registro_id = r.id) AS prendas
+                  WHERE rt.registro_id = r.id) AS prendas,
+                -- Cantidad de productos Odoo vinculados via "Distribución Esperada".
+                -- Ese es el sistema 1:N (Normal + LQ + etc.) que el usuario llena
+                -- en el detalle del corte. El reporte muestra "Vinculado" si tiene
+                -- al menos una relación aquí O si los campos directos odoo_* están
+                -- llenos (sistema 1:1 alternativo).
+                (SELECT COUNT(*) FROM produccion.prod_registro_pt_relacion rr
+                  WHERE rr.registro_id = r.id) AS pt_relaciones_count,
+                -- ===== Conciliación =====
+                -- Total esperado por producto Odoo (suma de Distribución Esperada).
+                -- Total ingresado = stock_move 'done' de los ajustes Odoo vinculados
+                -- a este corte (prod_registro_pt_odoo_vinculo). Solo se cuenta el
+                -- ingresado de productos que están en la distribución (igual que
+                -- /registros/{id}/conciliacion-odoo).
+                conc.total_esperado    AS conc_total_esperado,
+                conc.total_ingresado   AS conc_total_ingresado,
+                conc.lineas_total      AS conc_lineas_total,
+                conc.lineas_completas  AS conc_lineas_completas,
+                conc.lineas_pendientes AS conc_lineas_pendientes
             FROM prod_registros r
             LEFT JOIN prod_modelos m  ON m.id = r.modelo_id
             LEFT JOIN prod_marcas   ma ON ma.id = m.marca_id
@@ -5666,7 +5701,29 @@ async def cortes_listado(
             LEFT JOIN prod_tipos    tma ON tma.id = (r.modelo_manual->>'tipo_id')
             LEFT JOIN prod_entalles ema ON ema.id = (r.modelo_manual->>'entalle_id')
             LEFT JOIN prod_telas    tema ON tema.id = (r.modelo_manual->>'tela_id')
-            WHERE {where_clause}
+            LEFT JOIN LATERAL (
+                SELECT
+                    COALESCE(SUM(esp.cantidad), 0)                                   AS total_esperado,
+                    COALESCE(SUM(COALESCE(ing.ingresado, 0)), 0)                     AS total_ingresado,
+                    COUNT(*)                                                          AS lineas_total,
+                    COUNT(*) FILTER (WHERE COALESCE(ing.ingresado, 0) >= esp.cantidad) AS lineas_completas,
+                    COUNT(*) FILTER (WHERE COALESCE(ing.ingresado, 0) <= 0)            AS lineas_pendientes
+                FROM (
+                    SELECT product_template_id_odoo, SUM(cantidad) AS cantidad
+                    FROM produccion.prod_registro_pt_relacion
+                    WHERE registro_id = r.id
+                    GROUP BY product_template_id_odoo
+                ) esp
+                LEFT JOIN (
+                    SELECT sm.product_tmpl_id AS tmpl, SUM(sm.product_qty) AS ingresado
+                    FROM odoo.stock_move sm
+                    JOIN produccion.prod_registro_pt_odoo_vinculo v
+                      ON v.stock_inventory_odoo_id = sm.inventory_id
+                    WHERE v.registro_id = r.id AND sm.state = 'done'
+                    GROUP BY sm.product_tmpl_id
+                ) ing ON ing.tmpl = esp.product_template_id_odoo
+            ) conc ON TRUE
+            WHERE {where_clause}{having_conciliacion}
             ORDER BY
                 -- 1° Cortes SIN n_corte (vacíos / NULL) primero — son los que necesitan
                 --    asignación de número.  Aparecen al tope del listado.
@@ -5688,8 +5745,49 @@ async def cortes_listado(
 
         total = rows[0]["_total_count"] if rows else 0
 
+        # Estados donde tiene sentido conciliar (ya hay producto terminado entregado).
+        # Comparación case-insensitive y sin tildes para evitar problemas con
+        # 'Almacén PT' vs 'Almacen PT'.
+        import unicodedata
+        def _norm_estado(s: Optional[str]) -> str:
+            if not s:
+                return ""
+            return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode().strip().lower()
+
+        ESTADOS_CONCILIAR = {"almacen pt", "tienda"}
+
         items = []
         for r in rows:
+            # ---- Conciliación: solo se evalúa para estados Almacén PT / Tienda ----
+            necesita_conc = _norm_estado(r["estado"]) in ESTADOS_CONCILIAR
+            conciliacion = None
+            if necesita_conc:
+                total_esperado  = float(r["conc_total_esperado"]  or 0)
+                total_ingresado = float(r["conc_total_ingresado"] or 0)
+                lineas_total      = int(r["conc_lineas_total"]      or 0)
+                lineas_completas  = int(r["conc_lineas_completas"]  or 0)
+                lineas_pendientes = int(r["conc_lineas_pendientes"] or 0)
+                pendiente = max(total_esperado - total_ingresado, 0)
+
+                if lineas_total == 0 or total_esperado == 0:
+                    estado_conc = "sin_distribucion"
+                elif lineas_completas == lineas_total and total_ingresado >= total_esperado:
+                    estado_conc = "completo"
+                elif lineas_pendientes == lineas_total and total_ingresado <= 0:
+                    estado_conc = "pendiente"
+                else:
+                    estado_conc = "parcial"
+
+                conciliacion = {
+                    "estado":            estado_conc,
+                    "esperado":          total_esperado,
+                    "ingresado":         total_ingresado,
+                    "pendiente":         pendiente,
+                    "lineas_total":      lineas_total,
+                    "lineas_completas":  lineas_completas,
+                    "lineas_pendientes": lineas_pendientes,
+                }
+
             items.append({
                 "id":                  r["id"],
                 "n_corte":             r["n_corte"],
@@ -5705,7 +5803,367 @@ async def cortes_listado(
                 "fecha_envio_tienda":  r["fecha_envio_tienda"].isoformat() if r["fecha_envio_tienda"] else None,
                 "fecha_entrega_final": str(r["fecha_entrega_final"]) if r["fecha_entrega_final"] else None,
                 "fecha_inicio_real":   str(r["fecha_inicio_real"]) if r["fecha_inicio_real"] else None,
-                "vinculado_odoo":      bool(r["odoo_template_id"] or r["odoo_product_id"]),
+                # Vinculado si tiene producto Odoo directo (1:1) o relaciones de
+                # Distribución Esperada (1:N). Ambos son válidos.
+                "vinculado_odoo": bool(
+                    r["odoo_template_id"] or r["odoo_product_id"]
+                    or (r["pt_relaciones_count"] or 0) > 0
+                ),
+                "pt_relaciones_count": int(r["pt_relaciones_count"] or 0),
+                # null si no aplica (corte no está en Almacén PT/Tienda).
+                "conciliacion": conciliacion,
             })
 
-        return {"items": items, "total": total}
+        # Resumen agregado de conciliación (útil para el header del reporte)
+        resumen_conc = {
+            "total_en_estados":  0,
+            "completos":         0,
+            "parciales":         0,
+            "pendientes":        0,
+            "sin_distribucion":  0,
+            "prendas_pendientes": 0.0,
+        }
+        for it in items:
+            c = it.get("conciliacion")
+            if not c:
+                continue
+            resumen_conc["total_en_estados"] += 1
+            if   c["estado"] == "completo":         resumen_conc["completos"] += 1
+            elif c["estado"] == "parcial":          resumen_conc["parciales"] += 1
+            elif c["estado"] == "pendiente":        resumen_conc["pendientes"] += 1
+            elif c["estado"] == "sin_distribucion": resumen_conc["sin_distribucion"] += 1
+            resumen_conc["prendas_pendientes"] += float(c.get("pendiente") or 0)
+
+        return {"items": items, "total": total, "resumen_conciliacion": resumen_conc}
+
+
+# ============================================================================
+#  /conciliacion-pendiente — vista agregada de lo que falta ingresar a Odoo
+# ============================================================================
+#
+# Para el almacén / supervisor: una sola pantalla que dice
+#   "estos productos faltan ser ingresados a Odoo y en qué cortes están".
+# Solo considera cortes en estados Almacén PT / Tienda — son los que ya
+# deberían tener producto terminado entregado y conciliable.
+#
+# Devuelve dos bloques independientes:
+#   1) por_producto: agrupado por template_id_odoo, con drill-down a los cortes
+#      que tienen pendiente ese producto.
+#   2) sin_distribucion: cortes en Almacén PT/Tienda que aún no tienen líneas
+#      de Distribución Esperada definidas → no se pueden conciliar todavía.
+@router.get("/conciliacion-pendiente")
+async def conciliacion_pendiente(
+    marca_odoo: Optional[str] = Query(
+        None,
+        description="Filtra por marca del producto Odoo (texto exacto, ej. 'ELEMENT PREMIUM')."
+    ),
+    incluir_tienda: bool = Query(True, description="Si False, excluye cortes en estado 'Tienda'."),
+    _u: dict = Depends(get_current_user),
+):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        # Filtros de estado
+        estados_validos = ["Almacén PT", "Tienda"] if incluir_tienda else ["Almacén PT"]
+
+        # ---- Bloque 1: pendiente por producto (template) con sus cortes ----
+        # Sacamos por_corte+producto las cantidades esperado/ingresado, filtramos
+        # los que tengan pendiente > 0, y agregamos en Python por template_id.
+        sql_lineas = """
+            SELECT
+                r.id                                                       AS registro_id,
+                r.n_corte,
+                r.estado,
+                r.fecha_creacion,
+                COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo')      AS modelo,
+                detalle.template_id,
+                pt.name                                                    AS producto_nombre,
+                pt.marca                                                   AS producto_marca,
+                detalle.esperado,
+                detalle.ingresado,
+                (detalle.esperado - detalle.ingresado)                     AS pendiente
+            FROM produccion.prod_registros r
+            LEFT JOIN produccion.prod_modelos m ON m.id = r.modelo_id
+            CROSS JOIN LATERAL (
+                SELECT
+                    esp.product_template_id_odoo AS template_id,
+                    esp.cantidad                  AS esperado,
+                    COALESCE(ing.ingresado, 0)    AS ingresado
+                FROM (
+                    SELECT product_template_id_odoo, SUM(cantidad) AS cantidad
+                    FROM produccion.prod_registro_pt_relacion
+                    WHERE registro_id = r.id
+                    GROUP BY product_template_id_odoo
+                ) esp
+                LEFT JOIN (
+                    SELECT sm.product_tmpl_id AS tmpl, SUM(sm.product_qty) AS ingresado
+                    FROM odoo.stock_move sm
+                    JOIN produccion.prod_registro_pt_odoo_vinculo v
+                      ON v.stock_inventory_odoo_id = sm.inventory_id
+                    WHERE v.registro_id = r.id AND sm.state = 'done'
+                    GROUP BY sm.product_tmpl_id
+                ) ing ON ing.tmpl = esp.product_template_id_odoo
+            ) detalle
+            LEFT JOIN odoo.product_template pt ON pt.odoo_id = detalle.template_id
+            WHERE r.estado = ANY($1::text[])
+              AND detalle.esperado > detalle.ingresado
+        """
+        params: list = [estados_validos]
+        if marca_odoo:
+            params.append(marca_odoo)
+            sql_lineas += f" AND pt.marca = ${len(params)}"
+
+        sql_lineas += " ORDER BY pt.name NULLS LAST, r.n_corte"
+
+        rows_lineas = await conn.fetch(sql_lineas, *params)
+
+        # Agrupar por template_id
+        por_producto_map: dict = {}
+        for r in rows_lineas:
+            tid = r["template_id"]
+            if tid not in por_producto_map:
+                por_producto_map[tid] = {
+                    "template_id":     tid,
+                    "producto_nombre": r["producto_nombre"] or f"Template #{tid}",
+                    "producto_marca":  r["producto_marca"] or "",
+                    "esperado":        0.0,
+                    "ingresado":       0.0,
+                    "pendiente":       0.0,
+                    "cortes":          [],
+                }
+            grp = por_producto_map[tid]
+            esperado  = float(r["esperado"]  or 0)
+            ingresado = float(r["ingresado"] or 0)
+            pendiente = float(r["pendiente"] or 0)
+            grp["esperado"]  += esperado
+            grp["ingresado"] += ingresado
+            grp["pendiente"] += pendiente
+            grp["cortes"].append({
+                "registro_id":    r["registro_id"],
+                "n_corte":        r["n_corte"],
+                "estado":         r["estado"],
+                "modelo":         r["modelo"] or "",
+                "fecha_creacion": r["fecha_creacion"].isoformat() if r["fecha_creacion"] else None,
+                "esperado":       esperado,
+                "ingresado":      ingresado,
+                "pendiente":      pendiente,
+            })
+
+        # Helper para ordenar n_corte por año DESC + número DESC (mismo criterio
+        # que /cortes-listado y "Sin Distribución"). Empuja los sin n_corte al final.
+        import re
+        def _sort_key_corte(c):
+            nc = (c.get("n_corte") or "").strip()
+            if not nc:
+                # Sin número → al final dentro del grupo
+                return (1, 0, 0)
+            m_anio = re.match(r"^(\d+)-(\d{4})$", nc)
+            if m_anio:
+                return (0, -int(m_anio.group(2)), -int(m_anio.group(1)))
+            m_num = re.match(r"^(\d+)$", nc)
+            if m_num:
+                # Año implícito: tomamos del fecha_creacion si está
+                anio_impl = 0
+                fc = c.get("fecha_creacion")
+                if fc:
+                    try:
+                        anio_impl = int(str(fc)[:4])
+                    except Exception:
+                        anio_impl = 0
+                return (0, -anio_impl, -int(m_num.group(1)))
+            return (0, 0, 0)
+
+        # Ordenar cortes dentro de cada producto por año/número DESC.
+        for p in por_producto_map.values():
+            p["cortes"].sort(key=_sort_key_corte)
+
+        por_producto = sorted(
+            por_producto_map.values(),
+            key=lambda x: x["pendiente"],
+            reverse=True,
+        )
+
+        # ---- Bloque 1.5: balance/diagnóstico por corte ----
+        #
+        # Para cada corte que aparece con pendiente, calculamos cuántas prendas
+        # están bloqueadas por cada causa. Esto le dice al supervisor exactamente
+        # qué hacer (ej. "6 fallados sin enviar a arreglo + 6 recuperadas sin
+        # ingresar a Odoo = 12 pendientes").
+        #
+        # Fórmula validada con corte 043 (DORIAN, 12 pendientes):
+        #   producido (619) - ingresado (607) = 12
+        #   = fallados_sin_enviar (33-27=6) + en_arreglo_proceso (0)
+        #   + recuperadas_sin_ingresar (= residual = 6)
+        unique_corte_ids = list({c["registro_id"] for p in por_producto for c in p["cortes"]})
+        balance_por_corte: dict = {}
+        if unique_corte_ids:
+            balance_rows = await conn.fetch("""
+                SELECT
+                    r.id                                                       AS registro_id,
+                    r.fecha_creacion,
+                    COALESCE(prod_sum.producido, 0)                            AS producido,
+                    COALESCE(fall.detectados, 0)                               AS fallados_detectados,
+                    COALESCE(arr.enviadas, 0)                                  AS arreglos_enviadas,
+                    COALESCE(arr.en_proceso, 0)                                AS arreglos_en_proceso,
+                    COALESCE(arr.recuperadas, 0)                               AS arreglos_recuperadas,
+                    COALESCE(arr.a_liquidacion, 0)                             AS arreglos_a_liquidacion,
+                    COALESCE(arr.a_merma, 0)                                   AS arreglos_a_merma,
+                    COALESCE(arr.a_tela, 0)                                    AS arreglos_a_tela,
+                    COALESCE(mer.total, 0)                                     AS mermas_directas
+                FROM produccion.prod_registros r
+                LEFT JOIN LATERAL (
+                    SELECT SUM(cantidad_real) AS producido
+                    FROM produccion.prod_registro_tallas
+                    WHERE registro_id = r.id
+                ) prod_sum ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT SUM(cantidad_detectada) AS detectados
+                    FROM produccion.prod_fallados
+                    WHERE registro_id = r.id
+                ) fall ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT
+                        SUM(cantidad)                                                                  AS enviadas,
+                        SUM(CASE WHEN estado <> 'COMPLETADO' THEN cantidad ELSE 0 END)                 AS en_proceso,
+                        SUM(CASE WHEN estado  = 'COMPLETADO' THEN COALESCE(cantidad_recuperada,0) END) AS recuperadas,
+                        SUM(CASE WHEN estado  = 'COMPLETADO' THEN COALESCE(cantidad_liquidacion,0) END)AS a_liquidacion,
+                        SUM(CASE WHEN estado  = 'COMPLETADO' THEN COALESCE(cantidad_merma,0) END)      AS a_merma,
+                        SUM(CASE WHEN estado  = 'COMPLETADO' THEN COALESCE(cantidad_pasa_a_tela,0) END)AS a_tela
+                    FROM produccion.prod_registro_arreglos
+                    WHERE registro_id = r.id
+                ) arr ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT SUM(cantidad) AS total
+                    FROM produccion.prod_mermas
+                    WHERE registro_id = r.id
+                ) mer ON TRUE
+                WHERE r.id = ANY($1::text[])
+            """, unique_corte_ids)
+
+            # Pendiente total POR CORTE (suma de pendientes por producto del corte).
+            pendiente_por_corte: dict = {}
+            for p in por_producto:
+                for c in p["cortes"]:
+                    cid = c["registro_id"]
+                    pendiente_por_corte[cid] = pendiente_por_corte.get(cid, 0) + float(c["pendiente"])
+
+            from datetime import datetime, timezone
+            hoy = datetime.now(timezone.utc).date()
+
+            for br in balance_rows:
+                cid = br["registro_id"]
+                pendiente_total = int(pendiente_por_corte.get(cid, 0))
+                producido = int(br["producido"] or 0)
+                fall_det = int(br["fallados_detectados"] or 0)
+                arr_env  = int(br["arreglos_enviadas"] or 0)
+                arr_proc = int(br["arreglos_en_proceso"] or 0)
+                arr_rec  = int(br["arreglos_recuperadas"] or 0)
+                arr_liq  = int(br["arreglos_a_liquidacion"] or 0)
+                arr_mer  = int(br["arreglos_a_merma"] or 0)
+                arr_tel  = int(br["arreglos_a_tela"] or 0)
+                merm_dir = int(br["mermas_directas"] or 0)
+
+                fallados_sin_enviar       = max(0, fall_det - arr_env)
+                en_arreglo_proceso        = arr_proc
+                a_merma_o_tela            = arr_mer + arr_tel
+                explicado_calidad         = fallados_sin_enviar + en_arreglo_proceso
+                recuperadas_sin_ingresar  = max(0, pendiente_total - explicado_calidad)
+                # "Inexplicable" solo si después de todo aún sobra algo (raro).
+                # Si sale negativo (caso AMERICAN BEIGE: over-ingreso interno),
+                # lo dejamos en 0 — no es informativo a nivel corte.
+                inexplicable = max(0, pendiente_total - explicado_calidad - recuperadas_sin_ingresar)
+
+                # Días desde fecha_creacion (proxy para "días en estado actual").
+                # Sin updated_at específico por estado, este es el dato más útil.
+                dias = None
+                if br["fecha_creacion"]:
+                    dias = (hoy - br["fecha_creacion"].date()).days
+
+                balance_por_corte[cid] = {
+                    "pendiente_total":         pendiente_total,
+                    "producido":               producido,
+                    "fallados_detectados":     fall_det,
+                    "arreglos_enviadas":       arr_env,
+                    "arreglos_recuperadas":    arr_rec,
+                    "arreglos_a_liquidacion":  arr_liq,
+                    "mermas_directas":         merm_dir,
+                    "dias_en_estado":          dias,
+                    # Desglose accionable del pendiente
+                    "fallados_sin_enviar":      fallados_sin_enviar,
+                    "en_arreglo_proceso":       en_arreglo_proceso,
+                    "recuperadas_sin_ingresar": recuperadas_sin_ingresar,
+                    "a_merma_o_tela":           a_merma_o_tela,
+                    "inexplicable":             inexplicable,
+                }
+
+        # Adjuntar el balance a cada corte en por_producto
+        for p in por_producto:
+            for c in p["cortes"]:
+                c["balance"] = balance_por_corte.get(c["registro_id"])
+
+        # ---- Bloque 2: cortes en Almacén PT/Tienda SIN Distribución Esperada ----
+        sql_sin = """
+            SELECT
+                r.id,
+                r.n_corte,
+                r.estado,
+                r.fecha_creacion,
+                COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') AS modelo,
+                COALESCE(ma.nombre, mma.nombre)                       AS marca,
+                COALESCE(t.nombre,  tma.nombre)                       AS tipo,
+                (SELECT COALESCE(SUM(rt.cantidad_real), 0)
+                   FROM prod_registro_tallas rt
+                  WHERE rt.registro_id = r.id) AS prendas
+            FROM produccion.prod_registros r
+            LEFT JOIN produccion.prod_modelos m  ON m.id = r.modelo_id
+            LEFT JOIN produccion.prod_marcas   ma ON ma.id = m.marca_id
+            LEFT JOIN produccion.prod_tipos    t  ON t.id  = m.tipo_id
+            LEFT JOIN produccion.prod_marcas   mma ON mma.id = (r.modelo_manual->>'marca_id')
+            LEFT JOIN produccion.prod_tipos    tma ON tma.id = (r.modelo_manual->>'tipo_id')
+            WHERE r.estado = ANY($1::text[])
+              AND NOT EXISTS (
+                  SELECT 1 FROM produccion.prod_registro_pt_relacion rr
+                  WHERE rr.registro_id = r.id
+              )
+            ORDER BY
+                -- Igual que /cortes-listado: cortes sin n_corte primero,
+                -- luego año DESC, luego número DESC dentro del año.
+                CASE WHEN r.n_corte IS NULL OR TRIM(r.n_corte) = '' THEN 0 ELSE 1 END ASC,
+                CASE
+                    WHEN r.n_corte ~ '-[0-9]{4}$' THEN (split_part(r.n_corte, '-', 2))::int
+                    ELSE EXTRACT(YEAR FROM r.fecha_creacion)::int
+                END DESC,
+                CASE
+                    WHEN r.n_corte ~ '^[0-9]+-[0-9]{4}$' THEN (split_part(r.n_corte, '-', 1))::int
+                    WHEN r.n_corte ~ '^[0-9]+$' THEN r.n_corte::int
+                    ELSE 0
+                END DESC,
+                r.fecha_creacion DESC
+        """
+        rows_sin = await conn.fetch(sql_sin, estados_validos)
+        sin_distribucion = [
+            {
+                "registro_id":    r["id"],
+                "n_corte":        r["n_corte"],
+                "estado":         r["estado"],
+                "modelo":         r["modelo"] or "",
+                "marca":          r["marca"]  or "",
+                "tipo":           r["tipo"]   or "",
+                "prendas":        safe_int(r["prendas"]),
+                "fecha_creacion": r["fecha_creacion"].isoformat() if r["fecha_creacion"] else None,
+            }
+            for r in rows_sin
+        ]
+
+        # Resumen
+        resumen = {
+            "productos_pendientes":  len(por_producto),
+            "prendas_pendientes":    sum(p["pendiente"] for p in por_producto),
+            "cortes_afectados":      len({c["registro_id"] for p in por_producto for c in p["cortes"]}),
+            "cortes_sin_distribucion": len(sin_distribucion),
+        }
+
+        return {
+            "por_producto":     por_producto,
+            "sin_distribucion": sin_distribucion,
+            "resumen":          resumen,
+        }
