@@ -11,7 +11,7 @@ import { MuestrasLavanderiaSection } from './MuestrasLavanderiaSection';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosCortes = [], muestras = [], scope = null, onMuestrasChanged }) => {
+export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosCortes = [], muestras = [], scope = null, onMuestrasChanged, openMuestrasOnMount = false }) => {
   const { isAdmin } = usePermissions('registros');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -33,6 +33,13 @@ export const AsignarColoresModal = ({ open, registroId, onClose, onSaved, otrosC
   const [swapSearch, setSwapSearch] = useState('');
   // Dialog de muestras del corte (abierto desde el header)
   const [muestrasOpen, setMuestrasOpen] = useState(false);
+
+  // Si el padre pidió abrir las muestras de una, lo disparamos al montar.
+  useEffect(() => {
+    if (open && openMuestrasOnMount) {
+      setMuestrasOpen(true);
+    }
+  }, [open, openMuestrasOnMount]);
 
   // bloqueado = aprobado y no admin → solo lectura
   const bloqueado = aprobado.aprobados && !isAdmin;

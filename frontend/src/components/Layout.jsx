@@ -138,6 +138,7 @@ const inventarioItems = [
 ];
 
 const reportesItems = [
+  { to: '/reportes/cortes', icon: Scissors, label: 'Listado de Cortes' },
   { to: '/reportes/validacion-registros', icon: ShieldAlert, label: 'Validación MP/Servicios' },
   { to: '/reportes/seguimiento', icon: Activity, label: 'Seguimiento' },
   { to: '/reportes/entregas', icon: Truck, label: 'Entregas' },
@@ -150,6 +151,7 @@ const reportesItems = [
   { to: '/reportes/rendimiento-servicios', icon: TrendingUp, label: 'Rendimiento Servicios' },
   { to: '/reportes/despachos-tienda', icon: Store, label: 'Despachos a Tienda' },
   { to: '/reportes/seguimiento-tienda', icon: Store, label: 'Seguimiento Tienda' },
+  { to: '/reportes/muestras-lavanderia', icon: FlaskConical, label: 'Muestras Lavandería' },
   { to: '/reportes/costos-produccion', icon: Receipt, label: 'Detalle por Talla e Insumo' },
   { to: '/reportes/movimientos-costos', icon: Receipt, label: 'Movimientos & Costos' },
   { to: '/reportes/trazabilidad-kpis', icon: TrendingDown, label: 'KPIs Trazabilidad' },

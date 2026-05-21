@@ -614,6 +614,16 @@ async def ensure_clasificacion_tables():
         """)
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestras_registro ON prod_registro_muestras(registro_id)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestras_activas ON prod_registro_muestras(registro_id) WHERE fecha_retorno IS NULL")
+        # Linkage para muestras re-enviadas: una hija apunta a la muestra original
+        # cuyos colores rechazados fueron re-enviados a lavandería con nueva fecha.
+        await conn.execute(
+            "ALTER TABLE prod_registro_muestras ADD COLUMN IF NOT EXISTS reenviada_desde_id INTEGER REFERENCES prod_registro_muestras(id) ON DELETE SET NULL"
+        )
+        # Lavandería a la que se mandó la muestra (proveedor/persona externa).
+        # Sin FK formal porque prod_personas_produccion no tiene PK declarada en id.
+        await conn.execute(
+            "ALTER TABLE prod_registro_muestras ADD COLUMN IF NOT EXISTS persona_lavanderia_id VARCHAR"
+        )
 
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS prod_registro_muestra_colores (

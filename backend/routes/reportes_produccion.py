@@ -3486,11 +3486,35 @@ async def reporte_tiempos_muertos(
 async def costo_por_lote(
     modelo_id: str = None,
     marca_id: str = None,
+    marca_ids: str = None,
+    tipo_ids: str = None,
+    entalle_ids: str = None,
+    tela_ids: str = None,
     estado: str = None,
     linea_negocio_id: str = None,
+    incluir_sin_cierre: bool = False,
     empresa_id: int = Query(None),
 ):
-    """Reporte completo de costos por lote: MP + Servicios + Otros + CIF."""
+    """Reporte completo de costos por lote: MP + Servicios + Otros + CIF.
+
+    Cambios 2026-05-21 (Análisis de Costos y Rentabilidad):
+      - `incluir_sin_cierre` default False: solo lotes con cierre ejecutado.
+      - Filtros multi marca/tipo/entalle/tela (CSV de IDs).
+      - JOIN con odoo.product_template para precio de venta y márgenes.
+    """
+    IGV = 1.18  # 18% IGV Perú. Asumimos list_price de Odoo viene con IGV.
+
+    def _csv_to_list(s):
+        if not s:
+            return None
+        out = [x.strip() for x in s.split(',') if x.strip()]
+        return out or None
+
+    marca_list = _csv_to_list(marca_ids)
+    tipo_list = _csv_to_list(tipo_ids)
+    entalle_list = _csv_to_list(entalle_ids)
+    tela_list = _csv_to_list(tela_ids)
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         # --- filtros dinámicos ---
@@ -3511,6 +3535,30 @@ async def costo_por_lote(
             where_clauses.append(f"m.marca_id = ${idx}")
             params.append(marca_id)
             idx += 1
+        if marca_list:
+            where_clauses.append(
+                f"(m.marca_id = ANY(${idx}::varchar[]) OR r.modelo_manual->>'marca_id' = ANY(${idx}::varchar[]))"
+            )
+            params.append(marca_list)
+            idx += 1
+        if tipo_list:
+            where_clauses.append(
+                f"(m.tipo_id = ANY(${idx}::varchar[]) OR r.modelo_manual->>'tipo_id' = ANY(${idx}::varchar[]))"
+            )
+            params.append(tipo_list)
+            idx += 1
+        if entalle_list:
+            where_clauses.append(
+                f"(m.entalle_id = ANY(${idx}::varchar[]) OR r.modelo_manual->>'entalle_id' = ANY(${idx}::varchar[]))"
+            )
+            params.append(entalle_list)
+            idx += 1
+        if tela_list:
+            where_clauses.append(
+                f"(m.tela_id = ANY(${idx}::varchar[]) OR r.modelo_manual->>'tela_id' = ANY(${idx}::varchar[]))"
+            )
+            params.append(tela_list)
+            idx += 1
         if estado:
             where_clauses.append(f"r.estado = ${idx}")
             params.append(estado)
@@ -3519,6 +3567,8 @@ async def costo_por_lote(
             where_clauses.append(f"r.linea_negocio_id = ${idx}")
             params.append(linea_negocio_id)
             idx += 1
+        if not incluir_sin_cierre:
+            where_clauses.append("c.id IS NOT NULL")
 
         where_sql = " AND ".join(where_clauses)
 
@@ -3530,6 +3580,9 @@ async def costo_por_lote(
             r.urgente,
             COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') AS modelo_nombre,
             COALESCE(ma.nombre, r.modelo_manual->>'marca_texto') AS marca_nombre,
+            COALESCE(tp.nombre, r.modelo_manual->>'tipo_texto') AS tipo_nombre,
+            COALESCE(en.nombre, r.modelo_manual->>'entalle_texto') AS entalle_nombre,
+            COALESCE(te.nombre, r.modelo_manual->>'tela_texto') AS tela_nombre,
             r.curva,
             c.id AS cierre_id,
             c.costo_mp,
@@ -3538,6 +3591,10 @@ async def costo_por_lote(
             c.costo_cif,
             c.costo_total AS cierre_costo_total,
             c.qty_terminada AS cantidad_producida,
+            -- Vinculación Odoo (vía pt_item_id del registro) y precio de venta.
+            r.pt_item_id AS pt_odoo_id,
+            pt.name AS pt_nombre,
+            pt.list_price AS precio_con_igv,
             -- Live: costo MP (salidas de inventario)
             COALESCE((
                 SELECT SUM(s.costo_total)
@@ -3561,7 +3618,11 @@ async def costo_por_lote(
         FROM produccion.prod_registros r
         LEFT JOIN produccion.prod_modelos m ON m.id = r.modelo_id
         LEFT JOIN produccion.prod_marcas ma ON ma.id = m.marca_id
+        LEFT JOIN produccion.prod_tipos tp ON tp.id = m.tipo_id
+        LEFT JOIN produccion.prod_entalles en ON en.id = m.entalle_id
+        LEFT JOIN produccion.prod_telas te ON te.id = m.tela_id
         LEFT JOIN produccion.prod_registro_cierre c ON c.registro_id = r.id
+        LEFT JOIN odoo.product_template pt ON pt.odoo_id::text = r.pt_item_id
         WHERE {where_sql}
         ORDER BY r.fecha_creacion DESC
         """
@@ -3609,11 +3670,28 @@ async def costo_por_lote(
 
             costo_unitario = round(ctotal / cant, 2) if cant > 0 else 0
 
+            # Precio Odoo (asumimos list_price viene con IGV → s/IGV = list/1.18)
+            precio_con_igv = float(row["precio_con_igv"]) if row["precio_con_igv"] is not None else None
+            precio_sin_igv = round(precio_con_igv / IGV, 2) if precio_con_igv else None
+            tiene_precio = precio_con_igv is not None and precio_con_igv > 0
+
+            # Márgenes contra costo_unitario (costo por prenda).
+            # Convención: margen bruto compara contra precio C/IGV; margen real contra S/IGV.
+            margen_bruto = None
+            margen_real = None
+            if tiene_precio and costo_unitario > 0:
+                margen_bruto = round((precio_con_igv - costo_unitario) / precio_con_igv * 100, 1)
+                if precio_sin_igv and precio_sin_igv > 0:
+                    margen_real = round((precio_sin_igv - costo_unitario) / precio_sin_igv * 100, 1)
+
             items.append({
                 "id": row["id"],
                 "n_corte": row["n_corte"],
                 "modelo": row["modelo_nombre"],
                 "marca": row["marca_nombre"],
+                "tipo": row["tipo_nombre"],
+                "entalle": row["entalle_nombre"],
+                "tela": row["tela_nombre"],
                 "estado": row["estado"],
                 "urgente": row["urgente"],
                 "cerrado": cerrado,
@@ -3624,6 +3702,14 @@ async def costo_por_lote(
                 "costo_cif": round(ccif, 2),
                 "costo_total": round(ctotal, 2),
                 "costo_unitario": costo_unitario,
+                "pt_odoo_id": row["pt_odoo_id"],
+                "pt_nombre": row["pt_nombre"],
+                "precio_con_igv": precio_con_igv,
+                "precio_sin_igv": precio_sin_igv,
+                "tiene_precio": tiene_precio,
+                "margen_bruto_pct": margen_bruto,
+                "margen_real_pct": margen_real,
+                "valor_venta_estimado": round(precio_con_igv * cant, 2) if tiene_precio else None,
             })
 
             totales["costo_mp"] += cmp
@@ -3644,6 +3730,7 @@ async def costo_por_lote(
 @router.get("/costo-lote/{registro_id}/detalle")
 async def costo_lote_detalle(registro_id: str):
     """Detalle desglosado de costos para un lote específico."""
+    IGV = 1.18
     pool = await get_pool()
     async with pool.acquire() as conn:
         # Info del registro
@@ -3654,11 +3741,15 @@ async def costo_lote_detalle(registro_id: str):
                    c.id AS cierre_id, c.costo_mp AS cierre_mp,
                    c.costo_servicios AS cierre_serv, c.otros_costos AS cierre_otros,
                    c.costo_cif AS cierre_cif, c.costo_total AS cierre_total,
-                   c.qty_terminada AS cierre_qty
+                   c.qty_terminada AS cierre_qty,
+                   r.pt_item_id AS pt_odoo_id,
+                   pt.name AS pt_nombre,
+                   pt.list_price AS precio_con_igv
             FROM produccion.prod_registros r
             LEFT JOIN produccion.prod_modelos m ON m.id = r.modelo_id
             LEFT JOIN produccion.prod_marcas ma ON ma.id = m.marca_id
             LEFT JOIN produccion.prod_registro_cierre c ON c.registro_id = r.id
+            LEFT JOIN odoo.product_template pt ON pt.odoo_id::text = r.pt_item_id
             WHERE r.id = $1
         """, registro_id)
 
@@ -3718,6 +3809,25 @@ async def costo_lote_detalle(registro_id: str):
         total_serv = sum(x["costo"] for x in serv_items)
         total_otros = sum(x["monto"] for x in otros_items)
 
+        costo_total = round(float(reg["cierre_total"]) if cerrado else (total_mp + total_serv + total_otros), 2)
+        cant = int(reg["cierre_qty"] or 0) if cerrado else 0
+        costo_unitario = round(costo_total / cant, 2) if cant > 0 else 0
+
+        precio_con_igv = float(reg["precio_con_igv"]) if reg["precio_con_igv"] is not None else None
+        precio_sin_igv = round(precio_con_igv / IGV, 2) if precio_con_igv else None
+        tiene_precio = precio_con_igv is not None and precio_con_igv > 0
+
+        margen_bruto_pct = None
+        margen_real_pct = None
+        margen_bruto_soles = None
+        margen_real_soles = None
+        if tiene_precio and costo_unitario > 0:
+            margen_bruto_pct = round((precio_con_igv - costo_unitario) / precio_con_igv * 100, 1)
+            margen_bruto_soles = round(precio_con_igv - costo_unitario, 2)
+            if precio_sin_igv and precio_sin_igv > 0:
+                margen_real_pct = round((precio_sin_igv - costo_unitario) / precio_sin_igv * 100, 1)
+                margen_real_soles = round(precio_sin_igv - costo_unitario, 2)
+
         return {
             "registro_id": reg["id"],
             "n_corte": reg["n_corte"],
@@ -3726,12 +3836,25 @@ async def costo_lote_detalle(registro_id: str):
             "estado": reg["estado"],
             "urgente": reg["urgente"],
             "cerrado": cerrado,
+            "cantidad_prendas": cant,
+            "costo_unitario": costo_unitario,
             "resumen": {
                 "costo_mp": round(float(reg["cierre_mp"]) if cerrado else total_mp, 2),
                 "costo_servicios": round(float(reg["cierre_serv"]) if cerrado else total_serv, 2),
                 "costo_otros": round(float(reg["cierre_otros"] or 0) if cerrado else total_otros, 2),
                 "costo_cif": round(float(reg["cierre_cif"] or 0) if cerrado else 0, 2),
-                "costo_total": round(float(reg["cierre_total"]) if cerrado else (total_mp + total_serv + total_otros), 2),
+                "costo_total": costo_total,
+            },
+            "precio": {
+                "pt_odoo_id": reg["pt_odoo_id"],
+                "pt_nombre": reg["pt_nombre"],
+                "precio_con_igv": precio_con_igv,
+                "precio_sin_igv": precio_sin_igv,
+                "tiene_precio": tiene_precio,
+                "margen_bruto_pct": margen_bruto_pct,
+                "margen_real_pct": margen_real_pct,
+                "margen_bruto_soles": margen_bruto_soles,
+                "margen_real_soles": margen_real_soles,
             },
             "detalle_mp": mp_items,
             "detalle_servicios": serv_items,
@@ -5307,3 +5430,129 @@ async def generar_factura_borrador(
         "total": total,
         "movimientos_vinculados": len(movs),
     }
+
+
+# ==================== LISTADO COMPLETO DE CORTES ====================
+
+@router.get("/cortes-listado")
+async def cortes_listado(
+    marca_id: Optional[str] = Query(None, description="Filtra por marca (id). Si vacío, todas."),
+    tipo_id: Optional[str] = Query(None),
+    entalle_id: Optional[str] = Query(None),
+    tela_id: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None, description="Filtra por estado exacto (Para Corte, Costura, etc.)"),
+    incluir_tienda: bool = Query(True, description="Si False, excluye cortes en estado 'Tienda'"),
+    limit: int = Query(500, le=2000),
+    offset: int = 0,
+    _u: dict = Depends(get_current_user),
+):
+    """
+    Listado completo de cortes para control rápido (vista 'todos los cortes que existen').
+    - Filtros: marca/tipo/entalle/tela/estado (todos opcionales).
+    - Orden: año del corte DESC, luego número DESC dentro del año (más nuevo arriba).
+    - Soporta modelos normales y modelos manuales (modelo_manual JSONB).
+    - Default: incluye cortes en Tienda (control total). Pasar incluir_tienda=false para ocultarlos.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        conds: List[str] = ["TRUE"]
+        params: list = []
+        idx = 1
+
+        # Filtros — match contra modelo catalogado OR modelo_manual->>'X_id'
+        def add_filter(col_modelo: str, col_manual: str, val: Optional[str]):
+            nonlocal idx
+            if not val:
+                return
+            params.append(val)
+            conds.append(
+                f"(m.{col_modelo} = ${idx} OR r.modelo_manual->>'{col_manual}' = ${idx})"
+            )
+            idx += 1
+
+        add_filter("marca_id",   "marca_id",   marca_id)
+        add_filter("tipo_id",    "tipo_id",    tipo_id)
+        add_filter("entalle_id", "entalle_id", entalle_id)
+        add_filter("tela_id",    "tela_id",    tela_id)
+
+        if estado:
+            params.append(estado)
+            conds.append(f"r.estado = ${idx}")
+            idx += 1
+
+        if not incluir_tienda:
+            conds.append("r.estado <> 'Tienda'")
+
+        where_clause = " AND ".join(conds)
+
+        rows = await conn.fetch(f"""
+            SELECT
+                r.id,
+                r.n_corte,
+                r.estado,
+                r.urgente,
+                r.fecha_creacion,
+                r.fecha_envio_tienda,
+                r.fecha_entrega_final,
+                r.fecha_inicio_real,
+                r.odoo_template_id,
+                r.odoo_product_id,
+                COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo')      AS modelo,
+                COALESCE(ma.nombre, mma.nombre)                            AS marca,
+                COALESCE(t.nombre,  tma.nombre)                            AS tipo,
+                COALESCE(e.nombre,  ema.nombre)                            AS entalle,
+                COALESCE(te.nombre, tema.nombre)                           AS tela,
+                COUNT(*) OVER() AS _total_count,
+                (SELECT COALESCE(SUM(rt.cantidad_real), 0)
+                   FROM prod_registro_tallas rt
+                  WHERE rt.registro_id = r.id) AS prendas
+            FROM prod_registros r
+            LEFT JOIN prod_modelos m  ON m.id = r.modelo_id
+            LEFT JOIN prod_marcas   ma ON ma.id = m.marca_id
+            LEFT JOIN prod_tipos    t  ON t.id  = m.tipo_id
+            LEFT JOIN prod_entalles e  ON e.id  = m.entalle_id
+            LEFT JOIN prod_telas    te ON te.id = m.tela_id
+            LEFT JOIN prod_marcas   mma ON mma.id = (r.modelo_manual->>'marca_id')
+            LEFT JOIN prod_tipos    tma ON tma.id = (r.modelo_manual->>'tipo_id')
+            LEFT JOIN prod_entalles ema ON ema.id = (r.modelo_manual->>'entalle_id')
+            LEFT JOIN prod_telas    tema ON tema.id = (r.modelo_manual->>'tela_id')
+            WHERE {where_clause}
+            ORDER BY
+                -- Año del corte: sufijo '-YYYY' si lo tiene, sino año de fecha_creacion
+                CASE
+                    WHEN r.n_corte ~ '-[0-9]{{4}}$' THEN (split_part(r.n_corte, '-', 2))::int
+                    ELSE EXTRACT(YEAR FROM r.fecha_creacion)::int
+                END DESC,
+                -- Dentro del mismo año: por número de corte DESC (más reciente arriba)
+                CASE
+                    WHEN r.n_corte ~ '^[0-9]+-[0-9]{{4}}$' THEN (split_part(r.n_corte, '-', 1))::int
+                    WHEN r.n_corte ~ '^[0-9]+$' THEN r.n_corte::int
+                    ELSE 0
+                END DESC,
+                r.fecha_creacion DESC
+            LIMIT ${idx} OFFSET ${idx + 1}
+        """, *params, limit, offset)
+
+        total = rows[0]["_total_count"] if rows else 0
+
+        items = []
+        for r in rows:
+            items.append({
+                "id":                  r["id"],
+                "n_corte":             r["n_corte"],
+                "estado":              r["estado"],
+                "urgente":             bool(r["urgente"]),
+                "modelo":              r["modelo"] or "",
+                "marca":               r["marca"] or "",
+                "tipo":                r["tipo"] or "",
+                "entalle":             r["entalle"] or "",
+                "tela":                r["tela"] or "",
+                "prendas":             safe_int(r["prendas"]),
+                "fecha_creacion":      r["fecha_creacion"].isoformat() if r["fecha_creacion"] else None,
+                "fecha_envio_tienda":  r["fecha_envio_tienda"].isoformat() if r["fecha_envio_tienda"] else None,
+                "fecha_entrega_final": str(r["fecha_entrega_final"]) if r["fecha_entrega_final"] else None,
+                "fecha_inicio_real":   str(r["fecha_inicio_real"]) if r["fecha_inicio_real"] else None,
+                "vinculado_odoo":      bool(r["odoo_template_id"] or r["odoo_product_id"]),
+            })
+
+        return {"items": items, "total": total}

@@ -15,6 +15,7 @@ import { Loader2 } from "lucide-react";
 const CostoPorLote = lazy(() => import('./pages/CostoPorLote'));
 const CostosProduccion = lazy(() => import('./pages/CostosProduccion'));
 const ReporteEntregas = lazy(() => import('./pages/ReporteEntregas'));
+const ReporteMuestrasLavanderia = lazy(() => import('./pages/ReporteMuestrasLavanderia'));
 const Usuarios = lazy(() => import("./pages/Usuarios").then(m => ({ default: m.Usuarios })));
 const HistorialActividad = lazy(() => import("./pages/HistorialActividad").then(m => ({ default: m.HistorialActividad })));
 const Backups = lazy(() => import("./pages/Backups").then(m => ({ default: m.Backups })));
@@ -76,6 +77,7 @@ const MuestraDetalle = lazy(() => import("./pages/MuestraDetalle").then(m => ({ 
 const ValidacionRegistros = lazy(() => import("./pages/ValidacionRegistros").then(m => ({ default: m.ValidacionRegistros })));
 const ReporteTrazabilidadKPIs = lazy(() => import("./pages/ReporteTrazabilidadKPIs").then(m => ({ default: m.ReporteTrazabilidadKPIs })));
 const SeguimientoTienda = lazy(() => import("./pages/SeguimientoTienda"));
+const ReporteCortes = lazy(() => import("./pages/ReporteCortes").then(m => ({ default: m.ReporteCortes })));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center h-64">
@@ -203,6 +205,7 @@ function AppRoutes() {
         <Route path="reportes/costos-produccion" element={<LazyWrap><CostosProduccion /></LazyWrap>} />
         <Route path="reportes/tendencia-fallados" element={<Navigate to="/reportes/calidad?tab=fallados" replace />} />
         <Route path="reportes/entregas" element={<LazyWrap><ReporteEntregas /></LazyWrap>} />
+        <Route path="reportes/muestras-lavanderia" element={<LazyWrap><ReporteMuestrasLavanderia /></LazyWrap>} />
         <Route path="control-fallados" element={<Navigate to="/reportes/calidad?tab=fallados" replace />} />
         <Route path="reportes/matriz" element={<LazyWrap><MatrizProduccion /></LazyWrap>} />
         <Route path="reportes/rendimiento-servicios" element={<LazyWrap><RendimientoServicios /></LazyWrap>} />
@@ -212,6 +215,7 @@ function AppRoutes() {
         {/* Reportes standalone restantes (los demás son tabs de hubs) */}
         <Route path="reportes/trazabilidad-kpis" element={<LazyWrap><ReporteTrazabilidadKPIs /></LazyWrap>} />
         <Route path="reportes/seguimiento-tienda" element={<LazyWrap><SeguimientoTienda /></LazyWrap>} />
+        <Route path="reportes/cortes" element={<LazyWrap><ReporteCortes /></LazyWrap>} />
         {/* Legacy redirects */}
         <Route path="reportes/dashboard" element={<Navigate to="/" replace />} />
         <Route path="reportes/en-proceso" element={<Navigate to="/reportes/seguimiento" replace />} />

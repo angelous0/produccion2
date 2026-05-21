@@ -194,8 +194,15 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
 
   const [asignarOpen, setAsignarOpen] = useState(false);
   const [asignarRegistroId, setAsignarRegistroId] = useState(null);
+  const [abrirEnMuestras, setAbrirEnMuestras] = useState(false);
   const abrirAsignar = (row) => {
+    setAbrirEnMuestras(false);
     setAsignarRegistroId(row.id);
+    setAsignarOpen(true);
+  };
+  const abrirMuestrasDirecto = (registroId) => {
+    setAbrirEnMuestras(true);
+    setAsignarRegistroId(registroId);
     setAsignarOpen(true);
   };
 
@@ -333,8 +340,8 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
                                 <tr
                                   key={m.id}
                                   className="border-b hover:bg-muted/30 cursor-pointer"
-                                  onClick={() => abrirAsignar({ id: m.registro_id })}
-                                  title="Abrir corte para gestionar muestras y colores"
+                                  onClick={() => abrirMuestrasDirecto(m.registro_id)}
+                                  title="Abrir muestras del corte"
                                   data-testid={`muestra-proceso-${m.id}`}
                                 >
                                   <td className="p-1.5 font-mono">{m.n_corte}</td>
@@ -682,7 +689,7 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
       <AsignarColoresModal
         open={asignarOpen}
         registroId={asignarRegistroId}
-        onClose={() => setAsignarOpen(false)}
+        onClose={() => { setAsignarOpen(false); setAbrirEnMuestras(false); }}
         onSaved={reload}
         otrosCortes={[
           ...(data?.grupos_taller || []),
@@ -698,6 +705,7 @@ export const FichaItemModal = ({ open, onClose, fila }) => {
         muestras={(data?.muestras || []).filter(m => m.registro_id === asignarRegistroId)}
         scope={data?.scope}
         onMuestrasChanged={reload}
+        openMuestrasOnMount={abrirEnMuestras}
       />
     </Dialog>
   );

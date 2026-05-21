@@ -172,6 +172,7 @@ export const RUTA_A_TABLA = {
   '/reportes/valorizacion': 'reporte_valorizacion',
   '/reportes/lotes': 'reporte_lotes',
   '/reportes/matriz': 'reporte_matriz',
+  '/reportes/muestras-lavanderia': 'reporte_muestras_lavanderia',
   '/reportes/rendimiento-servicios': 'reporte_rendimiento_servicios',
   '/reportes/despachos-tienda': 'reporte_despachos_tienda',
   '/reportes/costos-produccion': 'reporte_costos_produccion',
