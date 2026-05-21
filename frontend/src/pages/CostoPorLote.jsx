@@ -31,6 +31,17 @@ const margenClasses = (m) => {
   return 'text-red-600 dark:text-red-400 font-semibold';
 };
 
+const TIPO_LABEL = {
+  normal: 'Normal',
+  liquidacion_leve: 'Liquidación leve',
+  liquidacion_grave: 'Liquidación grave',
+};
+const TIPO_CHIP_CLASS = {
+  normal: 'bg-blue-50 text-blue-700 border-blue-300',
+  liquidacion_leve: 'bg-amber-50 text-amber-700 border-amber-300',
+  liquidacion_grave: 'bg-red-50 text-red-700 border-red-300',
+};
+
 // Multi-select compacto con Popover + Checkboxes
 const MultiSelectFilter = ({ label, options, selected, onChange, placeholder }) => {
   const allSelected = selected.length === 0;
@@ -355,8 +366,14 @@ export default function CostoPorLote() {
                         : <Badge variant="outline" className="text-[9px] px-1 bg-amber-50 text-amber-700 border-amber-300">Cierre pendiente</Badge>
                       }
                       {l.urgente && <span className="text-red-500 text-xs font-bold">!</span>}
-                      {!l.tiene_precio && (
-                        <Badge variant="outline" className="text-[9px] px-1 bg-slate-100 text-slate-600 border-slate-300">Precio no vinculado</Badge>
+                      {!l.tiene_distribucion && (
+                        <Badge variant="outline" className="text-[9px] px-1 bg-slate-100 text-slate-600 border-slate-300">Sin distribución</Badge>
+                      )}
+                      {l.tiene_distribucion && !l.tiene_precio && (
+                        <Badge variant="outline" className="text-[9px] px-1 bg-slate-100 text-slate-600 border-slate-300">Sin precio Odoo</Badge>
+                      )}
+                      {l.distribucion_incompleta && (
+                        <Badge variant="outline" className="text-[9px] px-1 bg-orange-50 text-orange-700 border-orange-300" title={`Distribución cubre ${l.distribucion_qty} de ${l.cantidad_prendas}`}>Dist. incompleta</Badge>
                       )}
                     </div>
                   </td>
@@ -369,11 +386,24 @@ export default function CostoPorLote() {
                   <td className="px-2 py-2 text-right font-mono text-xs">{l.tiene_precio ? fmt(l.precio_con_igv) : <span className="text-muted-foreground">—</span>}</td>
                   <td className="px-2 py-2 text-right">
                     {l.tiene_precio ? (
-                      <div className="flex flex-col items-end">
+                      <div className="flex flex-col items-end gap-0.5">
                         <span className={`font-mono ${margenClasses(l.margen_bruto_pct)}`}>{pct(l.margen_bruto_pct)}</span>
                         <span className={`font-mono text-[10px] ${margenClasses(l.margen_real_pct)}`}>
                           real {pct(l.margen_real_pct)}
                         </span>
+                        {(l.desglose_precios || []).length > 1 && (
+                          <div className="flex gap-0.5 flex-wrap justify-end" title="Desglose por tipo">
+                            {l.desglose_precios.map((d, i) => (
+                              <span
+                                key={i}
+                                className={`text-[9px] px-1 py-0.5 rounded border ${TIPO_CHIP_CLASS[d.tipo_salida] || 'border-border'}`}
+                                title={`${TIPO_LABEL[d.tipo_salida] || d.tipo_salida}: ${d.cantidad} und × ${d.precio_promedio_con_igv ? `S/${d.precio_promedio_con_igv}` : 'sin precio'} → margen ${pct(d.margen_bruto_pct)}`}
+                              >
+                                {d.tipo_salida === 'normal' ? 'N' : 'LQ'} {pct(d.margen_bruto_pct)}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ) : <span className="text-muted-foreground">—</span>}
                   </td>
@@ -440,33 +470,85 @@ export default function CostoPorLote() {
                 <h4 className="text-xs font-semibold uppercase tracking-wide mb-2 flex items-center gap-1">
                   <TrendingUp className="h-3.5 w-3.5" /> Precio y márgenes
                 </h4>
-                {detalle.precio?.tiene_precio ? (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                    <div>
-                      <p className="text-muted-foreground">Producto Odoo</p>
-                      <p className="font-medium">{detalle.precio.pt_nombre || '—'}</p>
-                      <p className="text-[10px] text-muted-foreground">ID {detalle.precio.pt_odoo_id}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Precio (c/IGV · s/IGV)</p>
-                      <p className="font-mono font-semibold">{fmt(detalle.precio.precio_con_igv)}</p>
-                      <p className="font-mono text-[10px] text-muted-foreground">{fmt(detalle.precio.precio_sin_igv)} s/IGV</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Margen bruto</p>
-                      <p className={`font-mono font-semibold ${margenClasses(detalle.precio.margen_bruto_pct)}`}>{pct(detalle.precio.margen_bruto_pct)}</p>
-                      <p className={`font-mono text-[10px] ${margenClasses(detalle.precio.margen_bruto_pct)}`}>{fmt(detalle.precio.margen_bruto_soles)}/prenda</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Margen real</p>
-                      <p className={`font-mono font-semibold ${margenClasses(detalle.precio.margen_real_pct)}`}>{pct(detalle.precio.margen_real_pct)}</p>
-                      <p className={`font-mono text-[10px] ${margenClasses(detalle.precio.margen_real_pct)}`}>{fmt(detalle.precio.margen_real_soles)}/prenda</p>
-                    </div>
-                  </div>
-                ) : (
+                {!detalle.precio?.tiene_distribucion ? (
                   <p className="text-xs text-muted-foreground italic">
-                    Este modelo no tiene producto Odoo vinculado. Vincula `pt_item_id` para ver márgenes.
+                    Sin Distribución Esperada declarada. Ve a la pestaña <strong>PT Odoo</strong> del corte y declara los templates de salida.
                   </p>
+                ) : !detalle.precio?.tiene_precio ? (
+                  <p className="text-xs text-muted-foreground italic">
+                    La Distribución existe pero los templates Odoo declarados no tienen <code className="text-[10px]">list_price</code>. Setea el precio en Odoo.
+                  </p>
+                ) : (
+                  <>
+                    {/* Ponderado total */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-3 pb-3 border-b">
+                      <div>
+                        <p className="text-muted-foreground">Distribución</p>
+                        <p className="font-mono font-semibold">{fmtNum(detalle.precio.distribucion_qty)} und</p>
+                        {detalle.precio.distribucion_incompleta && (
+                          <p className="text-[10px] text-orange-600">de {fmtNum(detalle.cantidad_prendas)} producidas</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Precio ponderado (c/s IGV)</p>
+                        <p className="font-mono font-semibold">{fmt(detalle.precio.precio_con_igv)}</p>
+                        <p className="font-mono text-[10px] text-muted-foreground">{fmt(detalle.precio.precio_sin_igv)} s/IGV</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Margen bruto</p>
+                        <p className={`font-mono font-semibold ${margenClasses(detalle.precio.margen_bruto_pct)}`}>{pct(detalle.precio.margen_bruto_pct)}</p>
+                        <p className={`font-mono text-[10px] ${margenClasses(detalle.precio.margen_bruto_pct)}`}>{fmt(detalle.precio.margen_bruto_soles)}/prenda</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Margen real</p>
+                        <p className={`font-mono font-semibold ${margenClasses(detalle.precio.margen_real_pct)}`}>{pct(detalle.precio.margen_real_pct)}</p>
+                        <p className={`font-mono text-[10px] ${margenClasses(detalle.precio.margen_real_pct)}`}>{fmt(detalle.precio.margen_real_soles)}/prenda</p>
+                      </div>
+                    </div>
+
+                    {/* Desglose por tipo_salida */}
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Desglose por tipo de salida</p>
+                    <div className="rounded border overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/40">
+                          <tr>
+                            <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Tipo</th>
+                            <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Templates Odoo</th>
+                            <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Cant</th>
+                            <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Precio c/IGV</th>
+                            <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Valor</th>
+                            <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Margen bruto</th>
+                            <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Margen real</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(detalle.precio.desglose || []).map((d, i) => (
+                            <tr key={i} className="border-t">
+                              <td className="px-2 py-1.5">
+                                <Badge variant="outline" className={`text-[9px] px-1.5 ${TIPO_CHIP_CLASS[d.tipo_salida] || ''}`}>
+                                  {TIPO_LABEL[d.tipo_salida] || d.tipo_salida}
+                                </Badge>
+                              </td>
+                              <td className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                                {(d.templates || []).map(t => `${t.nombre || `#${t.template_id}`} (${t.cantidad})`).join(', ')}
+                              </td>
+                              <td className="px-2 py-1.5 text-right font-mono">{fmtNum(d.cantidad)}</td>
+                              <td className="px-2 py-1.5 text-right font-mono">{d.precio_promedio_con_igv ? fmt(d.precio_promedio_con_igv) : <span className="text-muted-foreground">—</span>}</td>
+                              <td className="px-2 py-1.5 text-right font-mono">{d.valor_estimado ? fmt(d.valor_estimado) : <span className="text-muted-foreground">—</span>}</td>
+                              <td className={`px-2 py-1.5 text-right font-mono ${margenClasses(d.margen_bruto_pct)}`}>
+                                {pct(d.margen_bruto_pct)}
+                                {d.margen_bruto_soles != null && <span className="block text-[9px]">{fmt(d.margen_bruto_soles)}/und</span>}
+                              </td>
+                              <td className={`px-2 py-1.5 text-right font-mono ${margenClasses(d.margen_real_pct)}`}>
+                                {pct(d.margen_real_pct)}
+                                {d.margen_real_soles != null && <span className="block text-[9px]">{fmt(d.margen_real_soles)}/und</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )}
               </div>
 

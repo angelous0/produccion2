@@ -3591,10 +3591,6 @@ async def costo_por_lote(
             c.costo_cif,
             c.costo_total AS cierre_costo_total,
             c.qty_terminada AS cantidad_producida,
-            -- Vinculación Odoo (vía pt_item_id del registro) y precio de venta.
-            r.pt_item_id AS pt_odoo_id,
-            pt.name AS pt_nombre,
-            pt.list_price AS precio_con_igv,
             -- Live: costo MP (salidas de inventario)
             COALESCE((
                 SELECT SUM(s.costo_total)
@@ -3622,12 +3618,32 @@ async def costo_por_lote(
         LEFT JOIN produccion.prod_entalles en ON en.id = m.entalle_id
         LEFT JOIN produccion.prod_telas te ON te.id = m.tela_id
         LEFT JOIN produccion.prod_registro_cierre c ON c.registro_id = r.id
-        LEFT JOIN odoo.product_template pt ON pt.odoo_id::text = r.pt_item_id
         WHERE {where_sql}
         ORDER BY r.fecha_creacion DESC
         """
 
         rows = await conn.fetch(query, *params)
+
+        # ── Distribución Esperada por registro (fuente del precio Odoo) ──
+        # Una sola query trae todas las líneas; agrupamos en memoria.
+        registro_ids = [r["id"] for r in rows]
+        dist_por_registro: dict = {}  # registro_id -> [{tipo_salida, template_id, template_nombre, cantidad, list_price}]
+        if registro_ids:
+            dist_rows = await conn.fetch("""
+                SELECT d.registro_id, d.tipo_salida, d.product_template_id_odoo,
+                       d.cantidad, pt.name AS template_nombre, pt.list_price
+                  FROM produccion.prod_registro_pt_relacion d
+                  LEFT JOIN odoo.product_template pt ON pt.odoo_id = d.product_template_id_odoo
+                 WHERE d.registro_id = ANY($1::varchar[])
+            """, registro_ids)
+            for d in dist_rows:
+                dist_por_registro.setdefault(d["registro_id"], []).append({
+                    "tipo_salida": d["tipo_salida"],
+                    "template_id": d["product_template_id_odoo"],
+                    "template_nombre": d["template_nombre"],
+                    "cantidad": float(d["cantidad"] or 0),
+                    "list_price": float(d["list_price"] or 0) if d["list_price"] is not None else None,
+                })
 
         items = []
         totales = {
@@ -3670,13 +3686,64 @@ async def costo_por_lote(
 
             costo_unitario = round(ctotal / cant, 2) if cant > 0 else 0
 
-            # Precio Odoo (asumimos list_price viene con IGV → s/IGV = list/1.18)
-            precio_con_igv = float(row["precio_con_igv"]) if row["precio_con_igv"] is not None else None
+            # ── Precio desde Distribución Esperada (prod_registro_pt_relacion) ──
+            # Por cada tipo_salida (normal / liquidacion_*) calculamos un
+            # precio promedio ponderado por la cantidad declarada en sus
+            # templates. Luego promediamos por tipo para obtener el precio
+            # ponderado total del corte.
+            dist_lineas = dist_por_registro.get(row["id"], [])
+            tiene_distribucion = len(dist_lineas) > 0
+
+            # Agrupar por tipo_salida
+            por_tipo: dict = {}
+            for d in dist_lineas:
+                t = d["tipo_salida"] or "normal"
+                por_tipo.setdefault(t, []).append(d)
+
+            desglose_precios = []
+            distribucion_qty_total = 0.0
+            valor_total_con_igv = 0.0  # SUM(qty × list_price)
+            for tipo, lineas_tipo in por_tipo.items():
+                qty_tipo = sum(l["cantidad"] for l in lineas_tipo)
+                # Solo líneas con list_price válido contribuyen al promedio
+                lineas_con_precio = [l for l in lineas_tipo if l["list_price"] and l["list_price"] > 0]
+                qty_con_precio = sum(l["cantidad"] for l in lineas_con_precio)
+                valor_tipo = sum(l["cantidad"] * l["list_price"] for l in lineas_con_precio)
+                precio_prom_tipo = round(valor_tipo / qty_con_precio, 2) if qty_con_precio > 0 else None
+                precio_prom_tipo_sin_igv = round(precio_prom_tipo / IGV, 2) if precio_prom_tipo else None
+                # Margen del tipo (contra costo_unitario del corte completo)
+                margen_b_tipo = None
+                margen_r_tipo = None
+                if precio_prom_tipo and costo_unitario > 0:
+                    margen_b_tipo = round((precio_prom_tipo - costo_unitario) / precio_prom_tipo * 100, 1)
+                    if precio_prom_tipo_sin_igv:
+                        margen_r_tipo = round((precio_prom_tipo_sin_igv - costo_unitario) / precio_prom_tipo_sin_igv * 100, 1)
+                desglose_precios.append({
+                    "tipo_salida": tipo,
+                    "cantidad": qty_tipo,
+                    "templates": [
+                        {"template_id": l["template_id"], "nombre": l["template_nombre"],
+                         "cantidad": l["cantidad"], "list_price": l["list_price"]}
+                        for l in lineas_tipo
+                    ],
+                    "precio_promedio_con_igv": precio_prom_tipo,
+                    "precio_promedio_sin_igv": precio_prom_tipo_sin_igv,
+                    "valor_estimado": round(precio_prom_tipo * qty_tipo, 2) if precio_prom_tipo else None,
+                    "margen_bruto_pct": margen_b_tipo,
+                    "margen_real_pct": margen_r_tipo,
+                })
+                distribucion_qty_total += qty_tipo
+                if precio_prom_tipo:
+                    valor_total_con_igv += precio_prom_tipo * qty_tipo
+
+            # Orden estable: normal primero, luego LQ
+            orden_tipo = {"normal": 0, "liquidacion_leve": 1, "liquidacion_grave": 2}
+            desglose_precios.sort(key=lambda x: orden_tipo.get(x["tipo_salida"], 99))
+
+            precio_con_igv = round(valor_total_con_igv / distribucion_qty_total, 2) if (distribucion_qty_total > 0 and valor_total_con_igv > 0) else None
             precio_sin_igv = round(precio_con_igv / IGV, 2) if precio_con_igv else None
             tiene_precio = precio_con_igv is not None and precio_con_igv > 0
 
-            # Márgenes contra costo_unitario (costo por prenda).
-            # Convención: margen bruto compara contra precio C/IGV; margen real contra S/IGV.
             margen_bruto = None
             margen_real = None
             if tiene_precio and costo_unitario > 0:
@@ -3702,14 +3769,16 @@ async def costo_por_lote(
                 "costo_cif": round(ccif, 2),
                 "costo_total": round(ctotal, 2),
                 "costo_unitario": costo_unitario,
-                "pt_odoo_id": row["pt_odoo_id"],
-                "pt_nombre": row["pt_nombre"],
+                "tiene_distribucion": tiene_distribucion,
+                "distribucion_qty": round(distribucion_qty_total, 2),
+                "distribucion_incompleta": tiene_distribucion and cant > 0 and distribucion_qty_total < cant,
                 "precio_con_igv": precio_con_igv,
                 "precio_sin_igv": precio_sin_igv,
                 "tiene_precio": tiene_precio,
                 "margen_bruto_pct": margen_bruto,
                 "margen_real_pct": margen_real,
-                "valor_venta_estimado": round(precio_con_igv * cant, 2) if tiene_precio else None,
+                "valor_venta_estimado": round(precio_con_igv * distribucion_qty_total, 2) if tiene_precio else None,
+                "desglose_precios": desglose_precios,
             })
 
             totales["costo_mp"] += cmp
@@ -3738,19 +3807,25 @@ async def costo_lote_detalle(registro_id: str):
             SELECT r.id, r.n_corte, r.estado, r.urgente, r.curva,
                    COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') AS modelo,
                    COALESCE(ma.nombre, r.modelo_manual->>'marca_texto') AS marca,
+                   r.tallas AS tallas_json,
                    c.id AS cierre_id, c.costo_mp AS cierre_mp,
                    c.costo_servicios AS cierre_serv, c.otros_costos AS cierre_otros,
                    c.costo_cif AS cierre_cif, c.costo_total AS cierre_total,
-                   c.qty_terminada AS cierre_qty,
-                   r.pt_item_id AS pt_odoo_id,
-                   pt.name AS pt_nombre,
-                   pt.list_price AS precio_con_igv
+                   c.qty_terminada AS cierre_qty
             FROM produccion.prod_registros r
             LEFT JOIN produccion.prod_modelos m ON m.id = r.modelo_id
             LEFT JOIN produccion.prod_marcas ma ON ma.id = m.marca_id
             LEFT JOIN produccion.prod_registro_cierre c ON c.registro_id = r.id
-            LEFT JOIN odoo.product_template pt ON pt.odoo_id::text = r.pt_item_id
             WHERE r.id = $1
+        """, registro_id)
+
+        # Distribución Esperada (fuente del precio)
+        dist_rows = await conn.fetch("""
+            SELECT d.tipo_salida, d.product_template_id_odoo,
+                   d.cantidad, pt.name AS template_nombre, pt.list_price
+              FROM produccion.prod_registro_pt_relacion d
+              LEFT JOIN odoo.product_template pt ON pt.odoo_id = d.product_template_id_odoo
+             WHERE d.registro_id = $1
         """, registro_id)
 
         if not reg:
@@ -3810,12 +3885,85 @@ async def costo_lote_detalle(registro_id: str):
         total_otros = sum(x["monto"] for x in otros_items)
 
         costo_total = round(float(reg["cierre_total"]) if cerrado else (total_mp + total_serv + total_otros), 2)
-        cant = int(reg["cierre_qty"] or 0) if cerrado else 0
+        if cerrado:
+            cant = int(reg["cierre_qty"] or 0)
+        else:
+            # Fallback: suma de tallas del registro (mismo criterio que /costo-lote)
+            cant = 0
+            try:
+                tallas = reg["tallas_json"]
+                if tallas:
+                    import json as _json
+                    if isinstance(tallas, str):
+                        tallas = _json.loads(tallas)
+                    if isinstance(tallas, list):
+                        cant = sum(int(t.get("cantidad", 0)) for t in tallas if isinstance(t, dict))
+            except Exception:
+                cant = 0
         costo_unitario = round(costo_total / cant, 2) if cant > 0 else 0
 
-        precio_con_igv = float(reg["precio_con_igv"]) if reg["precio_con_igv"] is not None else None
+        # ── Precio desde Distribución Esperada (mismo cálculo que /costo-lote) ──
+        dist_lineas = [
+            {
+                "tipo_salida": d["tipo_salida"] or "normal",
+                "template_id": d["product_template_id_odoo"],
+                "template_nombre": d["template_nombre"],
+                "cantidad": float(d["cantidad"] or 0),
+                "list_price": float(d["list_price"] or 0) if d["list_price"] is not None else None,
+            }
+            for d in dist_rows
+        ]
+        por_tipo: dict = {}
+        for d in dist_lineas:
+            por_tipo.setdefault(d["tipo_salida"], []).append(d)
+
+        desglose_precios = []
+        distribucion_qty_total = 0.0
+        valor_total_con_igv = 0.0
+        for tipo, lineas_tipo in por_tipo.items():
+            qty_tipo = sum(l["cantidad"] for l in lineas_tipo)
+            lineas_con_precio = [l for l in lineas_tipo if l["list_price"] and l["list_price"] > 0]
+            qty_con_precio = sum(l["cantidad"] for l in lineas_con_precio)
+            valor_tipo = sum(l["cantidad"] * l["list_price"] for l in lineas_con_precio)
+            precio_prom_tipo = round(valor_tipo / qty_con_precio, 2) if qty_con_precio > 0 else None
+            precio_prom_tipo_sin_igv = round(precio_prom_tipo / IGV, 2) if precio_prom_tipo else None
+            margen_b_tipo = None
+            margen_r_tipo = None
+            margen_b_soles_tipo = None
+            margen_r_soles_tipo = None
+            if precio_prom_tipo and costo_unitario > 0:
+                margen_b_tipo = round((precio_prom_tipo - costo_unitario) / precio_prom_tipo * 100, 1)
+                margen_b_soles_tipo = round(precio_prom_tipo - costo_unitario, 2)
+                if precio_prom_tipo_sin_igv:
+                    margen_r_tipo = round((precio_prom_tipo_sin_igv - costo_unitario) / precio_prom_tipo_sin_igv * 100, 1)
+                    margen_r_soles_tipo = round(precio_prom_tipo_sin_igv - costo_unitario, 2)
+            desglose_precios.append({
+                "tipo_salida": tipo,
+                "cantidad": qty_tipo,
+                "templates": [
+                    {"template_id": l["template_id"], "nombre": l["template_nombre"],
+                     "cantidad": l["cantidad"], "list_price": l["list_price"]}
+                    for l in lineas_tipo
+                ],
+                "precio_promedio_con_igv": precio_prom_tipo,
+                "precio_promedio_sin_igv": precio_prom_tipo_sin_igv,
+                "valor_estimado": round(precio_prom_tipo * qty_tipo, 2) if precio_prom_tipo else None,
+                "margen_bruto_pct": margen_b_tipo,
+                "margen_real_pct": margen_r_tipo,
+                "margen_bruto_soles": margen_b_soles_tipo,
+                "margen_real_soles": margen_r_soles_tipo,
+            })
+            distribucion_qty_total += qty_tipo
+            if precio_prom_tipo:
+                valor_total_con_igv += precio_prom_tipo * qty_tipo
+
+        orden_tipo = {"normal": 0, "liquidacion_leve": 1, "liquidacion_grave": 2}
+        desglose_precios.sort(key=lambda x: orden_tipo.get(x["tipo_salida"], 99))
+
+        precio_con_igv = round(valor_total_con_igv / distribucion_qty_total, 2) if (distribucion_qty_total > 0 and valor_total_con_igv > 0) else None
         precio_sin_igv = round(precio_con_igv / IGV, 2) if precio_con_igv else None
         tiene_precio = precio_con_igv is not None and precio_con_igv > 0
+        tiene_distribucion = len(dist_lineas) > 0
 
         margen_bruto_pct = None
         margen_real_pct = None
@@ -3846,8 +3994,9 @@ async def costo_lote_detalle(registro_id: str):
                 "costo_total": costo_total,
             },
             "precio": {
-                "pt_odoo_id": reg["pt_odoo_id"],
-                "pt_nombre": reg["pt_nombre"],
+                "tiene_distribucion": tiene_distribucion,
+                "distribucion_qty": round(distribucion_qty_total, 2),
+                "distribucion_incompleta": tiene_distribucion and cant > 0 and distribucion_qty_total < cant,
                 "precio_con_igv": precio_con_igv,
                 "precio_sin_igv": precio_sin_igv,
                 "tiene_precio": tiene_precio,
@@ -3855,6 +4004,7 @@ async def costo_lote_detalle(registro_id: str):
                 "margen_real_pct": margen_real_pct,
                 "margen_bruto_soles": margen_bruto_soles,
                 "margen_real_soles": margen_real_soles,
+                "desglose": desglose_precios,
             },
             "detalle_mp": mp_items,
             "detalle_servicios": serv_items,
@@ -5518,12 +5668,15 @@ async def cortes_listado(
             LEFT JOIN prod_telas    tema ON tema.id = (r.modelo_manual->>'tela_id')
             WHERE {where_clause}
             ORDER BY
-                -- Año del corte: sufijo '-YYYY' si lo tiene, sino año de fecha_creacion
+                -- 1° Cortes SIN n_corte (vacíos / NULL) primero — son los que necesitan
+                --    asignación de número.  Aparecen al tope del listado.
+                CASE WHEN r.n_corte IS NULL OR TRIM(r.n_corte) = '' THEN 0 ELSE 1 END ASC,
+                -- 2° Año del corte: sufijo '-YYYY' si lo tiene, sino año de fecha_creacion
                 CASE
                     WHEN r.n_corte ~ '-[0-9]{{4}}$' THEN (split_part(r.n_corte, '-', 2))::int
                     ELSE EXTRACT(YEAR FROM r.fecha_creacion)::int
                 END DESC,
-                -- Dentro del mismo año: por número de corte DESC (más reciente arriba)
+                -- 3° Dentro del mismo año: por número de corte DESC (más reciente arriba)
                 CASE
                     WHEN r.n_corte ~ '^[0-9]+-[0-9]{{4}}$' THEN (split_part(r.n_corte, '-', 1))::int
                     WHEN r.n_corte ~ '^[0-9]+$' THEN r.n_corte::int
