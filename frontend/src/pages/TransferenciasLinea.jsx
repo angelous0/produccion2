@@ -23,6 +23,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "../components/ui/command";
 import {
   Table,
   TableBody,
@@ -48,9 +57,10 @@ import {
   Layers,
   Send,
   Trash2,
+  ChevronsUpDown,
 } from "lucide-react";
 
-import { formatCurrency, formatNumber } from "../lib/utils";
+import { cn, formatCurrency, formatNumber } from "../lib/utils";
 import { formatDate } from "../lib/dateUtils";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -81,6 +91,8 @@ export const TransferenciasLinea = () => {
   const [itemsDestino, setItemsDestino] = useState([]);          // items "compatibles" en línea destino
   const [selectedItemId, setSelectedItemId] = useState("");      // item origen
   const [selectedItemDestinoId, setSelectedItemDestinoId] = useState(""); // item destino
+  const [openItemOrigenPicker, setOpenItemOrigenPicker] = useState(false);
+  const [openItemDestinoPicker, setOpenItemDestinoPicker] = useState(false);
   const [cantidad, setCantidad] = useState("");
   const [motivo, setMotivo] = useState("");
   const [observaciones, setObservaciones] = useState("");
@@ -400,19 +412,57 @@ export const TransferenciasLinea = () => {
                     No hay items con stock en esta linea
                   </div>
                 ) : (
-                  <Select value={selectedItemId} onValueChange={setSelectedItemId}>
-                    <SelectTrigger data-testid="select-item">
-                      <SelectValue placeholder="Seleccionar item..." />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-60">
-                      {itemsOrigen.map((i) => (
-                        <SelectItem key={i.id} value={i.id}>
-                          <span className="font-mono text-xs">{i.codigo}</span>
-                          <span className="ml-2">{i.nombre}</span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={openItemOrigenPicker} onOpenChange={setOpenItemOrigenPicker}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={openItemOrigenPicker}
+                        className="w-full justify-between font-normal"
+                        data-testid="select-item"
+                      >
+                        {selectedItem ? (
+                          <span className="flex items-center gap-2 truncate">
+                            <span className="font-mono text-xs text-muted-foreground">{selectedItem.codigo}</span>
+                            <span className="truncate">{selectedItem.nombre}</span>
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">Seleccionar item...</span>
+                        )}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="p-0 w-[var(--radix-popover-trigger-width)] min-w-[380px]"
+                      align="start"
+                      sideOffset={4}
+                    >
+                      <Command shouldFilter={true}>
+                        <CommandInput placeholder="Buscar por código o nombre..." className="h-10" />
+                        <CommandList className="max-h-[340px]">
+                          <CommandEmpty>No se encontraron items.</CommandEmpty>
+                          <CommandGroup>
+                            {itemsOrigen.map((i) => (
+                              <CommandItem
+                                key={i.id}
+                                value={`${i.codigo} ${i.nombre}`}
+                                onSelect={() => {
+                                  setSelectedItemId(i.id);
+                                  setOpenItemOrigenPicker(false);
+                                }}
+                                className="cursor-pointer"
+                              >
+                                <Check className={cn('mr-2 h-4 w-4', selectedItemId === i.id ? 'opacity-100' : 'opacity-0')} />
+                                <span className="font-mono text-xs text-muted-foreground mr-2 min-w-[60px]">{i.codigo}</span>
+                                <span className="flex-1 truncate">{i.nombre}</span>
+                                <span className="ml-2 text-xs text-muted-foreground shrink-0">Stock: {formatNumber(i.stock_disponible)}</span>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 )}
               </div>
 
@@ -550,20 +600,61 @@ export const TransferenciasLinea = () => {
                       </div>
                     </div>
                   ) : (
-                    <Select value={selectedItemDestinoId} onValueChange={setSelectedItemDestinoId}>
-                      <SelectTrigger data-testid="select-item-destino">
-                        <SelectValue placeholder="Seleccionar item destino..." />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        {itemsDestino.map((i) => (
-                          <SelectItem key={i.id} value={i.id}>
-                            <span className="font-mono text-xs">{i.codigo}</span>
-                            <span className="ml-2">{i.nombre}</span>
-                            <span className="ml-2 text-muted-foreground text-xs">(stock: {formatNumber(i.stock_en_linea)})</span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Popover open={openItemDestinoPicker} onOpenChange={setOpenItemDestinoPicker}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={openItemDestinoPicker}
+                          className="w-full justify-between font-normal"
+                          data-testid="select-item-destino"
+                        >
+                          {(() => {
+                            const dest = itemsDestino.find(x => x.id === selectedItemDestinoId);
+                            return dest ? (
+                              <span className="flex items-center gap-2 truncate">
+                                <span className="font-mono text-xs text-muted-foreground">{dest.codigo}</span>
+                                <span className="truncate">{dest.nombre}</span>
+                                <span className="text-xs text-muted-foreground shrink-0">(stock: {formatNumber(dest.stock_en_linea)})</span>
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">Seleccionar item destino...</span>
+                            );
+                          })()}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="p-0 w-[var(--radix-popover-trigger-width)] min-w-[380px]"
+                        align="start"
+                        sideOffset={4}
+                      >
+                        <Command shouldFilter={true}>
+                          <CommandInput placeholder="Buscar por código o nombre..." className="h-10" />
+                          <CommandList className="max-h-[340px]">
+                            <CommandEmpty>No se encontraron items.</CommandEmpty>
+                            <CommandGroup>
+                              {itemsDestino.map((i) => (
+                                <CommandItem
+                                  key={i.id}
+                                  value={`${i.codigo} ${i.nombre}`}
+                                  onSelect={() => {
+                                    setSelectedItemDestinoId(i.id);
+                                    setOpenItemDestinoPicker(false);
+                                  }}
+                                  className="cursor-pointer"
+                                >
+                                  <Check className={cn('mr-2 h-4 w-4', selectedItemDestinoId === i.id ? 'opacity-100' : 'opacity-0')} />
+                                  <span className="font-mono text-xs text-muted-foreground mr-2 min-w-[60px]">{i.codigo}</span>
+                                  <span className="flex-1 truncate">{i.nombre}</span>
+                                  <span className="ml-2 text-xs text-muted-foreground shrink-0">stock: {formatNumber(i.stock_en_linea)}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                   )}
                 </div>
               )}

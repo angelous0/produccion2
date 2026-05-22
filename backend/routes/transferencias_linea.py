@@ -130,7 +130,8 @@ async def _items_compatibles_en_linea(conn, linea_negocio_id: int, unidad_medida
         FROM produccion.prod_inventario i
         LEFT JOIN produccion.prod_inventario_ingresos ing ON ing.item_id = i.id
         WHERE {" AND ".join(where)}
-        GROUP BY i.id
+        GROUP BY i.id, i.codigo, i.nombre, i.categoria, i.unidad_medida,
+                 i.control_por_rollos, i.stock_actual, i.costo_promedio
         ORDER BY i.nombre
     """
     rows = await conn.fetch(sql, *params)
