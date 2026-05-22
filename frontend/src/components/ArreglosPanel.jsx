@@ -286,18 +286,27 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
 
   const handleSaveResolucion = async () => {
     if (saving || !selectedArreglo) return;
-    const rec = parseInt(resolucionForm.cantidad_recuperada) || 0;
-    const liq = parseInt(resolucionForm.cantidad_liquidacion) || 0;
-    const pat = parseInt(resolucionForm.cantidad_pasa_a_tela) || 0;
-    const mer = parseInt(resolucionForm.cantidad_merma) || 0;
-    const suma = rec + liq + pat + mer;
-    // Aceptamos parciales (suma <= cantidad). Sólo bloqueamos si excede.
-    if (suma > selectedArreglo.cantidad) {
-      toast.error(`La suma (${suma}) excede la cantidad enviada (${selectedArreglo.cantidad})`);
+    // Inputs son DELTA: sumamos al previo para obtener el total a enviar.
+    const deltaRec = parseInt(resolucionForm.cantidad_recuperada) || 0;
+    const deltaLiq = parseInt(resolucionForm.cantidad_liquidacion) || 0;
+    const deltaPat = parseInt(resolucionForm.cantidad_pasa_a_tela) || 0;
+    const deltaMer = parseInt(resolucionForm.cantidad_merma) || 0;
+    const delta = deltaRec + deltaLiq + deltaPat + deltaMer;
+    if (delta === 0) {
+      toast.error('Indica al menos una cantidad > 0');
       return;
     }
-    if (suma === 0) {
-      toast.error('Indica al menos una cantidad > 0');
+    const prevR = selectedArreglo.cantidad_recuperada || 0;
+    const prevL = selectedArreglo.cantidad_liquidacion || 0;
+    const prevP = selectedArreglo.cantidad_pasa_a_tela || 0;
+    const prevM = selectedArreglo.cantidad_merma || 0;
+    const rec = prevR + deltaRec;
+    const liq = prevL + deltaLiq;
+    const pat = prevP + deltaPat;
+    const mer = prevM + deltaMer;
+    const suma = rec + liq + pat + mer;
+    if (suma > selectedArreglo.cantidad) {
+      toast.error(`Excede el saldo pendiente (${selectedArreglo.cantidad - (prevR + prevL + prevP + prevM)})`);
       return;
     }
     setSaving(true);
@@ -310,8 +319,8 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
       }, { headers: hdrs() });
       const cierra = suma === selectedArreglo.cantidad;
       if (cierra) {
-        toast.success(pat > 0
-          ? `Entrega cerrada · ${pat} pasaron a evaluación de tela`
+        toast.success(deltaPat > 0
+          ? `Entrega cerrada · ${deltaPat} pasaron a evaluación de tela`
           : 'Entrega cerrada');
       } else {
         toast.success(`Resolución parcial guardada · pendiente: ${selectedArreglo.cantidad - suma}`);
@@ -339,50 +348,42 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
 
   const openResolucion = (arreglo) => {
     setSelectedArreglo(arreglo);
-    const rec = arreglo.cantidad_recuperada || 0;
-    const liq = arreglo.cantidad_liquidacion || 0;
-    const pat = arreglo.cantidad_pasa_a_tela || 0;
-    const mer = arreglo.cantidad_merma || 0;
-    // Default inteligente: el "vencimiento" es dinámico — la BD guarda
-    // estado='EN_ARREGLO' aunque fecha_limite ya haya pasado. Usamos el
-    // mismo countdown que pinta el badge "VENCIDO Xd" en la tarjeta:
-    // diasHabilesHastaLimite < 0 ⇒ ya venció.
-    const resueltoPrevio = rec + liq + pat + mer;
-    const diasRestantes = diasHabilesHastaLimite(arreglo.fecha_limite);
-    // VENCE HOY (0) también activa el default — por defecto se asume cierre
-    // con A cobrar = cantidad. Si el proveedor entrega algo, el supervisor edita.
-    const vencido = diasRestantes !== null && diasRestantes <= 0;
-    if (vencido && resueltoPrevio === 0) {
-      // Ya pasó el plazo del proveedor y nadie marcó nada todavía:
-      // el supervisor está marcando para facturar.
-      setResolucionForm({
-        cantidad_recuperada: 0,
-        cantidad_liquidacion: arreglo.cantidad,
-        cantidad_pasa_a_tela: 0,
-        cantidad_merma: 0,
-      });
-    } else {
-      // No vencido o ya hay resolución parcial: conservar lo que haya
-      // (todos 0 si nunca se tocó, parciales si los hay).
-      setResolucionForm({
-        cantidad_recuperada: rec,
-        cantidad_liquidacion: liq,
-        cantidad_pasa_a_tela: pat,
-        cantidad_merma: mer,
-      });
-    }
+    // Inputs como DELTA (cantidades que se ENTREGAN ahora). Arrancan en 0.
+    // El previo se muestra aparte como "Ya entregado" y se suma al guardar.
+    setResolucionForm({
+      cantidad_recuperada: 0,
+      cantidad_liquidacion: 0,
+      cantidad_pasa_a_tela: 0,
+      cantidad_merma: 0,
+    });
     setResolucionDialogOpen(true);
   };
 
-  // Cálculo de resolución (suma de los 4: rec + liq + pasa_a_tela + merma)
+  // ── Cálculos del diálogo "Marcar entregado" ──
+  // resRec/resLiq/resPat/resMer son DELTAS (lo que se agrega ahora).
+  // prevRec/prevLiq/prevPat/prevMer es lo que YA estaba.
+  // totalRec/...: lo que QUEDARÁ tras guardar (previo + delta).
   const resRec = parseInt(resolucionForm.cantidad_recuperada) || 0;
   const resLiq = parseInt(resolucionForm.cantidad_liquidacion) || 0;
   const resPat = parseInt(resolucionForm.cantidad_pasa_a_tela) || 0;
   const resMer = parseInt(resolucionForm.cantidad_merma) || 0;
-  const resTotal = resRec + resLiq + resPat + resMer;
+  const resDelta = resRec + resLiq + resPat + resMer;
+  const prevRec = selectedArreglo ? (selectedArreglo.cantidad_recuperada || 0) : 0;
+  const prevLiq = selectedArreglo ? (selectedArreglo.cantidad_liquidacion || 0) : 0;
+  const prevPat = selectedArreglo ? (selectedArreglo.cantidad_pasa_a_tela || 0) : 0;
+  const prevMer = selectedArreglo ? (selectedArreglo.cantidad_merma || 0) : 0;
+  const prevTotal = prevRec + prevLiq + prevPat + prevMer;
+  const totalRec = prevRec + resRec;
+  const totalLiq = prevLiq + resLiq;
+  const totalPat = prevPat + resPat;
+  const totalMer = prevMer + resMer;
+  const resTotal = prevTotal + resDelta;
   const resCantidad = selectedArreglo ? selectedArreglo.cantidad : 0;
-  const resExcede = resTotal > resCantidad;
+  const resFaltante = Math.max(resCantidad - prevTotal, 0);
+  const resExcede = resDelta > resFaltante;
   const resFalta = resTotal < resCantidad;
+  const resDiasRestantes = selectedArreglo ? diasHabilesHastaLimite(selectedArreglo.fecha_limite) : null;
+  const resVencido = resDiasRestantes !== null && resDiasRestantes <= 0;
 
   if (loading) return <div className="flex items-center justify-center py-12 text-muted-foreground">Cargando trazabilidad...</div>;
 
@@ -924,43 +925,101 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div>
-              <Label className="text-xs text-emerald-600 font-medium">Recuperadas</Label>
-              <Input type="number" min={0} max={resCantidad} value={resolucionForm.cantidad_recuperada} onChange={e => setResolucionForm({ ...resolucionForm, cantidad_recuperada: e.target.value })} data-testid="input-res-recuperado" />
-              <p className="text-[10px] text-muted-foreground mt-0.5">Vuelven al lote bueno</p>
-            </div>
-            <div>
-              <Label className="text-xs text-orange-600 font-medium">A cobrar al proveedor</Label>
-              <Input type="number" min={0} max={resCantidad} value={resolucionForm.cantidad_liquidacion} onChange={e => setResolucionForm({ ...resolucionForm, cantidad_liquidacion: e.target.value })} data-testid="input-res-liquidacion" />
-              <p className="text-[10px] text-muted-foreground mt-0.5">El servicio no las recuperó · se le facturan</p>
-            </div>
-            <div>
-              <Label className="text-xs text-blue-600 font-medium">Pasan a evaluación de tela</Label>
-              <Input type="number" min={0} max={resCantidad} value={resolucionForm.cantidad_pasa_a_tela} onChange={e => setResolucionForm({ ...resolucionForm, cantidad_pasa_a_tela: e.target.value })} data-testid="input-res-pasa-a-tela" />
-              <p className="text-[10px] text-muted-foreground mt-0.5">Servicio OK pero detectó defecto de tela · va a Acabado</p>
-            </div>
-            {/* Campo merma se conserva si el envío venía con valor previo (compat con datos viejos) */}
-            {resMer > 0 && (
-              <div>
-                <Label className="text-xs text-red-600 font-medium">Merma <span className="text-muted-foreground italic">(legacy)</span></Label>
-                <Input type="number" min={0} max={resCantidad} value={resolucionForm.cantidad_merma} onChange={e => setResolucionForm({ ...resolucionForm, cantidad_merma: e.target.value })} data-testid="input-res-merma" />
+            {/* Contexto del envío: proveedor, fechas, vencimiento */}
+            {selectedArreglo && (
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-[11px] space-y-1">
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">Servicio · Proveedor</span>
+                  <span className="font-medium text-right truncate">
+                    {selectedArreglo.servicio || '—'} · {selectedArreglo.persona || '—'}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">Envío · Vence</span>
+                  <span className="font-mono">
+                    {fmtDM(selectedArreglo.fecha_envio)} · {fmtDM(selectedArreglo.fecha_limite)}
+                  </span>
+                </div>
               </div>
             )}
-            {/* Barra de progreso · ahora soporta parciales */}
-            <div className="pt-1">
-              <div className="flex justify-between text-[10px] mb-1">
-                <span>Asignado: {resTotal} / {resCantidad}</span>
-                <span className={resExcede ? 'text-red-600 font-semibold' : resFalta ? 'text-amber-600' : 'text-emerald-600 font-semibold'}>
-                  {resExcede ? `EXCEDE +${resTotal - resCantidad}` : resFalta ? `Pendiente ${resCantidad - resTotal}` : 'COMPLETO'}
+            {/* Estado actual (lo que ya se entregó) */}
+            <div className="rounded-md border bg-card px-3 py-2 text-[11px]">
+              <div className="text-muted-foreground mb-1 uppercase tracking-wider text-[10px]">Ya entregado</div>
+              <div className="grid grid-cols-4 gap-2 text-center tabular-nums">
+                <div>
+                  <div className="text-emerald-600 font-semibold">{prevRec}</div>
+                  <div className="text-[9px] text-muted-foreground">Rec.</div>
+                </div>
+                <div>
+                  <div className="text-orange-600 font-semibold">{prevLiq}</div>
+                  <div className="text-[9px] text-muted-foreground">Cobrar</div>
+                </div>
+                <div>
+                  <div className="text-blue-600 font-semibold">{prevPat}</div>
+                  <div className="text-[9px] text-muted-foreground">Tela</div>
+                </div>
+                <div>
+                  <div className="font-semibold">{prevMer}</div>
+                  <div className="text-[9px] text-muted-foreground">Merma</div>
+                </div>
+              </div>
+              <div className="flex justify-between mt-2 pt-1.5 border-t text-[10px]">
+                <span className="text-muted-foreground">Saldo pendiente</span>
+                <span className={`font-semibold tabular-nums ${resFaltante === 0 ? 'text-emerald-600' : 'text-amber-700 dark:text-amber-400'}`}>
+                  {resFaltante} de {resCantidad}
                 </span>
               </div>
-              <div className="w-full bg-zinc-200 dark:bg-zinc-700 rounded-full h-2">
-                <div className={`h-2 rounded-full transition-all ${resExcede ? 'bg-red-500' : resTotal === resCantidad ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(Math.round(resTotal / Math.max(resCantidad, 1) * 100), 100)}%` }} />
-              </div>
             </div>
-            {resFalta && !resExcede && resTotal > 0 && (
-              <div className="text-[11px] bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-2 py-1.5 rounded text-amber-700 dark:text-amber-300">
-                Vas a guardar una <strong>resolución parcial</strong>. El envío seguirá EN_ARREGLO hasta que completes las {resCantidad - resTotal} restantes.
+            {/* Sugerencia si vencido sin haber recibido nada */}
+            {resVencido && prevTotal === 0 && resFaltante > 0 && resLiq === 0 && (
+              <button
+                type="button"
+                onClick={() => setResolucionForm({ ...resolucionForm, cantidad_liquidacion: resFaltante })}
+                className="w-full text-left text-[11px] bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-2.5 py-2 rounded text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"
+                data-testid="btn-sugerencia-cobrar-saldo"
+              >
+                <span className="font-semibold">Sugerencia:</span> el plazo venció y el proveedor no entregó.{' '}
+                <span className="underline">Click para cobrar el saldo ({resFaltante}) al proveedor</span>.
+              </button>
+            )}
+            {/* Inputs como DELTA (cantidad a agregar AHORA) */}
+            {resFaltante === 0 ? (
+              <div className="text-[11px] text-center text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50 rounded-md px-3 py-2">
+                ✓ Este envío ya está completo. No hay saldo pendiente para asignar.
+              </div>
+            ) : (
+              <>
+                <div>
+                  <Label className="text-xs text-emerald-600 font-medium">+ Recuperar</Label>
+                  <Input type="number" min={0} max={resFaltante} value={resolucionForm.cantidad_recuperada} onChange={e => setResolucionForm({ ...resolucionForm, cantidad_recuperada: e.target.value })} data-testid="input-res-recuperado" />
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Vuelven al lote bueno</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-orange-600 font-medium">+ A cobrar al proveedor</Label>
+                  <Input type="number" min={0} max={resFaltante} value={resolucionForm.cantidad_liquidacion} onChange={e => setResolucionForm({ ...resolucionForm, cantidad_liquidacion: e.target.value })} data-testid="input-res-liquidacion" />
+                  <p className="text-[10px] text-muted-foreground mt-0.5">El servicio no las recuperó · se le facturan</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-blue-600 font-medium">+ Pasa a evaluación de tela</Label>
+                  <Input type="number" min={0} max={resFaltante} value={resolucionForm.cantidad_pasa_a_tela} onChange={e => setResolucionForm({ ...resolucionForm, cantidad_pasa_a_tela: e.target.value })} data-testid="input-res-pasa-a-tela" />
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Servicio OK pero detectó defecto de tela · va a Acabado</p>
+                </div>
+              </>
+            )}
+            {/* Resumen del resultado tras guardar */}
+            {resDelta > 0 && (
+              <div className="pt-1">
+                <div className="flex justify-between text-[10px] mb-1">
+                  <span>Asignando ahora: <span className="font-semibold tabular-nums">{resDelta}</span></span>
+                  <span className={resExcede ? 'text-red-600 font-semibold' : (resTotal === resCantidad ? 'text-emerald-600 font-semibold' : 'text-amber-600')}>
+                    {resExcede
+                      ? `EXCEDE saldo +${resDelta - resFaltante}`
+                      : (resTotal === resCantidad ? 'CIERRA EL ENVÍO ✓' : `Quedarán ${resCantidad - resTotal} pendientes`)}
+                  </span>
+                </div>
+                <div className="w-full bg-zinc-200 dark:bg-zinc-700 rounded-full h-2">
+                  <div className={`h-2 rounded-full transition-all ${resExcede ? 'bg-red-500' : resTotal === resCantidad ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(Math.round(resTotal / Math.max(resCantidad, 1) * 100), 100)}%` }} />
+                </div>
               </div>
             )}
             {resPat > 0 && (
@@ -974,12 +1033,12 @@ export const ArreglosPanel = ({ registroId, servicios = [], personas = [] }) => 
             <Button
               type="button" size="sm"
               onClick={handleSaveResolucion}
-              disabled={saving || resExcede || resTotal === 0}
+              disabled={saving || resExcede || resDelta === 0 || resFaltante === 0}
               data-testid="btn-guardar-resolucion"
             >
               {saving
                 ? 'Guardando...'
-                : (resTotal === resCantidad ? 'Confirmar entrega' : 'Guardar parcial')}
+                : (resTotal === resCantidad ? 'Confirmar y cerrar envío' : 'Guardar avance')}
             </Button>
           </DialogFooter>
         </DialogContent>
