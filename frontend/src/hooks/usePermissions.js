@@ -141,6 +141,7 @@ export const RUTA_A_TABLA = {
   '/bases': 'bases',
   '/modelos': 'modelos',
   '/registros': 'registros',
+  '/mesa-acabado': 'reporte_calidad',
   '/inventario': 'inventario',
   '/inventario/ingresos': 'inventario_ingresos',
   '/inventario/salidas': 'inventario_salidas',

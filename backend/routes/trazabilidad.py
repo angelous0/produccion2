@@ -2379,3 +2379,173 @@ async def fallados_control_export(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+# ==================== MESA DE ACABADO ====================
+# Vista operativa centralizada: lista de cortes en estado Acabado / Para Acabado
+# con stats agregadas para registrar fallados y dar seguimiento masivo
+# sin tener que abrir cada registro individualmente.
+
+@router.get("/mesa-acabado/cortes")
+async def mesa_acabado_cortes(
+    estados: Optional[str] = None,   # CSV. Default: Acabado, Para Acabado
+    linea_negocio_id: Optional[str] = None,
+    marca_id: Optional[str] = None,
+    modelo_id: Optional[str] = None,
+    search: Optional[str] = None,    # busca en n_corte o modelo
+    solo_con_pendientes: bool = False,
+    current_user: dict = Depends(get_current_user),
+):
+    """Cortes en Acabado con stats agregadas de fallados y arreglos."""
+    pool = await get_pool()
+    estados_list = [e.strip() for e in (estados or "Acabado,Para Acabado").split(",") if e.strip()]
+    async with pool.acquire() as conn:
+        # Construir WHERE dinámico
+        where = ["r.estado = ANY($1::text[])"]
+        params: list = [estados_list]
+        idx = 2
+        if linea_negocio_id:
+            try:
+                where.append(f"r.linea_negocio_id = ${idx}")
+                params.append(int(linea_negocio_id))
+                idx += 1
+            except ValueError:
+                pass
+        if modelo_id:
+            where.append(f"r.modelo_id = ${idx}")
+            params.append(modelo_id)
+            idx += 1
+        if marca_id:
+            where.append(f"(m.marca_id = ${idx} OR (r.modelo_manual->>'marca_id') = ${idx})")
+            params.append(marca_id)
+            idx += 1
+        if search:
+            where.append(f"(r.n_corte ILIKE ${idx} OR COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo', '') ILIKE ${idx})")
+            params.append(f"%{search}%")
+            idx += 1
+
+        where_sql = " AND ".join(where)
+        rows = await conn.fetch(f"""
+            SELECT
+              r.id,
+              r.n_corte,
+              r.estado,
+              r.linea_negocio_id,
+              ln.nombre as linea_negocio,
+              COALESCE(m.nombre, r.modelo_manual->>'nombre_modelo') as modelo,
+              COALESCE(ma.nombre, mma.nombre, r.modelo_manual->>'marca_texto', 'Sin marca') as marca,
+              COALESCE(rt_sum.prendas, 0) as prendas,
+              COALESCE(fa_serv.total_detectado, 0) as fallados_detectados,
+              GREATEST(COALESCE(fa_serv.total_detectado, 0) - COALESCE(aa_sum.total_enviado, 0), 0) as fallados_pendientes,
+              COALESCE(fa_tela.total_detectado_tela, 0) as fallados_tela_detectados,
+              COALESCE(fa_tela.tela_pendiente, 0) as fallados_tela_pendientes,
+              COALESCE(aa_no_comp.cantidad_pendiente, 0) as en_arreglo_pendiente,
+              COALESCE(aa_no_comp.envios_abiertos, 0) as envios_abiertos,
+              COALESCE(aa_no_comp.envios_vencidos, 0) as envios_vencidos,
+              COALESCE(aa_sum.total_enviado, 0) as total_enviado,
+              COALESCE(aa_sum.total_recuperado, 0) as recuperado,
+              COALESCE(aa_sum.total_liquidacion, 0) as a_cobrar,
+              COALESCE(aa_sum.total_pasa_tela, 0) as pasa_tela,
+              COALESCE(aa_sum.total_merma, 0) as merma,
+              r.fecha_creacion,
+              GREATEST((CURRENT_DATE - r.fecha_creacion::date), 0) as dias_sin_movimiento
+            FROM prod_registros r
+            LEFT JOIN prod_modelos m ON r.modelo_id = m.id
+            LEFT JOIN prod_marcas ma ON m.marca_id = ma.id
+            LEFT JOIN prod_marcas mma ON (r.modelo_manual->>'marca_id') = mma.id
+            LEFT JOIN finanzas2.cont_linea_negocio ln ON r.linea_negocio_id = ln.id
+            LEFT JOIN LATERAL (
+                SELECT COALESCE(SUM(cantidad_real), 0) as prendas
+                FROM prod_registro_tallas rt WHERE rt.registro_id = r.id
+            ) rt_sum ON true
+            LEFT JOIN LATERAL (
+                SELECT COALESCE(SUM(cantidad_detectada), 0) as total_detectado
+                FROM prod_fallados
+                WHERE registro_id = r.id AND causa = 'servicio' AND origen_arreglo_id IS NULL
+            ) fa_serv ON true
+            LEFT JOIN LATERAL (
+                SELECT COALESCE(SUM(cantidad_detectada), 0) as total_detectado_tela,
+                       COALESCE(SUM(cantidad_detectada
+                          - COALESCE(cantidad_tela_recuperada, 0)
+                          - COALESCE(cantidad_tela_liquidada, 0)), 0) as tela_pendiente
+                FROM prod_fallados
+                WHERE registro_id = r.id AND causa = 'tela'
+            ) fa_tela ON true
+            LEFT JOIN LATERAL (
+                SELECT
+                    COALESCE(SUM(cantidad), 0) as total_enviado,
+                    COALESCE(SUM(cantidad_recuperada), 0) as total_recuperado,
+                    COALESCE(SUM(cantidad_liquidacion), 0) as total_liquidacion,
+                    COALESCE(SUM(cantidad_pasa_a_tela), 0) as total_pasa_tela,
+                    COALESCE(SUM(cantidad_merma), 0) as total_merma
+                FROM prod_registro_arreglos
+                WHERE registro_id = r.id
+            ) aa_sum ON true
+            LEFT JOIN LATERAL (
+                SELECT
+                    COUNT(*) FILTER (
+                        WHERE (COALESCE(cantidad_recuperada,0) + COALESCE(cantidad_liquidacion,0)
+                               + COALESCE(cantidad_pasa_a_tela,0) + COALESCE(cantidad_merma,0)) < cantidad
+                    ) as envios_abiertos,
+                    COUNT(*) FILTER (
+                        WHERE fecha_limite < CURRENT_DATE
+                          AND (COALESCE(cantidad_recuperada,0) + COALESCE(cantidad_liquidacion,0)
+                               + COALESCE(cantidad_pasa_a_tela,0) + COALESCE(cantidad_merma,0)) < cantidad
+                    ) as envios_vencidos,
+                    COALESCE(SUM(cantidad
+                        - COALESCE(cantidad_recuperada,0) - COALESCE(cantidad_liquidacion,0)
+                        - COALESCE(cantidad_pasa_a_tela,0) - COALESCE(cantidad_merma,0))
+                      FILTER (
+                        WHERE (COALESCE(cantidad_recuperada,0) + COALESCE(cantidad_liquidacion,0)
+                               + COALESCE(cantidad_pasa_a_tela,0) + COALESCE(cantidad_merma,0)) < cantidad
+                      ), 0) as cantidad_pendiente
+                FROM prod_registro_arreglos
+                WHERE registro_id = r.id
+            ) aa_no_comp ON true
+            WHERE {where_sql}
+            ORDER BY r.fecha_creacion DESC NULLS LAST, r.n_corte
+        """, *params)
+
+        resultado = []
+        for r in rows:
+            d = dict(r)
+            if solo_con_pendientes and not (
+                d["fallados_pendientes"] > 0
+                or d["fallados_tela_pendientes"] > 0
+                or d["envios_abiertos"] > 0
+            ):
+                continue
+            resultado.append({
+                "id": d["id"],
+                "n_corte": d["n_corte"],
+                "estado": d["estado"],
+                "linea_negocio_id": d.get("linea_negocio_id"),
+                "linea_negocio": d.get("linea_negocio") or "",
+                "modelo": d.get("modelo") or "",
+                "marca": d.get("marca") or "",
+                "prendas": safe_int(d["prendas"]),
+                "fallados_detectados": safe_int(d["fallados_detectados"]),
+                "fallados_pendientes": safe_int(d["fallados_pendientes"]),
+                "fallados_tela_detectados": safe_int(d["fallados_tela_detectados"]),
+                "fallados_tela_pendientes": safe_int(d["fallados_tela_pendientes"]),
+                "en_arreglo_pendiente": safe_int(d["en_arreglo_pendiente"]),
+                "envios_abiertos": safe_int(d["envios_abiertos"]),
+                "envios_vencidos": safe_int(d["envios_vencidos"]),
+                "total_enviado": safe_int(d["total_enviado"]),
+                "recuperado": safe_int(d["recuperado"]),
+                "a_cobrar": safe_int(d["a_cobrar"]),
+                "pasa_tela": safe_int(d["pasa_tela"]),
+                "merma": safe_int(d["merma"]),
+                "dias_sin_movimiento": safe_int(d["dias_sin_movimiento"]),
+                "updated_at": str(d["updated_at"]) if d.get("updated_at") else None,
+            })
+
+        kpis = {
+            "total_cortes": len(resultado),
+            "total_prendas": sum(r["prendas"] for r in resultado),
+            "total_fallados_pendientes": sum(r["fallados_pendientes"] for r in resultado),
+            "total_envios_abiertos": sum(r["envios_abiertos"] for r in resultado),
+            "total_envios_vencidos": sum(r["envios_vencidos"] for r in resultado),
+        }
+
+        return {"cortes": resultado, "kpis": kpis}

@@ -30,6 +30,7 @@ import {
   Scissors,
   Box,
   ClipboardList,
+  ClipboardCheck,
   Sun,
   Moon,
   Menu,
@@ -116,6 +117,7 @@ function getUserInitials(user) {
 const operacionesItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/registros', icon: ClipboardList, label: 'Registros' },
+  { to: '/mesa-acabado', icon: ClipboardCheck, label: 'Mesa de Acabado' },
   { to: '/muestras', icon: FlaskConical, label: 'Muestras' },
 ];
 
