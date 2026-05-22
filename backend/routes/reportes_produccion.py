@@ -3211,9 +3211,33 @@ async def validacion_registros(
                     faltantes.append("Hangtag Bolsillero")
                 if not has_mp(rid, "pretinero"):
                     faltantes.append("Hangtag Pretinero")
-                # Hangtag de entalle: no aplica para Flare ni Mom
+                # Hangtag de entalle: no aplica para Flare ni Mom.
+                # Reglas de match (en orden):
+                #   1) Genérico: el item se llama "entalle" o "perfect".
+                #   2) Nombre del entalle del modelo (ej: entalle "Skinny"
+                #      matchea "Hantag Skinny Fit").
+                #   3) Entalles compuestos: la PRIMERA palabra del entalle
+                #      cuenta como base (ej: "Oversize Cargo" → "Hantag Oversize"
+                #      o "Jogger Cargo" → "Hantag Jogger").
+                #   4) Equivalencias del negocio: "Hantag Relaxed" sirve para
+                #      entalles "Regular" y "Semi Extra".
                 if entalle not in ("flare", "mom"):
-                    if not has_mp(rid, "entalle") and not has_mp(rid, "perfect"):
+                    HANGTAG_EQUIVALENTES = {
+                        "regular": ["relaxed"],
+                        "semi extra": ["relaxed"],
+                    }
+                    candidatos_entalle = []
+                    if entalle:
+                        candidatos_entalle.append(entalle)
+                        palabras = entalle.split()
+                        if len(palabras) > 1 and palabras[0]:
+                            candidatos_entalle.append(palabras[0])
+                        candidatos_entalle.extend(HANGTAG_EQUIVALENTES.get(entalle, []))
+                    if not (
+                        has_mp(rid, "entalle")
+                        or has_mp(rid, "perfect")
+                        or any(has_mp(rid, c) for c in candidatos_entalle)
+                    ):
                         faltantes.append("Hangtag Entalle")
                 if not has_mp(rid, "colgante"):
                     faltantes.append("Colgante")
