@@ -965,14 +965,29 @@ export const MatrizProduccion = () => {
   };
 
   // ── Modal: abrir con registros filtrados ────────────────────
+  // - Si `col` viene, filtra a esa celda específica (incluye absorbidas).
+  // - Si no viene (click en el Total de la fila), filtra a los estados de las
+  //   columnas VISIBLES (effectiveCols + sus absorbidas). El total que se
+  //   muestra en la celda Total también respeta esa visibilidad, así el modal
+  //   coincide con el número visible y no incluye estados de columnas ocultas
+  //   como "Tienda".
   const openModal = (fila, col) => {
     let regs = fila.detalle || [];
     let titulo = fila.item;
     if (col) {
-      // Celda específica: filtrar por estado, incluyendo columnas absorbidas
       const cols = [col, ...(mergedCols[col] || [])];
       regs = regs.filter(r => cols.includes(r.estado));
       titulo = `${fila.item} → ${col}${mergedCols[col]?.length ? ` (+${mergedCols[col].join(', ')})` : ''}`;
+    } else {
+      // Total fila: incluir solo registros cuyo estado esté en alguna
+      // columna visible (o absorbida dentro de una visible).
+      const estadosVisibles = new Set();
+      effectiveCols.forEach(c => {
+        estadosVisibles.add(c);
+        (mergedCols[c] || []).forEach(a => estadosVisibles.add(a));
+      });
+      regs = regs.filter(r => estadosVisibles.has(r.estado));
+      titulo = `${fila.item} → Total visible`;
     }
     setModalRegistros(regs);
     setModalTitulo(titulo);

@@ -430,7 +430,6 @@ async def get_estructura_permisos():
                     {"key": "reporte_despachos_tienda", "nombre": "Despachos a Tienda", "acciones": ["ver"]},
                     {"key": "reporte_costos_produccion", "nombre": "Detalle por Talla e Insumo", "acciones": ["ver"]},
                     {"key": "reporte_movimientos_costos", "nombre": "Movimientos & Costos", "acciones": ["ver"]},
-                    {"key": "reporte_trazabilidad_kpis", "nombre": "KPIs Trazabilidad", "acciones": ["ver"]},
                 ]
             },
         ],

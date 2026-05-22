@@ -155,7 +155,6 @@ const reportesItems = [
   { to: '/reportes/seguimiento-tienda', icon: Store, label: 'Seguimiento Tienda' },
   { to: '/reportes/muestras-lavanderia', icon: FlaskConical, label: 'Muestras Lavandería' },
   { to: '/reportes/movimientos-costos', icon: Receipt, label: 'Movimientos & Costos' },
-  { to: '/reportes/trazabilidad-kpis', icon: TrendingDown, label: 'KPIs Trazabilidad' },
 ];
 
 const catalogosItems = [
@@ -233,7 +232,7 @@ function getPermissionKeyForPath(pathname) {
 
 // ── Grupo colapsable ────────────────────────────────────────────────────────
 
-function NavGroup({ label, items, collapsed: sidebarCollapsed, storageKey, defaultOpen = false, onItemClick, dotColor }) {
+function NavGroup({ label, items, collapsed: sidebarCollapsed, storageKey, defaultOpen = false, onItemClick, dotColor, scrollMaxItems }) {
   const [open, setOpen] = useState(() => {
     const saved = localStorage.getItem(`navgroup_${storageKey}`);
     if (saved !== null) return saved === 'true';
@@ -274,6 +273,21 @@ function NavGroup({ label, items, collapsed: sidebarCollapsed, storageKey, defau
           transition: 'max-height 0.25s ease-in-out',
         }}
       >
+        {/* Si scrollMaxItems está definido y el grupo tiene más items que ese
+            límite, le damos scroll interno para que no domine el sidebar y se
+            puedan ver las demás secciones (Catálogos, Odoo, Maestros). */}
+        <div
+          className={
+            scrollMaxItems && items.length > scrollMaxItems && !sidebarCollapsed
+              ? 'overflow-y-auto'
+              : ''
+          }
+          style={
+            scrollMaxItems && items.length > scrollMaxItems && !sidebarCollapsed
+              ? { maxHeight: `${scrollMaxItems * 34}px` }
+              : undefined
+          }
+        >
         {items.map((item) => (
           <NavLink
             key={item.to}
@@ -290,6 +304,7 @@ function NavGroup({ label, items, collapsed: sidebarCollapsed, storageKey, defau
             <span className={sidebarCollapsed ? 'md:hidden' : ''}>{item.label}</span>
           </NavLink>
         ))}
+        </div>
       </div>
     </div>
   );
@@ -756,7 +771,9 @@ export const Layout = () => {
               dotColor="bg-green-500"
             />
 
-            {/* ── Reportes — expandido por defecto ── */}
+            {/* ── Reportes — expandido por defecto. Scroll interno arriba de 9
+                 items para no esconder los grupos siguientes (Catálogos, Odoo,
+                 Maestros). ── */}
             <NavGroup
               label="Reportes"
               storageKey="reportes"
@@ -765,6 +782,7 @@ export const Layout = () => {
               collapsed={sidebarCollapsed}
               onItemClick={closeMobileSidebar}
               dotColor="bg-purple-500"
+              scrollMaxItems={9}
             />
 
             {/* ── Catálogos — cerrado por defecto ── */}

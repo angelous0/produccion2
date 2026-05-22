@@ -121,16 +121,16 @@ const TabPorCobrar = ({ filas, refreshAll, filtro, onCambiarFiltro }) => {
   const [accionMotivo, setAccionMotivo] = useState('');
   const [accionForm, setAccionForm] = useState({});
 
-  // Solo arreglos VENCIDOS, no completados
-  const vencidos = useMemo(() => filas.filter(f =>
-    f.tipo_fila === 'ARREGLO' && f.estado === 'VENCIDO',
+  // Todos los arreglos activos (no completados): EN_ARREGLO, PARCIAL, VENCIDO
+  const porCobrar = useMemo(() => filas.filter(f =>
+    f.tipo_fila === 'ARREGLO' && f.estado !== 'COMPLETADO',
   ), [filas]);
 
   // Filtrar por estado_cobro según filtro segmentado
   const visibles = useMemo(() => {
-    if (filtro === 'todos') return vencidos;
-    return vencidos.filter(f => (f.estado_cobro || 'sin_marcar') === filtro);
-  }, [vencidos, filtro]);
+    if (filtro === 'todos') return porCobrar;
+    return porCobrar.filter(f => (f.estado_cobro || 'sin_marcar') === filtro);
+  }, [porCobrar, filtro]);
 
   // Agrupar por proveedor
   const grupos = useMemo(() => {
@@ -163,11 +163,11 @@ const TabPorCobrar = ({ filas, refreshAll, filtro, onCambiarFiltro }) => {
     });
   }, [grupos]);
 
-  // KPIs (sobre TODOS los vencidos, no solo los visibles del filtro)
-  const sinMarcar = vencidos.filter(f => (f.estado_cobro || 'sin_marcar') === 'sin_marcar');
-  const marcadosArr = vencidos.filter(f => f.estado_cobro === 'marcado');
-  const cobradosArr = vencidos.filter(f => f.estado_cobro === 'cobrado');
-  const antiguedadMax = vencidos.filter(f => f.estado_cobro !== 'cobrado').reduce((m, f) => Math.max(m, f.dias || 0), 0);
+  // KPIs (sobre TODOS los arreglos activos, no solo los visibles del filtro)
+  const sinMarcar = porCobrar.filter(f => (f.estado_cobro || 'sin_marcar') === 'sin_marcar');
+  const marcadosArr = porCobrar.filter(f => f.estado_cobro === 'marcado');
+  const cobradosArr = porCobrar.filter(f => f.estado_cobro === 'cobrado');
+  const antiguedadMax = porCobrar.filter(f => f.estado_cobro !== 'cobrado').reduce((m, f) => Math.max(m, f.dias || 0), 0);
 
   // Selección solo aplica a 'sin_marcar'
   const lotesSeleccionables = useMemo(
@@ -366,7 +366,7 @@ const TabPorCobrar = ({ filas, refreshAll, filtro, onCambiarFiltro }) => {
       {/* KPI cards (4) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-lg border bg-card px-4 py-3">
-          <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground">Vencidos sin marcar</p>
+          <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground">Sin marcar</p>
           <p className="text-2xl text-red-600 dark:text-red-400 mt-1 tabular-nums leading-none">
             {sinMarcar.length}
             <span className="text-sm text-muted-foreground ml-1.5">lote{sinMarcar.length !== 1 ? 's' : ''}</span>
@@ -410,7 +410,7 @@ const TabPorCobrar = ({ filas, refreshAll, filtro, onCambiarFiltro }) => {
       {/* Segmentado de filtro */}
       <div className="inline-flex rounded-md border bg-card p-0.5 text-xs">
         {[
-          { v: 'todos', l: `Todos (${vencidos.length})` },
+          { v: 'todos', l: `Todos (${porCobrar.length})` },
           { v: 'sin_marcar', l: `Sin marcar (${sinMarcar.length})` },
           { v: 'marcado', l: `Marcados (${marcadosArr.length})` },
           { v: 'cobrado', l: `Cobrados (${cobradosArr.length})` },
@@ -768,7 +768,7 @@ export const ControlFallados = () => {
   const refreshAll = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API}/fallados-control?solo_vencidos=true`, { headers: hdrs() });
+      const res = await axios.get(`${API}/fallados-control`, { headers: hdrs() });
       setFilas(res.data.filas || []);
     } catch (e) {
       console.error(e);

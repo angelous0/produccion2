@@ -74,7 +74,6 @@ const SalidasLibres = lazy(() => import("./pages/SalidasLibres").then(m => ({ de
 const Muestras = lazy(() => import("./pages/Muestras").then(m => ({ default: m.Muestras })));
 const MuestraDetalle = lazy(() => import("./pages/MuestraDetalle").then(m => ({ default: m.MuestraDetalle })));
 const ValidacionRegistros = lazy(() => import("./pages/ValidacionRegistros").then(m => ({ default: m.ValidacionRegistros })));
-const ReporteTrazabilidadKPIs = lazy(() => import("./pages/ReporteTrazabilidadKPIs").then(m => ({ default: m.ReporteTrazabilidadKPIs })));
 const SeguimientoTienda = lazy(() => import("./pages/SeguimientoTienda"));
 const ReporteCortes = lazy(() => import("./pages/ReporteCortes").then(m => ({ default: m.ReporteCortes })));
 const ConciliacionPendiente = lazy(() => import("./pages/ConciliacionPendiente").then(m => ({ default: m.ConciliacionPendiente })));
@@ -212,7 +211,6 @@ function AppRoutes() {
         <Route path="reportes/movimientos-costos" element={<LazyWrap><ReporteMovimientosCostos /></LazyWrap>} />
         <Route path="reportes/trazabilidad/:registroId" element={<LazyWrap><ReporteTrazabilidad /></LazyWrap>} />
         {/* Reportes standalone restantes (los demás son tabs de hubs) */}
-        <Route path="reportes/trazabilidad-kpis" element={<LazyWrap><ReporteTrazabilidadKPIs /></LazyWrap>} />
         <Route path="reportes/seguimiento-tienda" element={<LazyWrap><SeguimientoTienda /></LazyWrap>} />
         <Route path="reportes/cortes" element={<LazyWrap><ReporteCortes /></LazyWrap>} />
         <Route path="reportes/conciliacion-pendiente" element={<LazyWrap><ConciliacionPendiente /></LazyWrap>} />

@@ -178,7 +178,6 @@ export const RUTA_A_TABLA = {
   '/reportes/rendimiento-servicios': 'reporte_rendimiento_servicios',
   '/reportes/despachos-tienda': 'reporte_despachos_tienda',
   '/reportes/movimientos-costos': 'reporte_movimientos_costos',
-  '/reportes/trazabilidad-kpis': 'reporte_trazabilidad_kpis',
   '/reportes/trazabilidad': 'reporte_lotes',
   '/reportes/alertas': 'reporte_seguimiento',
   '/reportes/agenda-entregas': 'reporte_entregas',
