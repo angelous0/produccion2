@@ -1398,6 +1398,7 @@ async def matriz_produccion(
                 mov_first.primera_fecha as fecha_inicio_prod,
                 COALESCE(mov_ult.ult_servicio, '') as ult_mov_servicio,
                 mov_ult.ult_fecha_inicio as ult_mov_fecha,
+                COALESCE(mov_ult.ult_persona, '') as ult_mov_persona,
                 COALESCE(mov_agg.diferencia_total, 0) as diferencia_acumulada,
                 COALESCE(mov_agg.total_movimientos, 0) as total_movimientos
             FROM prod_registros r
@@ -1425,10 +1426,20 @@ async def matriz_produccion(
                 WHERE mp0.registro_id = r.id AND mp0.fecha_inicio IS NOT NULL
             ) mov_first ON true
             LEFT JOIN LATERAL (
-                SELECT sp.nombre as ult_servicio, mp.fecha_inicio as ult_fecha_inicio
+                -- Trae el movimiento del servicio cuyo nombre coincide con el estado
+                -- actual del registro (normalizando tildes). Si el estado no es un
+                -- servicio (ej: "Tienda", "Almacén PT"), no devuelve nada.
+                SELECT sp.nombre as ult_servicio,
+                       mp.fecha_inicio as ult_fecha_inicio,
+                       pp.nombre as ult_persona
                 FROM prod_movimientos_produccion mp
                 LEFT JOIN prod_servicios_produccion sp ON mp.servicio_id = sp.id
+                LEFT JOIN prod_personas_produccion pp ON mp.persona_id = pp.id
                 WHERE mp.registro_id = r.id
+                  AND r.estado IS NOT NULL
+                  AND sp.nombre IS NOT NULL
+                  AND TRANSLATE(LOWER(sp.nombre), 'áéíóúñ', 'aeioun')
+                      = TRANSLATE(LOWER(r.estado), 'áéíóúñ', 'aeioun')
                 ORDER BY mp.fecha_inicio DESC NULLS LAST, mp.created_at DESC
                 LIMIT 1
             ) mov_ult ON true
@@ -1572,6 +1583,7 @@ async def matriz_produccion(
                 "dias_proceso": safe_int(r["dias_proceso"]),
                 "ult_mov_servicio": r["ult_mov_servicio"],
                 "ult_mov_fecha": str(r["ult_mov_fecha"]) if r["ult_mov_fecha"] else None,
+                "ult_mov_persona": r["ult_mov_persona"] or None,
                 "diferencia_acumulada": safe_int(r["diferencia_acumulada"]),
                 "total_movimientos": safe_int(r["total_movimientos"]),
                 "colores": colores_lista,

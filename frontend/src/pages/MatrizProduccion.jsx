@@ -506,7 +506,11 @@ const DetalleModal = ({ open, onClose, registros, titulo, navigate }) => {
                     <td className="p-2 text-center font-mono">{d.dias_proceso > 0 ? `${d.dias_proceso}d` : '-'}</td>
                     <td className="p-2 whitespace-nowrap">
                       {d.ult_mov_servicio ? (
-                        <span>{d.ult_mov_servicio} <span className="text-muted-foreground">({formatDate(d.ult_mov_fecha)})</span></span>
+                        <span>
+                          {d.ult_mov_servicio}
+                          {d.ult_mov_persona && <span className="text-foreground"> · {d.ult_mov_persona}</span>}
+                          <span className="text-muted-foreground"> ({formatDate(d.ult_mov_fecha)})</span>
+                        </span>
                       ) : '-'}
                     </td>
                     <td className="p-2 text-right font-mono">
