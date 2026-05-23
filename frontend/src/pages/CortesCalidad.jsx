@@ -628,18 +628,20 @@ export default function CortesCalidad() {
   const conteos = data.conteos_por_etapa || {};
 
   return (
-    <div className="min-h-screen bg-muted/30 pb-20">
-      {/* Header */}
-      <div className="bg-primary text-primary-foreground px-4 py-3 sticky top-0 z-30">
-        <div className="flex items-center justify-between">
-          <h1 className="text-base font-semibold">Cortes — Calidad</h1>
-          <button
-            onClick={cargar}
-            className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
+    // Sin `min-h-screen` ni header azul propio: la página vive dentro del
+    // Layout (que ya provee header global). Antes los dos headers se apilaban
+    // en mobile y el del Layout quedaba cortado bajo este.
+    <div className="bg-muted/30 -mx-4 -my-4 sm:-mx-6 sm:-my-6">
+      {/* Título + acción refrescar */}
+      <div className="bg-card border-b px-4 py-3 flex items-center justify-between">
+        <h1 className="text-base sm:text-lg font-semibold">Cortes — Calidad</h1>
+        <button
+          onClick={cargar}
+          title="Actualizar"
+          className="h-9 w-9 rounded-full bg-muted hover:bg-muted/70 flex items-center justify-center text-foreground/80"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+        </button>
       </div>
 
       {/* Búsqueda */}
