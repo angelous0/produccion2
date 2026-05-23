@@ -224,40 +224,71 @@ const ModalAsignar = ({ open, registro, onClose, onSaved }) => {
 // ─── Modal: Registrar entrega parcial ───────────────────────────────────
 const ModalEntrega = ({ open, arreglo, onClose, onSaved }) => {
   const [form, setForm] = useState({
-    cant_ok: '', cant_liq: '', cant_merma: '',
+    cant_ok: '', cant_lq_leve: '', cant_lq_grave: '',
     observacion: '',
   });
+  // Vista "No devuelto" (mini-form que reemplaza los 3 contadores)
+  const [modoNoDev, setModoNoDev] = useState(false);
+  const [noDevForm, setNoDevForm] = useState({ cant_no_devuelto: '', motivo: '' });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setForm({ cant_ok: '', cant_liq: '', cant_merma: '', observacion: '' });
+      setForm({ cant_ok: '', cant_lq_leve: '', cant_lq_grave: '', observacion: '' });
+      setNoDevForm({ cant_no_devuelto: '', motivo: '' });
+      setModoNoDev(false);
     }
   }, [open, arreglo?.arreglo_id]);
 
   const pendiente = arreglo?.pendiente || 0;
-  const total = (parseInt(form.cant_ok) || 0) + (parseInt(form.cant_liq) || 0) + (parseInt(form.cant_merma) || 0);
+  const ok = parseInt(form.cant_ok) || 0;
+  const lqL = parseInt(form.cant_lq_leve) || 0;
+  const lqG = parseInt(form.cant_lq_grave) || 0;
+  const total = ok + lqL + lqG;
   const excede = total > pendiente;
 
-  const handleGuardar = async () => {
+  const noDev = parseInt(noDevForm.cant_no_devuelto) || 0;
+  const excedeNoDev = noDev > pendiente;
+
+  const handleGuardarEntrega = async () => {
     if (total === 0) return toast.error('Indica al menos una cantidad');
     if (excede) return toast.error(`Excede el pendiente (${pendiente})`);
-
     setSaving(true);
     try {
       await axios.post(
         `${API}/arreglos/${arreglo.arreglo_id}/entregas`,
         {
-          cant_ok: parseInt(form.cant_ok) || 0,
-          cant_liq: parseInt(form.cant_liq) || 0,
-          cant_merma: parseInt(form.cant_merma) || 0,
+          cant_ok: ok, cant_lq_leve: lqL, cant_lq_grave: lqG, cant_no_devuelto: 0,
           observacion: form.observacion || null,
         },
-        { headers: hdrs() }
+        { headers: hdrs() },
       );
       toast.success('Entrega registrada');
-      onSaved();
-      onClose();
+      onSaved(); onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Error al registrar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleGuardarNoDev = async () => {
+    if (noDev <= 0) return toast.error('Indica la cantidad no devuelta');
+    if (excedeNoDev) return toast.error(`Excede el pendiente (${pendiente})`);
+    if (!noDevForm.motivo.trim()) return toast.error('El motivo es obligatorio');
+    setSaving(true);
+    try {
+      await axios.post(
+        `${API}/arreglos/${arreglo.arreglo_id}/entregas`,
+        {
+          cant_ok: 0, cant_lq_leve: 0, cant_lq_grave: 0,
+          cant_no_devuelto: noDev,
+          observacion: `[NO DEVUELTO] ${noDevForm.motivo.trim()}`,
+        },
+        { headers: hdrs() },
+      );
+      toast.success(`Marcado ${noDev} como NO devuelto`);
+      onSaved(); onClose();
     } catch (e) {
       toast.error(e.response?.data?.detail || 'Error al registrar');
     } finally {
@@ -269,62 +300,115 @@ const ModalEntrega = ({ open, arreglo, onClose, onSaved }) => {
     <Dialog open={open} onOpenChange={(o) => !o && !saving && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Registrar entrega</DialogTitle>
+          <DialogTitle>{modoNoDev ? 'Marcar como NO devuelto' : 'Recibir entrega'}</DialogTitle>
           <DialogDescription>
             Corte <span className="font-mono">{arreglo?.n_corte}</span> · {arreglo?.servicio} · {arreglo?.persona}
             <br /><span className="text-xs">Pendiente: <b>{pendiente}</b> prendas</span>
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3 py-2">
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label className="text-xs text-emerald-700">Recibidas OK</Label>
-              <Input
-                type="number" min={0} max={pendiente}
-                value={form.cant_ok}
-                onChange={(e) => setForm({ ...form, cant_ok: e.target.value })}
-                className="h-10 text-center text-lg font-bold"
-              />
+        {!modoNoDev && (
+          <div className="space-y-3 py-2">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label className="text-xs text-emerald-700">✓ OK</Label>
+                <Input
+                  type="number" min={0} max={pendiente}
+                  value={form.cant_ok}
+                  onChange={(e) => setForm({ ...form, cant_ok: e.target.value })}
+                  className="h-10 text-center text-lg font-bold border-emerald-300"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-amber-700">⚠ LQ Leve</Label>
+                <Input
+                  type="number" min={0} max={pendiente}
+                  value={form.cant_lq_leve}
+                  onChange={(e) => setForm({ ...form, cant_lq_leve: e.target.value })}
+                  className="h-10 text-center text-lg font-bold border-amber-300"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-orange-700">⚠ LQ Grave</Label>
+                <Input
+                  type="number" min={0} max={pendiente}
+                  value={form.cant_lq_grave}
+                  onChange={(e) => setForm({ ...form, cant_lq_grave: e.target.value })}
+                  className="h-10 text-center text-lg font-bold border-orange-400"
+                />
+              </div>
             </div>
-            <div>
-              <Label className="text-xs text-amber-700">A liquidación</Label>
-              <Input
-                type="number" min={0} max={pendiente}
-                value={form.cant_liq}
-                onChange={(e) => setForm({ ...form, cant_liq: e.target.value })}
-                className="h-10 text-center text-lg font-bold"
-              />
+            <div className={`text-xs text-center ${excede ? 'text-red-600 font-bold' : 'text-muted-foreground'}`}>
+              Total a registrar: {total} {excede ? `(excede ${pendiente})` : ''}
             </div>
-            <div>
-              <Label className="text-xs text-red-700">Merma</Label>
-              <Input
-                type="number" min={0} max={pendiente}
-                value={form.cant_merma}
-                onChange={(e) => setForm({ ...form, cant_merma: e.target.value })}
-                className="h-10 text-center text-lg font-bold"
-              />
-            </div>
-          </div>
-          <div className={`text-xs text-center ${excede ? 'text-red-600 font-bold' : 'text-muted-foreground'}`}>
-            Total a registrar: {total} {excede ? `(excede ${pendiente})` : ''}
-          </div>
 
-          <div>
-            <Label className="text-xs">Observación (opcional)</Label>
-            <textarea
-              value={form.observacion}
-              onChange={(e) => setForm({ ...form, observacion: e.target.value })}
-              className="w-full min-h-[50px] rounded-md border border-input bg-background px-3 py-2 text-sm"
-            />
+            <div>
+              <Label className="text-xs">Observación (opcional)</Label>
+              <textarea
+                value={form.observacion}
+                onChange={(e) => setForm({ ...form, observacion: e.target.value })}
+                className="w-full min-h-[50px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="border-t pt-2 text-center">
+              <button
+                type="button"
+                onClick={() => setModoNoDev(true)}
+                className="text-xs text-red-600 underline font-semibold"
+              >
+                ⚠ Marcar como NO devuelto (proveedor no respondió)
+              </button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {modoNoDev && (
+          <div className="space-y-3 py-2">
+            <div className="bg-red-50 border border-red-200 rounded-md p-3 text-xs text-red-700">
+              Esta opción registra una pérdida porque el proveedor no devolvió la mercancía.
+              Queda como histórico pero no toca almacén ni distribución.
+            </div>
+            <div>
+              <Label className="text-xs text-red-700">Cantidad NO devuelta</Label>
+              <Input
+                type="number" min={1} max={pendiente}
+                value={noDevForm.cant_no_devuelto}
+                onChange={(e) => setNoDevForm({ ...noDevForm, cant_no_devuelto: e.target.value })}
+                className="h-10 text-center text-lg font-bold border-red-300"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Motivo (obligatorio)</Label>
+              <textarea
+                value={noDevForm.motivo}
+                onChange={(e) => setNoDevForm({ ...noDevForm, motivo: e.target.value })}
+                placeholder="Ej: proveedor no respondió a llamadas durante 2 semanas"
+                className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setModoNoDev(false)}
+              className="text-xs text-muted-foreground underline"
+            >
+              ← Volver a recibir entrega
+            </button>
+          </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
-          <Button onClick={handleGuardar} disabled={saving || excede || total === 0}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Registrar'}
-          </Button>
+          {!modoNoDev && (
+            <Button onClick={handleGuardarEntrega} disabled={saving || excede || total === 0} className="bg-emerald-600 hover:bg-emerald-700">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Registrar entrega'}
+            </Button>
+          )}
+          {modoNoDev && (
+            <Button onClick={handleGuardarNoDev} disabled={saving || excedeNoDev || noDev <= 0 || !noDevForm.motivo.trim()} variant="destructive">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirmar pérdida'}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -334,21 +418,26 @@ const ModalEntrega = ({ open, arreglo, onClose, onSaved }) => {
 
 // ─── Modal: Dar prórroga ────────────────────────────────────────────────
 const ModalProrroga = ({ open, arreglo, onClose, onSaved }) => {
-  const [dias, setDias] = useState(2);
+  const [dias, setDias] = useState(3);
   const [motivo, setMotivo] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const prorrogasUsadas = arreglo?.num_prorrogas || 0;
+  const limiteAlcanzado = prorrogasUsadas >= 2;
+
   useEffect(() => {
-    if (open) { setDias(2); setMotivo(''); }
+    if (open) { setDias(3); setMotivo(''); }
   }, [open, arreglo?.arreglo_id]);
 
   const handleGuardar = async () => {
-    if (!motivo.trim() || motivo.trim().length < 3) return toast.error('Motivo requerido (mín. 3 caracteres)');
+    if (limiteAlcanzado) return;
+    const diasN = parseInt(dias);
+    if (!diasN || diasN < 1 || diasN > 14) return toast.error('Días debe estar entre 1 y 14');
     setSaving(true);
     try {
       const r = await axios.post(
         `${API}/arreglos/${arreglo.arreglo_id}/prorroga`,
-        { dias_adicionales: parseInt(dias), motivo: motivo.trim() },
+        { dias: diasN, motivo: motivo.trim() || null },
         { headers: hdrs() }
       );
       toast.success(`Prórroga otorgada · nueva fecha límite: ${fmtFecha(r.data.fecha_limite_nueva)} · quedan ${r.data.prorrogas_restantes}`);
@@ -368,36 +457,46 @@ const ModalProrroga = ({ open, arreglo, onClose, onSaved }) => {
           <DialogTitle>Dar prórroga</DialogTitle>
           <DialogDescription>
             Corte <span className="font-mono">{arreglo?.n_corte}</span> · vence {fmtFecha(arreglo?.fecha_limite)}
-            <br />Prórrogas usadas: {arreglo?.num_prorrogas || 0}/2 — máx. 3 días por prórroga
+            <br />Prórrogas usadas: {prorrogasUsadas}/2 — entre 1 y 14 días
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 py-2">
+          {limiteAlcanzado && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-md px-3 py-2">
+              Ya se otorgaron las 2 prórrogas permitidas. Pasar a facturación.
+            </div>
+          )}
           <div>
-            <Label className="text-xs">Días adicionales</Label>
-            <Select value={String(dias)} onValueChange={(v) => setDias(parseInt(v))}>
-              <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">1 día</SelectItem>
-                <SelectItem value="2">2 días</SelectItem>
-                <SelectItem value="3">3 días</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label className="text-xs">Días adicionales (1–14)</Label>
+            <Input
+              type="number" min={1} max={14}
+              value={dias}
+              onChange={(e) => setDias(e.target.value)}
+              disabled={limiteAlcanzado}
+              className="h-10 text-center text-lg font-bold"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">Sugerido: 3 días</p>
           </div>
           <div>
-            <Label className="text-xs">Motivo (obligatorio)</Label>
+            <Label className="text-xs">Motivo (opcional)</Label>
             <textarea
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
               placeholder="Ej: proveedor tuvo emergencia, prometió entregar el viernes"
-              className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+              disabled={limiteAlcanzado}
+              className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
-          <Button onClick={handleGuardar} disabled={saving} className="bg-amber-600 hover:bg-amber-700">
+          <Button
+            onClick={handleGuardar}
+            disabled={saving || limiteAlcanzado}
+            className="bg-amber-600 hover:bg-amber-700"
+          >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Dar prórroga'}
           </Button>
         </DialogFooter>
@@ -570,8 +669,182 @@ export default function FalladosTablero() {
     return n;
   }, [grupos, filtroActivo, filtrar]);
 
+  // Lista de arreglos para vista móvil (orden: vencidos > por_vencer > en_proceso)
+  const arreglosMobile = useMemo(() => {
+    const sin = filtrar(grupos.sin_asignar || []).map(x => ({ ...x, _grupo: 'sin_asignar' }));
+    const ven = filtrar(grupos.vencidos    || []).map(x => ({ ...x, _grupo: 'vencidos' }));
+    const por = filtrar(grupos.por_vencer  || []).map(x => ({ ...x, _grupo: 'por_vencer' }));
+    const eps = filtrar(grupos.en_proceso  || []).map(x => ({ ...x, _grupo: 'en_proceso' }));
+    return [
+      ...(mostrarGrupo('sin_asignar') ? sin : []),
+      ...(mostrarGrupo('vencidos')    ? ven : []),
+      ...(mostrarGrupo('por_vencer')  ? por : []),
+      ...(mostrarGrupo('en_proceso')  ? eps : []),
+    ];
+  }, [grupos, filtroActivo, filtrar]);
+
   return (
     <div className="min-h-screen bg-muted/20 pb-12">
+      {/* ================== VISTA MÓVIL ================== */}
+      <div className="md:hidden">
+        <div className="bg-gray-900 text-white px-4 py-3 sticky top-0 z-30">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-base font-bold">Fallados — Tablero</h1>
+              <p className="text-[11px] opacity-80">{totalVisible} {totalVisible === 1 ? 'arreglo' : 'arreglos'} · hoy {data.hoy}</p>
+            </div>
+            <button
+              onClick={cargar}
+              className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </div>
+
+        {/* Búsqueda */}
+        <div className="bg-card border-b px-3 py-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar corte, modelo, persona…"
+              className="pl-9 h-9"
+            />
+            {busqueda && (
+              <button onClick={() => setBusqueda('')} className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-muted flex items-center justify-center">
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* KPIs 2x2 */}
+        <div className="p-3 grid grid-cols-2 gap-2 bg-muted/20 border-b">
+          <KpiCard
+            label="Sin asignar"
+            value={kpis.sin_asignar?.n_arreglos || 0}
+            sub={`${kpis.sin_asignar?.prendas || 0} prendas`}
+            tone="purple"
+            active={filtroActivo === 'sin_asignar'}
+            onClick={() => setFiltroActivo(filtroActivo === 'sin_asignar' ? 'todos' : 'sin_asignar')}
+          />
+          <KpiCard
+            label="Vencidos"
+            value={kpis.vencidos?.n_arreglos || 0}
+            sub={`${kpis.vencidos?.prendas || 0} prendas`}
+            tone="red"
+            active={filtroActivo === 'vencidos'}
+            onClick={() => setFiltroActivo(filtroActivo === 'vencidos' ? 'todos' : 'vencidos')}
+          />
+          <KpiCard
+            label="Por vencer"
+            value={kpis.por_vencer?.n_arreglos || 0}
+            sub={`${kpis.por_vencer?.prendas || 0} prendas`}
+            tone="amber"
+            active={filtroActivo === 'por_vencer'}
+            onClick={() => setFiltroActivo(filtroActivo === 'por_vencer' ? 'todos' : 'por_vencer')}
+          />
+          <KpiCard
+            label="En proceso"
+            value={kpis.en_proceso?.n_arreglos || 0}
+            sub={`${kpis.en_proceso?.prendas || 0} prendas`}
+            tone="blue"
+            active={filtroActivo === 'en_proceso'}
+            onClick={() => setFiltroActivo(filtroActivo === 'en_proceso' ? 'todos' : 'en_proceso')}
+          />
+        </div>
+
+        {/* Cards */}
+        <div className="p-3 space-y-3">
+          {loading && arreglosMobile.length === 0 && (
+            <div className="py-10 flex justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          )}
+          {!loading && arreglosMobile.length === 0 && (
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-emerald-600" />
+              No hay fallados con los filtros actuales.
+            </div>
+          )}
+          {arreglosMobile.map((a) => {
+            if (a._grupo === 'sin_asignar') {
+              return (
+                <div key={`m-sa-${a.registro_id}`} className="border-2 border-purple-300 bg-purple-50 rounded-xl p-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="text-xs text-purple-700 font-bold">🟣 SIN ASIGNAR</div>
+                      <div className="font-bold mt-1">{a.n_corte} · {a.modelo}</div>
+                      <div className="text-xs text-muted-foreground">{a.marca || '—'}</div>
+                    </div>
+                    <span className="text-xs bg-purple-600 text-white font-bold px-2 py-0.5 rounded">{a.pendiente_sin_asignar}</span>
+                  </div>
+                  <button
+                    onClick={() => { setAsignarReg(a); setAsignarOpen(true); }}
+                    className="mt-3 w-full bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-1"
+                  >
+                    Asignar a proveedor <ChevronRight className="h-3 w-3" />
+                  </button>
+                </div>
+              );
+            }
+            const d = diasEntre(a.fecha_limite);
+            const histLine = `Hist: ${a.hist_ok || 0} OK · ${a.hist_lq_leve || 0} LQ Leve · ${a.hist_lq_grave || 0} LQ Grave${(a.hist_no_devuelto || 0) > 0 ? ` · ${a.hist_no_devuelto} no dev` : ''}`;
+            let chip, bg, lab, bgB;
+            if (a._grupo === 'vencidos') {
+              chip = 'bg-red-600'; bg = 'border-red-300 bg-red-50'; bgB = 'bg-red-600';
+              lab = `🔴 VENCIDO ${Math.abs(d)}d`;
+            } else if (a._grupo === 'por_vencer') {
+              chip = 'bg-amber-500'; bg = 'border-amber-300 bg-amber-50'; bgB = 'bg-amber-500';
+              lab = d === 0 ? '🟡 VENCE HOY' : d === 1 ? '🟡 VENCE MAÑANA' : `🟡 EN ${d}d`;
+            } else {
+              chip = 'bg-blue-500'; bg = 'border-blue-200 bg-white'; bgB = 'bg-blue-500';
+              lab = `🔵 EN PROCESO (en ${d}d)`;
+            }
+            const puedeProrroga = (a._grupo === 'vencidos' || a._grupo === 'por_vencer') && (a.num_prorrogas || 0) < 2;
+            return (
+              <div key={`m-${a._grupo}-${a.arreglo_id}`} className={`border-2 rounded-xl p-3 ${bg}`}>
+                <div className="flex items-start justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className={`text-xs font-bold`}>{lab}</div>
+                    <div className="font-bold mt-1 truncate">{a.persona || '—'}</div>
+                    <div className="text-xs text-muted-foreground">{a.servicio || '—'}</div>
+                  </div>
+                  <span className={`text-xs ${bgB} text-white font-bold px-2 py-0.5 rounded shrink-0`}>
+                    {a.pendiente}/{a.cantidad}
+                  </span>
+                </div>
+                <div className="text-xs text-foreground mt-2">{a.n_corte} · {a.modelo}</div>
+                <div className="mt-1 text-[10px] text-muted-foreground">{histLine}</div>
+                {(a.num_prorrogas || 0) > 0 && (
+                  <div className="mt-1 text-[10px] text-purple-700 font-semibold">+{a.num_prorrogas} prórroga{a.num_prorrogas === 1 ? '' : 's'} usada{a.num_prorrogas === 1 ? '' : 's'}</div>
+                )}
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => { setEntregaArr(a); setEntregaOpen(true); }}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 rounded-lg"
+                  >
+                    📦 Recibir entrega
+                  </button>
+                  {puedeProrroga && (
+                    <button
+                      onClick={() => { setProrrogaArr(a); setProrrogaOpen(true); }}
+                      className="bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold px-3 py-2 rounded-lg"
+                    >
+                      Prórroga
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Modales (compartidos con desktop más abajo) */}
+      </div>
+
+      {/* ================== VISTA DESKTOP (md+) ================== */}
+      <div className="hidden md:block">
       {/* Header */}
       <div className="bg-card border-b sticky top-0 z-30">
         <div className="px-6 py-3 flex items-center justify-between gap-4">
@@ -744,8 +1017,9 @@ export default function FalladosTablero() {
           </div>
         )}
       </div>
+      </div>{/* /vista desktop */}
 
-      {/* Modales */}
+      {/* Modales (compartidos móvil + desktop) */}
       <ModalAsignar
         open={asignarOpen}
         registro={asignarReg}

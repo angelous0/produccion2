@@ -36,7 +36,8 @@ ETAPAS_CALIDAD = ["Para Acabado", "Acabado", "Almacén PT", "Tienda"]
 ROLES_PUEDEN_REVISAR = {"admin", "acabado", "supervisor_acabado"}
 ROLES_PUEDEN_PRORROGA = {"admin", "supervisor_acabado"}
 MAX_PRORROGAS = 2
-MAX_DIAS_POR_PRORROGA = 3
+MIN_DIAS_PRORROGA = 1
+MAX_DIAS_PRORROGA = 14
 
 
 def _ensure_rol(user: dict, roles_permitidos: set):
@@ -70,16 +71,36 @@ class RevisarSinFalladosIn(BaseModel):
 
 
 class EntregaParcialIn(BaseModel):
+    # Nuevos nombres (LQ Leve / LQ Grave / No Devuelto)
     cant_ok: int = Field(0, ge=0)
-    cant_liq: int = Field(0, ge=0)
-    cant_merma: int = Field(0, ge=0)
+    cant_lq_leve: int = Field(0, ge=0)
+    cant_lq_grave: int = Field(0, ge=0)
+    cant_no_devuelto: int = Field(0, ge=0)
     fecha: Optional[str] = None       # ISO YYYY-MM-DD; default hoy
     observacion: Optional[str] = None
 
 
 class ProrrogaIn(BaseModel):
-    dias_adicionales: int = Field(..., ge=1, le=MAX_DIAS_POR_PRORROGA)
-    motivo: str = Field(..., min_length=3, max_length=300)
+    # Campo nuevo: `dias` (1..14). Mantenemos alias `dias_adicionales` para
+    # compatibilidad con clientes existentes.
+    dias: Optional[int] = Field(None, ge=MIN_DIAS_PRORROGA, le=MAX_DIAS_PRORROGA)
+    dias_adicionales: Optional[int] = Field(None, ge=MIN_DIAS_PRORROGA, le=MAX_DIAS_PRORROGA)
+    motivo: Optional[str] = Field(None, max_length=300)
+
+
+class FalladoConAsignacionIn(BaseModel):
+    """Crea un fallado y opcionalmente el arreglo en una sola transacción.
+
+    - Si causa != 'Tela'  → persona_id, fecha_limite y servicio_id son OBLIGATORIOS.
+    - Si causa == 'Tela'  → solo se crea el fallado.
+    """
+    cantidad: int = Field(..., gt=0)
+    causa: str = Field(..., description="Costura | Tela | Lavado | Estampado | Otro")
+    observacion: Optional[str] = None
+    persona_id: Optional[str] = None
+    fecha_limite: Optional[str] = None    # ISO YYYY-MM-DD
+    servicio_id: Optional[str] = None
+    fecha_envio: Optional[str] = None     # ISO YYYY-MM-DD; default hoy
 
 
 # ============================================================================
@@ -339,12 +360,23 @@ async def registrar_entrega_parcial(
 ):
     """Registra una entrega parcial del flujo SERVICIO.
 
-    - Inserta fila en prod_arreglo_entregas (histórico).
-    - Suma a los totales en prod_registro_arreglos (cantidad_recuperada,
-      cantidad_liquidacion, cantidad_merma).
-    - Valida que la suma no exceda la cantidad enviada.
+    Body:
+        cant_ok, cant_lq_leve, cant_lq_grave, cant_no_devuelto, observacion?
+
+    Reglas:
+      - cant_ok + cant_lq_leve + cant_lq_grave + cant_no_devuelto <= pendiente
+      - Inserta fila granular en prod_arreglo_entregas (mantiene leve/grave/no_dev).
+      - Actualiza saldo en prod_registro_arreglos agregando:
+            cantidad_recuperada  += cant_ok
+            cantidad_liquidacion += (cant_lq_leve + cant_lq_grave)
+            cantidad_merma       += cant_no_devuelto
+        (la granularidad leve/grave queda solo en el histórico).
+      - cant_no_devuelto se registra como pérdida pero NO toca distribución ni
+        almacén (decisión: que el supervisor lo cargue manual en Distribución PT
+        si quiere reflejarlo).
     """
-    total_nuevo = input.cant_ok + input.cant_liq + input.cant_merma
+    total_nuevo = (input.cant_ok + input.cant_lq_leve
+                   + input.cant_lq_grave + input.cant_no_devuelto)
     if total_nuevo == 0:
         raise HTTPException(400, "Indica al menos una cantidad > 0")
 
@@ -377,21 +409,23 @@ async def registrar_entrega_parcial(
                     f"La entrega ({total_nuevo}) excede el saldo pendiente ({pendiente})",
                 )
 
-            # Insertar entrega
+            # Insertar entrega (histórico granular)
             await conn.execute(
                 """
                 INSERT INTO prod_arreglo_entregas
-                    (id, arreglo_id, fecha, cant_ok, cant_liq, cant_merma,
-                     observacion, registrado_por, registrado_por_nombre)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    (id, arreglo_id, fecha, cant_ok, cant_lq_leve, cant_lq_grave,
+                     cant_no_devuelto, observacion, registrado_por, registrado_por_nombre)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 """,
                 str(uuid.uuid4()), arreglo_id, fecha_entrega,
-                input.cant_ok, input.cant_liq, input.cant_merma,
+                input.cant_ok, input.cant_lq_leve, input.cant_lq_grave,
+                input.cant_no_devuelto,
                 (input.observacion or "").strip() or None,
                 _user_id(current_user), _user_name(current_user),
             )
 
-            # Actualizar totales del arreglo
+            # Actualizar totales del arreglo (agregados leve+grave = liquidacion)
+            delta_liq = input.cant_lq_leve + input.cant_lq_grave
             await conn.execute(
                 """
                 UPDATE prod_registro_arreglos
@@ -400,7 +434,7 @@ async def registrar_entrega_parcial(
                        cantidad_merma       = COALESCE(cantidad_merma, 0)       + $3
                  WHERE id = $4
                 """,
-                input.cant_ok, input.cant_liq, input.cant_merma, arreglo_id,
+                input.cant_ok, delta_liq, input.cant_no_devuelto, arreglo_id,
             )
 
             # Devolver estado actualizado
@@ -434,11 +468,22 @@ async def dar_prorroga(
     Reglas:
       - Solo admin o supervisor de acabado.
       - Máximo MAX_PRORROGAS prórrogas por arreglo.
-      - Cada prórroga máximo MAX_DIAS_POR_PRORROGA días.
+      - `dias` debe estar entre MIN_DIAS_PRORROGA (1) y MAX_DIAS_PRORROGA (14).
+      - Acepta `dias` o `dias_adicionales` (alias de compatibilidad).
+      - Motivo opcional (puede estar vacío).
       - Guarda histórico en columna `prorrogas` (JSONB).
       - Si fecha_limite_original está vacía, la setea = fecha_limite actual.
     """
     _ensure_rol(current_user, ROLES_PUEDEN_PRORROGA)
+
+    dias = input.dias if input.dias is not None else input.dias_adicionales
+    if dias is None:
+        raise HTTPException(400, "Falta el campo `dias`")
+    if dias < MIN_DIAS_PRORROGA or dias > MAX_DIAS_PRORROGA:
+        raise HTTPException(
+            400,
+            f"`dias` debe estar entre {MIN_DIAS_PRORROGA} y {MAX_DIAS_PRORROGA}",
+        )
 
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -471,14 +516,14 @@ async def dar_prorroga(
                 )
 
             fecha_anterior = a["fecha_limite"]
-            fecha_nueva = fecha_anterior + timedelta(days=input.dias_adicionales)
+            fecha_nueva = fecha_anterior + timedelta(days=dias)
             fecha_original = a["fecha_limite_original"] or fecha_anterior
 
             nueva_entrada = {
                 "fecha_anterior": str(fecha_anterior),
                 "fecha_nueva": str(fecha_nueva),
-                "dias": input.dias_adicionales,
-                "motivo": input.motivo.strip(),
+                "dias": dias,
+                "motivo": (input.motivo or "").strip() or None,
                 "por_usuario_id": _user_id(current_user),
                 "por_usuario_nombre": _user_name(current_user),
                 "at": datetime.now(timezone.utc).isoformat(),
@@ -541,7 +586,7 @@ async def tablero_supervisor(
             conds.append(f"mod.marca_id = ${len(params)}")
         where_sql = " AND ".join(conds)
 
-        # Arreglos abiertos (con saldo) + clasificación
+        # Arreglos abiertos (con saldo) + clasificación + resumen historial
         rows = await conn.fetch(f"""
             SELECT a.id AS arreglo_id,
                    a.registro_id,
@@ -556,13 +601,25 @@ async def tablero_supervisor(
                    (a.cantidad - a.cantidad_recuperada - a.cantidad_liquidacion - a.cantidad_merma) AS pendiente,
                    COALESCE(a.marcado_para_cobro, FALSE) AS marcado_para_cobro,
                    COALESCE(a.cobrado, FALSE)             AS cobrado,
-                   COALESCE(jsonb_array_length(COALESCE(a.prorrogas, '[]'::jsonb)), 0) AS num_prorrogas
+                   COALESCE(jsonb_array_length(COALESCE(a.prorrogas, '[]'::jsonb)), 0) AS num_prorrogas,
+                   COALESCE(e.tot_ok, 0)         AS hist_ok,
+                   COALESCE(e.tot_lq_leve, 0)    AS hist_lq_leve,
+                   COALESCE(e.tot_lq_grave, 0)   AS hist_lq_grave,
+                   COALESCE(e.tot_no_devuelto,0) AS hist_no_devuelto
             FROM prod_registro_arreglos a
             JOIN prod_registros r ON r.id = a.registro_id
             LEFT JOIN prod_modelos mod ON mod.id = r.modelo_id
             LEFT JOIN prod_marcas  ma  ON ma.id  = mod.marca_id
             LEFT JOIN prod_servicios_produccion sp ON sp.id = a.servicio_id
             LEFT JOIN prod_personas_produccion  pp ON pp.id = a.persona_id
+            LEFT JOIN LATERAL (
+                SELECT SUM(cant_ok)          AS tot_ok,
+                       SUM(cant_lq_leve)     AS tot_lq_leve,
+                       SUM(cant_lq_grave)    AS tot_lq_grave,
+                       SUM(cant_no_devuelto) AS tot_no_devuelto
+                FROM prod_arreglo_entregas
+                WHERE arreglo_id = a.id
+            ) e ON TRUE
             WHERE {where_sql}
               AND (a.cantidad - a.cantidad_recuperada - a.cantidad_liquidacion - a.cantidad_merma) > 0
         """, *params)
@@ -628,3 +685,111 @@ async def tablero_supervisor(
             "en_proceso":  _kpi(grupos["en_proceso"]),
         }
         return {"grupos": grupos, "kpis": kpis, "hoy": str(hoy)}
+
+
+# ============================================================================
+# 6. POST /api/cortes/{registro_id}/fallado-con-asignacion
+#    Crea fallado + arreglo en una sola transacción (UX del drawer del operario).
+# ============================================================================
+@router.post("/cortes/{registro_id}/fallado-con-asignacion")
+async def crear_fallado_con_asignacion(
+    registro_id: str,
+    input: FalladoConAsignacionIn,
+    current_user: dict = Depends(get_current_user),
+):
+    """Crea un fallado y opcionalmente el arreglo, según la causa.
+
+    - Si `causa == 'Tela'` → solo crea prod_fallados (causa='tela', estado_tela='EVALUANDO').
+    - Si `causa != 'Tela'`  → exige servicio_id + persona_id + fecha_limite,
+      crea prod_fallados (causa='servicio') + prod_registro_arreglos en la misma
+      transacción. fecha_limite_original = fecha_limite.
+    - El "chip" (Costura/Lavado/Estampado/Otro) se preserva como prefijo en la
+      observación del fallado, para mantener la trazabilidad del taller.
+    """
+    causa_chip = (input.causa or "").strip()
+    if not causa_chip:
+        raise HTTPException(400, "Falta `causa`")
+    causa_lower = causa_chip.lower()
+    es_tela = (causa_lower == "tela")
+
+    if not es_tela:
+        if not input.servicio_id:
+            raise HTTPException(400, f"`servicio_id` es obligatorio cuando causa='{causa_chip}'")
+        if not input.persona_id:
+            raise HTTPException(400, f"`persona_id` es obligatorio cuando causa='{causa_chip}'")
+        if not input.fecha_limite:
+            raise HTTPException(400, f"`fecha_limite` es obligatoria cuando causa='{causa_chip}'")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            reg = await conn.fetchrow(
+                "SELECT id FROM prod_registros WHERE id = $1",
+                registro_id,
+            )
+            if not reg:
+                raise HTTPException(404, f"Registro {registro_id} no existe")
+
+            uname = _user_name(current_user)
+            obs_prefix = f"[{causa_chip}]"
+            obs_final = f"{obs_prefix} {input.observacion}".strip() if input.observacion else obs_prefix
+
+            # 1) Insertar fallado
+            fallado_id = str(uuid.uuid4())
+            causa_db = "tela" if es_tela else "servicio"
+            estado_tela = "EVALUANDO" if es_tela else None
+            fecha_det = date.today()
+
+            await conn.execute(
+                """
+                INSERT INTO prod_fallados
+                    (id, registro_id, cantidad_detectada, fecha_deteccion,
+                     observacion, created_by, causa, estado_tela)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                """,
+                fallado_id, registro_id, input.cantidad, fecha_det,
+                obs_final, uname, causa_db, estado_tela,
+            )
+
+            arreglo_id = None
+            fecha_limite_str = None
+            fecha_envio_str = None
+            if not es_tela:
+                # 2) Insertar arreglo
+                arreglo_id = str(uuid.uuid4())
+                fecha_envio = (
+                    date.fromisoformat(input.fecha_envio[:10])
+                    if input.fecha_envio else date.today()
+                )
+                fecha_limite = date.fromisoformat(input.fecha_limite[:10])
+                if fecha_limite < fecha_envio:
+                    raise HTTPException(
+                        400,
+                        "fecha_limite no puede ser anterior a fecha_envio",
+                    )
+
+                await conn.execute(
+                    """
+                    INSERT INTO prod_registro_arreglos
+                        (id, registro_id, cantidad, servicio_id, persona_id,
+                         fecha_envio, fecha_limite, fecha_limite_original,
+                         estado, observacion, created_by)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8, $9, $10)
+                    """,
+                    arreglo_id, registro_id, input.cantidad,
+                    input.servicio_id, input.persona_id,
+                    fecha_envio, fecha_limite,
+                    'EN_ARREGLO', obs_final, uname,
+                )
+                fecha_envio_str = str(fecha_envio)
+                fecha_limite_str = str(fecha_limite)
+
+    return {
+        "ok": True,
+        "fallado_id": fallado_id,
+        "arreglo_id": arreglo_id,
+        "fecha_envio": fecha_envio_str,
+        "fecha_limite": fecha_limite_str,
+        "causa": causa_db,
+        "chip": causa_chip,
+    }
