@@ -612,7 +612,11 @@ async def validate_import(file: UploadFile = File(...), user=Depends(require_per
 # ─────────────── EXECUTE IMPORT ─────────────────
 
 @router.post("/registros/import-execute")
-async def execute_import(file: UploadFile = File(...), empresa_id: int = Query(8), user=Depends(require_permission("registros", "crear"))):
+async def execute_import(file: UploadFile = File(...), empresa_id: int = Query(7), user=Depends(require_permission("registros", "crear"))):
+    # NOTA: empresa_id default = 7 (Ambission). Antes era 8 por copy-paste de
+    # un script de seed antiguo, lo que provocaba que cortes importados desde
+    # Excel sin parámetro explícito se asignaran a empresa 8 y no aparecieran
+    # en el listado de Registros (que filtra por empresa 7). Fix: 23-may-2026.
     content = await file.read()
     try:
         registros_data, movimientos_data, tallas_data, materiales_data = _read_excel(content)

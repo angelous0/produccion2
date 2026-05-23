@@ -419,7 +419,7 @@ class RegistroBase(BaseModel):
     urgente: bool = False
     hilo_especifico_id: Optional[str] = None
     pt_item_id: Optional[str] = None
-    empresa_id: Optional[int] = 8
+    empresa_id: Optional[int] = 7  # default Ambission. Antes 8 causaba huérfanos cuando el frontend no enviaba el campo.
     observaciones: Optional[str] = None
     fecha_entrega_final: Optional[str] = None
     fecha_inicio_real: Optional[str] = None

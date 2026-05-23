@@ -357,14 +357,18 @@ async def get_registros(
             LEFT JOIN finanzas2.cont_linea_negocio ln ON r.linea_negocio_id = ln.id
             WHERE {where_clause}
             ORDER BY
-                -- Año del corte: sufijo '-YYYY' si lo tiene, sino año de fecha_creacion.
+                -- 1° Cortes SIN n_corte (vacíos / NULL) primero — son los que
+                --    necesitan asignación de número. Aparecen al tope para que
+                --    el usuario no los pierda al fondo de la paginación.
+                CASE WHEN r.n_corte IS NULL OR TRIM(r.n_corte) = '' THEN 0 ELSE 1 END ASC,
+                -- 2° Año del corte: sufijo '-YYYY' si lo tiene, sino año de fecha_creacion.
                 -- Así los cortes del año actual (sin sufijo) quedan arriba y los
                 -- de años anteriores debajo. Ordena DESC (actual primero).
                 CASE
                     WHEN r.n_corte ~ '-[0-9]{{4}}$' THEN (split_part(r.n_corte, '-', 2))::int
                     ELSE EXTRACT(YEAR FROM r.fecha_creacion)::int
                 END DESC,
-                -- Dentro del mismo año: por número de corte DESC (más reciente arriba).
+                -- 3° Dentro del mismo año: por número de corte DESC (más reciente arriba).
                 CASE
                     WHEN r.n_corte ~ '^[0-9]+-[0-9]{{4}}$' THEN (split_part(r.n_corte, '-', 1))::int
                     WHEN r.n_corte ~ '^[0-9]+$' THEN r.n_corte::int
