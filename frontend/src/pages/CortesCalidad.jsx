@@ -20,7 +20,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import {
   RefreshCw, Search, AlertTriangle, CheckCircle2, ChevronRight,
-  Loader2, X, Send,
+  Loader2, X, Send, Check, ChevronsUpDown,
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -31,6 +31,11 @@ import { Label } from '../components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from '../components/ui/command';
+import { cn } from '../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const hdrs = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
@@ -72,6 +77,7 @@ const DrawerFallado = ({ open, corte, onClose, onSaved }) => {
   const [personas, setPersonas] = useState([]);
   const [servicioId, setServicioId] = useState('');
   const [personaId, setPersonaId] = useState('');
+  const [openPersonaPicker, setOpenPersonaPicker] = useState(false);
   const [fechaLimite, setFechaLimite] = useState(fechaHoyMas(3));
   const [saving, setSaving] = useState(false);
   const cantRef = useRef(null);
@@ -240,18 +246,66 @@ const DrawerFallado = ({ open, corte, onClose, onSaved }) => {
               </div>
               <div>
                 <Label className="text-xs font-semibold text-blue-900 dark:text-blue-200">¿A quién?</Label>
-                <Select value={personaId} onValueChange={setPersonaId}>
-                  <SelectTrigger className="h-10 bg-card mt-1">
-                    <SelectValue placeholder={personas.length ? 'Seleccionar persona…' : 'No hay personas para este servicio'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {personas.map(p => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.nombre} {p.tipo_persona === 'EXTERNO' ? '(ext.)' : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={openPersonaPicker} onOpenChange={setOpenPersonaPicker}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={openPersonaPicker}
+                      disabled={!personas.length}
+                      className="h-10 w-full bg-card mt-1 justify-between font-normal"
+                    >
+                      {(() => {
+                        const sel = personas.find(p => p.id === personaId);
+                        if (sel) {
+                          return (
+                            <span className="truncate">
+                              {sel.nombre} {sel.tipo_persona === 'EXTERNO' ? '(ext.)' : ''}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="text-muted-foreground">
+                            {personas.length ? 'Seleccionar persona…' : 'No hay personas para este servicio'}
+                          </span>
+                        );
+                      })()}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="p-0 w-[var(--radix-popover-trigger-width)] min-w-[280px]"
+                    align="start"
+                    sideOffset={4}
+                  >
+                    <Command shouldFilter={true}>
+                      <CommandInput placeholder="Buscar persona…" className="h-9" />
+                      <CommandList className="max-h-[260px]">
+                        <CommandEmpty>No se encontraron personas.</CommandEmpty>
+                        <CommandGroup>
+                          {personas.map(p => (
+                            <CommandItem
+                              key={p.id}
+                              value={`${p.nombre} ${p.tipo_persona || ''}`}
+                              onSelect={() => {
+                                setPersonaId(p.id);
+                                setOpenPersonaPicker(false);
+                              }}
+                              className="cursor-pointer"
+                            >
+                              <Check className={cn('mr-2 h-4 w-4', personaId === p.id ? 'opacity-100' : 'opacity-0')} />
+                              <span className="flex-1 truncate">{p.nombre}</span>
+                              {p.tipo_persona === 'EXTERNO' && (
+                                <span className="ml-2 text-[10px] text-muted-foreground shrink-0">ext.</span>
+                              )}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 <p className="text-[11px] text-blue-700 dark:text-blue-300 mt-1">
                   Solo personas del servicio <strong>{servicioNombre}</strong>
                 </p>
