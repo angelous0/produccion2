@@ -43,6 +43,7 @@ from routes.muestras import router as muestras_router
 from routes.muestras_lavanderia import router as muestras_lavanderia_router
 from routes.odoo_enriq import router as odoo_enriq_router
 from routes.odoo_tienda import router as odoo_tienda_router
+from routes.fallados_v2 import router as fallados_v2_router
 
 # DDL startup migrations
 from migrations.startup_ddl import (
@@ -249,6 +250,7 @@ app.include_router(muestras_router)
 app.include_router(muestras_lavanderia_router)
 app.include_router(odoo_tienda_router)
 app.include_router(odoo_enriq_router)
+app.include_router(fallados_v2_router)
 
 # ==================== HEALTH CHECK ====================
 

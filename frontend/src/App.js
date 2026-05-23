@@ -60,6 +60,7 @@ const HilosEspecificos = lazy(() => import("./pages/HilosEspecificos").then(m =>
 const ReporteTrazabilidad = lazy(() => import("./pages/ReporteTrazabilidad").then(m => ({ default: m.ReporteTrazabilidad })));
 const MatrizProduccion = lazy(() => import("./pages/MatrizProduccion").then(m => ({ default: m.MatrizProduccion })));
 const MesaAcabado = lazy(() => import("./pages/MesaAcabado").then(m => ({ default: m.MesaAcabado })));
+const CortesCalidad = lazy(() => import("./pages/CortesCalidad"));
 const RendimientoServicios = lazy(() => import("./pages/RendimientoServicios"));
 const ReporteDespachosTienda = lazy(() => import("./pages/ReporteDespachosTienda"));
 const ReporteMovimientosCostos = lazy(() => import("./pages/ReporteMovimientosCostos"));
@@ -208,6 +209,7 @@ function AppRoutes() {
         <Route path="control-fallados" element={<Navigate to="/reportes/calidad?tab=fallados" replace />} />
         <Route path="reportes/matriz" element={<LazyWrap><MatrizProduccion /></LazyWrap>} />
         <Route path="mesa-acabado" element={<LazyWrap><MesaAcabado /></LazyWrap>} />
+        <Route path="cortes-calidad" element={<LazyWrap><CortesCalidad /></LazyWrap>} />
         <Route path="reportes/rendimiento-servicios" element={<LazyWrap><RendimientoServicios /></LazyWrap>} />
         <Route path="reportes/despachos-tienda" element={<LazyWrap><ReporteDespachosTienda /></LazyWrap>} />
         <Route path="reportes/movimientos-costos" element={<LazyWrap><ReporteMovimientosCostos /></LazyWrap>} />
