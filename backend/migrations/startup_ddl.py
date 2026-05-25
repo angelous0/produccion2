@@ -785,6 +785,47 @@ async def ensure_salidas_libres_tables():
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestras_hist_muestra ON prod_muestras_historial_estado(muestra_id)")
 
 
+async def ensure_notificaciones_tables():
+    """Crea tabla prod_notificaciones (bell in-app móvil/web).
+
+    Cada fila es una notificación. `leida_por` (jsonb array de user_id) sirve
+    para saber, por usuario, si ya la vio sin tener que duplicar filas.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS prod_notificaciones (
+                id            VARCHAR PRIMARY KEY,
+                tipo          VARCHAR NOT NULL,
+                severidad     VARCHAR NOT NULL DEFAULT 'info',
+                titulo        VARCHAR NOT NULL,
+                mensaje       TEXT NOT NULL DEFAULT '',
+                registro_id   VARCHAR NULL,
+                entidad_tipo  VARCHAR NULL,
+                entidad_id    VARCHAR NULL,
+                audiencia     JSONB DEFAULT '{}'::jsonb,
+                leida_por     JSONB DEFAULT '[]'::jsonb,
+                origen        VARCHAR DEFAULT 'trigger_sync',
+                created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notif_created ON prod_notificaciones(created_at DESC)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notif_registro ON prod_notificaciones(registro_id)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notif_tipo ON prod_notificaciones(tipo)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notif_severidad ON prod_notificaciones(severidad)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notif_dedup ON prod_notificaciones(tipo, entidad_tipo, entidad_id, created_at DESC)"
+        )
+
+
 async def ensure_startup_indices():
     """Crea índices de performance para queries frecuentes."""
     pool = await get_pool()

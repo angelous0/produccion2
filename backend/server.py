@@ -44,12 +44,14 @@ from routes.muestras_lavanderia import router as muestras_lavanderia_router
 from routes.odoo_enriq import router as odoo_enriq_router
 from routes.odoo_tienda import router as odoo_tienda_router
 from routes.fallados_v2 import router as fallados_v2_router
+from routes.notificaciones import router as notificaciones_router
 
 # DDL startup migrations
 from migrations.startup_ddl import (
     ensure_bom_tables, ensure_fase2_tables,
     ensure_startup_migrations, ensure_startup_indices,
     ensure_salidas_libres_tables, ensure_clasificacion_tables,
+    ensure_notificaciones_tables,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -113,6 +115,7 @@ async def startup():
     await init_distribucion_pt_tables()
     await ensure_salidas_libres_tables()
     await ensure_clasificacion_tables()
+    await ensure_notificaciones_tables()
     # Índices de performance
     await ensure_startup_indices()
     # Scheduler in-process: sync diario con Odoo a las 23:00 Lima
@@ -243,6 +246,7 @@ app.include_router(trazabilidad_router)
 app.include_router(transferencias_linea_router)
 app.include_router(auditoria_router)
 app.include_router(conversacion_router)
+app.include_router(notificaciones_router)
 app.include_router(distribucion_pt_router)
 app.include_router(kardex_pt_router)
 app.include_router(salidas_libres_router)
