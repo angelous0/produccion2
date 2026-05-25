@@ -589,6 +589,22 @@ async def create_registro(input: RegistroCreate, current_user: dict = Depends(re
             registro.pt_item_id, registro.empresa_id, registro.observaciones, registro.linea_negocio_id, fecha_ef, fecha_ir,
             modelo_manual_json,
         )
+
+        # Sincronizar prod_registro_tallas con las cantidades del JSON.
+        # Antes faltaba este bloque y los cortes recién creados quedaban con la
+        # tabla normalizada vacía → reportes formales veían 0 prendas.
+        # update_registro ya hacía esto mismo; replicamos el patrón.
+        empresa_id_tallas = registro.empresa_id or 7
+        for t in registro.tallas:
+            td = t.model_dump()
+            cant = td.get('cantidad', 0)
+            if cant > 0:
+                await conn.execute(
+                    """INSERT INTO prod_registro_tallas (id, registro_id, talla_id, cantidad_real, empresa_id, created_at, updated_at)
+                       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
+                    str(uuid.uuid4()), registro.id, td['talla_id'], cant, empresa_id_tallas
+                )
+
         cant_total = sum(t.cantidad for t in registro.tallas) if registro.tallas else 0
         await audit_log_safe(conn, get_usuario(current_user), "CREATE", "produccion", "prod_registros", registro.id,
             datos_despues={"n_corte": registro.n_corte, "modelo_id": registro.modelo_id, "estado": registro.estado,
@@ -1398,6 +1414,71 @@ async def get_registro_tallas(registro_id: str, _u=Depends(require_permission("r
         }
 
 
+async def _asegurar_talla_en_modelo(conn, modelo_id: str, talla_id: str) -> bool:
+    """Asegura que la talla esté activa en el catálogo del modelo.
+
+    Si no existe en prod_modelo_tallas o existe pero inactiva, la inserta/reactiva.
+    Requiere que la talla exista en prod_tallas_catalogo (catálogo global) — si
+    no, devuelve False y el caller debe rechazar con 400.
+
+    Devuelve True si quedó disponible para usarse.
+    """
+    # 1) Verificar que la talla exista en el catálogo global
+    en_catalogo = await conn.fetchval(
+        "SELECT 1 FROM prod_tallas_catalogo WHERE id = $1", talla_id,
+    )
+    if not en_catalogo:
+        return False
+
+    # 2) ¿Ya está en el modelo?
+    existente = await conn.fetchrow(
+        "SELECT id, activo FROM prod_modelo_tallas WHERE modelo_id = $1 AND talla_id = $2",
+        modelo_id, talla_id,
+    )
+    if existente:
+        if not existente['activo']:
+            await conn.execute(
+                "UPDATE prod_modelo_tallas SET activo = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+                existente['id'],
+            )
+        return True
+
+    # 3) No existe: insertarla activa
+    await conn.execute(
+        """INSERT INTO prod_modelo_tallas (id, modelo_id, talla_id, activo, orden, created_at, updated_at)
+           VALUES ($1, $2, $3, TRUE, 10, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+           ON CONFLICT DO NOTHING""",
+        str(uuid.uuid4()), modelo_id, talla_id,
+    )
+    return True
+
+
+async def _sync_jsonb_tallas_from_table(conn, registro_id: str):
+    """Sincroniza prod_registros.tallas (JSONB legacy) desde prod_registro_tallas.
+
+    Existen lectores residuales del JSONB (movimientos.py, trazabilidad.py,
+    algunos reportes). Mantenemos ambos en sync hasta que el JSONB se elimine
+    por completo. Llamado al final de upsert/update single talla.
+    """
+    rows = await conn.fetch(
+        """SELECT rt.talla_id, tc.nombre AS talla_nombre, rt.cantidad_real
+           FROM prod_registro_tallas rt
+           JOIN prod_tallas_catalogo tc ON tc.id = rt.talla_id
+           WHERE rt.registro_id = $1
+           ORDER BY tc.orden, tc.nombre""",
+        registro_id,
+    )
+    payload = [
+        {"talla_id": r["talla_id"], "talla_nombre": r["talla_nombre"],
+         "cantidad": int(r["cantidad_real"] or 0)}
+        for r in rows if int(r["cantidad_real"] or 0) > 0
+    ]
+    await conn.execute(
+        "UPDATE prod_registros SET tallas = $1::jsonb WHERE id = $2",
+        json.dumps(payload), registro_id,
+    )
+
+
 @router.post("/registros/{registro_id}/tallas")
 async def upsert_registro_tallas(registro_id: str, input: RegistroTallaBulkUpdate, _u=Depends(require_permission("registros", "editar"))):
     """Actualiza (upsert) las cantidades reales por talla de un registro"""
@@ -1408,18 +1489,30 @@ async def upsert_registro_tallas(registro_id: str, input: RegistroTallaBulkUpdat
             raise HTTPException(status_code=404, detail="Registro no encontrado")
         
         modelo_id = registro['modelo_id']
-        
-        # Validar que todas las tallas pertenecen al modelo
+
+        # Cargar tallas activas del modelo (catálogo). Si una talla del input
+        # no está en el catálogo, la agregamos automáticamente al modelo
+        # siempre que exista en el catálogo global. Esto evita el callejón
+        # "el modelo no tiene tallas configuradas" para el operario.
         modelo_tallas = await conn.fetch(
             "SELECT talla_id FROM prod_modelo_tallas WHERE modelo_id = $1 AND activo = true", modelo_id
         )
         valid_tallas = {mt['talla_id'] for mt in modelo_tallas}
-        
+
         updated = []
+        agregadas_al_modelo = []
         for t in input.tallas:
             if t.talla_id not in valid_tallas:
-                raise HTTPException(status_code=400, detail=f"Talla {t.talla_id} no pertenece al modelo")
-            
+                ok = await _asegurar_talla_en_modelo(conn, modelo_id, t.talla_id)
+                if not ok:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Talla {t.talla_id} no existe en el catálogo global. "
+                               f"Créala primero en Producción → Catálogos → Tallas."
+                    )
+                valid_tallas.add(t.talla_id)
+                agregadas_al_modelo.append(t.talla_id)
+
             # Upsert: buscar si existe, si no crear
             existing = await conn.fetchrow(
                 "SELECT id FROM prod_registro_tallas WHERE registro_id = $1 AND talla_id = $2",
@@ -1440,8 +1533,15 @@ async def upsert_registro_tallas(registro_id: str, input: RegistroTallaBulkUpdat
                     new_id, registro_id, t.talla_id, t.cantidad_real
                 )
                 updated.append({"id": new_id, "talla_id": t.talla_id, "cantidad_real": t.cantidad_real})
-        
-        return {"message": "Tallas actualizadas", "updated": updated}
+
+        # Mantener JSONB legacy en sync con la tabla normalizada
+        await _sync_jsonb_tallas_from_table(conn, registro_id)
+
+        return {
+            "message": "Tallas actualizadas",
+            "updated": updated,
+            "agregadas_al_modelo": agregadas_al_modelo,
+        }
 
 
 @router.put("/registros/{registro_id}/tallas/{talla_id}")
@@ -1454,14 +1554,20 @@ async def update_single_registro_talla(registro_id: str, talla_id: str, input: R
             raise HTTPException(status_code=404, detail="Registro no encontrado")
         
         modelo_id = registro['modelo_id']
-        
-        # Validar talla pertenece al modelo
+
+        # Validar talla; si no está en el catálogo del modelo intentamos
+        # agregarla automáticamente desde el catálogo global.
         modelo_talla = await conn.fetchrow(
             "SELECT talla_id FROM prod_modelo_tallas WHERE modelo_id = $1 AND talla_id = $2 AND activo = true",
             modelo_id, talla_id
         )
         if not modelo_talla:
-            raise HTTPException(status_code=400, detail="Talla no pertenece al modelo")
+            ok = await _asegurar_talla_en_modelo(conn, modelo_id, talla_id)
+            if not ok:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Talla no existe en el catálogo global. Créala primero en Producción → Catálogos → Tallas."
+                )
         
         # Upsert
         existing = await conn.fetchrow(
@@ -1474,6 +1580,7 @@ async def update_single_registro_talla(registro_id: str, talla_id: str, input: R
                 "UPDATE prod_registro_tallas SET cantidad_real = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
                 input.cantidad_real, existing['id']
             )
+            await _sync_jsonb_tallas_from_table(conn, registro_id)
             return {"id": existing['id'], "talla_id": talla_id, "cantidad_real": input.cantidad_real}
         else:
             new_id = str(uuid.uuid4())
@@ -1482,4 +1589,5 @@ async def update_single_registro_talla(registro_id: str, talla_id: str, input: R
                    VALUES ($1, $2, $3, $4)""",
                 new_id, registro_id, talla_id, input.cantidad_real
             )
+            await _sync_jsonb_tallas_from_table(conn, registro_id)
             return {"id": new_id, "talla_id": talla_id, "cantidad_real": input.cantidad_real}
