@@ -564,4 +564,75 @@ async def get_tablas_actividad(current_user: dict = Depends(get_current_user)):
         )
         return [r['tabla_afectada'] for r in rows]
 
+
+@router.get("/actividad-feed")
+async def get_actividad_feed(
+    solo_yo: bool = False,
+    usuario_id: str = None,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user),
+):
+    """Feed simplificado para el Historial móvil (tabs Yo / Equipo).
+
+    A diferencia de /actividad (que es admin-only y devuelve todo), este
+    endpoint:
+      - Es accesible a cualquier usuario autenticado.
+      - Devuelve un shape ligero (sin datos_anteriores/datos_nuevos para no
+        filtrar info sensible al cliente).
+      - Soporta `solo_yo=true` para filtrar por el usuario actual.
+      - Soporta `usuario_id` para filtrar por una persona específica (útil
+        en el tab Equipo cuando se elige un chip de persona).
+
+    Items devueltos:
+        { id, tipo_accion, tabla_afectada, usuario_id, usuario_nombre,
+          registro_id, registro_nombre, descripcion, created_at }
+    """
+    if limit > 200:
+        limit = 200
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        conds = ["1=1"]
+        params = []
+        idx = 0
+
+        if solo_yo:
+            idx += 1
+            conds.append(f"usuario_id = ${idx}")
+            params.append(str(current_user.get("id")))
+        elif usuario_id:
+            idx += 1
+            conds.append(f"usuario_id = ${idx}")
+            params.append(usuario_id)
+
+        where = " AND ".join(conds)
+        rows = await conn.fetch(
+            f"""SELECT id, tipo_accion, tabla_afectada, usuario_id, usuario_nombre,
+                       registro_id, registro_nombre, descripcion, created_at
+                  FROM prod_actividad_historial
+                 WHERE {where}
+              ORDER BY created_at DESC
+                 LIMIT {int(limit)} OFFSET {int(offset)}""",
+            *params,
+        )
+
+        # Lista única de usuarios para el chip de filtro en tab "Equipo"
+        usuarios_rows = await conn.fetch(
+            """SELECT DISTINCT usuario_id, usuario_nombre
+                 FROM prod_actividad_historial
+                WHERE usuario_id IS NOT NULL
+                  AND usuario_nombre IS NOT NULL
+                  AND created_at > NOW() - INTERVAL '14 days'
+                ORDER BY usuario_nombre"""
+        )
+
+        return {
+            "items": [row_to_dict(r) for r in rows],
+            "usuarios": [{"id": u["usuario_id"], "nombre": u["usuario_nombre"]} for u in usuarios_rows],
+            "limit": limit,
+            "offset": offset,
+        }
+
+
 # ==================== ENDPOINTS MARCA ====================

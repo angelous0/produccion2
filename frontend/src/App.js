@@ -11,6 +11,9 @@ import { Registros } from "./pages/Registros";
 import { RegistroForm } from "./pages/RegistroForm";
 import { Loader2 } from "lucide-react";
 
+// Mobile app (vista operario)
+const MobileApp = lazy(() => import("./mobile/MobileApp").then(m => ({ default: m.MobileApp })));
+
 // Lazy imports - se cargan solo cuando se navega a la ruta
 const CostoPorLote = lazy(() => import('./pages/CostoPorLote'));
 const ReporteEntregas = lazy(() => import('./pages/ReporteEntregas'));
@@ -242,6 +245,13 @@ function AppRoutes() {
         <Route path="reportes/validacion-registros" element={<LazyWrap><ValidacionRegistros /></LazyWrap>} />
       </Route>
       
+      {/* Vista operario / móvil — ruta separada sin Layout admin */}
+      <Route path="/m/*" element={
+        <LazyWrap>
+          <MobileApp />
+        </LazyWrap>
+      } />
+
       {/* Redirigir cualquier ruta desconocida a login */}
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
