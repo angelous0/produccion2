@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Crear corte móvil — v3</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --brand: #0f766e;
+    --brand-dark: #0d5f5a;
+    --brand-soft: #f0fdfa;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --bg: #f3f4f6;
+  }
+  body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  .phones-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 28px;
+    padding: 32px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) { .phones-grid { grid-template-columns: 1fr; } }
+  .phone-col { display: flex; flex-direction: column; gap: 12px; }
+  .phone-title { text-align: center; font-size: 14px; font-weight: 700; letter-spacing: .04em; color: var(--ink); text-transform: uppercase; }
+  .phone-sub { text-align: center; font-size: 12px; color: var(--muted); margin-top: -8px; line-height: 1.4; }
+  .phone-frame {
+    width: 380px; max-width: 100%;
+    border: 12px solid #1f2937;
+    border-radius: 38px;
+    overflow: hidden;
+    background: white;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4);
+    margin: 0 auto;
+  }
+  .phone-notch { height: 28px; background: #1f2937; display: flex; justify-content: center; align-items: center; color: white; font-size: 11px; font-weight: 600; }
+
+  /* PHONE BODY ahora es flex column — header fijo, scroll en el medio, footer fijo */
+  .phone-body {
+    height: 800px; background: #f9fafb;
+    display: flex; flex-direction: column;
+  }
+  .m-header { background: var(--brand); color: white; padding: 14px 16px; display: flex; gap: 10px; align-items: center; flex-shrink: 0; }
+  .m-h-icon { width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; }
+  .scroll-area { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 16px; }
+  .footer-fix { flex-shrink: 0; background: white; border-top: 1px solid #e5e7eb; padding: 10px 12px; display: flex; gap: 8px; }
+
+  .tap-input { font-size: 15px; min-height: 44px; border: 1px solid #d1d5db; border-radius: 10px; padding: 0 12px; background: white; width: 100%; font-variant-numeric: tabular-nums; }
+  .tap-input:focus { outline: 2px solid var(--brand); border-color: var(--brand); }
+  textarea.tap-input { padding: 10px 12px; min-height: 60px; font-family: inherit; resize: vertical; }
+  .tap-btn { min-height: 46px; font-size: 14px; font-weight: 700; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+  .tap-btn-primary { background: var(--brand); color: white; border: 0; }
+  .tap-btn-outline { background: white; border: 1px solid #d1d5db; color: var(--ink); }
+  .label-xs { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+  .card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; }
+  .seg { display: inline-flex; background: #f1f5f9; border-radius: 10px; padding: 3px; gap: 2px; width: 100%; }
+  .seg button { flex: 1; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px; font-size: 13px; font-weight: 700; color: #64748b; cursor: pointer; }
+  .seg button.active { background: white; color: var(--brand); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+  /* Chip horizontal (estilo igual al resto de la app) */
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 999px;
+    font-size: 13px; font-weight: 600;
+    background: white; border: 1px solid #d1d5db;
+    color: #475569; cursor: pointer;
+    white-space: nowrap; min-height: 36px;
+  }
+  .chip.active { background: var(--brand); color: white; border-color: var(--brand); }
+  .chips-row {
+    display: flex; gap: 6px; overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .chips-row::-webkit-scrollbar { height: 0; }
+
+  .switch { width: 38px; height: 22px; border-radius: 999px; background: #cbd5e1; position: relative; cursor: pointer; flex-shrink: 0; }
+  .switch.on { background: var(--brand); }
+  .switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: white; transition: left 200ms; }
+  .switch.on::after { left: 19px; }
+
+  /* Cascada */
+  .cascade-btn {
+    width: 100%; padding: 10px 12px; border-radius: 10px;
+    background: white; border: 1px solid #d1d5db;
+    display: flex; justify-content: space-between; align-items: center;
+    cursor: pointer; font-size: 14px; min-height: 48px;
+  }
+  .cascade-btn.disabled {
+    background: #f8fafc; color: #cbd5e1; cursor: not-allowed;
+    border-color: #f1f5f9;
+  }
+  .cascade-btn .val { font-weight: 600; color: var(--ink); }
+  .cascade-btn .val.empty { color: #94a3b8; font-weight: 400; }
+  .cascade-btn .arrow { color: #cbd5e1; }
+  .cascade-row { display: flex; flex-direction: column; gap: 8px; }
+
+  .leyenda-titulo { text-align: center; font-size: 22px; font-weight: 800; margin: 36px 0 6px; color: #0f172a; }
+  .leyenda-sub { text-align: center; font-size: 14px; color: var(--muted); max-width: 700px; margin: 0 auto 16px; line-height: 1.5; }
+  .nota {
+    max-width: 1000px; margin: 24px auto; padding: 16px 20px;
+    background: #fef9c3; border-left: 4px solid #facc15;
+    border-radius: 8px; font-size: 13px; color: #713f12; line-height: 1.6;
+  }
+  .info-azul {
+    background: #dbeafe; border: 1px solid #93c5fd;
+    border-radius: 10px; padding: 10px 12px;
+    font-size: 11px; color: #1d4ed8; line-height: 1.5;
+    display: flex; gap: 8px; align-items: flex-start;
+  }
+</style>
+</head>
+<body>
+
+<div class="leyenda-titulo">Crear corte — v3</div>
+<div class="leyenda-sub">
+  Línea de negocio como selector (igual a Marca/Tipo) · Footer fijo abajo siempre · Sin tallas (curva sí).
+</div>
+
+<div class="phones-grid">
+
+  <!-- ═══════════════════ MODO CATÁLOGO ═══════════════════ -->
+  <div class="phone-col">
+    <div class="phone-title">Modo Catálogo</div>
+    <div class="phone-sub">El modelo ya está dado de alta</div>
+    <div class="phone-frame">
+      <div class="phone-notch">9:41 · • • • • •</div>
+      <div class="phone-body">
+
+        <!-- HEADER fijo -->
+        <div class="m-header">
+          <div class="m-h-icon">←</div>
+          <div style="flex:1">
+            <div style="font-size:11px; opacity:.85">Nuevo corte</div>
+            <div style="font-weight:600; font-size:15px">Crear corte</div>
+          </div>
+        </div>
+
+        <!-- ÁREA SCROLLEABLE -->
+        <div class="scroll-area">
+
+          <!-- Línea de negocio (selector estilo cascada) -->
+          <div>
+            <div class="label-xs" style="margin-bottom:6px">Línea de negocio</div>
+            <button class="cascade-btn">
+              <span class="val">Pantalón Denim</span>
+              <span class="arrow">▼</span>
+            </button>
+          </div>
+
+          <!-- Modelo -->
+          <div>
+            <div class="label-xs" style="margin-bottom:6px">Modelo</div>
+            <div class="seg" style="margin-bottom:10px">
+              <button class="active">Del catálogo</button>
+              <button>Manual</button>
+            </div>
+            <div style="position:relative">
+              <input class="tap-input" placeholder="Buscar modelo..." style="padding-left: 34px"/>
+              <span style="position:absolute; left:10px; top:10px; color:#94a3b8">🔍</span>
+            </div>
+            <div style="margin-top:8px; padding: 10px 12px; background: var(--brand-soft); border-radius: 10px; font-size: 12px;">
+              <div style="font-weight:700; color: var(--brand)">ROTEMBER · Pantalon Mom Element</div>
+              <div style="color:#475569; margin-top: 2px;">Element Premium · Denim · Beis</div>
+            </div>
+          </div>
+
+          <!-- N° corte -->
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px">
+              <span class="label-xs">N° de corte</span>
+              <span style="font-size:10px; color:#94a3b8">opcional</span>
+            </div>
+            <input class="tap-input" placeholder="Se asignará al pasar a costura"/>
+            <div style="font-size:11px; color:#94a3b8; margin-top:4px">Lo asignas cuando el corte físico esté listo.</div>
+          </div>
+
+          <!-- Curva -->
+          <div>
+            <div class="label-xs" style="margin-bottom:6px">Curva</div>
+            <input class="tap-input" placeholder="Ej: 2-4-3-2-1" value="2-4-3-2-1"/>
+            <div style="font-size:11px; color:#94a3b8; margin-top:4px">Patrón teórico (talla 1 - talla 2 - ...).</div>
+          </div>
+
+          <!-- Aviso de tallas -->
+          <div class="info-azul">
+            <span style="font-size:14px">ℹ️</span>
+            <span>
+              <strong>Las cantidades por talla se cargan después de cortar.</strong>
+              Al crear, solo defines la curva teórica.
+            </span>
+          </div>
+
+          <!-- Fecha entrega -->
+          <div>
+            <div class="label-xs" style="margin-bottom:6px">Fecha de entrega</div>
+            <input class="tap-input" type="date" value="2026-06-15"/>
+          </div>
+
+          <!-- Urgente -->
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:white; border:1px solid #e5e7eb; border-radius:12px">
+            <div>
+              <div style="font-weight:700; font-size:13px">Urgente</div>
+              <div style="font-size:11px; color:#94a3b8">Prioridad alta en cola</div>
+            </div>
+            <div class="switch"></div>
+          </div>
+
+          <!-- Observaciones -->
+          <div>
+            <div class="label-xs" style="margin-bottom:6px">Observaciones</div>
+            <textarea class="tap-input" rows="2" placeholder="Notas internas (opcional)..."></textarea>
+          </div>
+
+        </div>
+
+        <!-- FOOTER fijo abajo -->
+        <div class="footer-fix">
+          <button class="tap-btn tap-btn-outline" style="flex:1">Cancelar</button>
+          <button class="tap-btn tap-btn-primary" style="flex:2">Crear corte</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ MODO MANUAL (cascada) ═══════════════════ -->
+  <div class="phone-col">
+    <div class="phone-title">Modo Manual · Cascada</div>
+    <div class="phone-sub">Marca → Tipo → Entalle → Tela → Hilo</div>
+    <div class="phone-frame">
+      <div class="phone-notch">9:41 · • • • • •</div>
+      <div class="phone-body">
+
+        <!-- HEADER fijo -->
+        <div class="m-header">
+          <div class="m-h-icon">←</div>
+          <div style="flex:1">
+            <div style="font-size:11px; opacity:.85">Nuevo corte · manual</div>
+            <div style="font-weight:600; font-size:15px">Crear corte</div>
+          </div>
+        </div>
+
+        <!-- ÁREA SCROLLEABLE -->
+        <div class="scroll-area">
+
+          <!-- Línea de negocio (selector estilo cascada) -->
+          <div>
+            <div class="label-xs" style="margin-bottom:6px">Línea de negocio</div>
+            <button class="cascade-btn">
+              <span class="val">Pantalón Denim</span>
+              <span class="arrow">▼</span>
+            </button>
+          </div>
+
+          <!-- Modelo: pestaña Manual seleccionada -->
+          <div>
+            <div class="label-xs" style="margin-bottom:6px">Modelo</div>
+            <div class="seg" style="margin-bottom:10px">
+              <button>Del catálogo</button>
+              <button class="active">Manual</button>
+            </div>
+
+            <!-- Aviso modo manual -->
+            <div class="info-azul" style="background:#fffbeb; border-color:#fcd34d; color:#92400e; margin-bottom:10px">
+              <span style="font-size:14px">ℹ️</span>
+              <span>El modelo se guarda como <strong>manual</strong>. Los campos en cascada filtran del catálogo, pero puedes escribir nombres nuevos al final de cada lista.</span>
+            </div>
+
+            <!-- Nombre del modelo -->
+            <div style="margin-bottom:10px">
+              <div class="label-xs" style="margin-bottom:4px">Nombre del modelo</div>
+              <input class="tap-input" placeholder="Ej: Pantalón Slim Indigo" value="Pantalón Slim Indigo"/>
+            </div>
+
+            <!-- Cascada -->
+            <div class="cascade-row">
+              <div>
+                <div class="label-xs" style="margin-bottom:4px">Marca</div>
+                <button class="cascade-btn">
+                  <span class="val">Qepo</span>
+                  <span class="arrow">▼</span>
+                </button>
+              </div>
+
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px">
+                  <span class="label-xs">Tipo</span>
+                  <span style="font-size:9px; color:#94a3b8">filtrado por Qepo</span>
+                </div>
+                <button class="cascade-btn">
+                  <span class="val">Pantalón</span>
+                  <span class="arrow">▼</span>
+                </button>
+              </div>
+
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px">
+                  <span class="label-xs">Entalle</span>
+                  <span style="font-size:9px; color:#94a3b8">filtrado por Pantalón</span>
+                </div>
+                <button class="cascade-btn">
+                  <span class="val">Slim</span>
+                  <span class="arrow">▼</span>
+                </button>
+              </div>
+
+              <div>
+                <div class="label-xs" style="margin-bottom:4px">Tela</div>
+                <button class="cascade-btn">
+                  <span class="val empty">Elegir tela...</span>
+                  <span class="arrow">▼</span>
+                </button>
+              </div>
+
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px">
+                  <span class="label-xs">Hilo</span>
+                  <span style="font-size:9px; color:#cbd5e1">opcional · requiere tela</span>
+                </div>
+                <button class="cascade-btn disabled">
+                  <span class="val empty">— bloqueado —</span>
+                  <span class="arrow">▼</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- N° corte -->
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px">
+              <span class="label-xs">N° de corte</span>
+              <span style="font-size:10px; color:#94a3b8">opcional</span>
+            </div>
+            <input class="tap-input" placeholder="Se asignará al cortar"/>
+          </div>
+
+          <!-- Curva -->
+          <div>
+            <div class="label-xs" style="margin-bottom:6px">Curva</div>
+            <input class="tap-input" placeholder="Ej: 2-3-3-2" value="2-3-3-2"/>
+            <div style="font-size:11px; color:#94a3b8; margin-top:4px">Las cantidades reales se cargan después de cortar.</div>
+          </div>
+
+          <!-- Fecha entrega -->
+          <div>
+            <div class="label-xs" style="margin-bottom:6px">Fecha de entrega</div>
+            <input class="tap-input" type="date" value="2026-06-30"/>
+          </div>
+
+          <!-- Urgente -->
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:white; border:1px solid #e5e7eb; border-radius:12px">
+            <div>
+              <div style="font-weight:700; font-size:13px">Urgente</div>
+              <div style="font-size:11px; color:#94a3b8">Prioridad alta en cola</div>
+            </div>
+            <div class="switch on"></div>
+          </div>
+
+          <!-- Observaciones -->
+          <div>
+            <div class="label-xs" style="margin-bottom:6px">Observaciones</div>
+            <textarea class="tap-input" rows="2" placeholder="Notas...">Pedido nuevo cliente. Confirmar tela antes de cortar.</textarea>
+          </div>
+
+        </div>
+
+        <!-- FOOTER fijo abajo -->
+        <div class="footer-fix">
+          <button class="tap-btn tap-btn-outline" style="flex:1">Cancelar</button>
+          <button class="tap-btn tap-btn-primary" style="flex:2">Crear corte</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Picker de cascada -->
+<div style="max-width:1000px; margin: 30px auto; padding: 0 24px;">
+  <div style="text-align:center; font-size:13px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.04em; margin-bottom:16px">
+    Cómo se ve el picker al tocar uno de los campos de cascada
+  </div>
+  <div style="display:flex; gap:20px; justify-content:center; flex-wrap:wrap;">
+
+    <div style="max-width:340px; flex:1; min-width:280px">
+      <div style="text-align:center; font-size:11px; color:#94a3b8; margin-bottom:6px">Tocar "Elegir tela..."</div>
+      <div style="background:white; border-radius:18px 18px 0 0; padding:14px 16px 20px; box-shadow:0 -4px 12px rgba(0,0,0,0.08); border: 1px solid #e5e7eb">
+        <div style="width:40px; height:4px; background:#cbd5e1; border-radius:2px; margin:0 auto 12px"></div>
+        <div style="font-weight:700; font-size:15px; margin-bottom:10px">Elegir tela</div>
+        <input class="tap-input" placeholder="Buscar..." style="margin-bottom:10px"/>
+        <div style="background:#f8fafc; border-radius:8px; max-height:240px; overflow-y:auto">
+          <div style="padding:11px 12px; border-bottom:1px solid #f1f5f9; font-size:14px; font-weight:600;">Denim</div>
+          <div style="padding:11px 12px; border-bottom:1px solid #f1f5f9; font-size:14px; font-weight:600;">Drill</div>
+          <div style="padding:11px 12px; border-bottom:1px solid #f1f5f9; font-size:14px; font-weight:600;">Algodón</div>
+          <div style="padding:11px 12px; border-bottom:1px solid #f1f5f9; font-size:14px; font-weight:600;">Polialgodón</div>
+          <div style="padding:11px 12px; border-bottom:1px solid #f1f5f9; font-size:14px; font-weight:600;">Spandex</div>
+          <div style="padding:11px 12px; border-bottom:1px solid #f1f5f9; font-size:14px; font-weight:600;">Jersey 24/1</div>
+          <div style="padding:11px 12px; border-bottom:1px solid #f1f5f9; font-size:14px; font-weight:600; color: var(--brand)">+ Escribir tela nueva...</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="max-width:340px; flex:1; min-width:280px">
+      <div style="text-align:center; font-size:11px; color:#94a3b8; margin-bottom:6px">Al tocar "Escribir tela nueva..."</div>
+      <div style="background:white; border-radius:18px 18px 0 0; padding:14px 16px 20px; box-shadow:0 -4px 12px rgba(0,0,0,0.08); border: 1px solid #e5e7eb">
+        <div style="width:40px; height:4px; background:#cbd5e1; border-radius:2px; margin:0 auto 12px"></div>
+        <div style="font-weight:700; font-size:15px; margin-bottom:10px">Nueva tela (no en catálogo)</div>
+        <div style="background:#fffbeb; border:1px solid #fcd34d; color:#92400e; padding:8px 10px; border-radius:8px; font-size:11px; margin-bottom:10px; line-height:1.5">
+          Quedará como texto libre en este corte. <strong>No se agrega al catálogo global</strong>; eso se hace desde web.
+        </div>
+        <input class="tap-input" placeholder="Nombre de la tela" value="Denim Vintage Stone" style="margin-bottom:10px"/>
+        <button class="tap-btn tap-btn-primary" style="width:100%">Usar "Denim Vintage Stone"</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="nota">
+  <strong>Ajustes v3:</strong><br/>
+  · <strong>Línea de negocio</strong>: selector estándar (mismo estilo que Marca, Tipo, etc.). Al tocarlo abre un picker bottom sheet con la lista.<br/>
+  · <strong>Footer fijo</strong>: el área scrolleable y el footer son hermanos en flex column, así <strong>Cancelar/Crear corte</strong> siempre se ven abajo sin importar cuánto scrolle el formulario.<br/>
+  · <strong>Tallas fuera</strong>: solo curva al crear.<br/><br/>
+  Si te gusta así, lo implemento.
+</div>
+
+</body>
+</html>

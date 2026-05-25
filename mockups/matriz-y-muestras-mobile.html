@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Matriz Talla×Color + Envío a Lavandería — Mockup móvil</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { --brand: #0f766e; --brand-soft: #f0fdfa; }
+  body { background: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  /* Phone frame para preview en pantalla */
+  .phone-frame {
+    width: 380px;
+    border: 12px solid #1f2937;
+    border-radius: 36px;
+    overflow: hidden;
+    background: white;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4);
+    margin: 0 auto;
+  }
+  .phone-notch {
+    height: 26px;
+    background: #1f2937;
+    display: flex; justify-content: center; align-items: center;
+    color: white; font-size: 11px; font-weight: 600;
+  }
+  .phone-body { height: 720px; overflow-y: auto; background: #f9fafb; }
+  .desktop-frame {
+    border: 1px solid #d1d5db; border-radius: 12px; background: white;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); overflow: hidden;
+  }
+  .desktop-bar {
+    height: 28px; background: #f3f4f6; border-bottom: 1px solid #e5e7eb;
+    display: flex; align-items: center; padding: 0 12px; gap: 6px;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  /* iOS-safe inputs (>=16px evita auto-zoom) */
+  .num-input {
+    font-size: 17px; min-height: 44px; min-width: 44px;
+    text-align: center; border: 1px solid #d1d5db; border-radius: 8px;
+    font-variant-numeric: tabular-nums; background: white;
+  }
+  .num-input:focus { outline: 2px solid var(--brand); border-color: var(--brand); }
+  .tap-btn { min-height: 44px; min-width: 44px; }
+  .pill {
+    display:inline-flex; align-items:center; gap:4px;
+    padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  }
+  /* Variant tabs */
+  .var-tab { cursor: pointer; }
+  .var-tab.active { background: var(--brand); color: white; }
+  /* Tabla compacta scroll horizontal */
+  .sticky-col { position: sticky; left: 0; background: white; z-index: 2; box-shadow: 2px 0 4px -2px rgba(0,0,0,0.08); }
+  /* Hide scrollbar nice */
+  .nice-scroll::-webkit-scrollbar { height: 6px; width: 6px; }
+  .nice-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  /* Helpers */
+  .label-xs { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; font-weight: 600; }
+</style>
+</head>
+<body class="py-8 px-4">
+
+<div class="max-w-7xl mx-auto">
+
+  <!-- ───────────── INTRO ───────────── -->
+  <header class="mb-8 text-center">
+    <h1 class="text-3xl font-bold text-slate-900">Matriz Talla × Color + Envío a Lavandería</h1>
+    <p class="text-slate-600 mt-2 max-w-2xl mx-auto">
+      Mockup interactivo. Misma página, layout distinto según viewport.
+      <strong>Lado izquierdo:</strong> vista PC (como está hoy).
+      <strong>Lado derecho:</strong> 3 variantes de vista móvil para que elijas cuál te conviene.
+    </p>
+    <p class="text-xs text-slate-500 mt-2">Datos de ejemplo · Marca BBL · Modelo Polo Slim 270g · Corte CT-2156</p>
+  </header>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- SECCIÓN 1: MATRIZ TALLA × COLOR                                     -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <section class="mb-16">
+    <div class="flex items-center gap-3 mb-6">
+      <div class="w-8 h-8 rounded-full bg-teal-700 text-white flex items-center justify-center font-bold">1</div>
+      <h2 class="text-2xl font-bold text-slate-900">Matriz Talla × Color</h2>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-8">
+
+      <!-- ━━━ DESKTOP — como está hoy ━━━ -->
+      <div>
+        <p class="label-xs mb-2">PC / Tablet horizontal — vista actual</p>
+        <div class="desktop-frame">
+          <div class="desktop-bar">
+            <span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span>
+            <span class="ml-3 text-xs text-slate-500">produccion / registros / CT-2156</span>
+          </div>
+          <div class="p-4">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold text-slate-800">Distribución por Talla y Color</h3>
+              <button class="text-xs px-2 py-1 border rounded">Prorratear</button>
+            </div>
+            <div class="overflow-x-auto border rounded-lg">
+              <table class="w-full text-sm">
+                <thead class="bg-slate-50 text-xs uppercase text-slate-600">
+                  <tr>
+                    <th class="text-left p-2 border-b">Color</th>
+                    <th class="text-center p-2 border-b">Prop.</th>
+                    <th class="text-center p-2 border-b">XS<div class="font-normal text-slate-400">10</div></th>
+                    <th class="text-center p-2 border-b">S<div class="font-normal text-slate-400">25</div></th>
+                    <th class="text-center p-2 border-b">M<div class="font-normal text-slate-400">40</div></th>
+                    <th class="text-center p-2 border-b">L<div class="font-normal text-slate-400">35</div></th>
+                    <th class="text-center p-2 border-b">XL<div class="font-normal text-slate-400">20</div></th>
+                    <th class="text-center p-2 border-b bg-slate-100">Total</th>
+                  </tr>
+                </thead>
+                <tbody class="font-mono text-sm">
+                  <tr><td class="p-2 border-b font-sans">Blanco</td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="1"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="3"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="8"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="13"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="11"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="6"></td><td class="p-2 border-b text-center bg-slate-50">41</td></tr>
+                  <tr class="bg-slate-50/40"><td class="p-2 border-b font-sans">Negro</td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="2"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="4"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="10"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="16"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="14"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="8"></td><td class="p-2 border-b text-center bg-slate-50">52</td></tr>
+                  <tr><td class="p-2 border-b font-sans">Azul Marino</td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="1"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="3"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="7"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="11"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="10"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="6"></td><td class="p-2 border-b text-center bg-slate-50">37</td></tr>
+                  <tr class="bg-slate-50/40"><td class="p-2 border-b font-sans">Verde Militar</td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="1"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="0"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="0"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="0"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="0"></td><td class="p-1 border-b"><input class="w-12 h-8 text-center border rounded" value="0"></td><td class="p-2 border-b text-center bg-slate-50">0</td></tr>
+                  <tr class="bg-slate-100 font-semibold"><td class="p-2 font-sans" colspan="2">Asignado</td>
+                    <td class="p-2 text-center text-green-600">10<span class="text-slate-400">/10</span></td>
+                    <td class="p-2 text-center text-green-600">25<span class="text-slate-400">/25</span></td>
+                    <td class="p-2 text-center text-green-600">40<span class="text-slate-400">/40</span></td>
+                    <td class="p-2 text-center text-green-600">35<span class="text-slate-400">/35</span></td>
+                    <td class="p-2 text-center text-green-600">20<span class="text-slate-400">/20</span></td>
+                    <td class="p-2 text-center bg-teal-100 text-teal-700">130</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="text-xs text-slate-500 mt-3">Densa, eficiente con teclado y mouse. En móvil → forzaría scroll horizontal y los inputs (32px) son chicos para tap.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ━━━ MÓVIL — 3 variantes ━━━ -->
+      <div>
+        <p class="label-xs mb-2">Móvil — elegí la variante</p>
+        <div class="flex gap-2 mb-3 flex-wrap">
+          <button onclick="showVariant('A')" id="tab-A" class="var-tab active text-sm font-medium px-3 py-2 rounded border">A · Cards por color</button>
+          <button onclick="showVariant('B')" id="tab-B" class="var-tab text-sm font-medium px-3 py-2 rounded border">B · Wizard 1×1</button>
+          <button onclick="showVariant('C')" id="tab-C" class="var-tab text-sm font-medium px-3 py-2 rounded border">C · Tabla compacta</button>
+        </div>
+
+        <div class="phone-frame">
+          <div class="phone-notch">9:41</div>
+
+          <!-- ════ VARIANT A: Cards apiladas por color ════ -->
+          <div id="variant-A" class="phone-body">
+            <!-- Top bar -->
+            <div class="bg-white border-b sticky top-0 z-10">
+              <div class="px-4 py-3 flex items-center gap-3">
+                <button class="text-slate-600 text-xl">←</button>
+                <div class="flex-1 min-w-0">
+                  <div class="text-xs text-slate-500">Corte CT-2156</div>
+                  <div class="font-semibold text-slate-900 truncate">Polo Slim 270g · BBL</div>
+                </div>
+              </div>
+              <div class="px-4 pb-3">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-slate-500">Asignado total</span>
+                  <span class="font-mono font-semibold text-teal-700">130 / 130</span>
+                </div>
+                <div class="mt-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div class="h-full bg-teal-600" style="width:100%"></div>
+                </div>
+                <!-- Per-talla mini chips -->
+                <div class="mt-2 flex gap-1.5 overflow-x-auto nice-scroll">
+                  <span class="pill bg-emerald-100 text-emerald-700">XS 10/10</span>
+                  <span class="pill bg-emerald-100 text-emerald-700">S 25/25</span>
+                  <span class="pill bg-emerald-100 text-emerald-700">M 40/40</span>
+                  <span class="pill bg-emerald-100 text-emerald-700">L 35/35</span>
+                  <span class="pill bg-emerald-100 text-emerald-700">XL 20/20</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Action -->
+            <div class="px-4 pt-3 flex items-center justify-between">
+              <button class="text-sm text-teal-700 font-medium tap-btn px-2">＋ Agregar color</button>
+              <button class="text-sm font-medium tap-btn px-3 rounded border">Prorratear</button>
+            </div>
+
+            <!-- Card por color -->
+            <div class="p-3 space-y-3">
+              <!-- BLANCO -->
+              <div class="bg-white rounded-xl border shadow-sm">
+                <div class="flex items-center justify-between px-3 py-2.5 border-b">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-slate-900">Blanco</span>
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 border border-teal-200 rounded-full text-xs text-teal-700" title="Peso al prorratear">
+                      <span class="text-[10px] font-medium">prop.</span>
+                      <input class="w-8 bg-transparent text-center font-mono font-semibold focus:outline-none" inputmode="decimal" value="1"/>
+                    </span>
+                  </div>
+                  <div class="text-sm font-mono text-slate-700">41 <span class="text-xs text-slate-400">prendas</span></div>
+                </div>
+                <div class="p-2 grid grid-cols-3 gap-2">
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50">
+                    <span class="label-xs">XS</span>
+                    <input class="num-input w-full" inputmode="numeric" pattern="[0-9]*" value="3"/>
+                  </label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50">
+                    <span class="label-xs">S</span>
+                    <input class="num-input w-full" inputmode="numeric" value="8"/>
+                  </label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50">
+                    <span class="label-xs">M</span>
+                    <input class="num-input w-full" inputmode="numeric" value="13"/>
+                  </label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50">
+                    <span class="label-xs">L</span>
+                    <input class="num-input w-full" inputmode="numeric" value="11"/>
+                  </label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50">
+                    <span class="label-xs">XL</span>
+                    <input class="num-input w-full" inputmode="numeric" value="6"/>
+                  </label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50">
+                    <span class="label-xs">XXL</span>
+                    <input class="num-input w-full" inputmode="numeric" value="0"/>
+                  </label>
+                </div>
+              </div>
+
+              <!-- NEGRO -->
+              <div class="bg-white rounded-xl border shadow-sm">
+                <div class="flex items-center justify-between px-3 py-2.5 border-b">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-slate-900">Negro</span>
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 border border-teal-200 rounded-full text-xs text-teal-700" title="Peso al prorratear">
+                      <span class="text-[10px] font-medium">prop.</span>
+                      <input class="w-8 bg-transparent text-center font-mono font-semibold focus:outline-none" inputmode="decimal" value="2"/>
+                    </span>
+                  </div>
+                  <div class="text-sm font-mono text-slate-700">52</div>
+                </div>
+                <div class="p-2 grid grid-cols-3 gap-2">
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">XS</span><input class="num-input w-full" inputmode="numeric" value="4"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">S</span><input class="num-input w-full" inputmode="numeric" value="10"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">M</span><input class="num-input w-full" inputmode="numeric" value="16"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">L</span><input class="num-input w-full" inputmode="numeric" value="14"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">XL</span><input class="num-input w-full" inputmode="numeric" value="8"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">XXL</span><input class="num-input w-full" inputmode="numeric" value="0"/></label>
+                </div>
+              </div>
+
+              <!-- AZUL MARINO -->
+              <div class="bg-white rounded-xl border shadow-sm">
+                <div class="flex items-center justify-between px-3 py-2.5 border-b">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-slate-900">Azul Marino</span>
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-teal-50 border border-teal-200 rounded-full text-xs text-teal-700" title="Peso al prorratear">
+                      <span class="text-[10px] font-medium">prop.</span>
+                      <input class="w-8 bg-transparent text-center font-mono font-semibold focus:outline-none" inputmode="decimal" value="1"/>
+                    </span>
+                  </div>
+                  <div class="text-sm font-mono text-slate-700">37</div>
+                </div>
+                <div class="p-2 grid grid-cols-3 gap-2">
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">XS</span><input class="num-input w-full" inputmode="numeric" value="3"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">S</span><input class="num-input w-full" inputmode="numeric" value="7"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">M</span><input class="num-input w-full" inputmode="numeric" value="11"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">L</span><input class="num-input w-full" inputmode="numeric" value="10"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">XL</span><input class="num-input w-full" inputmode="numeric" value="6"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">XXL</span><input class="num-input w-full" inputmode="numeric" value="0"/></label>
+                </div>
+              </div>
+
+              <!-- VERDE -->
+              <div class="bg-white rounded-xl border border-amber-200 shadow-sm">
+                <div class="flex items-center justify-between px-3 py-2.5 border-b border-amber-200 bg-amber-50/50">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-slate-900">Verde Militar</span>
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-teal-200 rounded-full text-xs text-teal-700" title="Peso al prorratear">
+                      <span class="text-[10px] font-medium">prop.</span>
+                      <input class="w-8 bg-transparent text-center font-mono font-semibold focus:outline-none" inputmode="decimal" value="0.5"/>
+                    </span>
+                  </div>
+                  <div class="text-sm font-mono text-amber-700">0 <span class="text-xs">sin asignar</span></div>
+                </div>
+                <div class="p-2 grid grid-cols-3 gap-2">
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">XS</span><input class="num-input w-full" inputmode="numeric" placeholder="0"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">S</span><input class="num-input w-full" inputmode="numeric" placeholder="0"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">M</span><input class="num-input w-full" inputmode="numeric" placeholder="0"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">L</span><input class="num-input w-full" inputmode="numeric" placeholder="0"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">XL</span><input class="num-input w-full" inputmode="numeric" placeholder="0"/></label>
+                  <label class="flex flex-col items-center gap-1 p-2 rounded-lg bg-slate-50"><span class="label-xs">XXL</span><input class="num-input w-full" inputmode="numeric" placeholder="0"/></label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sticky save -->
+            <div class="sticky bottom-0 bg-white border-t p-3 flex gap-2">
+              <button class="flex-1 py-3 rounded-lg border font-medium">Cancelar</button>
+              <button class="flex-1 py-3 rounded-lg bg-teal-700 text-white font-semibold">Guardar</button>
+            </div>
+          </div>
+
+          <!-- ════ VARIANT B: Wizard 1 color por pantalla ════ -->
+          <div id="variant-B" class="phone-body hidden">
+            <div class="bg-white border-b sticky top-0 z-10 px-4 py-3 flex items-center gap-3">
+              <button class="text-slate-600 text-xl">←</button>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs text-slate-500">CT-2156 · Polo Slim 270g</div>
+                <div class="font-semibold text-slate-900">Distribución por color</div>
+              </div>
+            </div>
+
+            <!-- Stepper -->
+            <div class="px-4 pt-3 flex items-center gap-1.5">
+              <span class="flex-1 h-1.5 rounded-full bg-teal-600"></span>
+              <span class="flex-1 h-1.5 rounded-full bg-teal-600"></span>
+              <span class="flex-1 h-1.5 rounded-full bg-slate-200"></span>
+              <span class="flex-1 h-1.5 rounded-full bg-slate-200"></span>
+            </div>
+            <div class="px-4 pt-2 flex items-center justify-between text-xs text-slate-500">
+              <span>Color 2 de 4</span>
+              <span>Negro</span>
+            </div>
+
+            <!-- Hero color -->
+            <div class="px-4 pt-4">
+              <h3 class="text-2xl font-bold text-slate-900">Negro</h3>
+              <p class="text-sm text-slate-500">Ingresá la cantidad por cada talla</p>
+            </div>
+
+            <!-- Proporción (peso al prorratear) -->
+            <div class="px-4 pt-3">
+              <div class="bg-white rounded-xl border p-3 flex items-center justify-between">
+                <div>
+                  <div class="text-sm font-medium text-slate-700">Proporción</div>
+                  <div class="text-xs text-slate-500">Peso al prorratear · 1 = igual al resto</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="tap-btn w-10 h-10 rounded-full border text-lg">−</button>
+                  <input class="num-input w-14 font-bold" inputmode="decimal" value="2"/>
+                  <button class="tap-btn w-10 h-10 rounded-full border text-lg">＋</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tallas grandes -->
+            <div class="p-4 space-y-2">
+              <div class="bg-white rounded-xl border p-3 flex items-center justify-between">
+                <div>
+                  <div class="font-semibold text-lg">XS</div>
+                  <div class="text-xs text-slate-500">disponible: 10</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="tap-btn w-11 h-11 rounded-full border text-xl">−</button>
+                  <input class="num-input w-16 font-bold text-xl" inputmode="numeric" value="4"/>
+                  <button class="tap-btn w-11 h-11 rounded-full border text-xl">＋</button>
+                </div>
+              </div>
+              <div class="bg-white rounded-xl border p-3 flex items-center justify-between">
+                <div>
+                  <div class="font-semibold text-lg">S</div>
+                  <div class="text-xs text-slate-500">disponible: 25</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="tap-btn w-11 h-11 rounded-full border text-xl">−</button>
+                  <input class="num-input w-16 font-bold text-xl" inputmode="numeric" value="10"/>
+                  <button class="tap-btn w-11 h-11 rounded-full border text-xl">＋</button>
+                </div>
+              </div>
+              <div class="bg-white rounded-xl border p-3 flex items-center justify-between">
+                <div>
+                  <div class="font-semibold text-lg">M</div>
+                  <div class="text-xs text-slate-500">disponible: 40</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="tap-btn w-11 h-11 rounded-full border text-xl">−</button>
+                  <input class="num-input w-16 font-bold text-xl" inputmode="numeric" value="16"/>
+                  <button class="tap-btn w-11 h-11 rounded-full border text-xl">＋</button>
+                </div>
+              </div>
+              <div class="bg-white rounded-xl border p-3 flex items-center justify-between">
+                <div>
+                  <div class="font-semibold text-lg">L</div>
+                  <div class="text-xs text-slate-500">disponible: 35</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="tap-btn w-11 h-11 rounded-full border text-xl">−</button>
+                  <input class="num-input w-16 font-bold text-xl" inputmode="numeric" value="14"/>
+                  <button class="tap-btn w-11 h-11 rounded-full border text-xl">＋</button>
+                </div>
+              </div>
+              <div class="bg-white rounded-xl border p-3 flex items-center justify-between">
+                <div>
+                  <div class="font-semibold text-lg">XL</div>
+                  <div class="text-xs text-slate-500">disponible: 20</div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="tap-btn w-11 h-11 rounded-full border text-xl">−</button>
+                  <input class="num-input w-16 font-bold text-xl" inputmode="numeric" value="8"/>
+                  <button class="tap-btn w-11 h-11 rounded-full border text-xl">＋</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="px-4 pb-3">
+              <div class="bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 text-sm text-teal-800 flex justify-between">
+                <span>Total Negro</span>
+                <span class="font-mono font-bold">52</span>
+              </div>
+            </div>
+
+            <div class="sticky bottom-0 bg-white border-t p-3 flex gap-2">
+              <button class="flex-1 py-3 rounded-lg border font-medium">← Blanco</button>
+              <button class="flex-1 py-3 rounded-lg bg-teal-700 text-white font-semibold">Azul Marino →</button>
+            </div>
+          </div>
+
+          <!-- ════ VARIANT C: Tabla compacta sticky ════ -->
+          <div id="variant-C" class="phone-body hidden">
+            <div class="bg-white border-b sticky top-0 z-10 px-4 py-3 flex items-center gap-3">
+              <button class="text-slate-600 text-xl">←</button>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs text-slate-500">CT-2156</div>
+                <div class="font-semibold text-slate-900 truncate">Polo Slim 270g</div>
+              </div>
+              <button class="text-xs px-2 py-1 border rounded">Prorratear</button>
+            </div>
+
+            <div class="px-4 py-2 text-xs text-slate-500">Deslizá horizontal para ver más tallas →</div>
+
+            <div class="overflow-x-auto nice-scroll bg-white">
+              <table class="text-sm" style="border-collapse: separate; border-spacing: 0;">
+                <thead>
+                  <tr class="bg-slate-50">
+                    <th class="sticky-col text-left p-2 border-b text-xs uppercase text-slate-600" style="min-width:110px;">Color</th>
+                    <th class="text-center p-2 border-b text-xs uppercase text-teal-700 bg-teal-50/40" style="min-width:64px;" title="Peso al prorratear">Prop.<div class="text-slate-400 font-normal text-[10px]">×</div></th>
+                    <th class="text-center p-2 border-b text-xs uppercase text-slate-600" style="min-width:64px;">XS<div class="text-slate-400 font-normal">10</div></th>
+                    <th class="text-center p-2 border-b text-xs uppercase text-slate-600" style="min-width:64px;">S<div class="text-slate-400 font-normal">25</div></th>
+                    <th class="text-center p-2 border-b text-xs uppercase text-slate-600" style="min-width:64px;">M<div class="text-slate-400 font-normal">40</div></th>
+                    <th class="text-center p-2 border-b text-xs uppercase text-slate-600" style="min-width:64px;">L<div class="text-slate-400 font-normal">35</div></th>
+                    <th class="text-center p-2 border-b text-xs uppercase text-slate-600" style="min-width:64px;">XL<div class="text-slate-400 font-normal">20</div></th>
+                    <th class="text-center p-2 border-b text-xs uppercase text-slate-600 bg-slate-100" style="min-width:60px;">Σ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="sticky-col p-2 border-b font-medium text-sm">Blanco</td>
+                    <td class="p-1 border-b bg-teal-50/30"><input class="num-input w-14 text-teal-700" inputmode="decimal" value="1"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="3"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="8"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="13"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="11"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="6"/></td>
+                    <td class="p-2 border-b text-center font-mono bg-slate-50">41</td>
+                  </tr>
+                  <tr class="bg-slate-50/40">
+                    <td class="sticky-col p-2 border-b font-medium text-sm bg-slate-50/40">Negro</td>
+                    <td class="p-1 border-b bg-teal-50/30"><input class="num-input w-14 text-teal-700" inputmode="decimal" value="2"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="4"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="10"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="16"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="14"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="8"/></td>
+                    <td class="p-2 border-b text-center font-mono bg-slate-50">52</td>
+                  </tr>
+                  <tr>
+                    <td class="sticky-col p-2 border-b font-medium text-sm">Azul Marino</td>
+                    <td class="p-1 border-b bg-teal-50/30"><input class="num-input w-14 text-teal-700" inputmode="decimal" value="1"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="3"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="7"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="11"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="10"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" value="6"/></td>
+                    <td class="p-2 border-b text-center font-mono bg-slate-50">37</td>
+                  </tr>
+                  <tr class="bg-slate-50/40">
+                    <td class="sticky-col p-2 border-b font-medium text-sm bg-slate-50/40">Verde Militar</td>
+                    <td class="p-1 border-b bg-teal-50/30"><input class="num-input w-14 text-teal-700" inputmode="decimal" value="0.5"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" placeholder="0"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" placeholder="0"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" placeholder="0"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" placeholder="0"/></td>
+                    <td class="p-1 border-b"><input class="num-input w-14" inputmode="numeric" placeholder="0"/></td>
+                    <td class="p-2 border-b text-center font-mono bg-slate-50">0</td>
+                  </tr>
+                  <tr class="bg-slate-100 font-semibold">
+                    <td class="sticky-col p-2 text-sm bg-slate-100">Asignado</td>
+                    <td class="p-2 text-center text-slate-400 text-xs bg-slate-100">—</td>
+                    <td class="p-2 text-center text-emerald-600 text-sm">10/10</td>
+                    <td class="p-2 text-center text-emerald-600 text-sm">25/25</td>
+                    <td class="p-2 text-center text-emerald-600 text-sm">40/40</td>
+                    <td class="p-2 text-center text-emerald-600 text-sm">35/35</td>
+                    <td class="p-2 text-center text-emerald-600 text-sm">20/20</td>
+                    <td class="p-2 text-center bg-teal-100 text-teal-700 text-sm">130</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="p-3"><button class="w-full text-sm text-teal-700 font-medium py-2 rounded border border-dashed">＋ Agregar color</button></div>
+
+            <div class="sticky bottom-0 bg-white border-t p-3 flex gap-2">
+              <button class="flex-1 py-3 rounded-lg border font-medium">Cancelar</button>
+              <button class="flex-1 py-3 rounded-lg bg-teal-700 text-white font-semibold">Guardar</button>
+            </div>
+          </div>
+
+        </div>
+
+        <div id="variant-notes" class="mt-3 text-sm text-slate-600 max-w-sm mx-auto"></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- SECCIÓN 2: ENVÍO DE MUESTRA A LAVANDERÍA                            -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <section>
+    <div class="flex items-center gap-3 mb-6">
+      <div class="w-8 h-8 rounded-full bg-teal-700 text-white flex items-center justify-center font-bold">2</div>
+      <h2 class="text-2xl font-bold text-slate-900">Envío de muestra a lavandería</h2>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-8">
+
+      <!-- Desktop actual -->
+      <div>
+        <p class="label-xs mb-2">PC — vista actual (resumen)</p>
+        <div class="desktop-frame">
+          <div class="desktop-bar">
+            <span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span>
+            <span class="ml-3 text-xs text-slate-500">CT-2156 / Muestras de lavandería</span>
+          </div>
+          <div class="p-4">
+            <div class="rounded-lg border border-sky-200 bg-sky-50/40 p-3">
+              <div class="flex items-center justify-between mb-3">
+                <div class="text-sm font-semibold text-sky-700">🧪 Muestras de lavandería — 0 envíos</div>
+                <button class="text-xs px-2 py-1 bg-white border rounded">+ Enviar muestra</button>
+              </div>
+              <div class="grid grid-cols-12 gap-2 mb-2">
+                <div class="col-span-6"><label class="text-[10px] text-slate-500">Corte</label><div class="border rounded px-2 py-1.5 text-xs bg-white">CT-2156 · Polo Slim · Para Lavandería</div></div>
+                <div class="col-span-3"><label class="text-[10px] text-slate-500">Fecha envío</label><div class="border rounded px-2 py-1.5 text-xs bg-white">23/05/2026</div></div>
+                <div class="col-span-3"><label class="text-[10px] text-slate-500">Lavandería</label><div class="border rounded px-2 py-1.5 text-xs bg-white">Lav. San Juan</div></div>
+              </div>
+              <table class="w-full text-xs">
+                <thead class="bg-slate-50"><tr><th class="text-left p-1.5">Color</th><th class="p-1.5">Cant.</th><th class="text-left p-1.5">Obs. envío</th><th></th></tr></thead>
+                <tbody>
+                  <tr class="border-b"><td class="p-1.5">Blanco</td><td class="p-1.5 text-center"><input class="w-12 border rounded text-center text-xs" value="2"></td><td class="p-1.5"><input class="w-full border rounded px-1.5 text-xs" placeholder="—"></td><td><button class="text-red-500 text-xs">✕</button></td></tr>
+                  <tr class="border-b"><td class="p-1.5">Negro</td><td class="p-1.5 text-center"><input class="w-12 border rounded text-center text-xs" value="2"></td><td class="p-1.5"><input class="w-full border rounded px-1.5 text-xs" value="probar suavizante" /></td><td><button class="text-red-500 text-xs">✕</button></td></tr>
+                </tbody>
+              </table>
+              <p class="text-xs text-slate-500 mt-2">Total: 4 prendas · funciona bien con mouse y teclado.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Móvil propuesto -->
+      <div>
+        <p class="label-xs mb-2">Móvil — propuesta</p>
+
+        <div class="phone-frame">
+          <div class="phone-notch">9:41</div>
+          <div class="phone-body">
+            <div class="bg-white border-b sticky top-0 z-10 px-4 py-3 flex items-center gap-3">
+              <button class="text-slate-600 text-xl">←</button>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs text-slate-500">Nueva muestra · CT-2156</div>
+                <div class="font-semibold text-slate-900">Enviar a lavandería</div>
+              </div>
+            </div>
+
+            <!-- Datos básicos -->
+            <div class="p-4 space-y-3">
+              <div>
+                <label class="label-xs">Corte</label>
+                <button class="w-full mt-1 tap-btn px-3 text-left rounded-lg border bg-white flex justify-between items-center">
+                  <span class="text-sm">CT-2156 · Polo Slim 270g</span>
+                  <span class="text-slate-400">▾</span>
+                </button>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="label-xs">Fecha envío</label>
+                  <input type="date" class="num-input w-full mt-1 text-left px-3" value="2026-05-23" style="text-align:left"/>
+                </div>
+                <div>
+                  <label class="label-xs">Lavandería</label>
+                  <button class="w-full mt-1 tap-btn px-3 text-left rounded-lg border bg-white flex justify-between items-center text-sm">
+                    San Juan <span class="text-slate-400">▾</span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label class="label-xs">Observaciones del envío</label>
+                <textarea class="w-full mt-1 px-3 py-2 border rounded-lg text-base" rows="2" placeholder="Opcional"></textarea>
+              </div>
+            </div>
+
+            <!-- Colores a enviar -->
+            <div class="px-4 pt-2 flex items-center justify-between">
+              <h3 class="font-semibold text-slate-900">Colores a enviar</h3>
+              <button class="text-sm text-teal-700 font-medium tap-btn px-2">＋ Agregar</button>
+            </div>
+
+            <div class="p-3 pt-2 space-y-2">
+
+              <!-- Color card -->
+              <div class="bg-white rounded-xl border shadow-sm p-3">
+                <div class="flex items-center justify-between">
+                  <span class="font-semibold">Blanco</span>
+                  <button class="text-slate-400 tap-btn px-2">✕</button>
+                </div>
+                <div class="mt-2 flex items-center gap-2">
+                  <span class="label-xs flex-1">Cantidad</span>
+                  <button class="tap-btn w-11 h-11 rounded-full border text-xl">−</button>
+                  <input class="num-input w-16 font-bold" inputmode="numeric" value="2"/>
+                  <button class="tap-btn w-11 h-11 rounded-full border text-xl">＋</button>
+                </div>
+                <input class="mt-2 w-full px-3 py-2 border rounded-lg text-sm" placeholder="Obs. para esta muestra…"/>
+              </div>
+
+              <div class="bg-white rounded-xl border shadow-sm p-3">
+                <div class="flex items-center justify-between">
+                  <span class="font-semibold">Negro</span>
+                  <button class="text-slate-400 tap-btn px-2">✕</button>
+                </div>
+                <div class="mt-2 flex items-center gap-2">
+                  <span class="label-xs flex-1">Cantidad</span>
+                  <button class="tap-btn w-11 h-11 rounded-full border text-xl">−</button>
+                  <input class="num-input w-16 font-bold" inputmode="numeric" value="2"/>
+                  <button class="tap-btn w-11 h-11 rounded-full border text-xl">＋</button>
+                </div>
+                <input class="mt-2 w-full px-3 py-2 border rounded-lg text-sm" value="Probar suavizante"/>
+              </div>
+
+              <!-- Empty add slot -->
+              <button class="w-full py-3 rounded-xl border border-dashed text-teal-700 font-medium">＋ Agregar otro color</button>
+            </div>
+
+            <!-- Resumen -->
+            <div class="px-4 pb-3">
+              <div class="bg-sky-50 border border-sky-200 rounded-lg p-3 flex justify-between items-center">
+                <div class="text-sm">
+                  <div class="font-medium text-sky-800">Total a enviar</div>
+                  <div class="text-xs text-sky-700">2 colores · Lav. San Juan</div>
+                </div>
+                <div class="text-2xl font-bold font-mono text-sky-800">4</div>
+              </div>
+            </div>
+
+            <div class="sticky bottom-0 bg-white border-t p-3 flex gap-2">
+              <button class="flex-1 py-3 rounded-lg border font-medium">Cancelar</button>
+              <button class="flex-1 py-3 rounded-lg bg-teal-700 text-white font-semibold">Enviar muestra</button>
+            </div>
+          </div>
+        </div>
+
+        <p class="text-xs text-slate-500 mt-3 text-center max-w-sm mx-auto">
+          Cards apiladas, botones ± grandes (44×44 mín.), teclado numérico nativo,
+          sticky header con contexto y sticky footer con acción primaria.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ───────────── FOOTER NOTAS ───────────── -->
+  <footer class="mt-16 max-w-3xl mx-auto text-sm text-slate-600 bg-white rounded-xl border p-6">
+    <h3 class="font-bold text-slate-900 mb-3">Notas de implementación</h3>
+    <ul class="space-y-2 list-disc pl-5">
+      <li>Misma página y mismo componente — se usan clases responsive de Tailwind (<code class="bg-slate-100 px-1 rounded">md:hidden</code> / <code class="bg-slate-100 px-1 rounded">hidden md:block</code>) para mostrar un layout u otro según viewport. Cero código duplicado en lógica.</li>
+      <li>Inputs numéricos con <code class="bg-slate-100 px-1 rounded">inputmode="numeric"</code> → teclado numérico nativo en iOS/Android sin tener que cambiar de teclado.</li>
+      <li><code class="bg-slate-100 px-1 rounded">font-size: 17px</code> en inputs → evita el auto-zoom de Safari iOS al hacer focus.</li>
+      <li>Targets de tap ≥ 44×44 px (recomendación Apple HIG y Material).</li>
+      <li>Header y footer sticky en móvil → siempre tenés el total visible y el botón de guardar a mano sin scrollear.</li>
+      <li>Los catálogos (colores, tallas, lavanderías) y endpoints ya existen. No hay cambios al backend.</li>
+      <li><strong>Proporción:</strong> es el peso de cada color al usar el botón <em>Prorratear</em>. Default <code class="bg-slate-100 px-1 rounded">1</code> (todos iguales). Si Negro = <code class="bg-slate-100 px-1 rounded">2</code> y los demás <code class="bg-slate-100 px-1 rounded">1</code>, Negro recibe el doble de cada talla. Si Verde = <code class="bg-slate-100 px-1 rounded">0.5</code>, recibe la mitad. En cada variante se muestra distinto: pill en el header (A), card destacada con ± (B), columna teñida (C).</li>
+    </ul>
+  </footer>
+
+</div>
+
+<script>
+  const NOTES = {
+    A: 'Variante A · Cards por color. Scroll vertical único, todos los colores visibles. La más rápida para llenar muchos colores. Recomendada como default.',
+    B: 'Variante B · Wizard. Una pantalla por color, tallas grandes con ± . Más guiada y menos densa — buena si los operarios se equivocan seguido o son nuevos. Más taps en total.',
+    C: 'Variante C · Tabla compacta. Mantiene la tabla con scroll horizontal pero con inputs 44px y columna de color fija (sticky). Familiar para quien ya usa la versión PC.',
+  };
+  function showVariant(v) {
+    ['A','B','C'].forEach(x => {
+      document.getElementById('variant-'+x).classList.toggle('hidden', x !== v);
+      document.getElementById('tab-'+x).classList.toggle('active', x === v);
+    });
+    document.getElementById('variant-notes').textContent = NOTES[v];
+  }
+  showVariant('A');
+</script>
+
+</body>
+</html>

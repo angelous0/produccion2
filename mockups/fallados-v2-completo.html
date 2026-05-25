@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fallados v2 — Mockup completo (web + móvil)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .phone-frame {
+    width: 380px;
+    border: 12px solid #1f2937;
+    border-radius: 36px;
+    overflow: hidden;
+    background: white;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4);
+  }
+  .phone-notch {
+    height: 24px;
+    background: #1f2937;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .desktop-frame {
+    border: 1px solid #d1d5db;
+    border-radius: 12px;
+    background: white;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+    overflow: hidden;
+  }
+  .desktop-bar {
+    height: 28px;
+    background: #f3f4f6;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 6px;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .chip {
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 2px solid transparent;
+    cursor: pointer;
+  }
+  .chip-off { background: #f3f4f6; color: #374151; border-color: #e5e7eb; }
+  .chip-on  { background: #dbeafe; color: #1e40af; border-color: #2563eb; }
+  .chip-tela { background: #d1fae5; color: #065f46; border-color: #10b981; }
+  .tab-on { background: #2563eb; color: white; }
+  .tab-off { background: #f3f4f6; color: #4b5563; }
+</style>
+</head>
+<body class="p-6">
+
+<div class="max-w-7xl mx-auto">
+  <header class="mb-8 text-center">
+    <h1 class="text-3xl font-bold text-gray-900">Fallados v2 — Cómo quedaría todo</h1>
+    <p class="text-gray-600 mt-2">4 vistas: Cortes Calidad (web + móvil) · Tablero Fallados (web + móvil) · Drawer al marcar fallado</p>
+  </header>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- PANTALLA 1: CORTES CALIDAD — WEB (nuevo)                    -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <section class="mb-12">
+    <div class="mb-4">
+      <span class="inline-block bg-emerald-600 text-white text-xs font-bold px-3 py-1 rounded-full">PANTALLA 1 — NUEVA</span>
+      <h2 class="text-2xl font-bold text-gray-900 mt-2">Cortes Calidad — Versión web</h2>
+      <p class="text-gray-600 mt-1">Filas compactas, una línea por corte. Cabe el triple de cortes en pantalla que en la versión móvil.</p>
+    </div>
+
+    <div class="desktop-frame">
+      <div class="desktop-bar">
+        <span class="dot" style="background:#ef4444"></span>
+        <span class="dot" style="background:#eab308"></span>
+        <span class="dot" style="background:#22c55e"></span>
+        <span class="text-xs text-gray-500 ml-3">erp.ambission.com/cortes-calidad</span>
+      </div>
+
+      <!-- Header azul -->
+      <div class="bg-blue-600 text-white px-6 py-4">
+        <h3 class="text-lg font-semibold">Cortes — Calidad</h3>
+      </div>
+
+      <!-- Search + filtros -->
+      <div class="p-4 border-b border-gray-200 bg-white space-y-3">
+        <div class="relative">
+          <input class="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm" placeholder="Buscar Nº corte o modelo..." />
+          <span class="absolute left-3 top-2.5 text-gray-400">🔍</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <div class="flex gap-2">
+            <span class="tab-off chip text-xs">Para Acabado <span class="ml-1 bg-white px-1.5 rounded">9</span></span>
+            <span class="tab-on chip text-xs">Acabado <span class="ml-1 bg-white text-blue-700 px-1.5 rounded">7</span></span>
+            <span class="tab-off chip text-xs">Almacén PT <span class="ml-1 bg-white px-1.5 rounded">21</span></span>
+            <span class="tab-off chip text-xs">Tienda <span class="ml-1 bg-white px-1.5 rounded">47</span></span>
+          </div>
+          <div class="flex items-center gap-2 text-xs text-gray-600">
+            <span>Ocultar resueltos</span>
+            <div class="w-9 h-5 bg-emerald-500 rounded-full relative">
+              <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 right-0.5"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista compacta -->
+      <div class="divide-y divide-gray-100">
+
+        <!-- Fila CON fallados -->
+        <div class="px-4 py-3 hover:bg-blue-50 flex items-center gap-4 border-l-4 border-red-400">
+          <div class="font-mono font-bold text-gray-900 w-20">010</div>
+          <div class="flex-1">
+            <div class="font-semibold text-gray-900">YECMI BLACK</div>
+            <div class="text-xs text-gray-500 flex items-center gap-2">
+              <span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Acabado</span>
+              <span>· 630 prendas</span>
+            </div>
+          </div>
+          <div class="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded">10 pend.</div>
+          <button class="bg-blue-600 text-white text-xs font-semibold px-4 py-1.5 rounded-lg">
+            Ver fallados →
+          </button>
+        </div>
+
+        <!-- Fila SIN fallados -->
+        <div class="px-4 py-3 hover:bg-gray-50 flex items-center gap-4">
+          <div class="font-mono font-bold text-gray-900 w-20">034-2025</div>
+          <div class="flex-1">
+            <div class="font-semibold text-gray-900">ARSENAL</div>
+            <div class="text-xs text-gray-500 flex items-center gap-2">
+              <span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Acabado</span>
+              <span>· 358 prendas</span>
+            </div>
+          </div>
+          <button class="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            ⚠ + Fallado
+          </button>
+          <button class="border-2 border-emerald-500 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            ✓ Sin fallados
+          </button>
+        </div>
+
+        <!-- Fila SIN fallados -->
+        <div class="px-4 py-3 hover:bg-gray-50 flex items-center gap-4">
+          <div class="font-mono font-bold text-gray-900 w-20">036</div>
+          <div class="flex-1">
+            <div class="font-semibold text-gray-900">AXELIUS</div>
+            <div class="text-xs text-gray-500 flex items-center gap-2">
+              <span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Acabado</span>
+              <span>· 482 prendas</span>
+            </div>
+          </div>
+          <button class="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            ⚠ + Fallado
+          </button>
+          <button class="border-2 border-emerald-500 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            ✓ Sin fallados
+          </button>
+        </div>
+
+        <!-- Fila SIN fallados -->
+        <div class="px-4 py-3 hover:bg-gray-50 flex items-center gap-4">
+          <div class="font-mono font-bold text-gray-900 w-20">037</div>
+          <div class="flex-1">
+            <div class="font-semibold text-gray-900">ARJONA</div>
+            <div class="text-xs text-gray-500 flex items-center gap-2">
+              <span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Acabado</span>
+              <span>· 484 prendas</span>
+            </div>
+          </div>
+          <button class="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            ⚠ + Fallado
+          </button>
+          <button class="border-2 border-emerald-500 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            ✓ Sin fallados
+          </button>
+        </div>
+
+        <!-- Fila SIN fallados -->
+        <div class="px-4 py-3 hover:bg-gray-50 flex items-center gap-4">
+          <div class="font-mono font-bold text-gray-900 w-20">038</div>
+          <div class="flex-1">
+            <div class="font-semibold text-gray-900">BARCELONA</div>
+            <div class="text-xs text-gray-500 flex items-center gap-2">
+              <span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Acabado</span>
+              <span>· 290 prendas</span>
+            </div>
+          </div>
+          <button class="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            ⚠ + Fallado
+          </button>
+          <button class="border-2 border-emerald-500 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            ✓ Sin fallados
+          </button>
+        </div>
+
+        <!-- Fila SIN fallados -->
+        <div class="px-4 py-3 hover:bg-gray-50 flex items-center gap-4">
+          <div class="font-mono font-bold text-gray-900 w-20">039</div>
+          <div class="flex-1">
+            <div class="font-semibold text-gray-900">MILAN BLUE</div>
+            <div class="text-xs text-gray-500 flex items-center gap-2">
+              <span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Acabado</span>
+              <span>· 415 prendas</span>
+            </div>
+          </div>
+          <button class="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            ⚠ + Fallado
+          </button>
+          <button class="border-2 border-emerald-500 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            ✓ Sin fallados
+          </button>
+        </div>
+
+        <!-- Fila SIN fallados -->
+        <div class="px-4 py-3 hover:bg-gray-50 flex items-center gap-4">
+          <div class="font-mono font-bold text-gray-900 w-20">040</div>
+          <div class="flex-1">
+            <div class="font-semibold text-gray-900">DORADO</div>
+            <div class="text-xs text-gray-500 flex items-center gap-2">
+              <span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Acabado</span>
+              <span>· 312 prendas</span>
+            </div>
+          </div>
+          <button class="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            ⚠ + Fallado
+          </button>
+          <button class="border-2 border-emerald-500 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            ✓ Sin fallados
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-3 bg-white border-l-4 border-emerald-500 p-3 rounded text-sm text-gray-700">
+      <strong>Lo que cambia vs la vista móvil:</strong> filas de una sola línea, botones más chicos pero claros, etiqueta de etapa al costado. En la pantalla actual veías 4 cortes, ahora ves 7-8 sin scrollear.
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- PANTALLA 2: CORTES CALIDAD — MÓVIL (la actual, sin cambios) -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <section class="mb-12">
+    <div class="mb-4">
+      <span class="inline-block bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full">PANTALLA 2 — IGUAL QUE HOY</span>
+      <h2 class="text-2xl font-bold text-gray-900 mt-2">Cortes Calidad — Versión móvil</h2>
+      <p class="text-gray-600 mt-1">No la toco. Funciona bien con el pulgar en taller.</p>
+    </div>
+
+    <div class="phone-frame mx-auto">
+      <div class="phone-notch">9:41</div>
+      <div class="bg-blue-600 text-white px-4 py-3">
+        <h3 class="font-semibold">Cortes — Calidad</h3>
+      </div>
+      <div class="p-3 space-y-2">
+        <input class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="🔍 Buscar..." />
+        <div class="flex gap-2 overflow-x-auto pb-1">
+          <span class="tab-off chip text-xs whitespace-nowrap">Para Acabado 9</span>
+          <span class="tab-on chip text-xs whitespace-nowrap">Acabado 7</span>
+          <span class="tab-off chip text-xs whitespace-nowrap">Almacén PT 21</span>
+        </div>
+      </div>
+      <div class="px-3 space-y-3 pb-4">
+        <div class="border-l-4 border-red-400 bg-gray-50 rounded-r-lg p-3">
+          <div class="flex justify-between items-start">
+            <div>
+              <div class="font-mono font-bold">010</div>
+              <div class="text-sm font-semibold">YECMI BLACK</div>
+              <div class="text-xs text-gray-500">Acabado · 630 prendas</div>
+            </div>
+            <div class="bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded">10 pend</div>
+          </div>
+          <button class="w-full mt-2 border border-blue-300 text-blue-700 font-semibold text-sm py-2 rounded-lg">
+            Ver fallados →
+          </button>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-lg p-3">
+          <div class="font-mono font-bold">034-2025</div>
+          <div class="text-sm font-semibold">ARSENAL</div>
+          <div class="text-xs text-gray-500">Acabado · 358 prendas</div>
+          <div class="grid grid-cols-2 gap-2 mt-2">
+            <button class="bg-red-600 text-white text-xs font-bold py-3 rounded-lg">⚠ + FALLADO</button>
+            <button class="border-2 border-emerald-500 text-emerald-700 text-xs font-bold py-3 rounded-lg">✓ SIN FALLADOS</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- PANTALLA 3: DRAWER MARCAR FALLADO — WEB                      -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <section class="mb-12">
+    <div class="mb-4">
+      <span class="inline-block bg-purple-600 text-white text-xs font-bold px-3 py-1 rounded-full">PANTALLA 3 — NUEVA</span>
+      <h2 class="text-2xl font-bold text-gray-900 mt-2">Drawer "Marcar fallado" — Versión web</h2>
+      <p class="text-gray-600 mt-1">Aparece desde la derecha al hacer click en "+ Fallado". Asigna persona y fecha en el mismo paso si es servicio externo.</p>
+    </div>
+
+    <div class="desktop-frame">
+      <div class="desktop-bar">
+        <span class="dot" style="background:#ef4444"></span>
+        <span class="dot" style="background:#eab308"></span>
+        <span class="dot" style="background:#22c55e"></span>
+        <span class="text-xs text-gray-500 ml-3">erp.ambission.com/cortes-calidad</span>
+      </div>
+      <div class="flex">
+        <!-- Fondo de la página, oscurecido -->
+        <div class="flex-1 bg-gray-200 p-6 opacity-60">
+          <div class="bg-blue-600 text-white px-6 py-4 rounded-t-lg">
+            <h3 class="text-lg font-semibold">Cortes — Calidad</h3>
+          </div>
+          <div class="bg-white p-6 text-gray-400 italic text-sm">
+            (Lista de cortes detrás...)
+          </div>
+        </div>
+        <!-- Drawer derecho -->
+        <div class="w-[460px] bg-white border-l border-gray-200 shadow-2xl">
+          <div class="bg-purple-700 text-white p-4">
+            <button class="text-xs opacity-80">✕ Cerrar</button>
+            <h3 class="font-bold text-lg mt-1">Marcar fallado</h3>
+            <p class="text-sm opacity-90">Corte 034-2025 · ARSENAL · Acabado</p>
+          </div>
+          <div class="p-5 space-y-5 max-h-[600px] overflow-y-auto">
+            <div>
+              <label class="text-xs font-semibold text-gray-600 uppercase">Cantidad fallada</label>
+              <div class="mt-1 flex items-center gap-2">
+                <button class="w-10 h-10 bg-gray-100 rounded-lg font-bold">−</button>
+                <input class="flex-1 text-center text-2xl font-bold border-2 border-gray-300 rounded-lg py-2" value="5" />
+                <button class="w-10 h-10 bg-gray-100 rounded-lg font-bold">+</button>
+              </div>
+            </div>
+            <div>
+              <label class="text-xs font-semibold text-gray-600 uppercase">Causa</label>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <span class="chip chip-on">✓ Costura</span>
+                <span class="chip chip-off">Tela</span>
+                <span class="chip chip-off">Lavado</span>
+                <span class="chip chip-off">Estampado</span>
+                <span class="chip chip-off">Otro</span>
+              </div>
+            </div>
+
+            <!-- Bloque asignación -->
+            <div class="bg-blue-50 border-2 border-blue-300 rounded-xl p-4 space-y-3">
+              <div class="flex items-center gap-2">
+                <span>📤</span>
+                <span class="font-bold text-blue-900">Enviar a arreglo</span>
+                <span class="ml-auto text-[10px] bg-red-100 text-red-700 font-bold px-2 py-0.5 rounded">OBLIGATORIO</span>
+              </div>
+              <div>
+                <label class="text-xs font-semibold text-blue-900">¿A quién?</label>
+                <select class="mt-1 w-full border border-blue-300 rounded-lg p-2 text-sm bg-white">
+                  <option selected>María Quispe — Taller Externo</option>
+                  <option>Juan Pérez — Taller Externo</option>
+                  <option>Rosa López — Interno</option>
+                </select>
+                <p class="text-[11px] text-blue-700 mt-1">Solo personas del servicio <strong>Costura</strong></p>
+              </div>
+              <div>
+                <label class="text-xs font-semibold text-blue-900">Fecha límite</label>
+                <input type="date" value="2026-05-26" class="mt-1 w-full border border-blue-300 rounded-lg p-2 text-sm bg-white" />
+                <p class="text-[11px] text-blue-700 mt-1">Precargado a <strong>3 días</strong></p>
+              </div>
+            </div>
+
+            <div>
+              <label class="text-xs font-semibold text-gray-600 uppercase">Observación (opcional)</label>
+              <textarea class="mt-1 w-full border-2 border-gray-200 rounded-lg p-2 text-sm" rows="2" placeholder="Detalle..."></textarea>
+            </div>
+            <div class="flex gap-2 pt-2">
+              <button class="flex-1 border-2 border-gray-300 text-gray-700 font-semibold py-2 rounded-lg">Cancelar</button>
+              <button class="flex-1 bg-purple-700 text-white font-bold py-2 rounded-lg">Guardar y enviar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-3 bg-white border-l-4 border-purple-500 p-3 rounded text-sm text-gray-700">
+      Si la causa es <strong>Tela</strong>, el bloque azul desaparece y queda un aviso verde "no requiere asignar". Mismo comportamiento en móvil y web.
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- PANTALLA 4: TABLERO FALLADOS — WEB                           -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <section class="mb-12">
+    <div class="mb-4">
+      <span class="inline-block bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full">PANTALLA 4 — IGUAL QUE HOY</span>
+      <h2 class="text-2xl font-bold text-gray-900 mt-2">Tablero Fallados — Versión web</h2>
+      <p class="text-gray-600 mt-1">Mismo URL <code class="bg-gray-200 px-1 rounded text-xs">/fallados-tablero</code>.</p>
+    </div>
+
+    <div class="desktop-frame">
+      <div class="desktop-bar">
+        <span class="dot" style="background:#ef4444"></span>
+        <span class="dot" style="background:#eab308"></span>
+        <span class="dot" style="background:#22c55e"></span>
+        <span class="text-xs text-gray-500 ml-3">erp.ambission.com/fallados-tablero</span>
+      </div>
+      <div class="p-6 bg-gray-50">
+        <h3 class="text-xl font-bold mb-1">Fallados — Tablero supervisor</h3>
+        <p class="text-sm text-gray-600 mb-4">23 arreglos activos</p>
+
+        <div class="grid grid-cols-4 gap-3 mb-5">
+          <div class="bg-white rounded-lg p-4 border-l-4 border-purple-500">
+            <div class="text-3xl font-bold text-purple-700">4</div>
+            <div class="text-xs text-gray-600 uppercase font-semibold">Sin asignar</div>
+          </div>
+          <div class="bg-white rounded-lg p-4 border-l-4 border-red-500">
+            <div class="text-3xl font-bold text-red-700">2</div>
+            <div class="text-xs text-gray-600 uppercase font-semibold">Vencidos</div>
+          </div>
+          <div class="bg-white rounded-lg p-4 border-l-4 border-amber-500">
+            <div class="text-3xl font-bold text-amber-700">5</div>
+            <div class="text-xs text-gray-600 uppercase font-semibold">Por vencer</div>
+          </div>
+          <div class="bg-white rounded-lg p-4 border-l-4 border-blue-500">
+            <div class="text-3xl font-bold text-blue-700">12</div>
+            <div class="text-xs text-gray-600 uppercase font-semibold">En proceso</div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-lg overflow-hidden">
+          <div class="bg-red-50 px-4 py-2 text-xs font-bold text-red-800 uppercase">🔴 Vencidos</div>
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-xs uppercase text-gray-600">
+              <tr>
+                <th class="text-left p-3">Corte</th>
+                <th class="text-left p-3">Modelo</th>
+                <th class="text-left p-3">Persona</th>
+                <th class="text-left p-3">Servicio</th>
+                <th class="text-left p-3">Plazo</th>
+                <th class="text-left p-3">Avance</th>
+                <th class="text-left p-3">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-t">
+                <td class="p-3 font-mono text-xs">010</td>
+                <td class="p-3">YECMI BLACK</td>
+                <td class="p-3 font-semibold">María Quispe</td>
+                <td class="p-3"><span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs">Costura</span></td>
+                <td class="p-3 text-xs text-red-700 font-bold">22-may (-1d)</td>
+                <td class="p-3"><span class="bg-red-100 text-red-700 font-bold px-2 py-0.5 rounded text-xs">5/8</span></td>
+                <td class="p-3">
+                  <button class="bg-emerald-600 text-white text-xs font-semibold px-2 py-1 rounded">Entrega</button>
+                  <button class="bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-1 rounded ml-1">Prórroga</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="bg-amber-50 px-4 py-2 text-xs font-bold text-amber-800 uppercase">🟡 Por vencer</div>
+          <table class="w-full text-sm">
+            <tbody>
+              <tr class="border-t">
+                <td class="p-3 font-mono text-xs">034-2025</td>
+                <td class="p-3">ARSENAL</td>
+                <td class="p-3 font-semibold">Juan Pérez</td>
+                <td class="p-3"><span class="bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded text-xs">Lavado</span></td>
+                <td class="p-3 text-xs text-amber-700 font-bold">24-may (mañana)</td>
+                <td class="p-3"><span class="bg-amber-100 text-amber-700 font-bold px-2 py-0.5 rounded text-xs">0/12</span></td>
+                <td class="p-3">
+                  <button class="bg-emerald-600 text-white text-xs font-semibold px-2 py-1 rounded">Entrega</button>
+                  <button class="bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-1 rounded ml-1">Prórroga</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- PANTALLA 5: TABLERO FALLADOS — MÓVIL                         -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <section class="mb-12">
+    <div class="mb-4">
+      <span class="inline-block bg-emerald-600 text-white text-xs font-bold px-3 py-1 rounded-full">PANTALLA 5 — NUEVA</span>
+      <h2 class="text-2xl font-bold text-gray-900 mt-2">Tablero Fallados — Versión móvil</h2>
+      <p class="text-gray-600 mt-1">Para que el supervisor reciba entregas desde el celular caminando por el taller.</p>
+    </div>
+
+    <div class="grid grid-cols-2 gap-8">
+      <!-- Lista de arreglos -->
+      <div>
+        <div class="text-center mb-3 text-sm font-semibold text-gray-700">Vista principal</div>
+        <div class="phone-frame mx-auto">
+          <div class="phone-notch">9:41</div>
+          <div class="bg-gray-900 text-white p-4">
+            <h3 class="font-bold text-lg">Fallados — Tablero</h3>
+            <p class="text-xs opacity-75">23 arreglos activos</p>
+          </div>
+          <div class="p-3 grid grid-cols-2 gap-2 bg-gray-50">
+            <div class="bg-white rounded-lg p-2 border-l-4 border-purple-500">
+              <div class="text-2xl font-bold text-purple-700">4</div>
+              <div class="text-[10px] text-gray-600 uppercase font-semibold">Sin asignar</div>
+            </div>
+            <div class="bg-white rounded-lg p-2 border-l-4 border-red-500">
+              <div class="text-2xl font-bold text-red-700">2</div>
+              <div class="text-[10px] text-gray-600 uppercase font-semibold">Vencidos</div>
+            </div>
+            <div class="bg-white rounded-lg p-2 border-l-4 border-amber-500">
+              <div class="text-2xl font-bold text-amber-700">5</div>
+              <div class="text-[10px] text-gray-600 uppercase font-semibold">Por vencer</div>
+            </div>
+            <div class="bg-white rounded-lg p-2 border-l-4 border-blue-500">
+              <div class="text-2xl font-bold text-blue-700">12</div>
+              <div class="text-[10px] text-gray-600 uppercase font-semibold">En proceso</div>
+            </div>
+          </div>
+          <div class="p-3 space-y-3">
+            <div class="border-2 border-red-300 bg-red-50 rounded-xl p-3">
+              <div class="flex items-start justify-between">
+                <div>
+                  <div class="text-xs text-red-700 font-bold">🔴 VENCIDO -1d</div>
+                  <div class="font-bold mt-1">María Quispe</div>
+                  <div class="text-xs text-gray-600">Costura · Externo</div>
+                </div>
+                <span class="text-xs bg-red-600 text-white font-bold px-2 py-0.5 rounded">5/8</span>
+              </div>
+              <div class="text-xs text-gray-700 mt-2">010 · YECMI BLACK</div>
+              <div class="mt-1 text-[10px] text-gray-500">
+                Hist: 3 OK · 1 LQ Leve · 1 LQ Grave
+              </div>
+              <div class="mt-2 flex gap-2">
+                <button class="flex-1 bg-emerald-600 text-white text-xs font-bold py-2 rounded-lg">📦 Recibir entrega</button>
+                <button class="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-2 rounded-lg">Prórroga</button>
+              </div>
+            </div>
+            <div class="border-2 border-amber-300 bg-amber-50 rounded-xl p-3">
+              <div class="flex items-start justify-between">
+                <div>
+                  <div class="text-xs text-amber-700 font-bold">🟡 VENCE MAÑANA</div>
+                  <div class="font-bold mt-1">Juan Pérez</div>
+                  <div class="text-xs text-gray-600">Lavado · Externo</div>
+                </div>
+                <span class="text-xs bg-amber-500 text-white font-bold px-2 py-0.5 rounded">0/12</span>
+              </div>
+              <div class="text-xs text-gray-700 mt-2">034-2025 · ARSENAL</div>
+              <div class="mt-2 flex gap-2">
+                <button class="flex-1 bg-emerald-600 text-white text-xs font-bold py-2 rounded-lg">📦 Recibir entrega</button>
+                <button class="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-2 rounded-lg">Prórroga</button>
+              </div>
+            </div>
+            <div class="border border-blue-200 bg-white rounded-xl p-3">
+              <div class="flex items-start justify-between">
+                <div>
+                  <div class="text-xs text-blue-700 font-bold">🔵 EN PROCESO</div>
+                  <div class="font-bold mt-1">Rosa López</div>
+                  <div class="text-xs text-gray-600">Estampado · Interno</div>
+                </div>
+                <span class="text-xs bg-blue-500 text-white font-bold px-2 py-0.5 rounded">8/15</span>
+              </div>
+              <div class="text-xs text-gray-700 mt-2">036 · AXELIUS</div>
+              <div class="mt-2 flex gap-2">
+                <button class="flex-1 bg-emerald-600 text-white text-xs font-bold py-2 rounded-lg">📦 Recibir entrega</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom sheet recibir entrega (VERSIÓN FINAL) -->
+      <div>
+        <div class="text-center mb-3 text-sm font-semibold text-gray-700">Al tocar "Recibir entrega"</div>
+        <div class="phone-frame mx-auto">
+          <div class="phone-notch">9:41</div>
+          <div class="bg-gray-400 relative" style="height: 720px;">
+            <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl p-5 space-y-3">
+              <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto"></div>
+              <div>
+                <h3 class="font-bold text-lg">Recibir entrega</h3>
+                <p class="text-xs text-gray-600">María Quispe · Costura</p>
+                <p class="text-xs text-gray-600">010 · YECMI BLACK</p>
+              </div>
+              <div class="bg-gray-50 rounded-lg p-2.5 text-xs">
+                <div class="flex justify-between"><span>Enviados</span><span class="font-bold">8</span></div>
+                <div class="flex justify-between"><span>Ya recibidos</span><span class="font-bold">5</span></div>
+                <div class="flex justify-between pt-1 border-t mt-1 border-gray-200"><span class="font-semibold">Pendiente</span><span class="font-bold text-red-700">3</span></div>
+              </div>
+              <div class="space-y-2.5">
+                <div>
+                  <label class="text-xs font-semibold text-emerald-700 uppercase">✓ OK (entra Normal)</label>
+                  <div class="mt-1 flex items-center gap-2">
+                    <button class="w-9 h-9 bg-gray-100 rounded-lg font-bold">−</button>
+                    <input class="flex-1 text-center text-xl font-bold border-2 border-emerald-300 rounded-lg py-1.5" value="2" />
+                    <button class="w-9 h-9 bg-gray-100 rounded-lg font-bold">+</button>
+                  </div>
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-amber-700 uppercase">⚠ Liquidación Leve</label>
+                  <div class="mt-1 flex items-center gap-2">
+                    <button class="w-9 h-9 bg-gray-100 rounded-lg font-bold">−</button>
+                    <input class="flex-1 text-center text-xl font-bold border-2 border-amber-300 rounded-lg py-1.5" value="1" />
+                    <button class="w-9 h-9 bg-gray-100 rounded-lg font-bold">+</button>
+                  </div>
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-orange-700 uppercase">⚠ Liquidación Grave</label>
+                  <div class="mt-1 flex items-center gap-2">
+                    <button class="w-9 h-9 bg-gray-100 rounded-lg font-bold">−</button>
+                    <input class="flex-1 text-center text-xl font-bold border-2 border-orange-400 rounded-lg py-1.5" value="0" />
+                    <button class="w-9 h-9 bg-gray-100 rounded-lg font-bold">+</button>
+                  </div>
+                </div>
+              </div>
+              <button class="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">Registrar entrega</button>
+              <!-- Opción secundaria: no devuelto -->
+              <div class="border-t border-gray-200 pt-2.5 text-center">
+                <button class="text-xs text-red-600 underline font-semibold">
+                  ⚠ Marcar como NO devuelto (proveedor no respondió)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- DECISIONES FINALES                                            -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <section class="bg-white rounded-xl p-6 border-2 border-emerald-300 shadow-lg mb-6">
+    <h3 class="text-xl font-bold text-gray-900 mb-3">✓ Decisiones cerradas (Ambission)</h3>
+    <div class="space-y-3 text-sm text-gray-800">
+      <div class="flex gap-3">
+        <span class="text-emerald-600 font-bold">1.</span>
+        <div>
+          <strong>Toda prenda devuelta entra al PT.</strong> No existe "merma" estándar. El sistema clasifica el resultado en <span class="font-mono text-xs bg-gray-100 px-1 rounded">OK</span> · <span class="font-mono text-xs bg-amber-100 px-1 rounded">LQ Leve</span> · <span class="font-mono text-xs bg-orange-100 px-1 rounded">LQ Grave</span>, que conecta directo con la Distribución Esperada que ya tienes.
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <span class="text-emerald-600 font-bold">2.</span>
+        <div>
+          <strong>Caso "no devuelto"</strong> (proveedor desaparece) es excepcional. Va como link secundario en el bottom sheet, no como contador. Queda registrado como pérdida interna.
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <span class="text-emerald-600 font-bold">3.</span>
+        <div>
+          <strong>Precio facturado al proveedor es manual.</strong> En la pantalla "pasar a facturación" hay un input de precio unitario que el supervisor escribe. Sin descuentos automáticos, sin reglas.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="bg-white rounded-xl p-6 border-2 border-purple-200 shadow-lg">
+    <h3 class="text-xl font-bold text-gray-900 mb-3">Si validas, esto es lo que hago:</h3>
+    <ol class="space-y-2 text-sm text-gray-800">
+      <li><strong>1.</strong> Cortes Calidad → versión web compacta (filas de una línea) + móvil queda igual.</li>
+      <li><strong>2.</strong> Drawer "+ Fallado" → en web y móvil, añado el bloque azul de asignación cuando es servicio.</li>
+      <li><strong>3.</strong> Tablero Fallados → versión móvil con tarjetas + web queda igual.</li>
+      <li><strong>4.</strong> Bottom sheet "Recibir entrega" → 3 contadores (OK / LQ Leve / LQ Grave) + link "No devuelto".</li>
+      <li><strong>5.</strong> Sprint facturación → input manual de precio unitario.</li>
+      <li><strong>6.</strong> Pusheo a la rama <code class="bg-gray-100 px-1 rounded text-xs">produccion2</code> y tú despliegas en EasyPanel.</li>
+    </ol>
+  </section>
+
+</div>
+
+</body>
+</html>

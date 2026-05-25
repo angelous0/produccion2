@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sprint 9 — Arreglos del registro (validación v2)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --brand: #0f766e;
+    --brand-dark: #0d5f5a;
+    --brand-soft: #f0fdfa;
+    --ink: #0f172a;
+    --muted: #64748b;
+  }
+  body {
+    background: #f3f4f6;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--ink);
+  }
+  .phones-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 32px;
+    padding: 32px;
+    max-width: 1800px;
+    margin: 0 auto;
+  }
+  .phone-frame {
+    width: 380px;
+    border: 12px solid #1f2937;
+    border-radius: 38px;
+    overflow: hidden;
+    background: white;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4);
+    margin: 0 auto;
+  }
+  .phone-notch {
+    height: 28px; background: #1f2937;
+    display: flex; justify-content: center; align-items: center;
+    color: white; font-size: 11px; font-weight: 600;
+  }
+  .phone-body {
+    height: 740px;
+    overflow-y: auto;
+    background: #f9fafb;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .m-input {
+    font-size: 17px; min-height: 48px;
+    border: 1px solid #d1d5db; border-radius: 12px;
+    padding: 0 14px; background: white; width: 100%;
+    font-variant-numeric: tabular-nums;
+  }
+  .m-btn { min-height: 48px; font-size: 16px; font-weight: 600; border-radius: 12px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 0 16px; cursor: pointer; border: 0;
+  }
+  .m-btn-primary { background: var(--brand); color: white; }
+  .m-btn-outline { background: white; border: 1px solid #d1d5db; color: var(--ink); }
+  .m-chip { display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: 999px; font-size: 14px; font-weight: 600;
+    background: white; border: 1px solid #d1d5db; min-height: 40px; white-space: nowrap;
+  }
+  .m-chip.active { background: var(--brand); color: white; border-color: var(--brand); }
+  .m-pill { display: inline-flex; align-items: center; gap: 3px;
+    padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700;
+  }
+  .m-pill-green { background: #dcfce7; color: #15803d; }
+  .m-pill-amber { background: #fef3c7; color: #b45309; }
+  .m-pill-blue  { background: #dbeafe; color: #1d4ed8; }
+  .m-pill-gray  { background: #e5e7eb; color: #475569; }
+  .m-pill-red   { background: #fee2e2; color: #b91c1c; }
+  .m-pill-purple{ background: #f3e8ff; color: #7e22ce; }
+  .m-label-xs {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); font-weight: 700;
+  }
+  .m-header {
+    background: var(--brand); color: white;
+    padding: 14px 16px; display: flex; align-items: center; gap: 10px;
+    flex-shrink: 0;
+  }
+  .m-h-icon {
+    width: 36px; height: 36px; border-radius: 999px;
+    background: rgba(255,255,255,0.15);
+    display: flex; align-items: center; justify-content: center;
+    border: 0; color: white; flex-shrink: 0;
+  }
+  .m-content { flex: 1; overflow-y: auto; padding-bottom: 20px; }
+  .m-card {
+    background: white; border: 1px solid #e5e7eb; border-radius: 16px;
+    padding: 14px;
+  }
+  .stepper {
+    display: inline-flex; align-items: stretch;
+    border: 1px solid #d1d5db; border-radius: 12px; overflow: hidden;
+    background: white;
+  }
+  .stepper button {
+    width: 48px; height: 48px; font-size: 22px; font-weight: 600;
+    background: #f8fafc;
+  }
+  .stepper input {
+    width: 80px; text-align: center; font-size: 18px; font-weight: 600;
+    border: none; outline: none; font-variant-numeric: tabular-nums;
+  }
+  .screen-title { font-size: 11px; color: #64748b; text-align: center; margin-top: 10px;
+    font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  }
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: white; border-top-left-radius: 20px; border-top-right-radius: 20px;
+    padding: 12px 20px 24px;
+    max-height: 90%; overflow-y: auto;
+    z-index: 11;
+  }
+  .grip { width: 40px; height: 4px; background: #cbd5e1; border-radius: 2px; margin: 0 auto 16px; }
+  /* KPI card en 3 filas verticales */
+  .kpi-card {
+    background: white; border-radius: 12px; padding: 12px 12px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .kpi-card .num   { font-size: 24px; font-weight: 800; line-height: 1; }
+  .kpi-card .label { font-size: 10px; color: #475569; text-transform: uppercase; font-weight: 700; letter-spacing: .04em; }
+  .kpi-card .sub   { font-size: 11px; color: #64748b; font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+
+<div class="px-8 pt-8 pb-2 max-w-5xl mx-auto">
+  <h1 class="text-2xl font-bold">Sprint 9 — Arreglos del registro (v2)</h1>
+  <p class="text-slate-600 mt-1">
+    Ajustes: KPIs en 3 filas (número · label · piezas) y más respiración en los bottom sheets.
+  </p>
+</div>
+
+<div class="phones-grid">
+
+  <!-- ─────────────────────────────────────── -->
+  <!-- 1. LISTA DE ARREGLOS DEL REGISTRO       -->
+  <!-- ─────────────────────────────────────── -->
+  <div>
+    <div class="screen-title">1 · Arreglos del registro</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="m-header">
+          <button class="m-h-icon">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          </button>
+          <div style="flex:1; min-width:0">
+            <div style="font-weight:600; font-size:15px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">AXELIUS</div>
+            <div style="font-size:11px; opacity:0.85; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">036 · Acabado · Arreglos · 4</div>
+          </div>
+        </div>
+
+        <div class="m-content">
+          <!-- KPIs grid 2x2 - cada uno en 3 filas verticales -->
+          <div style="padding: 16px; background: #f1f5f9; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="kpi-card" style="border-left:4px solid #a855f7;">
+              <div class="num" style="color:#7e22ce;">1</div>
+              <div class="label">Sin asignar</div>
+              <div class="sub">3 pzs</div>
+            </div>
+            <div class="kpi-card" style="border-left:4px solid #ef4444;">
+              <div class="num" style="color:#b91c1c;">1</div>
+              <div class="label">Vencidos</div>
+              <div class="sub">5 pzs</div>
+            </div>
+            <div class="kpi-card" style="border-left:4px solid #f59e0b;">
+              <div class="num" style="color:#b45309;">1</div>
+              <div class="label">Por vencer</div>
+              <div class="sub">12 pzs</div>
+            </div>
+            <div class="kpi-card" style="border-left:4px solid #3b82f6;">
+              <div class="num" style="color:#1d4ed8;">1</div>
+              <div class="label">En proceso</div>
+              <div class="sub">15 pzs</div>
+            </div>
+          </div>
+
+          <div style="padding: 16px;">
+            <button class="m-btn m-btn-primary" style="width:100%; margin-bottom:16px;">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 4v16m8-8H4"/></svg>
+              Marcar fallado
+            </button>
+
+            <!-- Vencido -->
+            <div class="m-label-xs" style="color:#b91c1c; margin-bottom:8px;">🔴 Vencido</div>
+            <div class="m-card" style="border-color:#fca5a5; background:#fef2f2; margin-bottom:12px;">
+              <div style="display:flex; justify-content:space-between; gap:8px;">
+                <div style="min-width:0; flex:1;">
+                  <div style="font-size:9px; color:#b91c1c; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">Vencido hace 2 días · 22/05</div>
+                  <div style="font-weight:700; font-size:14px; margin-top:4px;">María López</div>
+                  <div style="font-size:11px; color:#64748b; margin-top:2px;">Costura · Externo · S/. 3.00</div>
+                  <div style="font-size:11px; color:#475569; margin-top:6px;">[Costura] desperfecto cuello, 5 prendas</div>
+                </div>
+                <div style="text-align:right; flex-shrink:0;">
+                  <span style="font-size:11px; color:white; font-weight:700; padding:3px 8px; border-radius:4px; background:#dc2626;">5/8</span>
+                  <div style="font-size:9px; color:#94a3b8; margin-top:4px;">+1 prórroga</div>
+                </div>
+              </div>
+              <div style="display:flex; gap:8px; margin-top:12px;">
+                <button class="m-btn m-btn-primary" style="flex:1; min-height:42px; font-size:13px;">📦 Recibir entrega</button>
+                <button class="m-btn" style="min-height:42px; padding:0 14px; background:#fef3c7; color:#92400e; font-weight:700; font-size:13px;">⏱ Prórroga</button>
+              </div>
+            </div>
+
+            <!-- Por vencer -->
+            <div class="m-label-xs" style="color:#b45309; margin-top:14px; margin-bottom:8px;">🟡 Por vencer</div>
+            <div class="m-card" style="border-color:#fcd34d; background:#fffbeb; margin-bottom:12px;">
+              <div style="display:flex; justify-content:space-between; gap:8px;">
+                <div style="min-width:0; flex:1;">
+                  <div style="font-size:9px; color:#b45309; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">Vence mañana · 25/05</div>
+                  <div style="font-weight:700; font-size:14px; margin-top:4px;">Lavandería Industrial SAC</div>
+                  <div style="font-size:11px; color:#64748b; margin-top:2px;">Lavado · Externo · S/. 1.00</div>
+                  <div style="font-size:11px; color:#475569; margin-top:6px;">[Lavado] re-procesar 12 prendas tono</div>
+                </div>
+                <div style="text-align:right; flex-shrink:0;">
+                  <span style="font-size:11px; color:white; font-weight:700; padding:3px 8px; border-radius:4px; background:#f59e0b;">0/12</span>
+                </div>
+              </div>
+              <div style="display:flex; gap:8px; margin-top:12px;">
+                <button class="m-btn m-btn-primary" style="flex:1; min-height:42px; font-size:13px;">📦 Recibir entrega</button>
+                <button class="m-btn" style="min-height:42px; padding:0 14px; background:#fef3c7; color:#92400e; font-weight:700; font-size:13px;">⏱ Prórroga</button>
+              </div>
+            </div>
+
+            <!-- En proceso -->
+            <div class="m-label-xs" style="color:#1d4ed8; margin-top:14px; margin-bottom:8px;">🔵 En proceso</div>
+            <div class="m-card" style="margin-bottom:12px;">
+              <div style="display:flex; justify-content:space-between; gap:8px;">
+                <div style="min-width:0; flex:1;">
+                  <div style="font-size:9px; color:#1d4ed8; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">En proceso · vence 28/05</div>
+                  <div style="font-weight:700; font-size:14px; margin-top:4px;">Carlos Gómez Estampados</div>
+                  <div style="font-size:11px; color:#64748b; margin-top:2px;">Estampado · Externo · S/. 1.50</div>
+                </div>
+                <div style="text-align:right; flex-shrink:0;">
+                  <span style="font-size:11px; color:white; font-weight:700; padding:3px 8px; border-radius:4px; background:#3b82f6;">8/15</span>
+                </div>
+              </div>
+              <div style="display:flex; gap:8px; margin-top:12px;">
+                <button class="m-btn m-btn-primary" style="flex:1; min-height:42px; font-size:13px;">📦 Recibir entrega</button>
+              </div>
+            </div>
+
+            <!-- TELA sin asignar -->
+            <div class="m-label-xs" style="color:#7e22ce; margin-top:14px; margin-bottom:8px;">🟣 Sin asignar · TELA</div>
+            <div class="m-card" style="border-color:#d8b4fe; background:#faf5ff;">
+              <div style="display:flex; justify-content:space-between; gap:8px;">
+                <div style="min-width:0; flex:1;">
+                  <div style="font-size:9px; color:#7e22ce; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">TELA · arreglo interno</div>
+                  <div style="font-weight:700; font-size:14px; margin-top:4px;">3 pzs detectadas</div>
+                  <div style="font-size:11px; color:#64748b; margin-top:2px;">Estado EVALUANDO · marcado por Ana</div>
+                  <div style="font-size:11px; color:#475569; margin-top:6px;">[Tela] mancha tinta sin remover</div>
+                </div>
+              </div>
+              <div style="display:flex; gap:8px; margin-top:12px;">
+                <button class="m-btn m-btn-primary" style="flex:1; min-height:42px; font-size:13px;">📦 Recibir entrega</button>
+              </div>
+            </div>
+
+            <!-- Totales -->
+            <div style="background:#f1f5f9; border-radius:12px; padding:14px; margin-top:16px;
+                        display:grid; grid-template-columns:repeat(3,1fr); gap:8px; text-align:center;">
+              <div>
+                <div style="font-size:10px; color:#64748b; text-transform:uppercase; font-weight:600; letter-spacing:.04em;">Detectados</div>
+                <div style="font-family:monospace; font-weight:700; font-size:18px; margin-top:4px;">35</div>
+              </div>
+              <div>
+                <div style="font-size:10px; color:#64748b; text-transform:uppercase; font-weight:600; letter-spacing:.04em;">Recuperados</div>
+                <div style="font-family:monospace; font-weight:700; font-size:18px; color:#15803d; margin-top:4px;">15</div>
+              </div>
+              <div>
+                <div style="font-size:10px; color:#64748b; text-transform:uppercase; font-weight:600; letter-spacing:.04em;">Pendientes</div>
+                <div style="font-family:monospace; font-weight:700; font-size:18px; color:#b91c1c; margin-top:4px;">20</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────── -->
+  <!-- 2. RECIBIR ENTREGA · SERVICIO            -->
+  <!-- ─────────────────────────────────────── -->
+  <div>
+    <div class="screen-title">2 · Recibir entrega · SERVICIO (proveedor)</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body" style="background: rgba(0,0,0,0.4); position:relative;">
+        <div class="sheet" style="position:relative; max-height:none;">
+          <div class="grip"></div>
+
+          <div style="margin-bottom:18px;">
+            <div style="font-weight:700; font-size:17px;">Recibir entrega</div>
+            <div style="font-size:13px; color:#64748b; margin-top:4px;">María López · Costura</div>
+            <div style="font-size:11px; color:#94a3b8; font-family:monospace; margin-top:2px;">CORTE-036 · AXELIUS</div>
+          </div>
+
+          <!-- Resumen -->
+          <div class="m-card" style="background:#f8fafc; padding:14px; margin-bottom:20px;">
+            <div style="display:flex; justify-content:space-between; font-size:13px;">
+              <span style="color:#64748b;">Enviadas</span>
+              <strong style="font-family:monospace;">8</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:13px; margin-top:6px;">
+              <span style="color:#64748b;">Ya recibidas</span>
+              <strong style="font-family:monospace;">5</strong>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding-top:10px; margin-top:8px;
+                        border-top:1px solid #e2e8f0; font-size:14px;">
+              <span style="font-weight:600;">Pendiente</span>
+              <strong style="font-family:monospace; color:#b91c1c;">3</strong>
+            </div>
+          </div>
+
+          <!-- Steppers -->
+          <div style="display:flex; flex-direction:column; gap:16px;">
+            <div>
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                <span class="m-label-xs" style="color:#15803d;">✓ OK (a almacén)</span>
+                <span style="font-size:10px; color:#64748b;">de 3 pendientes</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <div class="stepper" style="border-color:#86efac;">
+                  <button>−</button>
+                  <input value="2" />
+                  <button>+</button>
+                </div>
+                <span style="font-size:12px; color:#64748b;">prendas listas</span>
+              </div>
+            </div>
+
+            <div>
+              <span class="m-label-xs" style="color:#b45309;">⚠ A liquidación</span>
+              <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+                <div class="stepper" style="border-color:#fcd34d;">
+                  <button>−</button>
+                  <input value="1" />
+                  <button>+</button>
+                </div>
+                <span style="font-size:12px; color:#64748b;">prendas con defecto</span>
+              </div>
+            </div>
+
+            <div>
+              <span class="m-label-xs">✗ No devuelto</span>
+              <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+                <div class="stepper">
+                  <button>−</button>
+                  <input value="0" />
+                  <button>+</button>
+                </div>
+                <span style="font-size:12px; color:#64748b;">se perdieron</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Checkbox facturación -->
+          <label class="m-card" style="display:flex; align-items:flex-start; gap:12px; padding:14px;
+                  background:#fef3c7; border-color:#fcd34d; margin-top:20px; cursor:pointer;">
+            <input type="checkbox" checked style="width:22px; height:22px; margin-top:2px; accent-color:#b45309;"/>
+            <div style="font-size:12px;">
+              <div style="font-weight:700; color:#92400e; font-size:13px;">Enviar a facturación</div>
+              <div style="color:#92400e; opacity:0.85; margin-top:4px; line-height:1.4;">
+                Marca el arreglo para cobrar a <strong>María López</strong> la liquidación de
+                <strong>1 prenda</strong>. Aparece después en "Marcados para cobro".
+              </div>
+            </div>
+          </label>
+
+          <!-- Observación -->
+          <div style="margin-top:20px;">
+            <span class="m-label-xs">Observación (opcional)</span>
+            <input class="m-input" placeholder="Ej: 1 pza con costura desviada..." style="margin-top:8px; font-size:14px;" />
+          </div>
+
+          <button class="m-btn m-btn-primary" style="width:100%; margin-top:20px;">
+            Registrar entrega
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────── -->
+  <!-- 3. RECIBIR ENTREGA · TELA                -->
+  <!-- ─────────────────────────────────────── -->
+  <div>
+    <div class="screen-title">3 · Recibir entrega · TELA (arreglo interno)</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body" style="background: rgba(0,0,0,0.4); position:relative;">
+        <div class="sheet" style="position:relative; max-height:none;">
+          <div class="grip"></div>
+
+          <div style="margin-bottom:18px;">
+            <div style="font-weight:700; font-size:17px;">Recibir entrega · TELA</div>
+            <div style="font-size:13px; color:#64748b; margin-top:4px;">Arreglo interno · sin proveedor</div>
+            <div style="font-size:11px; color:#94a3b8; font-family:monospace; margin-top:2px;">CORTE-036 · AXELIUS</div>
+          </div>
+
+          <!-- Resumen -->
+          <div class="m-card" style="background:#f8fafc; padding:14px; margin-bottom:20px;">
+            <div style="display:flex; justify-content:space-between; font-size:14px;">
+              <span style="color:#64748b;">Pendientes en arreglo</span>
+              <strong style="font-family:monospace; color:#b91c1c;">3</strong>
+            </div>
+          </div>
+
+          <!-- Steppers (4 conceptos para TELA) -->
+          <div style="display:flex; flex-direction:column; gap:16px;">
+            <div>
+              <span class="m-label-xs" style="color:#15803d;">✓ OK (a almacén)</span>
+              <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+                <div class="stepper" style="border-color:#86efac;">
+                  <button>−</button>
+                  <input value="1" />
+                  <button>+</button>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <span class="m-label-xs" style="color:#b45309;">⚠ LQ Leve</span>
+              <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+                <div class="stepper" style="border-color:#fcd34d;">
+                  <button>−</button>
+                  <input value="1" />
+                  <button>+</button>
+                </div>
+                <span style="font-size:11px; color:#64748b;">defecto menor · descontado</span>
+              </div>
+            </div>
+
+            <div>
+              <span class="m-label-xs" style="color:#c2410c;">⚠⚠ LQ Grave</span>
+              <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+                <div class="stepper" style="border-color:#fdba74;">
+                  <button>−</button>
+                  <input value="1" />
+                  <button>+</button>
+                </div>
+                <span style="font-size:11px; color:#64748b;">defecto serio · mayor descuento</span>
+              </div>
+            </div>
+
+            <div>
+              <span class="m-label-xs">✗ No devuelto</span>
+              <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+                <div class="stepper">
+                  <button>−</button>
+                  <input value="0" />
+                  <button>+</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Aviso TELA -->
+          <div style="background:#f1f5f9; border:1px solid #e2e8f0; border-radius:12px;
+                      padding:12px; margin-top:20px; display:flex; gap:10px; font-size:12px; color:#475569; line-height:1.5;">
+            <svg style="width:16px; height:16px; flex-shrink:0; margin-top:2px;" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 16h.01M11 8h2v6h-2z"/></svg>
+            <span>
+              El arreglo de TELA <strong>no usa facturación</strong> (es interno).
+              Las LQ van directo al stock de liquidación.
+            </span>
+          </div>
+
+          <button class="m-btn m-btn-primary" style="width:100%; margin-top:20px;">
+            Registrar entrega
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────────────── -->
+  <!-- 4. PRÓRROGA                             -->
+  <!-- ─────────────────────────────────────── -->
+  <div>
+    <div class="screen-title">4 · Prórroga (máx 2 · 1–14 días)</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body" style="background: rgba(0,0,0,0.4); position:relative;">
+        <div class="sheet" style="position:relative; max-height:none;">
+          <div class="grip"></div>
+
+          <div style="margin-bottom:20px;">
+            <div style="font-weight:700; font-size:17px;">Otorgar prórroga</div>
+            <div style="font-size:13px; color:#64748b; margin-top:4px;">María López · Costura</div>
+            <div style="font-size:11px; color:#94a3b8; font-family:monospace; margin-top:2px;">CORTE-036 · 3 pendientes</div>
+          </div>
+
+          <!-- Histórico -->
+          <div class="m-card" style="background:#f8fafc; padding:14px; margin-bottom:24px;">
+            <div style="display:flex; justify-content:space-between; font-size:13px;">
+              <span style="color:#64748b;">Fecha original</span>
+              <span style="font-family:monospace;">22/05/2026</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:13px; margin-top:6px;">
+              <span style="color:#64748b;">Fecha límite actual</span>
+              <span style="font-family:monospace; color:#b91c1c; font-weight:700;">22/05 (vencido)</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding-top:10px; margin-top:10px;
+                        border-top:1px solid #e2e8f0; font-size:13px;">
+              <span style="color:#64748b;">Prórrogas usadas</span>
+              <strong>0 / 2</strong>
+            </div>
+          </div>
+
+          <!-- Días adicionales -->
+          <div style="margin-bottom:20px;">
+            <span class="m-label-xs">Días adicionales (1 a 14)</span>
+            <div style="display:flex; align-items:center; gap:14px; margin-top:12px; justify-content:center;">
+              <div class="stepper">
+                <button>−</button>
+                <input value="3" style="font-size:20px; font-weight:700;" />
+                <button>+</button>
+              </div>
+              <div style="font-size:13px; color:#64748b; line-height:1.4;">
+                → nueva fecha<br>
+                <strong style="font-family:monospace; color:var(--brand); font-size:14px;">27/05/2026</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Atajos -->
+          <div style="margin-bottom:24px;">
+            <span class="m-label-xs">Atajos</span>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:8px;">
+              <button class="m-chip" style="justify-content:center; font-size:13px; min-height:40px;">+1d</button>
+              <button class="m-chip active" style="justify-content:center; font-size:13px; min-height:40px;">+3d</button>
+              <button class="m-chip" style="justify-content:center; font-size:13px; min-height:40px;">+7d</button>
+              <button class="m-chip" style="justify-content:center; font-size:13px; min-height:40px;">+14d</button>
+            </div>
+          </div>
+
+          <!-- Motivo -->
+          <div style="margin-bottom:20px;">
+            <span class="m-label-xs">Motivo (opcional)</span>
+            <textarea class="m-input" rows="2"
+              placeholder="Ej: María avisó que terminará el miércoles..."
+              style="margin-top:8px; padding:12px; font-family:inherit; resize:vertical;"></textarea>
+          </div>
+
+          <div style="display:flex; gap:10px;">
+            <button class="m-btn m-btn-outline" style="flex:1;">Cancelar</button>
+            <button class="m-btn m-btn-primary" style="flex:2;">Otorgar prórroga</button>
+          </div>
+
+          <div style="text-align:center; font-size:11px; color:#94a3b8; margin-top:14px;">
+            Solo admin / supervisor_acabado puede dar prórroga.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Notas técnicas al pie -->
+<div class="px-8 py-12 max-w-5xl mx-auto text-sm text-slate-600 space-y-3">
+  <h2 class="text-lg font-bold text-slate-900">Cambios respecto a v1</h2>
+  <ul class="list-disc pl-5 space-y-2">
+    <li><strong>KPIs en 3 filas verticales:</strong> número grande arriba, etiqueta en uppercase
+      al medio, conteo de prendas (`3 pzs`, `5 pzs`) en mono al pie. Mucho más legible que el
+      "SIN ASIGNAR · 3 PZS" pegado todo junto.</li>
+    <li><strong>Más respiración en bottom sheets:</strong> padding aumentado a <code>12px 20px 24px</code>,
+      gap entre steppers <code>16px</code>, margen entre bloques (resumen, steppers, checkbox,
+      observación, botón) <code>20px</code> en lugar de pegados.</li>
+    <li><strong>Atajos de prórroga con su propio label:</strong> ya no quedan justo debajo del stepper
+      sin separación. Ahora tienen su propio bloque con "Atajos" arriba.</li>
+    <li><strong>Header en sheets:</strong> título + sub + corte en bloque propio con margin-bottom
+      generoso, separado del resumen siguiente.</li>
+  </ul>
+</div>
+
+</body>
+</html>

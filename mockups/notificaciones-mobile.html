@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Notificaciones móvil — mockup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --brand: #0f766e;
+    --brand-soft: #f0fdfa;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --bg: #f3f4f6;
+  }
+  body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  .phones-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 28px;
+    padding: 32px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) { .phones-grid { grid-template-columns: 1fr; } }
+  .phone-col { display: flex; flex-direction: column; gap: 12px; }
+  .phone-title { text-align: center; font-size: 14px; font-weight: 700; letter-spacing: .04em; color: var(--ink); text-transform: uppercase; }
+  .phone-sub { text-align: center; font-size: 12px; color: var(--muted); margin-top: -8px; line-height: 1.4; }
+  .phone-frame { width: 380px; max-width: 100%; border: 12px solid #1f2937; border-radius: 38px; overflow: hidden; background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4); margin: 0 auto; }
+  .phone-notch { height: 28px; background: #1f2937; display: flex; justify-content: center; align-items: center; color: white; font-size: 11px; font-weight: 600; }
+  .phone-body { height: 800px; background: #f9fafb; display: flex; flex-direction: column; position: relative; }
+  .m-header { background: var(--brand); color: white; padding: 14px 16px; display: flex; gap: 10px; align-items: center; flex-shrink: 0; position: relative; }
+  .m-h-icon { width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; position: relative; }
+  .scroll-area { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .label-xs { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+  .card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; background: white; border: 1px solid #d1d5db; color: #475569; cursor: pointer; white-space: nowrap; min-height: 32px; }
+  .chip.active { background: var(--brand); color: white; border-color: var(--brand); }
+  .badge {
+    position: absolute; top: -4px; right: -4px;
+    background: #dc2626; color: white;
+    font-size: 10px; font-weight: 800;
+    min-width: 18px; height: 18px; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 4px; border: 2px solid var(--brand);
+  }
+  .dropdown {
+    position: absolute; top: 60px; right: 8px;
+    width: 320px; max-height: 480px;
+    background: white; border-radius: 14px;
+    box-shadow: 0 10px 30px -5px rgba(0,0,0,0.3);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    z-index: 50;
+  }
+  .dropdown-arrow {
+    position: absolute; top: -8px; right: 30px;
+    width: 0; height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-bottom: 8px solid white;
+  }
+  .dropdown-header {
+    padding: 10px 14px; border-bottom: 1px solid #f1f5f9;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; font-weight: 700;
+  }
+  .notif-item {
+    padding: 10px 12px;
+    display: flex; gap: 10px;
+    border-bottom: 1px solid #f1f5f9;
+    cursor: pointer;
+  }
+  .notif-item.unread { background: #f0fdfa; }
+  .notif-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; font-size: 16px;
+  }
+  .notif-icon.rojo { background: #fee2e2; color: #b91c1c; }
+  .notif-icon.ambar { background: #fef3c7; color: #b45309; }
+  .notif-icon.azul { background: #dbeafe; color: #1d4ed8; }
+  .notif-icon.verde { background: #dcfce7; color: #15803d; }
+  .notif-icon.morado { background: #f3e8ff; color: #7e22ce; }
+  .notif-text { flex: 1; min-width: 0; }
+  .notif-titulo { font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.3; }
+  .notif-sub { font-size: 11px; color: #64748b; margin-top: 2px; line-height: 1.4; }
+  .notif-time { font-size: 10px; color: #94a3b8; margin-top: 4px; }
+  .unread-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand); flex-shrink: 0; margin-top: 14px; }
+
+  .leyenda-titulo { text-align: center; font-size: 22px; font-weight: 800; margin: 36px 0 6px; color: #0f172a; }
+  .leyenda-sub { text-align: center; font-size: 14px; color: var(--muted); max-width: 700px; margin: 0 auto 16px; line-height: 1.5; }
+  .nota {
+    max-width: 1000px; margin: 24px auto; padding: 16px 20px;
+    background: #fef9c3; border-left: 4px solid #facc15;
+    border-radius: 8px; font-size: 13px; color: #713f12; line-height: 1.6;
+  }
+  .nota strong { color: #422006; }
+  .leyenda-tipos {
+    max-width: 1000px; margin: 24px auto; padding: 20px;
+    background: white; border-radius: 12px; border: 1px solid #e5e7eb;
+  }
+  .leyenda-tipos h3 { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: #0f172a; }
+  .leyenda-tipos table { width: 100%; font-size: 12px; border-collapse: collapse; }
+  .leyenda-tipos td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+  .leyenda-tipos td:first-child { width: 110px; }
+</style>
+</head>
+<body>
+
+<div class="leyenda-titulo">Notificaciones — Fase 1 (mockup)</div>
+<div class="leyenda-sub">
+  Bell + badge en el header (siempre visible). Tap → dropdown con últimas 5.
+  Tap "Ver todas" → pantalla completa con filtros y lista paginada.
+</div>
+
+<div class="phones-grid">
+
+  <!-- ═══════════════════ TELÉFONO 1: HEADER CON BELL Y DROPDOWN ABIERTO ═══════════════════ -->
+  <div class="phone-col">
+    <div class="phone-title">Bell en el header (dropdown abierto)</div>
+    <div class="phone-sub">Esto se ve sobre cualquier pantalla. Aquí ejemplo en "Mis registros"</div>
+    <div class="phone-frame">
+      <div class="phone-notch">9:41 · • • • • •</div>
+      <div class="phone-body">
+
+        <!-- HEADER con bell -->
+        <div class="m-header">
+          <div style="flex:1">
+            <div style="font-size:11px; opacity:.85">Producción</div>
+            <div style="font-weight:600; font-size:15px">Mis registros · 24</div>
+          </div>
+          <!-- Bell -->
+          <div class="m-h-icon" style="cursor:pointer">
+            🔔
+            <span class="badge">5</span>
+          </div>
+        </div>
+
+        <!-- Dropdown encima del contenido -->
+        <div class="dropdown">
+          <div class="dropdown-arrow"></div>
+          <div class="dropdown-header">
+            <span>Notificaciones · 5 nuevas</span>
+            <span style="font-size:11px; color:var(--brand); font-weight:700; cursor:pointer">Marcar todas leídas</span>
+          </div>
+
+          <div style="flex:1; overflow-y:auto">
+            <!-- Notif 1: urgente -->
+            <div class="notif-item unread">
+              <div class="notif-icon rojo">⚠</div>
+              <div class="notif-text">
+                <div class="notif-titulo">Arreglo vencido hace 2 días</div>
+                <div class="notif-sub">CORTE-090 · DORIAN BEIGE · 15 pzs en espera</div>
+                <div class="notif-time">hace 12 min · 🔴 Urgente</div>
+              </div>
+              <div class="unread-dot"></div>
+            </div>
+            <!-- Notif 2: incidencia estancada -->
+            <div class="notif-item unread">
+              <div class="notif-icon ambar">⏱</div>
+              <div class="notif-text">
+                <div class="notif-titulo">Incidencia sin avance · 2 días</div>
+                <div class="notif-sub">CORTE-132 · ARJONA BLACK #3 · "Falta tela del proveedor"</div>
+                <div class="notif-time">hace 1 h · 🟡 Atención</div>
+              </div>
+              <div class="unread-dot"></div>
+            </div>
+            <!-- Notif 3: movimiento atrasado -->
+            <div class="notif-item unread">
+              <div class="notif-icon ambar">⏰</div>
+              <div class="notif-text">
+                <div class="notif-titulo">Costura atrasada 3 días</div>
+                <div class="notif-sub">CORTE-073 · CLOVER BEIGE · María L. · 280 pzs</div>
+                <div class="notif-time">hace 3 h · 🟡 Atención</div>
+              </div>
+              <div class="unread-dot"></div>
+            </div>
+            <!-- Notif 4: incidencia nueva -->
+            <div class="notif-item unread">
+              <div class="notif-icon morado">⚠</div>
+              <div class="notif-text">
+                <div class="notif-titulo">Nueva incidencia reportada</div>
+                <div class="notif-sub">CORTE-046 · ROTEMBER BEIGE · "Costura desviada en 2 prendas"</div>
+                <div class="notif-time">hace 5 h · 🟣 Info</div>
+              </div>
+              <div class="unread-dot"></div>
+            </div>
+            <!-- Notif 5: stock bajo -->
+            <div class="notif-item unread">
+              <div class="notif-icon rojo">📦</div>
+              <div class="notif-text">
+                <div class="notif-titulo">Stock MP bajo</div>
+                <div class="notif-sub">Cierre YKK #5 Bronce · quedan 80 unidades</div>
+                <div class="notif-time">hace 8 h · 🔴 Urgente</div>
+              </div>
+              <div class="unread-dot"></div>
+            </div>
+            <!-- Notif 6: leída (apagada) -->
+            <div class="notif-item">
+              <div class="notif-icon verde">✓</div>
+              <div class="notif-text">
+                <div class="notif-titulo">Muestra retornada</div>
+                <div class="notif-sub">CORTE-035 · DONOVAN · 10 pzs aprobadas</div>
+                <div class="notif-time">ayer · 🟢 OK</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="padding: 10px 14px; border-top: 1px solid #f1f5f9; text-align: center;">
+            <span style="font-size: 13px; font-weight: 700; color: var(--brand); cursor: pointer;">
+              Ver todas →
+            </span>
+          </div>
+        </div>
+
+        <!-- Contenido de fondo (lista de registros tenue) -->
+        <div class="scroll-area" style="opacity:0.25; pointer-events:none">
+          <div class="card" style="padding:12px"><div style="font-weight:700">CORTE-073 · CLOVER BEIGE</div></div>
+          <div class="card" style="padding:12px"><div style="font-weight:700">CORTE-072 · AMERICAN BEIGE</div></div>
+          <div class="card" style="padding:12px"><div style="font-weight:700">CORTE-046 · ROTEMBER BEIGE</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ TELÉFONO 2: PANTALLA COMPLETA DE NOTIFICACIONES ═══════════════════ -->
+  <div class="phone-col">
+    <div class="phone-title">Pantalla completa</div>
+    <div class="phone-sub">Al tocar "Ver todas". Filtros + lista paginada</div>
+    <div class="phone-frame">
+      <div class="phone-notch">9:41 · • • • • •</div>
+      <div class="phone-body">
+
+        <div class="m-header">
+          <div class="m-h-icon" style="cursor:pointer">←</div>
+          <div style="flex:1">
+            <div style="font-size:11px; opacity:.85">Hola, Eduard</div>
+            <div style="font-weight:600; font-size:15px">Notificaciones</div>
+          </div>
+          <div style="font-size: 11px; color: white; cursor: pointer; text-decoration: underline; opacity: 0.85;">
+            Marcar todas
+          </div>
+        </div>
+
+        <div class="scroll-area" style="padding-top: 12px;">
+
+          <!-- Filtros chip -->
+          <div style="display:flex; gap:6px; overflow-x:auto; padding-bottom:4px">
+            <button class="chip active">Todas <span style="background:rgba(255,255,255,0.25); padding:1px 7px; border-radius:999px; margin-left:4px">12</span></button>
+            <button class="chip">No leídas <span style="margin-left:4px; color:#b91c1c">5</span></button>
+            <button class="chip">🔴 Urgentes</button>
+            <button class="chip">🟡 Atención</button>
+            <button class="chip">🟢 OK</button>
+          </div>
+
+          <!-- Sección: HOY -->
+          <div class="label-xs" style="margin-top:4px">Hoy</div>
+
+          <div class="card notif-item unread">
+            <div class="notif-icon rojo">⚠</div>
+            <div class="notif-text">
+              <div class="notif-titulo">Arreglo vencido hace 2 días</div>
+              <div class="notif-sub">CORTE-090 · DORIAN BEIGE · 15 pzs en espera con María L.</div>
+              <div class="notif-time">hace 12 min · 🔴 Urgente</div>
+            </div>
+            <div class="unread-dot"></div>
+          </div>
+
+          <div class="card notif-item unread">
+            <div class="notif-icon ambar">⏱</div>
+            <div class="notif-text">
+              <div class="notif-titulo">Incidencia sin avance · 2 días</div>
+              <div class="notif-sub">CORTE-132 · ARJONA BLACK #3 · "Falta tela del proveedor"</div>
+              <div class="notif-time">hace 1 h · 🟡 Atención</div>
+            </div>
+            <div class="unread-dot"></div>
+          </div>
+
+          <div class="card notif-item unread">
+            <div class="notif-icon ambar">⏰</div>
+            <div class="notif-text">
+              <div class="notif-titulo">Costura atrasada 3 días</div>
+              <div class="notif-sub">CORTE-073 · CLOVER BEIGE · María L. · 280 pzs · entrega: 21/05</div>
+              <div class="notif-time">hace 3 h · 🟡 Atención</div>
+            </div>
+            <div class="unread-dot"></div>
+          </div>
+
+          <div class="card notif-item unread">
+            <div class="notif-icon morado">⚠</div>
+            <div class="notif-text">
+              <div class="notif-titulo">Nueva incidencia reportada</div>
+              <div class="notif-sub">CORTE-046 · ROTEMBER BEIGE · "Costura desviada en 2 prendas"</div>
+              <div class="notif-time">hace 5 h · 🟣 Info</div>
+            </div>
+            <div class="unread-dot"></div>
+          </div>
+
+          <!-- Sección: AYER -->
+          <div class="label-xs" style="margin-top:8px">Ayer</div>
+
+          <div class="card notif-item">
+            <div class="notif-icon azul">📥</div>
+            <div class="notif-text">
+              <div class="notif-titulo">Movimiento cerrado</div>
+              <div class="notif-sub">CORTE-042 · CANTERO 2 · Lavandería · 81 pzs recibidas</div>
+              <div class="notif-time">ayer 18:32 · 🔵 Info</div>
+            </div>
+          </div>
+
+          <div class="card notif-item">
+            <div class="notif-icon verde">✓</div>
+            <div class="notif-text">
+              <div class="notif-titulo">Muestra retornada</div>
+              <div class="notif-sub">CORTE-035 · DONOVAN · 10 pzs aprobadas por lavandería</div>
+              <div class="notif-time">ayer 15:10 · 🟢 OK</div>
+            </div>
+          </div>
+
+          <div class="card notif-item">
+            <div class="notif-icon azul">✓</div>
+            <div class="notif-text">
+              <div class="notif-titulo">Incidencia resuelta</div>
+              <div class="notif-sub">CORTE-034 · BONETY · "Falta hilo" → resuelto por Pedro</div>
+              <div class="notif-time">ayer 10:45 · 🔵 Info</div>
+            </div>
+          </div>
+
+          <!-- Sección: ANTERIOR -->
+          <div class="label-xs" style="margin-top:8px">Esta semana</div>
+
+          <div class="card notif-item">
+            <div class="notif-icon rojo">⚠</div>
+            <div class="notif-text">
+              <div class="notif-titulo">Corte urgente creado</div>
+              <div class="notif-sub">CORTE-033 · CLASIC 5 · 152 pzs · entrega: 28/05</div>
+              <div class="notif-time">22 may · 🔴 Urgente</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Tabla con tipos de notificación -->
+<div class="leyenda-tipos">
+  <h3>Tipos de notificación que generaría el sistema</h3>
+  <table>
+    <thead>
+      <tr style="background:#f8fafc; text-align:left">
+        <th style="padding:8px 10px; font-weight:700; color:#475569">Severidad</th>
+        <th style="padding:8px 10px; font-weight:700; color:#475569">Evento</th>
+        <th style="padding:8px 10px; font-weight:700; color:#475569">Trigger</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>🔴 Urgente</td><td>Arreglo vencido</td><td>cron horario: fecha_limite &lt; hoy</td></tr>
+      <tr><td>🔴 Urgente</td><td>Stock MP bajo</td><td>cron diario: stock &lt; mínimo configurado</td></tr>
+      <tr><td>🔴 Urgente</td><td>Corte urgente creado</td><td>POST /registros con urgente=true</td></tr>
+      <tr><td>🟡 Atención</td><td>Arreglo vence hoy / mañana</td><td>cron horario: fecha_limite ≤ hoy+1</td></tr>
+      <tr><td>🟡 Atención</td><td>Movimiento atrasado (costura/lavandería)</td><td>cron horario: fecha_esperada &lt; hoy y sin recibir</td></tr>
+      <tr><td>🟡 Atención</td><td>Incidencia sin avance &gt; 2 días</td><td>cron diario: último avance hace &gt;48h</td></tr>
+      <tr><td>🟣 Info</td><td>Nueva incidencia</td><td>POST /incidencias</td></tr>
+      <tr><td>🔵 Info</td><td>Movimiento creado / cerrado</td><td>POST/PUT movimientos</td></tr>
+      <tr><td>🔵 Info</td><td>Cambio de estado del corte</td><td>PUT /registros/:id/estado</td></tr>
+      <tr><td>🔵 Info</td><td>Incidencia actualizada / resuelta</td><td>PATCH /incidencias</td></tr>
+      <tr><td>🟢 OK</td><td>Muestra de lavandería retornada</td><td>PUT /muestras-lavanderia/:id/retorno</td></tr>
+      <tr><td>🟢 OK</td><td>Arreglo recibido</td><td>POST /arreglos/:id/entregas</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Filtros por rol -->
+<div class="nota">
+  <strong>Audiencia por rol (lo que pediste):</strong><br/>
+  · <strong>Admin</strong>: ve absolutamente todas las notificaciones.<br/>
+  · <strong>Supervisor</strong>: igual al admin pero restringido a su línea/planta.<br/>
+  · <strong>Operario</strong>: solo lo de su servicio. Ej: el operario de costura ve "costura atrasada" pero no "lavandería atrasada". Y todos los operarios ven los "corte urgente" porque les afecta.<br/>
+  · El mapeo evento → rol se define en backend, no en frontend (así no se filtra info en cliente).
+</div>
+
+<!-- Comportamiento técnico -->
+<div class="nota" style="background:#e0f2fe; border-color:#0ea5e9; color:#075985">
+  <strong>Cómo funciona técnicamente (resumen):</strong><br/>
+  · Cada 30 segundos el móvil pregunta al backend cuántas notificaciones no leídas tiene → actualiza el badge del bell.<br/>
+  · Al tocar el bell: fetch de las últimas 10 → dropdown.<br/>
+  · Al tocar una notificación: navega al registro/evento + marca como leída.<br/>
+  · Al tocar "Ver todas": navega a pantalla completa con filtros y paginación.<br/>
+  · Los <strong>triggers síncronos</strong> (incidencia creada, movimiento cerrado, etc.) generan la notificación inmediatamente cuando ocurre el evento.<br/>
+  · Los <strong>triggers cron</strong> (arreglo vencido, MP bajo, incidencia estancada) corren cada cierto tiempo en backend.<br/>
+  · Sin Service Worker, sin permisos del navegador, funciona en cualquier celular (incluido iPhone).
+</div>
+
+<div class="nota">
+  <strong>Si te gusta el flujo, lo implemento en este orden:</strong><br/>
+  1. Backend: tabla <code>prod_notificaciones</code> + endpoints GET/contador/marcar-leída.<br/>
+  2. Frontend: bell + badge + dropdown + pantalla completa (vacíos al inicio).<br/>
+  3. Triggers síncronos (incidencias, movimientos): backend escribe notif al ocurrir el evento.<br/>
+  4. Triggers cron (arreglos vencidos, MP bajo, incidencias estancadas).<br/>
+  5. Filtros por rol en el GET.<br/><br/>
+  Cada paso es un sprint chico. Si algo no te gusta en este mockup, lo cambiamos antes de codear.
+</div>
+
+</body>
+</html>
