@@ -71,11 +71,16 @@ class RevisarSinFalladosIn(BaseModel):
 
 
 class EntregaParcialIn(BaseModel):
-    # Nuevos nombres (LQ Leve / LQ Grave / No Devuelto)
+    # Contadores comunes a TELA y SERVICIO
     cant_ok: int = Field(0, ge=0)
+    cant_no_devuelto: int = Field(0, ge=0)
+    # Solo TELA (arreglo interno): distinguir Leve vs Grave
     cant_lq_leve: int = Field(0, ge=0)
     cant_lq_grave: int = Field(0, ge=0)
-    cant_no_devuelto: int = Field(0, ge=0)
+    # Solo SERVICIO (proveedor): un único concepto de liquidación
+    cant_liquidacion: int = Field(0, ge=0)
+    # Solo SERVICIO: si TRUE y cant_liquidacion>0, marca el arreglo para cobro
+    enviar_a_facturacion: bool = False
     fecha: Optional[str] = None       # ISO YYYY-MM-DD; default hoy
     observacion: Optional[str] = None
 
@@ -358,28 +363,29 @@ async def registrar_entrega_parcial(
     input: EntregaParcialIn,
     current_user: dict = Depends(get_current_user),
 ):
-    """Registra una entrega parcial del flujo SERVICIO.
+    """Registra una entrega parcial. Semántica condicional según tipo:
 
-    Body:
-        cant_ok, cant_lq_leve, cant_lq_grave, cant_no_devuelto, observacion?
+      - SERVICIO (arreglo a proveedor externo, `servicio_id IS NOT NULL`):
+            OK / Liquidación / No devuelto.
+            Si `enviar_a_facturacion=True` y `cant_liquidacion>0`, además
+            marca el arreglo `marcado_para_cobro=TRUE` (entra al flujo de
+            cobro en Calidad → Fallados y Arreglos → Sin marcar). Idempotente.
+      - TELA (arreglo interno, `servicio_id IS NULL`):
+            OK / LQ Leve / LQ Grave / No devuelto.
+            No expone el checkbox de facturación.
 
-    Reglas:
-      - cant_ok + cant_lq_leve + cant_lq_grave + cant_no_devuelto <= pendiente
-      - Inserta fila granular en prod_arreglo_entregas (mantiene leve/grave/no_dev).
-      - Actualiza saldo en prod_registro_arreglos agregando:
-            cantidad_recuperada  += cant_ok
-            cantidad_liquidacion += (cant_lq_leve + cant_lq_grave)
-            cantidad_merma       += cant_no_devuelto
-        (la granularidad leve/grave queda solo en el histórico).
-      - cant_no_devuelto se registra como pérdida pero NO toca distribución ni
-        almacén (decisión: que el supervisor lo cargue manual en Distribución PT
-        si quiere reflejarlo).
+    Validaciones (422):
+      - SERVICIO rechaza `cant_lq_leve>0` o `cant_lq_grave>0`.
+      - TELA      rechaza `cant_liquidacion>0`.
+
+    Saldos del arreglo (agregados):
+      - cantidad_recuperada  += cant_ok
+      - cantidad_liquidacion += cant_liquidacion             (servicio)
+                              + (cant_lq_leve + cant_lq_grave) (tela)
+      - cantidad_merma       += cant_no_devuelto
+    `cant_no_devuelto` se registra como pérdida en el histórico pero NO toca
+    distribución ni almacén.
     """
-    total_nuevo = (input.cant_ok + input.cant_lq_leve
-                   + input.cant_lq_grave + input.cant_no_devuelto)
-    if total_nuevo == 0:
-        raise HTTPException(400, "Indica al menos una cantidad > 0")
-
     fecha_entrega = (
         date.fromisoformat(input.fecha[:10]) if input.fecha else date.today()
     )
@@ -391,13 +397,45 @@ async def registrar_entrega_parcial(
         async with conn.transaction():
             arreglo = await conn.fetchrow(
                 """SELECT id, cantidad, cantidad_recuperada,
-                          cantidad_liquidacion, cantidad_merma
+                          cantidad_liquidacion, cantidad_merma,
+                          servicio_id,
+                          COALESCE(marcado_para_cobro, FALSE) AS marcado_para_cobro
                    FROM prod_registro_arreglos
                    WHERE id = $1 FOR UPDATE""",
                 arreglo_id,
             )
             if not arreglo:
                 raise HTTPException(404, f"Arreglo {arreglo_id} no existe")
+
+            es_servicio = arreglo["servicio_id"] is not None
+
+            # Validación condicional por tipo (422 — payload inválido para el contexto)
+            if es_servicio:
+                if input.cant_lq_leve > 0 or input.cant_lq_grave > 0:
+                    raise HTTPException(
+                        422,
+                        "Los arreglos de servicio no aceptan LQ Leve / LQ Grave. "
+                        "Usá `cant_liquidacion`.",
+                    )
+            else:
+                if input.cant_liquidacion > 0:
+                    raise HTTPException(
+                        422,
+                        "Los arreglos de tela no aceptan `cant_liquidacion`. "
+                        "Usá `cant_lq_leve` y/o `cant_lq_grave`.",
+                    )
+                if input.enviar_a_facturacion:
+                    raise HTTPException(
+                        422,
+                        "`enviar_a_facturacion` solo aplica a arreglos de servicio.",
+                    )
+
+            total_nuevo = (
+                input.cant_ok + input.cant_lq_leve + input.cant_lq_grave
+                + input.cant_liquidacion + input.cant_no_devuelto
+            )
+            if total_nuevo == 0:
+                raise HTTPException(400, "Indica al menos una cantidad > 0")
 
             ya_resuelto = int(arreglo["cantidad_recuperada"] or 0) + \
                           int(arreglo["cantidad_liquidacion"] or 0) + \
@@ -409,23 +447,28 @@ async def registrar_entrega_parcial(
                     f"La entrega ({total_nuevo}) excede el saldo pendiente ({pendiente})",
                 )
 
-            # Insertar entrega (histórico granular)
+            # Insertar entrega (histórico granular). cant_liquidacion solo se
+            # llena en servicio; cant_lq_leve/grave solo en tela.
             await conn.execute(
                 """
                 INSERT INTO prod_arreglo_entregas
                     (id, arreglo_id, fecha, cant_ok, cant_lq_leve, cant_lq_grave,
-                     cant_no_devuelto, observacion, registrado_por, registrado_por_nombre)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                     cant_liquidacion, cant_no_devuelto,
+                     observacion, registrado_por, registrado_por_nombre)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 """,
                 str(uuid.uuid4()), arreglo_id, fecha_entrega,
                 input.cant_ok, input.cant_lq_leve, input.cant_lq_grave,
-                input.cant_no_devuelto,
+                input.cant_liquidacion, input.cant_no_devuelto,
                 (input.observacion or "").strip() or None,
                 _user_id(current_user), _user_name(current_user),
             )
 
-            # Actualizar totales del arreglo (agregados leve+grave = liquidacion)
-            delta_liq = input.cant_lq_leve + input.cant_lq_grave
+            # Saldo del arreglo: liquidacion agrega del concepto que corresponda
+            delta_liq = (
+                input.cant_liquidacion if es_servicio
+                else (input.cant_lq_leve + input.cant_lq_grave)
+            )
             await conn.execute(
                 """
                 UPDATE prod_registro_arreglos
@@ -436,6 +479,43 @@ async def registrar_entrega_parcial(
                 """,
                 input.cant_ok, delta_liq, input.cant_no_devuelto, arreglo_id,
             )
+
+            # Si servicio + checkbox tildado + hay liquidación: marcar para cobro
+            marcado_para_cobro_nuevo = bool(arreglo["marcado_para_cobro"])
+            if (es_servicio
+                and input.enviar_a_facturacion
+                and input.cant_liquidacion > 0
+                and not arreglo["marcado_para_cobro"]):
+                motivo = f"Liquidación servicio: {input.cant_liquidacion} pzs"
+                await conn.execute(
+                    """
+                    UPDATE prod_registro_arreglos
+                       SET marcado_para_cobro     = TRUE,
+                           marcado_por_usuario_id = $1,
+                           marcado_por_nombre     = $2,
+                           fecha_marcado          = NOW(),
+                           motivo_marcado         = $3
+                     WHERE id = $4
+                    """,
+                    _user_id(current_user), _user_name(current_user),
+                    motivo, arreglo_id,
+                )
+                await conn.execute(
+                    """
+                    INSERT INTO prod_arreglos_audit
+                        (arreglo_id, accion, usuario_id, usuario_nombre,
+                         motivo, fecha, estado_nuevo)
+                    VALUES ($1, 'marcar_cobro', $2, $3, $4, NOW(),
+                            jsonb_build_object(
+                                'marcado_para_cobro', TRUE,
+                                'cant_liquidacion', $5::int,
+                                'origen', 'entrega_parcial'
+                            ))
+                    """,
+                    arreglo_id, _user_id(current_user), _user_name(current_user),
+                    motivo, input.cant_liquidacion,
+                )
+                marcado_para_cobro_nuevo = True
 
             # Devolver estado actualizado
             new = await conn.fetchrow(
@@ -449,6 +529,8 @@ async def registrar_entrega_parcial(
     return {
         "ok": True,
         "arreglo_id": arreglo_id,
+        "tipo_arreglo": "servicio" if es_servicio else "tela",
+        "marcado_para_cobro": marcado_para_cobro_nuevo,
         "fecha": str(fecha_entrega),
         "totales": row_to_dict(new),
     }
@@ -559,6 +641,8 @@ async def tablero_supervisor(
     servicio_id: Optional[str] = None,
     marca_id: Optional[str] = None,
     empresa_id: Optional[int] = None,
+    corte_id: Optional[str] = None,
+    registro_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
     """Tablero único del supervisor — fallados/arreglos agrupados por urgencia.
@@ -570,7 +654,13 @@ async def tablero_supervisor(
       - en_proceso      : resto abierto
       - resueltos_hoy   : completados hoy
     Y KPIs por grupo (conteo + prendas).
+
+    Filtros opcionales:
+      - corte_id (alias registro_id): filtra a un solo corte.
     """
+    # Alias: corte_id y registro_id son equivalentes
+    filtro_registro = corte_id or registro_id
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         conds = ["1=1"]
@@ -584,6 +674,9 @@ async def tablero_supervisor(
         if marca_id:
             params.append(marca_id)
             conds.append(f"mod.marca_id = ${len(params)}")
+        if filtro_registro:
+            params.append(filtro_registro)
+            conds.append(f"a.registro_id = ${len(params)}")
         where_sql = " AND ".join(conds)
 
         # Arreglos abiertos (con saldo) + clasificación + resumen historial
@@ -601,11 +694,13 @@ async def tablero_supervisor(
                    (a.cantidad - a.cantidad_recuperada - a.cantidad_liquidacion - a.cantidad_merma) AS pendiente,
                    COALESCE(a.marcado_para_cobro, FALSE) AS marcado_para_cobro,
                    COALESCE(a.cobrado, FALSE)             AS cobrado,
+                   CASE WHEN a.servicio_id IS NOT NULL THEN 'servicio' ELSE 'tela' END AS tipo_arreglo,
                    COALESCE(jsonb_array_length(COALESCE(a.prorrogas, '[]'::jsonb)), 0) AS num_prorrogas,
-                   COALESCE(e.tot_ok, 0)         AS hist_ok,
-                   COALESCE(e.tot_lq_leve, 0)    AS hist_lq_leve,
-                   COALESCE(e.tot_lq_grave, 0)   AS hist_lq_grave,
-                   COALESCE(e.tot_no_devuelto,0) AS hist_no_devuelto
+                   COALESCE(e.tot_ok, 0)            AS hist_ok,
+                   COALESCE(e.tot_lq_leve, 0)       AS hist_lq_leve,
+                   COALESCE(e.tot_lq_grave, 0)      AS hist_lq_grave,
+                   COALESCE(e.tot_liquidacion, 0)   AS hist_liquidacion,
+                   COALESCE(e.tot_no_devuelto, 0)   AS hist_no_devuelto
             FROM prod_registro_arreglos a
             JOIN prod_registros r ON r.id = a.registro_id
             LEFT JOIN prod_modelos mod ON mod.id = r.modelo_id
@@ -616,6 +711,7 @@ async def tablero_supervisor(
                 SELECT SUM(cant_ok)          AS tot_ok,
                        SUM(cant_lq_leve)     AS tot_lq_leve,
                        SUM(cant_lq_grave)    AS tot_lq_grave,
+                       SUM(cant_liquidacion) AS tot_liquidacion,
                        SUM(cant_no_devuelto) AS tot_no_devuelto
                 FROM prod_arreglo_entregas
                 WHERE arreglo_id = a.id
@@ -625,6 +721,16 @@ async def tablero_supervisor(
         """, *params)
 
         # Fallados sin asignar (TELA sin arreglo aún)
+        sa_conds = ["r.estado_op IN ('ABIERTA','EN_PROCESO')"]
+        sa_params: list = []
+        if empresa_id is not None:
+            sa_params.append(empresa_id)
+            sa_conds.append(f"r.empresa_id = ${len(sa_params)}")
+        if filtro_registro:
+            sa_params.append(filtro_registro)
+            sa_conds.append(f"r.id = ${len(sa_params)}")
+        sa_where = " AND ".join(sa_conds)
+
         sin_asignar_rows = await conn.fetch(f"""
             SELECT r.id AS registro_id, r.n_corte,
                    COALESCE(mod.nombre, r.modelo_manual->>'nombre_modelo') AS modelo,
@@ -638,9 +744,8 @@ async def tablero_supervisor(
             FROM prod_registros r
             LEFT JOIN prod_modelos mod ON mod.id = r.modelo_id
             LEFT JOIN prod_marcas  ma  ON ma.id  = mod.marca_id
-            WHERE r.estado_op IN ('ABIERTA','EN_PROCESO')
-              { ('AND r.empresa_id = $1' if empresa_id is not None else '') }
-        """, *([empresa_id] if empresa_id is not None else []))
+            WHERE {sa_where}
+        """, *sa_params)
 
         hoy = date.today()
         en_3d = hoy + timedelta(days=3)
@@ -793,3 +898,55 @@ async def crear_fallado_con_asignacion(
         "causa": causa_db,
         "chip": causa_chip,
     }
+
+
+# ============================================================================
+# 7. GET /api/cortes/{registro_id}/persona-sugerida
+#    Devuelve la persona/servicio del último movimiento del corte hacia un
+#    servicio externo. Sirve para pre-seleccionar en el drawer "+ Fallado".
+#    204 No Content si el corte nunca salió a un servicio externo.
+# ============================================================================
+@router.get("/cortes/{registro_id}/persona-sugerida")
+async def persona_sugerida(
+    registro_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Última persona/servicio externo donde se mandó el corte.
+
+    Se considera "salida a servicio externo" todo movimiento con
+    `servicio_id IS NOT NULL` y `persona_id IS NOT NULL` (no hay columna
+    `tipo`; el modelo del proyecto no la usa). Se toma el más reciente por
+    `fecha_inicio DESC NULLS LAST, created_at DESC`.
+
+    Respuesta:
+      - 200: { persona_id, persona_nombre, servicio_id, servicio_nombre }
+      - 204: si no hay ningún movimiento que califique.
+    """
+    from fastapi import Response
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT m.persona_id, m.servicio_id,
+                   pp.nombre AS persona_nombre,
+                   sp.nombre AS servicio_nombre
+              FROM prod_movimientos_produccion m
+              LEFT JOIN prod_personas_produccion  pp ON pp.id = m.persona_id
+              LEFT JOIN prod_servicios_produccion sp ON sp.id = m.servicio_id
+             WHERE m.registro_id = $1
+               AND m.servicio_id IS NOT NULL
+               AND m.persona_id  IS NOT NULL
+             ORDER BY m.fecha_inicio DESC NULLS LAST, m.created_at DESC
+             LIMIT 1
+            """,
+            registro_id,
+        )
+        if not row:
+            return Response(status_code=204)
+        return {
+            "persona_id":      row["persona_id"],
+            "persona_nombre":  row["persona_nombre"],
+            "servicio_id":     row["servicio_id"],
+            "servicio_nombre": row["servicio_nombre"],
+        }

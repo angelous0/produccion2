@@ -14,6 +14,7 @@
  *  - Refresh manual y automático cada 60s (opcional)
  */
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
@@ -222,29 +223,45 @@ const ModalAsignar = ({ open, registro, onClose, onSaved }) => {
 
 
 // ─── Modal: Registrar entrega parcial ───────────────────────────────────
+// Render CONDICIONAL según tipo_arreglo:
+//   - servicio (proveedor): OK + Liquidación + checkbox "Enviar a facturación"
+//   - tela     (interno):   OK + LQ Leve + LQ Grave (sin checkbox)
+// En ambos casos, link rojo para "Marcar como NO devuelto".
 const ModalEntrega = ({ open, arreglo, onClose, onSaved }) => {
+  const esServicio = arreglo?.tipo_arreglo === 'servicio';
+  const yaMarcado  = Boolean(arreglo?.marcado_para_cobro);
+
   const [form, setForm] = useState({
-    cant_ok: '', cant_lq_leve: '', cant_lq_grave: '',
+    cant_ok: '',
+    cant_lq_leve: '', cant_lq_grave: '',   // solo tela
+    cant_liquidacion: '',                  // solo servicio
+    enviar_a_facturacion: false,           // solo servicio
     observacion: '',
   });
-  // Vista "No devuelto" (mini-form que reemplaza los 3 contadores)
   const [modoNoDev, setModoNoDev] = useState(false);
   const [noDevForm, setNoDevForm] = useState({ cant_no_devuelto: '', motivo: '' });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setForm({ cant_ok: '', cant_lq_leve: '', cant_lq_grave: '', observacion: '' });
+      setForm({
+        cant_ok: '',
+        cant_lq_leve: '', cant_lq_grave: '',
+        cant_liquidacion: '',
+        enviar_a_facturacion: false,
+        observacion: '',
+      });
       setNoDevForm({ cant_no_devuelto: '', motivo: '' });
       setModoNoDev(false);
     }
   }, [open, arreglo?.arreglo_id]);
 
   const pendiente = arreglo?.pendiente || 0;
-  const ok = parseInt(form.cant_ok) || 0;
+  const ok  = parseInt(form.cant_ok) || 0;
   const lqL = parseInt(form.cant_lq_leve) || 0;
   const lqG = parseInt(form.cant_lq_grave) || 0;
-  const total = ok + lqL + lqG;
+  const liq = parseInt(form.cant_liquidacion) || 0;
+  const total = esServicio ? (ok + liq) : (ok + lqL + lqG);
   const excede = total > pendiente;
 
   const noDev = parseInt(noDevForm.cant_no_devuelto) || 0;
@@ -255,15 +272,31 @@ const ModalEntrega = ({ open, arreglo, onClose, onSaved }) => {
     if (excede) return toast.error(`Excede el pendiente (${pendiente})`);
     setSaving(true);
     try {
-      await axios.post(
+      const body = esServicio
+        ? {
+            cant_ok: ok,
+            cant_liquidacion: liq,
+            cant_no_devuelto: 0,
+            enviar_a_facturacion: Boolean(form.enviar_a_facturacion) && liq > 0 && !yaMarcado,
+            observacion: form.observacion || null,
+          }
+        : {
+            cant_ok: ok,
+            cant_lq_leve: lqL,
+            cant_lq_grave: lqG,
+            cant_no_devuelto: 0,
+            observacion: form.observacion || null,
+          };
+      const r = await axios.post(
         `${API}/arreglos/${arreglo.arreglo_id}/entregas`,
-        {
-          cant_ok: ok, cant_lq_leve: lqL, cant_lq_grave: lqG, cant_no_devuelto: 0,
-          observacion: form.observacion || null,
-        },
+        body,
         { headers: hdrs() },
       );
-      toast.success('Entrega registrada');
+      if (esServicio && body.enviar_a_facturacion && r.data?.marcado_para_cobro) {
+        toast.success('Entrega registrada · enviada a facturación');
+      } else {
+        toast.success('Entrega registrada');
+      }
       onSaved(); onClose();
     } catch (e) {
       toast.error(e.response?.data?.detail || 'Error al registrar');
@@ -278,13 +311,19 @@ const ModalEntrega = ({ open, arreglo, onClose, onSaved }) => {
     if (!noDevForm.motivo.trim()) return toast.error('El motivo es obligatorio');
     setSaving(true);
     try {
+      // body limpio según tipo para no chocar con la validación 422 del backend
+      const body = esServicio
+        ? {
+            cant_ok: 0, cant_liquidacion: 0, cant_no_devuelto: noDev,
+            observacion: `[NO DEVUELTO] ${noDevForm.motivo.trim()}`,
+          }
+        : {
+            cant_ok: 0, cant_lq_leve: 0, cant_lq_grave: 0, cant_no_devuelto: noDev,
+            observacion: `[NO DEVUELTO] ${noDevForm.motivo.trim()}`,
+          };
       await axios.post(
         `${API}/arreglos/${arreglo.arreglo_id}/entregas`,
-        {
-          cant_ok: 0, cant_lq_leve: 0, cant_lq_grave: 0,
-          cant_no_devuelto: noDev,
-          observacion: `[NO DEVUELTO] ${noDevForm.motivo.trim()}`,
-        },
+        body,
         { headers: hdrs() },
       );
       toast.success(`Marcado ${noDev} como NO devuelto`);
@@ -302,45 +341,101 @@ const ModalEntrega = ({ open, arreglo, onClose, onSaved }) => {
         <DialogHeader>
           <DialogTitle>{modoNoDev ? 'Marcar como NO devuelto' : 'Recibir entrega'}</DialogTitle>
           <DialogDescription>
-            Corte <span className="font-mono">{arreglo?.n_corte}</span> · {arreglo?.servicio} · {arreglo?.persona}
-            <br /><span className="text-xs">Pendiente: <b>{pendiente}</b> prendas</span>
+            Corte <span className="font-mono">{arreglo?.n_corte}</span>
+            {arreglo?.servicio && <> · {arreglo.servicio}</>}
+            {arreglo?.persona && <> · {arreglo.persona}</>}
+            <br />
+            <span className="text-xs">
+              {esServicio ? 'Arreglo a proveedor' : 'Arreglo interno (tela)'} · Pendiente: <b>{pendiente}</b> prendas
+            </span>
           </DialogDescription>
         </DialogHeader>
 
         {!modoNoDev && (
           <div className="space-y-3 py-2">
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <Label className="text-xs text-emerald-700">✓ OK</Label>
-                <Input
-                  type="number" min={0} max={pendiente}
-                  value={form.cant_ok}
-                  onChange={(e) => setForm({ ...form, cant_ok: e.target.value })}
-                  className="h-10 text-center text-lg font-bold border-emerald-300"
-                />
+            {esServicio ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs text-emerald-700">✓ OK</Label>
+                  <Input
+                    type="number" min={0} max={pendiente}
+                    value={form.cant_ok}
+                    onChange={(e) => setForm({ ...form, cant_ok: e.target.value })}
+                    className="h-10 text-center text-lg font-bold border-emerald-300"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-orange-700">⚠ Liquidación</Label>
+                  <Input
+                    type="number" min={0} max={pendiente}
+                    value={form.cant_liquidacion}
+                    onChange={(e) => setForm({ ...form, cant_liquidacion: e.target.value })}
+                    className="h-10 text-center text-lg font-bold border-orange-400"
+                  />
+                </div>
               </div>
-              <div>
-                <Label className="text-xs text-amber-700">⚠ LQ Leve</Label>
-                <Input
-                  type="number" min={0} max={pendiente}
-                  value={form.cant_lq_leve}
-                  onChange={(e) => setForm({ ...form, cant_lq_leve: e.target.value })}
-                  className="h-10 text-center text-lg font-bold border-amber-300"
-                />
+            ) : (
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs text-emerald-700">✓ OK</Label>
+                  <Input
+                    type="number" min={0} max={pendiente}
+                    value={form.cant_ok}
+                    onChange={(e) => setForm({ ...form, cant_ok: e.target.value })}
+                    className="h-10 text-center text-lg font-bold border-emerald-300"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-amber-700">⚠ LQ Leve</Label>
+                  <Input
+                    type="number" min={0} max={pendiente}
+                    value={form.cant_lq_leve}
+                    onChange={(e) => setForm({ ...form, cant_lq_leve: e.target.value })}
+                    className="h-10 text-center text-lg font-bold border-amber-300"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-orange-700">⚠ LQ Grave</Label>
+                  <Input
+                    type="number" min={0} max={pendiente}
+                    value={form.cant_lq_grave}
+                    onChange={(e) => setForm({ ...form, cant_lq_grave: e.target.value })}
+                    className="h-10 text-center text-lg font-bold border-orange-400"
+                  />
+                </div>
               </div>
-              <div>
-                <Label className="text-xs text-orange-700">⚠ LQ Grave</Label>
-                <Input
-                  type="number" min={0} max={pendiente}
-                  value={form.cant_lq_grave}
-                  onChange={(e) => setForm({ ...form, cant_lq_grave: e.target.value })}
-                  className="h-10 text-center text-lg font-bold border-orange-400"
-                />
-              </div>
-            </div>
+            )}
+
             <div className={`text-xs text-center ${excede ? 'text-red-600 font-bold' : 'text-muted-foreground'}`}>
               Total a registrar: {total} {excede ? `(excede ${pendiente})` : ''}
             </div>
+
+            {/* Checkbox de facturación: SOLO servicio + hay liquidación */}
+            {esServicio && liq > 0 && (
+              <div className="rounded-md border border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-900 p-2.5">
+                {yaMarcado ? (
+                  <p className="text-[11px] text-orange-800 dark:text-orange-200 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Este arreglo ya estaba marcado para cobro previamente.
+                  </p>
+                ) : (
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.enviar_a_facturacion}
+                      onChange={(e) => setForm({ ...form, enviar_a_facturacion: e.target.checked })}
+                      className="mt-0.5 h-4 w-4 accent-orange-600"
+                    />
+                    <span className="text-[12px] text-orange-900 dark:text-orange-100">
+                      <b>Enviar a facturación al proveedor</b>
+                      <span className="block text-[11px] text-orange-700 dark:text-orange-300 font-normal mt-0.5">
+                        Si tildás, este lote aparecerá en Calidad → Fallados y Arreglos para que después lo cobres.
+                      </span>
+                    </span>
+                  </label>
+                )}
+              </div>
+            )}
 
             <div>
               <Label className="text-xs">Observación (opcional)</Label>
@@ -616,10 +711,16 @@ const FilaArreglo = ({ arreglo, urgencia, onEntregar, onProrroga }) => {
 
 // ─── Componente principal ──────────────────────────────────────────────
 export default function FalladosTablero() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const corteIdFiltro = searchParams.get('corte_id') || '';
+
   const [data, setData] = useState({ grupos: { sin_asignar: [], vencidos: [], por_vencer: [], en_proceso: [] }, kpis: {} });
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [filtroActivo, setFiltroActivo] = useState('todos'); // 'todos' | 'sin_asignar' | 'vencidos' | 'por_vencer' | 'en_proceso'
+  // Cuando se filtra por corte_id, el número de corte para mostrar en el chip.
+  // Lo derivamos del primer arreglo que tenga ese registro_id en la respuesta.
+  const [corteFiltroLabel, setCorteFiltroLabel] = useState('');
 
   // Modales
   const [asignarOpen, setAsignarOpen] = useState(false);
@@ -632,16 +733,34 @@ export default function FalladosTablero() {
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await axios.get(`${API}/fallados/tablero`, { headers: hdrs() });
+      const params = corteIdFiltro ? `?corte_id=${encodeURIComponent(corteIdFiltro)}` : '';
+      const r = await axios.get(`${API}/fallados/tablero${params}`, { headers: hdrs() });
       setData(r.data);
+      // Derivar el n_corte para el chip
+      if (corteIdFiltro) {
+        const g = r.data?.grupos || {};
+        const todos = [
+          ...(g.vencidos || []), ...(g.por_vencer || []), ...(g.en_proceso || []),
+        ];
+        const primero = todos.find(x => x.registro_id === corteIdFiltro);
+        setCorteFiltroLabel(primero?.n_corte || corteIdFiltro);
+      } else {
+        setCorteFiltroLabel('');
+      }
     } catch (e) {
       toast.error('No se pudo cargar el tablero');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [corteIdFiltro]);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  const limpiarFiltroCorte = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('corte_id');
+    setSearchParams(next, { replace: true });
+  };
 
   // Filtrado por búsqueda
   const filtrar = useCallback((items) => {
@@ -789,7 +908,10 @@ export default function FalladosTablero() {
               );
             }
             const d = diasEntre(a.fecha_limite);
-            const histLine = `Hist: ${a.hist_ok || 0} OK · ${a.hist_lq_leve || 0} LQ Leve · ${a.hist_lq_grave || 0} LQ Grave${(a.hist_no_devuelto || 0) > 0 ? ` · ${a.hist_no_devuelto} no dev` : ''}`;
+            const esServ = a.tipo_arreglo === 'servicio';
+            const histLine = esServ
+              ? `Hist: ${a.hist_ok || 0} OK · ${a.hist_liquidacion || 0} Liquidación${(a.hist_no_devuelto || 0) > 0 ? ` · ${a.hist_no_devuelto} no dev` : ''}`
+              : `Hist: ${a.hist_ok || 0} OK · ${a.hist_lq_leve || 0} LQ Leve · ${a.hist_lq_grave || 0} LQ Grave${(a.hist_no_devuelto || 0) > 0 ? ` · ${a.hist_no_devuelto} no dev` : ''}`;
             let chip, bg, lab, bgB;
             if (a._grupo === 'vencidos') {
               chip = 'bg-red-600'; bg = 'border-red-300 bg-red-50'; bgB = 'bg-red-600';
@@ -842,6 +964,22 @@ export default function FalladosTablero() {
 
         {/* Modales (compartidos con desktop más abajo) */}
       </div>
+
+      {/* Chip de filtro por corte (aplica a desktop y mobile) */}
+      {corteIdFiltro && (
+        <div className="bg-blue-50 dark:bg-blue-950/30 border-b border-blue-200 dark:border-blue-900 px-4 sm:px-6 py-2 flex items-center gap-2 text-sm">
+          <span className="text-blue-900 dark:text-blue-200">
+            Filtrando por corte <span className="font-mono font-bold">{corteFiltroLabel || corteIdFiltro}</span>
+          </span>
+          <button
+            type="button"
+            onClick={limpiarFiltroCorte}
+            className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:underline"
+          >
+            <X className="h-3 w-3" /> Limpiar
+          </button>
+        </div>
+      )}
 
       {/* ================== VISTA DESKTOP (md+) ================== */}
       <div className="hidden md:block">

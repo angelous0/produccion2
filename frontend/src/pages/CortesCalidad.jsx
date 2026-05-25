@@ -16,6 +16,7 @@
  *  - POST /api/fallados
  */
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'sonner';
 import {
@@ -78,6 +79,8 @@ const DrawerFallado = ({ open, corte, onClose, onSaved }) => {
   const [servicioId, setServicioId] = useState('');
   const [personaId, setPersonaId] = useState('');
   const [openPersonaPicker, setOpenPersonaPicker] = useState(false);
+  // Sugerencia del backend (último envío externo del corte)
+  const [sugerencia, setSugerencia] = useState(null);
   const [fechaLimite, setFechaLimite] = useState(fechaHoyMas(3));
   const [saving, setSaving] = useState(false);
   const cantRef = useRef(null);
@@ -108,9 +111,51 @@ const DrawerFallado = ({ open, corte, onClose, onSaved }) => {
       return;
     }
     axios.get(`${API}/personas-produccion?servicio_id=${encodeURIComponent(servicioId)}`, { headers: hdrs() })
-      .then(r => setPersonas(Array.isArray(r.data) ? r.data : (r.data?.items || [])))
+      .then(r => {
+        const list = Array.isArray(r.data) ? r.data : (r.data?.items || []);
+        setPersonas(list);
+        // Si hay sugerencia y aplica para este mismo servicio, pre-seleccionar
+        // la persona (siempre que el operario aún no haya elegido otra).
+        if (sugerencia
+            && sugerencia.servicio_id === servicioId
+            && !personaId
+            && list.some(p => p.id === sugerencia.persona_id)) {
+          setPersonaId(sugerencia.persona_id);
+        }
+      })
       .catch(() => setPersonas([]));
-  }, [open, esTela, servicioId]);
+  }, [open, esTela, servicioId, sugerencia, personaId]);
+
+  // 3.5) Al abrir el drawer con causa != Tela, pedir persona sugerida.
+  //      Si el backend tiene un movimiento externo previo, pre-seleccionamos
+  //      servicio y persona para ahorrar clics al operario.
+  useEffect(() => {
+    if (!open || esTela || !corte?.id) {
+      setSugerencia(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await axios.get(
+          `${API}/cortes/${corte.id}/persona-sugerida`,
+          { headers: hdrs(), validateStatus: s => s === 200 || s === 204 },
+        );
+        if (cancelled) return;
+        if (r.status === 200 && r.data?.servicio_id) {
+          setSugerencia(r.data);
+          // Forzar el servicio sugerido. El effect (3) cargará las personas y
+          // auto-seleccionará la sugerida una vez disponibles.
+          setServicioId(r.data.servicio_id);
+        } else {
+          setSugerencia(null);
+        }
+      } catch {
+        if (!cancelled) setSugerencia(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, esTela, corte?.id]);
 
   // 4) Reset al abrir
   useEffect(() => {
@@ -309,6 +354,13 @@ const DrawerFallado = ({ open, corte, onClose, onSaved }) => {
                 <p className="text-[11px] text-blue-700 dark:text-blue-300 mt-1">
                   Solo personas del servicio <strong>{servicioNombre}</strong>
                 </p>
+                {sugerencia
+                  && sugerencia.servicio_id === servicioId
+                  && personaId === sugerencia.persona_id && (
+                  <p className="text-[11px] text-blue-800 dark:text-blue-200 mt-1 flex items-center gap-1">
+                    <Check className="h-3 w-3" /> Sugerido del último envío
+                  </p>
+                )}
               </div>
               <div>
                 <Label className="text-xs font-semibold text-blue-900 dark:text-blue-200">Fecha límite</Label>
@@ -552,6 +604,7 @@ const FilaCorteDesktop = ({ corte, onMarcarFallado, onSinFallados, onAbrirDetall
 
 // ─── Componente principal ───────────────────────────────────────────────
 export default function CortesCalidad() {
+  const navigate = useNavigate();
   const [data, setData] = useState({ items: [], conteos_por_etapa: {}, total: 0 });
   const [loading, setLoading] = useState(true);
   const [etapaFiltro, setEtapaFiltro] = useState('Acabado');
@@ -620,9 +673,9 @@ export default function CortesCalidad() {
   };
 
   const abrirDetalle = (corte) => {
-    // Sprint 2-3: abrirá la pantalla de detalle TELA / SERVICIO.
-    // Por ahora navegamos a la existente o mostramos toast.
-    toast.info(`Detalle pendiente — ver corte ${corte.n_corte} en Control Fallados`);
+    // Abre el tablero del supervisor filtrado por este corte. El query param
+    // `corte_id` lo lee FalladosTablero y muestra un chip "Filtrando por…".
+    navigate(`/fallados-tablero?corte_id=${encodeURIComponent(corte.id)}`);
   };
 
   const conteos = data.conteos_por_etapa || {};
