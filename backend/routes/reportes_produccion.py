@@ -1400,7 +1400,9 @@ async def matriz_produccion(
                 mov_ult.ult_fecha_inicio as ult_mov_fecha,
                 COALESCE(mov_ult.ult_persona, '') as ult_mov_persona,
                 COALESCE(mov_agg.diferencia_total, 0) as diferencia_acumulada,
-                COALESCE(mov_agg.total_movimientos, 0) as total_movimientos
+                COALESCE(mov_agg.total_movimientos, 0) as total_movimientos,
+                COALESCE(inc.total_abiertas, 0) as incidencias_abiertas,
+                COALESCE(inc.detalle, '') as incidencias_detalle
             FROM prod_registros r
             LEFT JOIN prod_modelos m  ON r.modelo_id = m.id
             LEFT JOIN prod_marcas ma  ON m.marca_id = ma.id
@@ -1449,6 +1451,20 @@ async def matriz_produccion(
                 FROM prod_movimientos_produccion mp2
                 WHERE mp2.registro_id = r.id
             ) mov_agg ON true
+            LEFT JOIN LATERAL (
+                -- Incidencias abiertas del registro + detalle textual con
+                -- motivos para mostrar tooltip en la matriz.
+                SELECT COUNT(*) AS total_abiertas,
+                       STRING_AGG(
+                         COALESCE(mi.nombre, 'Sin motivo')
+                         || CASE WHEN i.comentario IS NOT NULL AND i.comentario <> ''
+                                 THEN ': ' || i.comentario ELSE '' END,
+                         ' · ' ORDER BY i.created_at DESC
+                       ) AS detalle
+                FROM prod_incidencia i
+                LEFT JOIN prod_motivos_incidencia mi ON mi.id = i.tipo
+                WHERE i.registro_id = r.id AND i.estado = 'ABIERTA'
+            ) inc ON true
             WHERE {where_sql}
             ORDER BY
                 COALESCE(ma.nombre, mma.nombre, r.modelo_manual->>'marca_texto'),
@@ -1586,6 +1602,8 @@ async def matriz_produccion(
                 "ult_mov_persona": r["ult_mov_persona"] or None,
                 "diferencia_acumulada": safe_int(r["diferencia_acumulada"]),
                 "total_movimientos": safe_int(r["total_movimientos"]),
+                "incidencias_abiertas": safe_int(r["incidencias_abiertas"]),
+                "incidencias_detalle": (r["incidencias_detalle"] or "").strip() or None,
                 "colores": colores_lista,
                 "colores_resumen": colores_resumen,
             })
@@ -5963,3 +5981,5 @@ async def conciliacion_pendiente(
             "sin_distribucion": sin_distribucion,
             "resumen":          resumen,
         }
+
+

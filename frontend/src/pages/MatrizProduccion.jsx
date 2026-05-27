@@ -485,9 +485,9 @@ const DetalleModal = ({ open, onClose, registros, titulo, navigate }) => {
                   <th className="text-right p-2 font-semibold border-b whitespace-nowrap">Prendas</th>
                   <th className="text-left p-2 font-semibold border-b whitespace-nowrap">Curva</th>
                   <th className="text-left p-2 font-semibold border-b whitespace-nowrap">Hilo Esp.</th>
-                  <th className="text-center p-2 font-semibold border-b whitespace-nowrap">Inicio Prod.</th>
-                  <th className="text-center p-2 font-semibold border-b whitespace-nowrap">Días</th>
                   <th className="text-left p-2 font-semibold border-b whitespace-nowrap">Últ. Mov</th>
+                  <th className="text-center p-2 font-semibold border-b whitespace-nowrap" title="Días desde el último movimiento">Hace</th>
+                  <th className="text-center p-2 font-semibold border-b whitespace-nowrap" title="Incidencias abiertas (hover para ver detalle)">Incid.</th>
                   <th className="text-right p-2 font-semibold border-b whitespace-nowrap">Dif.</th>
                   <th className="text-center p-2 font-semibold border-b whitespace-nowrap">Info</th>
                   <th className="text-center p-2 font-semibold border-b whitespace-nowrap">Acción</th>
@@ -502,16 +502,36 @@ const DetalleModal = ({ open, onClose, registros, titulo, navigate }) => {
                     <td className="p-2 text-right font-mono">{d.prendas.toLocaleString()}</td>
                     <td className="p-2 font-mono text-muted-foreground whitespace-nowrap">{d.curva || '-'}</td>
                     <td className="p-2 whitespace-nowrap">{d.hilo_especifico || '-'}</td>
-                    <td className="p-2 text-center font-mono whitespace-nowrap">{formatDate(d.fecha_inicio_prod)}</td>
-                    <td className="p-2 text-center font-mono">{d.dias_proceso > 0 ? `${d.dias_proceso}d` : '-'}</td>
                     <td className="p-2 whitespace-nowrap">
                       {d.ult_mov_servicio ? (
                         <span>
                           {d.ult_mov_servicio}
                           {d.ult_mov_persona && <span className="text-foreground"> · {d.ult_mov_persona}</span>}
-                          <span className="text-muted-foreground"> ({formatDate(d.ult_mov_fecha)})</span>
                         </span>
                       ) : '-'}
+                    </td>
+                    <td
+                      className="p-2 text-center font-mono whitespace-nowrap"
+                      title={d.ult_mov_fecha ? `Último movimiento: ${formatDate(d.ult_mov_fecha)}` : ''}
+                    >
+                      {(() => {
+                        if (!d.ult_mov_fecha) return '-';
+                        const ms = Date.now() - new Date(d.ult_mov_fecha).getTime();
+                        const dias = Math.max(0, Math.floor(ms / 86400000));
+                        return `${dias}d`;
+                      })()}
+                    </td>
+                    <td
+                      className="p-2 text-center whitespace-nowrap"
+                      title={d.incidencias_abiertas > 0 ? (d.incidencias_detalle || 'Sin detalle') : 'Sin incidencias abiertas'}
+                    >
+                      {d.incidencias_abiertas > 0 ? (
+                        <Badge variant="destructive" className="text-[10px] px-1.5">
+                          {d.incidencias_abiertas}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                     </td>
                     <td className="p-2 text-right font-mono">
                       {d.diferencia_acumulada > 0 ? <span className="text-destructive">{d.diferencia_acumulada}</span> : '-'}
