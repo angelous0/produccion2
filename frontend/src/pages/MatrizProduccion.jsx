@@ -579,6 +579,24 @@ const DetalleModal = ({ open, onClose, registros, titulo, navigate }) => {
                                       <span>{inc.usuario || 'sin usuario'}</span>
                                       <span>{formatDate(inc.fecha_hora)}</span>
                                     </div>
+                                    {Array.isArray(inc.avances) && inc.avances.length > 0 && (
+                                      <div className="mt-2 pt-2 border-t border-border/50">
+                                        <p className="text-[10px] font-semibold text-muted-foreground mb-1.5 uppercase tracking-wider">
+                                          Avances ({inc.avances.length})
+                                        </p>
+                                        <ul className="space-y-1.5">
+                                          {inc.avances.map((av, ai) => (
+                                            <li key={av.id || ai} className="pl-2 border-l-2 border-blue-400 text-[10.5px]">
+                                              <p className="whitespace-pre-wrap leading-snug text-foreground">{av.comentario || '—'}</p>
+                                              <div className="flex justify-between gap-2 text-[9.5px] text-muted-foreground mt-0.5">
+                                                <span>{av.usuario || 'sin usuario'}</span>
+                                                <span>{formatDate(av.fecha)}</span>
+                                              </div>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })}

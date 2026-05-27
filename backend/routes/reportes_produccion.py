@@ -1475,13 +1475,29 @@ async def matriz_produccion(
                            'paralizacion_activa', COALESCE(p.activa, FALSE),
                            'paralizacion_inicio', p.fecha_inicio,
                            'paralizacion_fin',    p.fecha_fin,
-                           'paralizacion_motivo', p.motivo
+                           'paralizacion_motivo', p.motivo,
+                           'avances',             COALESCE(av.lista, '[]'::jsonb)
                          )
                          ORDER BY i.created_at DESC
                        ) AS lista
                 FROM prod_incidencia i
                 LEFT JOIN prod_motivos_incidencia mi ON mi.id = i.tipo
                 LEFT JOIN prod_paralizacion p ON p.id = i.paralizacion_id
+                LEFT JOIN LATERAL (
+                    -- Timeline de avances/seguimiento de la incidencia
+                    -- (más antiguo → más nuevo para leer cronológicamente).
+                    SELECT JSONB_AGG(
+                        JSONB_BUILD_OBJECT(
+                            'id',         a.id,
+                            'fecha',      a.fecha,
+                            'usuario',    a.usuario,
+                            'comentario', a.comentario
+                        )
+                        ORDER BY COALESCE(a.fecha, a.created_at) ASC
+                    ) AS lista
+                    FROM prod_incidencia_avance a
+                    WHERE a.incidencia_id = i.id
+                ) av ON true
                 WHERE i.registro_id = r.id AND i.estado = 'ABIERTA'
             ) inc ON true
             WHERE {where_sql}
@@ -6001,6 +6017,8 @@ async def conciliacion_pendiente(
             "sin_distribucion": sin_distribucion,
             "resumen":          resumen,
         }
+
+
 
 
 
