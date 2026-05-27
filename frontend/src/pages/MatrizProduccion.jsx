@@ -521,14 +521,70 @@ const DetalleModal = ({ open, onClose, registros, titulo, navigate }) => {
                         return `${dias}d`;
                       })()}
                     </td>
-                    <td
-                      className="p-2 text-center whitespace-nowrap"
-                      title={d.incidencias_abiertas > 0 ? (d.incidencias_detalle || 'Sin detalle') : 'Sin incidencias abiertas'}
-                    >
+                    <td className="p-2 text-center whitespace-nowrap">
                       {d.incidencias_abiertas > 0 ? (
-                        <Badge variant="destructive" className="text-[10px] px-1.5">
-                          {d.incidencias_abiertas}
-                        </Badge>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className="inline-flex items-center"
+                              title="Ver detalle de incidencias"
+                            >
+                              <Badge variant="destructive" className="text-[10px] px-1.5 cursor-pointer hover:opacity-80">
+                                {d.incidencias_abiertas}
+                              </Badge>
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-96 max-h-[420px] overflow-y-auto p-3" align="end">
+                            <div className="text-xs font-semibold mb-2 flex items-center gap-2">
+                              <span>Incidencias abiertas</span>
+                              <Badge variant="destructive" className="text-[10px] px-1.5">{d.incidencias_abiertas}</Badge>
+                            </div>
+                            <div className="space-y-2">
+                              {(d.incidencias_lista || []).map((inc, idx) => {
+                                const hoyMs = Date.now();
+                                const inicioMs = inc.paralizacion_inicio ? new Date(inc.paralizacion_inicio).getTime() : null;
+                                const finMs    = inc.paralizacion_fin    ? new Date(inc.paralizacion_fin).getTime()    : null;
+                                const dias = inicioMs ? Math.max(0, Math.floor(((finMs || hoyMs) - inicioMs) / 86400000)) : null;
+                                const paralizActiva = inc.paraliza && inc.paralizacion_activa && !finMs;
+                                return (
+                                  <div key={inc.id || idx} className="rounded border bg-muted/30 p-2 text-[11px]">
+                                    <div className="flex items-center justify-between gap-2 mb-1">
+                                      <Badge variant="outline" className="text-[10px] px-1">{inc.tipo_nombre || 'Sin motivo'}</Badge>
+                                      <div className="flex items-center gap-1">
+                                        <Badge variant={inc.estado === 'ABIERTA' ? 'destructive' : 'secondary'} className="text-[10px] px-1">
+                                          {inc.estado || 'ABIERTA'}
+                                        </Badge>
+                                        {paralizActiva && (
+                                          <Badge className="text-[10px] px-1 bg-amber-500 hover:bg-amber-600">
+                                            PARALIZADO {dias !== null ? `· ${dias}d` : ''}
+                                          </Badge>
+                                        )}
+                                        {inc.paraliza && !paralizActiva && finMs && (
+                                          <Badge variant="outline" className="text-[10px] px-1 border-emerald-500 text-emerald-700">
+                                            Desbloqueado {dias !== null ? `· duró ${dias}d` : ''}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {inc.comentario && (
+                                      <p className="whitespace-pre-wrap text-foreground leading-snug">{inc.comentario}</p>
+                                    )}
+                                    {inc.paralizacion_motivo && (
+                                      <p className="mt-1 text-[10px] text-muted-foreground">
+                                        Motivo paraliz.: {inc.paralizacion_motivo}
+                                      </p>
+                                    )}
+                                    <div className="mt-1 text-[10px] text-muted-foreground flex justify-between gap-2">
+                                      <span>{inc.usuario || 'sin usuario'}</span>
+                                      <span>{formatDate(inc.fecha_hora)}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
                       ) : (
                         <span className="text-muted-foreground">-</span>
                       )}

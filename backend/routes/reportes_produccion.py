@@ -1402,7 +1402,8 @@ async def matriz_produccion(
                 COALESCE(mov_agg.diferencia_total, 0) as diferencia_acumulada,
                 COALESCE(mov_agg.total_movimientos, 0) as total_movimientos,
                 COALESCE(inc.total_abiertas, 0) as incidencias_abiertas,
-                COALESCE(inc.detalle, '') as incidencias_detalle
+                COALESCE(inc.detalle, '') as incidencias_detalle,
+                COALESCE(inc.lista, '[]'::jsonb) as incidencias_lista
             FROM prod_registros r
             LEFT JOIN prod_modelos m  ON r.modelo_id = m.id
             LEFT JOIN prod_marcas ma  ON m.marca_id = ma.id
@@ -1452,17 +1453,35 @@ async def matriz_produccion(
                 WHERE mp2.registro_id = r.id
             ) mov_agg ON true
             LEFT JOIN LATERAL (
-                -- Incidencias abiertas del registro + detalle textual con
-                -- motivos para mostrar tooltip en la matriz.
+                -- Incidencias abiertas del registro + lista detallada (con
+                -- paralización si aplica) para mostrar en el popover de la matriz.
                 SELECT COUNT(*) AS total_abiertas,
                        STRING_AGG(
                          COALESCE(mi.nombre, 'Sin motivo')
                          || CASE WHEN i.comentario IS NOT NULL AND i.comentario <> ''
                                  THEN ': ' || i.comentario ELSE '' END,
                          ' · ' ORDER BY i.created_at DESC
-                       ) AS detalle
+                       ) AS detalle,
+                       JSONB_AGG(
+                         JSONB_BUILD_OBJECT(
+                           'id',                  i.id,
+                           'tipo_id',             i.tipo,
+                           'tipo_nombre',         COALESCE(mi.nombre, 'Sin motivo'),
+                           'comentario',          i.comentario,
+                           'estado',              i.estado,
+                           'usuario',             i.usuario,
+                           'fecha_hora',          i.fecha_hora,
+                           'paraliza',            COALESCE(i.paraliza, FALSE),
+                           'paralizacion_activa', COALESCE(p.activa, FALSE),
+                           'paralizacion_inicio', p.fecha_inicio,
+                           'paralizacion_fin',    p.fecha_fin,
+                           'paralizacion_motivo', p.motivo
+                         )
+                         ORDER BY i.created_at DESC
+                       ) AS lista
                 FROM prod_incidencia i
                 LEFT JOIN prod_motivos_incidencia mi ON mi.id = i.tipo
+                LEFT JOIN prod_paralizacion p ON p.id = i.paralizacion_id
                 WHERE i.registro_id = r.id AND i.estado = 'ABIERTA'
             ) inc ON true
             WHERE {where_sql}
@@ -1604,6 +1623,7 @@ async def matriz_produccion(
                 "total_movimientos": safe_int(r["total_movimientos"]),
                 "incidencias_abiertas": safe_int(r["incidencias_abiertas"]),
                 "incidencias_detalle": (r["incidencias_detalle"] or "").strip() or None,
+                "incidencias_lista": parse_jsonb(r["incidencias_lista"]) or [],
                 "colores": colores_lista,
                 "colores_resumen": colores_resumen,
             })
@@ -5981,5 +6001,7 @@ async def conciliacion_pendiente(
             "sin_distribucion": sin_distribucion,
             "resumen":          resumen,
         }
+
+
 
 
