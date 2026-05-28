@@ -1024,7 +1024,7 @@ async def get_ruta_produccion(ruta_id: str):
         return d
 
 @router.post("/rutas-produccion")
-async def create_ruta_produccion(input: RutaProduccionCreate, _u=Depends(get_current_user)):
+async def create_ruta_produccion(input: RutaProduccionCreate, _u=Depends(require_permission("rutas_produccion", "crear"))):
     ruta = RutaProduccion(**input.model_dump())
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1036,7 +1036,7 @@ async def create_ruta_produccion(input: RutaProduccionCreate, _u=Depends(get_cur
     return ruta
 
 @router.put("/rutas-produccion/{ruta_id}")
-async def update_ruta_produccion(ruta_id: str, input: RutaProduccionCreate, _u=Depends(get_current_user)):
+async def update_ruta_produccion(ruta_id: str, input: RutaProduccionCreate, _u=Depends(require_permission("rutas_produccion", "editar"))):
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.fetchrow("SELECT * FROM prod_rutas_produccion WHERE id = $1", ruta_id)
@@ -1048,7 +1048,7 @@ async def update_ruta_produccion(ruta_id: str, input: RutaProduccionCreate, _u=D
         return {**row_to_dict(result), "nombre": input.nombre, "descripcion": input.descripcion, "etapas": [e.model_dump() for e in input.etapas]}
 
 @router.delete("/rutas-produccion/{ruta_id}")
-async def delete_ruta_produccion(ruta_id: str, _u=Depends(get_current_user)):
+async def delete_ruta_produccion(ruta_id: str, _u=Depends(require_permission("rutas_produccion", "eliminar"))):
     pool = await get_pool()
     async with pool.acquire() as conn:
         count = await conn.fetchval("SELECT COUNT(*) FROM prod_modelos WHERE ruta_produccion_id = $1", ruta_id)
@@ -1067,7 +1067,7 @@ async def get_servicios_produccion():
         return [row_to_dict(r) for r in rows]
 
 @router.post("/servicios-produccion")
-async def create_servicio_produccion(input: ServicioCreate, _u=Depends(get_current_user)):
+async def create_servicio_produccion(input: ServicioCreate, _u=Depends(require_permission("servicios_produccion", "crear"))):
     servicio = Servicio(**input.model_dump())
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1080,7 +1080,7 @@ async def create_servicio_produccion(input: ServicioCreate, _u=Depends(get_curre
     return servicio
 
 @router.put("/servicios-produccion/{servicio_id}")
-async def update_servicio_produccion(servicio_id: str, input: ServicioCreate, _u=Depends(get_current_user)):
+async def update_servicio_produccion(servicio_id: str, input: ServicioCreate, _u=Depends(require_permission("servicios_produccion", "editar"))):
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.fetchrow("SELECT * FROM prod_servicios_produccion WHERE id = $1", servicio_id)
@@ -1097,7 +1097,7 @@ async def update_servicio_produccion(servicio_id: str, input: ServicioCreate, _u
         return {**row_to_dict(result), **input.model_dump(exclude_none=True)}
 
 @router.delete("/servicios-produccion/{servicio_id}")
-async def delete_servicio_produccion(servicio_id: str, _u=Depends(get_current_user)):
+async def delete_servicio_produccion(servicio_id: str, _u=Depends(require_permission("servicios_produccion", "eliminar"))):
     pool = await get_pool()
     async with pool.acquire() as conn:
         mov_count = await conn.fetchval("SELECT COUNT(*) FROM prod_movimientos_produccion WHERE servicio_id = $1", servicio_id)
@@ -1152,7 +1152,7 @@ async def get_personas_produccion(servicio_id: str = None, activo: bool = None):
         return result
 
 @router.post("/personas-produccion")
-async def create_persona_produccion(input: PersonaCreate, _u=Depends(get_current_user)):
+async def create_persona_produccion(input: PersonaCreate, _u=Depends(require_permission("personas_produccion", "crear"))):
     persona = Persona(**input.model_dump())
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1164,7 +1164,7 @@ async def create_persona_produccion(input: PersonaCreate, _u=Depends(get_current
     return persona
 
 @router.put("/personas-produccion/{persona_id}")
-async def update_persona_produccion(persona_id: str, input: PersonaCreate, _u=Depends(get_current_user)):
+async def update_persona_produccion(persona_id: str, input: PersonaCreate, _u=Depends(require_permission("personas_produccion", "editar"))):
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.fetchrow("SELECT * FROM prod_personas_produccion WHERE id = $1", persona_id)
@@ -1178,7 +1178,7 @@ async def update_persona_produccion(persona_id: str, input: PersonaCreate, _u=De
         return {**row_to_dict(result), **input.model_dump()}
 
 @router.delete("/personas-produccion/{persona_id}")
-async def delete_persona_produccion(persona_id: str, _u=Depends(get_current_user)):
+async def delete_persona_produccion(persona_id: str, _u=Depends(require_permission("personas_produccion", "eliminar"))):
     pool = await get_pool()
     async with pool.acquire() as conn:
         mov_count = await conn.fetchval("SELECT COUNT(*) FROM prod_movimientos_produccion WHERE persona_id = $1", persona_id)

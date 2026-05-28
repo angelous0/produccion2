@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from db import get_pool
-from auth_utils import get_current_user
+from auth_utils import get_current_user, require_permission
 from helpers import row_to_dict
 from routes.auditoria import audit_log_safe, get_usuario
 
@@ -90,7 +90,7 @@ async def list_salidas_libres(
     linea_negocio_id: Optional[int] = None,
     fecha_desde: Optional[str] = None,
     fecha_hasta: Optional[str] = None,
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_permission("inventario_salidas_libres", "ver")),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -141,7 +141,7 @@ async def list_salidas_libres(
 @router.post("/salidas-libres")
 async def crear_salida_libre(
     data: SalidaLibreCreate,
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_permission("inventario_salidas_libres", "crear")),
 ):
     if data.tipo_salida not in TIPOS_SALIDA:
         raise HTTPException(400, f"tipo_salida inválido. Válidos: {TIPOS_SALIDA}")
@@ -210,7 +210,7 @@ async def crear_salida_libre(
 @router.delete("/salidas-libres/{salida_id}")
 async def eliminar_salida_libre(
     salida_id: str,
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_permission("inventario_salidas_libres", "eliminar")),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:

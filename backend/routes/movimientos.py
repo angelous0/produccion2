@@ -4,7 +4,13 @@ import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from db import get_pool
-from auth_utils import get_current_user
+from auth_utils import (
+    get_current_user,
+    require_permission,
+    check_permission,
+    check_operational_action,
+    check_service_permission,
+)
 from models import MovimientoCreate, Movimiento, MermaCreate, GuiaRemisionCreate
 from helpers import row_to_dict, parse_jsonb, registrar_actividad
 from routes.auditoria import audit_log_safe, get_usuario
@@ -25,6 +31,7 @@ async def get_movimientos(
     limit: int = 50,
     offset: int = 0,
     all: str = "",
+    _u: dict = Depends(require_permission("movimientos_produccion", "ver")),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -110,7 +117,15 @@ async def get_movimientos(
         return {"items": result, "total": total, "limit": limit, "offset": offset}
 
 @router.post("/movimientos-produccion")
-async def create_movimiento(input: MovimientoCreate, current_user: dict = Depends(get_current_user)):
+async def create_movimiento(
+    input: MovimientoCreate,
+    current_user: dict = Depends(require_permission("movimientos_produccion", "crear")),
+):
+    if not check_operational_action(current_user, "crear_movimientos"):
+        raise HTTPException(status_code=403, detail="No tienes permiso operativo para crear movimientos de producción")
+    if not check_service_permission(current_user, input.servicio_id):
+        raise HTTPException(status_code=403, detail="No tienes permiso para operar este servicio")
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         reg = await conn.fetchrow("SELECT id FROM prod_registros WHERE id = $1", input.registro_id)
@@ -211,7 +226,16 @@ async def create_movimiento(input: MovimientoCreate, current_user: dict = Depend
     return movimiento
 
 @router.put("/movimientos-produccion/{movimiento_id}")
-async def update_movimiento(movimiento_id: str, input: MovimientoCreate, _u=Depends(get_current_user)):
+async def update_movimiento(
+    movimiento_id: str,
+    input: MovimientoCreate,
+    current_user: dict = Depends(require_permission("movimientos_produccion", "editar")),
+):
+    if not check_operational_action(current_user, "editar_movimientos"):
+        raise HTTPException(status_code=403, detail="No tienes permiso operativo para editar movimientos de producción")
+    if not check_service_permission(current_user, input.servicio_id):
+        raise HTTPException(status_code=403, detail="No tienes permiso para operar este servicio")
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.fetchrow("SELECT * FROM prod_movimientos_produccion WHERE id = $1", movimiento_id)
@@ -292,9 +316,19 @@ async def update_movimiento(movimiento_id: str, input: MovimientoCreate, _u=Depe
 
 @router.delete("/movimientos-produccion/{movimiento_id}")
 async def delete_movimiento(movimiento_id: str, current_user: dict = Depends(get_current_user)):
+    if not (
+        check_permission(current_user, "movimientos_produccion", "eliminar")
+        or check_permission(current_user, "movimientos_produccion", "editar")
+    ):
+        raise HTTPException(status_code=403, detail="No tienes permiso para eliminar movimientos de producción")
+    if not check_operational_action(current_user, "editar_movimientos"):
+        raise HTTPException(status_code=403, detail="No tienes permiso operativo para eliminar movimientos de producción")
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         mov = await conn.fetchrow("SELECT servicio_id, registro_id, cantidad_enviada, cantidad_recibida FROM prod_movimientos_produccion WHERE id = $1", movimiento_id)
+        if mov and not check_service_permission(current_user, mov['servicio_id']):
+            raise HTTPException(status_code=403, detail="No tienes permiso para operar este servicio")
         await conn.execute("DELETE FROM prod_mermas WHERE movimiento_id = $1", movimiento_id)
         await conn.execute("DELETE FROM prod_movimientos_produccion WHERE id = $1", movimiento_id)
         if mov:
@@ -316,6 +350,11 @@ async def delete_movimiento(movimiento_id: str, current_user: dict = Depends(get
 @router.post("/registros/{registro_id}/copiar-movimientos")
 async def copiar_movimientos(registro_id: str, body: dict, current_user: dict = Depends(get_current_user)):
     """Copia movimientos desde otro registro al registro destino."""
+    if not check_permission(current_user, "movimientos_produccion", "crear"):
+        raise HTTPException(status_code=403, detail="No tienes permiso para crear movimientos de producción")
+    if not check_operational_action(current_user, "crear_movimientos"):
+        raise HTTPException(status_code=403, detail="No tienes permiso operativo para crear movimientos de producción")
+
     pool = await get_pool()
     registro_origen_id = body.get("registro_origen_id")
     movimiento_ids = body.get("movimiento_ids", [])
@@ -340,6 +379,9 @@ async def copiar_movimientos(registro_id: str, body: dict, current_user: dict = 
 
         if not movs:
             raise HTTPException(status_code=400, detail="No se encontraron movimientos para copiar")
+        for mov in movs:
+            if not check_service_permission(current_user, mov['servicio_id']):
+                raise HTTPException(status_code=403, detail="No tienes permiso para copiar movimientos de este servicio")
 
         # Calcular cantidad del origen para proporción
         cantidad_origen = float(body.get("cantidad_origen", 0))
@@ -748,4 +790,3 @@ async def get_movimientos_produccion_finanzas(
 
 
 # ==================== ENDPOINTS ESTADISTICAS ====================
-

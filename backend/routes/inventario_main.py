@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from db import get_pool
-from auth_utils import get_current_user
+from auth_utils import get_current_user, require_permission, check_operational_action
 from models import (
     ItemInventarioCreate, IngresoInventarioCreate,
     SalidaInventarioCreate, AjusteInventarioCreate,
@@ -579,7 +579,13 @@ async def get_reservas_detalle_item(item_id: str):
 
 
 @router.post("/inventario")
-async def create_item_inventario(input: ItemInventarioCreate, _u=Depends(get_current_user)):
+async def create_item_inventario(
+    input: ItemInventarioCreate,
+    current_user: dict = Depends(require_permission("inventario", "crear")),
+):
+    if not check_operational_action(current_user, "crear_items", "acciones_inventario"):
+        raise HTTPException(status_code=403, detail="No tienes permiso operativo para crear items de inventario")
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         existing = await conn.fetchrow("SELECT id FROM prod_inventario WHERE codigo = $1", input.codigo)
@@ -618,7 +624,11 @@ async def create_item_inventario(input: ItemInventarioCreate, _u=Depends(get_cur
         return item
 
 @router.put("/inventario/{item_id}")
-async def update_item_inventario(item_id: str, input: ItemInventarioCreate, _u=Depends(get_current_user)):
+async def update_item_inventario(
+    item_id: str,
+    input: ItemInventarioCreate,
+    _u: dict = Depends(require_permission("inventario", "editar")),
+):
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.fetchrow("SELECT * FROM prod_inventario WHERE id = $1", item_id)
@@ -635,7 +645,7 @@ async def update_item_inventario(item_id: str, input: ItemInventarioCreate, _u=D
         return {**row_to_dict(result), **input.model_dump()}
 
 @router.delete("/inventario/{item_id}")
-async def delete_item_inventario(item_id: str, _u=Depends(get_current_user)):
+async def delete_item_inventario(item_id: str, _u: dict = Depends(require_permission("inventario", "eliminar"))):
     pool = await get_pool()
     async with pool.acquire() as conn:
         # Validar que no tenga movimientos
@@ -732,7 +742,13 @@ async def get_ingresos():
         return result
 
 @router.post("/inventario-ingresos")
-async def create_ingreso(input: IngresoInventarioCreate, current_user: dict = Depends(get_current_user)):
+async def create_ingreso(
+    input: IngresoInventarioCreate,
+    current_user: dict = Depends(require_permission("inventario_ingresos", "crear")),
+):
+    if not check_operational_action(current_user, "registrar_ingresos", "acciones_inventario"):
+        raise HTTPException(status_code=403, detail="No tienes permiso operativo para registrar ingresos de inventario")
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         item = await conn.fetchrow("SELECT * FROM prod_inventario WHERE id = $1", input.item_id)
@@ -838,7 +854,14 @@ async def get_ingreso_rollos(ingreso_id: str):
         return [row_to_dict(r) for r in rollos]
 
 @router.put("/inventario-ingresos/{ingreso_id}")
-async def update_ingreso(ingreso_id: str, input: IngresoUpdateData, _u=Depends(get_current_user)):
+async def update_ingreso(
+    ingreso_id: str,
+    input: IngresoUpdateData,
+    current_user: dict = Depends(require_permission("inventario_ingresos", "editar")),
+):
+    if not check_operational_action(current_user, "registrar_ingresos", "acciones_inventario"):
+        raise HTTPException(status_code=403, detail="No tienes permiso operativo para editar ingresos de inventario")
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         ingreso = await conn.fetchrow("SELECT * FROM prod_inventario_ingresos WHERE id = $1", ingreso_id)
@@ -973,7 +996,7 @@ async def update_ingreso(ingreso_id: str, input: IngresoUpdateData, _u=Depends(g
         return {"message": "Ingreso actualizado"}
 
 @router.delete("/inventario-ingresos/{ingreso_id}")
-async def delete_ingreso(ingreso_id: str, _u=Depends(get_current_user)):
+async def delete_ingreso(ingreso_id: str, _u: dict = Depends(require_permission("inventario_ingresos", "eliminar"))):
     pool = await get_pool()
     async with pool.acquire() as conn:
         ingreso = await conn.fetchrow("SELECT * FROM prod_inventario_ingresos WHERE id = $1", ingreso_id)
@@ -1030,7 +1053,13 @@ async def get_salidas(registro_id: str = None):
         return result
 
 @router.post("/inventario-salidas")
-async def create_salida(input: SalidaInventarioCreate, current_user: dict = Depends(get_current_user)):
+async def create_salida(
+    input: SalidaInventarioCreate,
+    current_user: dict = Depends(require_permission("inventario_salidas", "crear")),
+):
+    if not check_operational_action(current_user, "dar_salida_mp", "acciones_inventario"):
+        raise HTTPException(status_code=403, detail="No tienes permiso operativo para dar salida de materia prima")
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         item = await conn.fetchrow("SELECT * FROM prod_inventario WHERE id = $1", input.item_id)
@@ -1213,7 +1242,10 @@ async def create_salida(input: SalidaInventarioCreate, current_user: dict = Depe
 
 
 @router.post("/inventario/reconciliar-reservas")
-async def reconciliar_reservas(_u=Depends(get_current_user)):
+async def reconciliar_reservas(current_user: dict = Depends(require_permission("inventario_salidas", "editar"))):
+    if not check_operational_action(current_user, "reservar_materiales", "acciones_inventario"):
+        raise HTTPException(status_code=403, detail="No tienes permiso operativo para reconciliar reservas")
+
     """Sincroniza cantidad_liberada en reservas: si ya hubo salida para un item+registro, libera toda la reserva."""
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -1261,7 +1293,13 @@ class SalidaExtraCreate(BaseModel):
     motivo: str = "Consumo adicional"
 
 @router.post("/inventario-salidas/extra")
-async def create_salida_extra(input: SalidaExtraCreate, _u=Depends(get_current_user)):
+async def create_salida_extra(
+    input: SalidaExtraCreate,
+    current_user: dict = Depends(require_permission("inventario_salidas", "crear")),
+):
+    if not check_operational_action(current_user, "dar_salida_mp", "acciones_inventario"):
+        raise HTTPException(status_code=403, detail="No tienes permiso operativo para dar salida de materia prima")
+
     """
     Crea una salida SIN validar reserva previa.
     Útil para excedentes, reposiciones o ajustes.
@@ -1396,7 +1434,11 @@ class SalidaUpdateData(BaseModel):
     cantidad: Optional[float] = None
 
 @router.put("/inventario-salidas/{salida_id}")
-async def update_salida(salida_id: str, input: SalidaUpdateData, _u=Depends(get_current_user)):
+async def update_salida(
+    salida_id: str,
+    input: SalidaUpdateData,
+    _u: dict = Depends(require_permission("inventario_salidas", "editar")),
+):
     pool = await get_pool()
     async with pool.acquire() as conn:
         salida = await conn.fetchrow("SELECT * FROM prod_inventario_salidas WHERE id = $1", salida_id)
@@ -1554,8 +1596,11 @@ async def update_salida(salida_id: str, input: SalidaUpdateData, _u=Depends(get_
 async def recalcular_costo_fifo(
     item_id: Optional[str] = None,
     solo_costo_cero: bool = True,
-    _u=Depends(get_current_user),
+    current_user: dict = Depends(require_permission("inventario_salidas", "editar")),
 ):
+    if not check_operational_action(current_user, "ajustes_stock", "acciones_inventario"):
+        raise HTTPException(status_code=403, detail="No tienes permiso operativo para recalcular costos FIFO")
+
     """
     Recalcula el costo FIFO de salidas históricas usando los ingresos
     actualmente disponibles. Útil cuando se hicieron salidas ANTES de
@@ -1713,7 +1758,7 @@ async def recalcular_costo_fifo(
 
 
 @router.delete("/inventario-salidas/{salida_id}")
-async def delete_salida(salida_id: str, _u=Depends(get_current_user)):
+async def delete_salida(salida_id: str, _u: dict = Depends(require_permission("inventario_salidas", "eliminar"))):
     pool = await get_pool()
     async with pool.acquire() as conn:
         salida = await conn.fetchrow("SELECT * FROM prod_inventario_salidas WHERE id = $1", salida_id)
@@ -1822,7 +1867,13 @@ async def get_ajustes():
         return result
 
 @router.post("/inventario-ajustes")
-async def create_ajuste(input: AjusteInventarioCreate, current_user: dict = Depends(get_current_user)):
+async def create_ajuste(
+    input: AjusteInventarioCreate,
+    current_user: dict = Depends(require_permission("inventario_ajustes", "crear")),
+):
+    if not check_operational_action(current_user, "ajustes_stock", "acciones_inventario"):
+        raise HTTPException(status_code=403, detail="No tienes permiso operativo para ajustes de stock")
+
     pool = await get_pool()
     async with pool.acquire() as conn:
         item = await conn.fetchrow("SELECT * FROM prod_inventario WHERE id = $1", input.item_id)
@@ -1898,7 +1949,11 @@ class AjusteUpdateData(BaseModel):
     observaciones: str = ""
 
 @router.put("/inventario-ajustes/{ajuste_id}")
-async def update_ajuste(ajuste_id: str, input: AjusteUpdateData, _u=Depends(get_current_user)):
+async def update_ajuste(
+    ajuste_id: str,
+    input: AjusteUpdateData,
+    _u: dict = Depends(require_permission("inventario_ajustes", "editar")),
+):
     pool = await get_pool()
     async with pool.acquire() as conn:
         ajuste = await conn.fetchrow("SELECT * FROM prod_inventario_ajustes WHERE id = $1", ajuste_id)
@@ -1909,7 +1964,7 @@ async def update_ajuste(ajuste_id: str, input: AjusteUpdateData, _u=Depends(get_
         return {"message": "Ajuste actualizado"}
 
 @router.delete("/inventario-ajustes/{ajuste_id}")
-async def delete_ajuste(ajuste_id: str, _u=Depends(get_current_user)):
+async def delete_ajuste(ajuste_id: str, _u: dict = Depends(require_permission("inventario_ajustes", "eliminar"))):
     pool = await get_pool()
     async with pool.acquire() as conn:
         ajuste = await conn.fetchrow("SELECT * FROM prod_inventario_ajustes WHERE id = $1", ajuste_id)

@@ -113,15 +113,22 @@ async def crear_notificacion(
 # ─── Filtrado por audiencia ────────────────────────────────────────────────
 
 def _le_aplica_al_usuario(audiencia: dict, user: dict) -> bool:
-    """Determina si una notificación le toca a un usuario según su rol/servicios.
+    """Determina si una notificación le toca a un usuario según su rol/servicios/username.
 
     Reglas:
+      - audiencia.usernames tiene mi username: True (mención directa, gana sobre todo).
       - admin: siempre True (ve todo).
-      - audiencia vacía: True (es para todos).
+      - audiencia vacía o sin filtros: True (es para todos).
       - audiencia.roles tiene el rol del usuario: True.
       - audiencia.servicios cruza con servicios del usuario: True.
       - cualquier otro caso: False.
     """
+    # Mención directa (Sprint 41) — tiene prioridad sobre admin/roles/servicios:
+    # incluso si la audiencia limita por rol, si tu username aparece sos destinatario.
+    usernames = (audiencia or {}).get("usernames") or []
+    if usernames and (user.get("username") or "") in usernames:
+        return True
+
     if (user.get("rol") or "").lower() == "admin":
         return True
     if not audiencia:
@@ -130,7 +137,7 @@ def _le_aplica_al_usuario(audiencia: dict, user: dict) -> bool:
     roles = audiencia.get("roles") or []
     servicios = audiencia.get("servicios") or []
 
-    if not roles and not servicios:
+    if not roles and not servicios and not usernames:
         return True
 
     if roles and (user.get("rol") or "") in roles:
