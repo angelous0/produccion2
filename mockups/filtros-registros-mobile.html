@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Filtros avanzados en lista de registros — v2</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --brand: #0f766e;
+    --brand-dark: #0d5f5a;
+    --brand-soft: #f0fdfa;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --bg: #f3f4f6;
+  }
+  body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  .phones-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 32px; padding: 32px; max-width: 1800px; margin: 0 auto; }
+  .phone-frame { width: 380px; border: 12px solid #1f2937; border-radius: 38px; overflow: hidden; background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4); margin: 0 auto; }
+  .phone-notch { height: 28px; background: #1f2937; display: flex; justify-content: center; align-items: center; color: white; font-size: 11px; font-weight: 600; }
+  .phone-body { height: 740px; overflow-y: auto; background: #f9fafb; position: relative; }
+  .header-mobile { background: var(--brand); color: white; padding: 14px 16px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 10; }
+  .screen-title { font-size: 11px; color: #64748b; text-align: center; margin-top: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid #e5e7eb; background: white; }
+  .chip.active { background: var(--brand); color: white; border-color: var(--brand); }
+  .pill { display:inline-flex; align-items:center; gap:4px; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .pill-amber { background: #fef3c7; color: #b45309; }
+  .pill-blue { background: #dbeafe; color: #1d4ed8; }
+  .pill-green { background: #dcfce7; color: #15803d; }
+  .pill-gray { background: #e5e7eb; color: #475569; }
+</style>
+</head>
+<body>
+
+<div class="px-8 pt-8 pb-2 max-w-5xl mx-auto">
+  <h1 class="text-2xl font-bold">Filtros v2 — sin línea de negocio · estados primero</h1>
+  <p class="text-slate-600 mt-1">
+    Cambios: quitado el filtro de Línea de negocio. Estados pasa al inicio del sheet, agrupados en "espera" y "activos". Chips activos se muestran compactos con contador (ej: "Marca · 3").
+  </p>
+</div>
+
+<div class="phones-grid">
+
+  <!-- ====================================================================== -->
+  <!-- ESTADO 1 — Vista normal                                                 -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">1 · Vista normal</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Producción</div>
+            <div class="font-semibold text-[15px]">Registros · 60 de 167</div>
+          </div>
+          <button class="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/></svg>
+          </button>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- Buscador + botón filtros -->
+          <div class="flex gap-2">
+            <div class="flex-1 relative">
+              <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input class="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="CORTE-001, Polo..." />
+            </div>
+            <button class="px-3 py-2 rounded-xl border border-slate-300 bg-white flex items-center gap-1.5 text-sm font-semibold">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+              Filtros
+            </button>
+          </div>
+
+          <!-- Chips de estado con scroll horizontal -->
+          <div class="flex gap-1.5 overflow-x-auto pb-1" style="scrollbar-width: none">
+            <button class="chip active flex-shrink-0">Todos</button>
+            <button class="chip flex-shrink-0">⚠ Urgentes</button>
+            <button class="chip flex-shrink-0">Para Corte</button>
+            <button class="chip flex-shrink-0">Corte</button>
+            <button class="chip flex-shrink-0">Para Costura</button>
+            <button class="chip flex-shrink-0">Costura</button>
+            <button class="chip flex-shrink-0">Estampado</button>
+            <button class="chip flex-shrink-0">Bordado</button>
+            <button class="chip flex-shrink-0">Para Atraque</button>
+            <button class="chip flex-shrink-0">Atraque</button>
+            <button class="chip flex-shrink-0">Para Lavandería</button>
+            <button class="chip flex-shrink-0">Lavandería</button>
+            <button class="chip flex-shrink-0">Para Acabado</button>
+            <button class="chip flex-shrink-0">Acabado</button>
+            <button class="chip flex-shrink-0">Almacén PT</button>
+            <button class="chip flex-shrink-0">Tienda</button>
+          </div>
+
+          <!-- Lista de cortes -->
+          <div class="space-y-2">
+            <div class="bg-white border border-slate-200 rounded-2xl p-3">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="pill pill-amber">Para Corte</span>
+                <svg class="w-3 h-3 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+              </div>
+              <div class="font-bold text-[14px]">ELSON BLACK #2</div>
+              <div class="text-[11px] text-slate-500 mt-1 font-mono">CORTE-101 · Qepo · Polo</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-2xl p-3">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="pill pill-blue">Costura</span>
+                <svg class="w-3 h-3 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+              </div>
+              <div class="font-bold text-[14px]">DOCKERS</div>
+              <div class="text-[11px] text-slate-500 mt-1 font-mono">CORTE-128 · Element · Pantalón</div>
+            </div>
+            <div class="bg-white border border-emerald-200 rounded-2xl p-3" style="background:#f0fdf4">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="pill pill-green">Tienda</span>
+                <svg class="w-3 h-3 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+              </div>
+              <div class="font-bold text-[14px]">PEKERMAN 001</div>
+              <div class="text-[11px] text-slate-500 mt-1 font-mono">CORTE-077 · Qepo · Polera</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- ESTADO 2 — Sheet de filtros · estados primero, sin línea de negocio    -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">2 · Sheet de filtros · estados primero</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body relative">
+        <div class="absolute inset-0 bg-black/40"></div>
+
+        <div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-3xl flex flex-col" style="max-height: 94%">
+          <!-- Header del sheet -->
+          <div class="p-4 pb-2 border-b border-slate-100 flex-shrink-0">
+            <div class="w-10 h-1 bg-slate-300 rounded mx-auto mb-3"></div>
+            <div class="flex items-center justify-between">
+              <div class="font-bold text-lg">Filtros</div>
+              <button class="text-[12px] font-semibold" style="color:var(--brand)">Limpiar todo</button>
+            </div>
+          </div>
+
+          <!-- Scroll del contenido -->
+          <div class="flex-1 overflow-y-auto p-4 space-y-5">
+            <!-- ESTADOS (PRIMERO — lo más usado) -->
+            <div>
+              <div class="text-[11px] font-bold uppercase tracking-wide mb-2" style="color:var(--brand)">
+                Estados <span class="text-slate-400 normal-case font-normal">(seleccioná los que quieras)</span>
+              </div>
+
+              <div class="text-[9px] text-slate-400 font-bold uppercase mb-1.5 mt-2">Estados activos · etapas con movimiento</div>
+              <div class="flex flex-wrap gap-1.5 mb-3">
+                <button class="chip">Corte</button>
+                <button class="chip active">Costura</button>
+                <button class="chip">Estampado</button>
+                <button class="chip">Bordado</button>
+                <button class="chip">Atraque</button>
+                <button class="chip">Lavandería</button>
+                <button class="chip">Acabado</button>
+              </div>
+
+              <div class="text-[9px] text-slate-400 font-bold uppercase mb-1.5">Estados de espera</div>
+              <div class="flex flex-wrap gap-1.5 mb-3">
+                <button class="chip">Para Corte</button>
+                <button class="chip">Para Costura</button>
+                <button class="chip">Para Atraque</button>
+                <button class="chip">Para Lavandería</button>
+                <button class="chip">Para Acabado</button>
+              </div>
+
+              <div class="text-[9px] text-slate-400 font-bold uppercase mb-1.5">Final</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button class="chip">Almacén PT</button>
+                <button class="chip active">Tienda</button>
+              </div>
+            </div>
+
+            <!-- Filtros del modelo -->
+            <div>
+              <div class="text-[11px] font-bold uppercase tracking-wide mb-2 text-slate-600">
+                Marca
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <button class="chip active">Element</button>
+                <button class="chip active">Dockers</button>
+                <button class="chip">Quiksilver</button>
+                <button class="chip">Roxy</button>
+                <button class="chip">Boosh</button>
+                <button class="chip">DC</button>
+              </div>
+            </div>
+
+            <div>
+              <div class="text-[11px] font-bold uppercase tracking-wide mb-2 text-slate-600">
+                Tipo
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <button class="chip">Polo</button>
+                <button class="chip active">Pantalón</button>
+                <button class="chip">Bermuda</button>
+                <button class="chip">Hoodie</button>
+                <button class="chip">Polera</button>
+                <button class="chip">Camisa</button>
+              </div>
+            </div>
+
+            <div>
+              <div class="text-[11px] font-bold uppercase tracking-wide mb-2 text-slate-600">
+                Entalle
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <button class="chip">Slim</button>
+                <button class="chip">Regular</button>
+                <button class="chip">Oversize</button>
+                <button class="chip">Skinny</button>
+              </div>
+            </div>
+
+            <!-- Toggles -->
+            <div class="bg-slate-50 rounded-xl p-3 space-y-3">
+              <label class="flex items-center justify-between cursor-pointer">
+                <div>
+                  <div class="text-[12px] font-semibold">⚠ Solo urgentes</div>
+                  <div class="text-[10px] text-slate-500">Filtrar por bandera de urgencia</div>
+                </div>
+                <div class="w-10 h-6 bg-slate-300 rounded-full relative">
+                  <div class="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full"></div>
+                </div>
+              </label>
+              <label class="flex items-center justify-between cursor-pointer">
+                <div>
+                  <div class="text-[12px] font-semibold">Incluir cerrados/anulados</div>
+                  <div class="text-[10px] text-slate-500">Mostrar también los inactivos</div>
+                </div>
+                <div class="w-10 h-6 bg-slate-300 rounded-full relative">
+                  <div class="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full"></div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Footer fijo -->
+          <div class="p-4 border-t border-slate-100 flex-shrink-0 flex gap-2">
+            <button class="flex-1 border border-slate-300 rounded-xl py-2.5 text-sm font-semibold text-slate-600">
+              Cancelar
+            </button>
+            <button class="flex-[1.5] bg-teal-700 text-white rounded-xl py-2.5 text-sm font-bold">
+              Aplicar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- ESTADO 3 — Filtros aplicados · chips compactos                          -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">3 · Filtros aplicados · chips compactos</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Producción</div>
+            <div class="font-semibold text-[15px]">Registros · 14</div>
+          </div>
+          <button class="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/></svg>
+          </button>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- Buscador + botón filtros con badge -->
+          <div class="flex gap-2">
+            <div class="flex-1 relative">
+              <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input class="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="CORTE-001, Polo..." />
+            </div>
+            <button class="relative px-3 py-2 rounded-xl text-white flex items-center gap-1.5 text-sm font-semibold" style="background:var(--brand)">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+              Filtros
+              <span class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center border border-teal-700">4</span>
+            </button>
+          </div>
+
+          <!-- Chips activos compactos -->
+          <div class="flex flex-wrap gap-1.5 items-center">
+            <span class="chip active" style="background:var(--brand-soft);color:var(--brand);border-color:var(--brand)">
+              Estados · 2
+              <button class="ml-1 hover:bg-white/30 rounded-full" style="font-size:14px;line-height:1;padding:0 3px">×</button>
+            </span>
+            <span class="chip active" style="background:var(--brand-soft);color:var(--brand);border-color:var(--brand)">
+              Marca · 2
+              <button class="ml-1 hover:bg-white/30 rounded-full" style="font-size:14px;line-height:1;padding:0 3px">×</button>
+            </span>
+            <span class="chip active" style="background:var(--brand-soft);color:var(--brand);border-color:var(--brand)">
+              Tipo · 1
+              <button class="ml-1 hover:bg-white/30 rounded-full" style="font-size:14px;line-height:1;padding:0 3px">×</button>
+            </span>
+            <span class="chip active" style="background:var(--brand-soft);color:var(--brand);border-color:var(--brand)">
+              ⚠ Urgentes
+              <button class="ml-1 hover:bg-white/30 rounded-full" style="font-size:14px;line-height:1;padding:0 3px">×</button>
+            </span>
+            <button class="text-[11px] font-semibold text-red-600 ml-1">Limpiar</button>
+          </div>
+
+          <!-- Resultados -->
+          <div class="space-y-2 pt-1">
+            <div class="bg-white border border-rose-200 rounded-2xl p-3" style="border-left:3px solid #ef4444">
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-1">
+                  <span class="pill pill-blue">Costura</span>
+                  <span class="pill" style="background:#fee2e2;color:#b91c1c;font-size:9px">⚠ URG</span>
+                </div>
+                <svg class="w-3 h-3 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+              </div>
+              <div class="font-bold text-[14px]">DOCKERS</div>
+              <div class="text-[11px] text-slate-500 mt-1 font-mono">CORTE-128 · Element · Pantalón</div>
+            </div>
+            <div class="bg-white border border-emerald-200 rounded-2xl p-3" style="background:#f0fdf4;border-left:3px solid #ef4444">
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-1">
+                  <span class="pill pill-green">Tienda</span>
+                  <span class="pill" style="background:#fee2e2;color:#b91c1c;font-size:9px">⚠ URG</span>
+                </div>
+                <svg class="w-3 h-3 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+              </div>
+              <div class="font-bold text-[14px]">PEKERMAN 001</div>
+              <div class="text-[11px] text-slate-500 mt-1 font-mono">CORTE-077 · Element · Pantalón</div>
+            </div>
+            <div class="text-center text-[10px] text-slate-400 italic pt-2">
+              Mostrando 14 resultados que coinciden con los filtros
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="px-8 py-12 max-w-5xl mx-auto text-sm text-slate-600 space-y-3">
+  <h2 class="text-lg font-bold text-slate-900">Cambios respecto a la v1</h2>
+  <ul class="list-disc pl-5 space-y-1">
+    <li><strong>Quitado el filtro "Línea de negocio"</strong> del sheet (no aplica en tu caso).</li>
+    <li><strong>Estados pasa a ser la primera sección</strong> del sheet, con título en teal para enfatizar que es el filtro principal.</li>
+    <li><strong>Estados agrupados visualmente</strong>: Activos (Corte, Costura, etc.) / De espera (Para Corte, Para Costura, etc.) / Final (Almacén PT, Tienda). Sin más clics, solo separación.</li>
+    <li><strong>Solo urgentes</strong> como toggle en la card gris (antes era chip arriba, ahora va dentro del sheet junto al toggle de cerrados/anulados).</li>
+    <li><strong>Chips activos compactos con contador</strong> tipo "Marca · 2" o "Estados · 2" en vez de listar cada selección. Si querés ver cuáles, tocás el chip y abre el sheet en esa sección.</li>
+    <li><strong>Quitado el conteo en vivo del botón Aplicar</strong> ("14 resultados"). Solo se muestra el conteo después de aplicar, en la línea final de la lista.</li>
+  </ul>
+
+  <h2 class="text-lg font-bold text-slate-900 pt-3">Resumen visual del filtro Estados</h2>
+  <div class="bg-white border border-slate-200 rounded p-3 text-[12px]">
+    <div class="font-semibold mb-2" style="color:var(--brand)">Estados</div>
+    <div class="text-[10px] text-slate-400 uppercase font-bold">Activos · con movimiento</div>
+    <div class="ml-2">Corte · Costura · Estampado · Bordado · Atraque · Lavandería · Acabado</div>
+    <div class="text-[10px] text-slate-400 uppercase font-bold mt-1.5">De espera</div>
+    <div class="ml-2">Para Corte · Para Costura · Para Atraque · Para Lavandería · Para Acabado</div>
+    <div class="text-[10px] text-slate-400 uppercase font-bold mt-1.5">Final</div>
+    <div class="ml-2">Almacén PT · Tienda</div>
+  </div>
+</div>
+
+</body>
+</html>
