@@ -188,8 +188,10 @@ export const DistribucionPTPanel = ({ registroId }) => {
       //    (uno por BONETY, otro por BONETY-LQ, etc.), así que un único ajuste rara vez
       //    cubre toda la distribución. Vinculamos cada uno que toque al menos 1 template
       //    del corte y esté libre.
+      // Ventana de 180 días (6 meses) para auto-match: cubre cortes que
+      // arrastran ajustes Odoo de fechas atrás.
       const ajustesRes = await axios.get(
-        `${API}/odoo/stock-inventories?registro_id=${registroId}&limit=200`,
+        `${API}/odoo/stock-inventories?registro_id=${registroId}&dias_ventana=180&limit=200`,
         { headers }
       );
       const candidatos = (ajustesRes.data || []).filter(a =>
@@ -248,6 +250,7 @@ export const DistribucionPTPanel = ({ registroId }) => {
         const params = new URLSearchParams({
           search: ajusteSearch,
           limit: '30',
+          dias_ventana: '180', // 6 meses hacia atrás
         });
         if (registroId) params.set('registro_id', registroId);
         const res = await axios.get(

@@ -659,7 +659,7 @@ async def buscar_product_templates(
 async def buscar_stock_inventories(
     search: str = Query("", min_length=0),
     registro_id: Optional[str] = Query(None, description="Si se pasa, filtra solo ajustes que muevan algún template declarado en la distribución del corte"),
-    dias_ventana: int = Query(120, ge=1, le=730, description="Solo ajustes con fecha en los últimos N días"),
+    dias_ventana: int = Query(180, ge=1, le=730, description="Solo ajustes con fecha en los últimos N días (default 180 = 6 meses)"),
     incluir_legacy_flag: bool = Query(False, description="Si True, también incluye ajustes con x_es_ingreso_produccion=true aunque no estén en una location de ingreso configurada (compat hacia atrás)"),
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(get_current_user)
@@ -669,7 +669,7 @@ async def buscar_stock_inventories(
     Reglas nuevas (post-016_locations_ingreso_produccion):
       - Solo ajustes `state='done'` en una de las locations marcadas
         como "ingreso de producción" (tabla prod_locations_ingreso_produccion).
-      - Solo ajustes dentro de los últimos `dias_ventana` días (default 120).
+      - Solo ajustes dentro de los últimos `dias_ventana` días (default 180 = 6 meses).
       - Si se pasa `registro_id`: solo aparecen los que mueven al menos un
         product_template_id_odoo declarado en la distribución del corte
         (cualquier tipo_salida).
