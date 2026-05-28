@@ -454,9 +454,9 @@ async def get_reporte_estados_item(
         "Para Costura": "para_costura",
         "Para Atraque": "para_atanque",
         "Para Atanque": "para_atanque",
-        "Para Lavandería": "para_lavanderia",
+        "Para Lavanderia": "para_lavanderia",
         "Acabado": "acabado",
-        "Almacén PT": "almacen_pt",
+        "Almacen PT": "almacen_pt",
         "Tienda": "tienda",
     }
 
@@ -465,9 +465,9 @@ async def get_reporte_estados_item(
         "Para Costura",
         "Para Atraque",
         "Para Atanque",
-        "Para Lavandería",
+        "Para Lavanderia",
         "Acabado",
-        "Almacén PT",
+        "Almacen PT",
     ]
     if include_tienda:
         estados_incluidos.append("Tienda")
@@ -705,9 +705,9 @@ async def export_reporte_estados_item(
         ('Para Corte', 'para_corte'),
         ('Para Costura', 'para_costura'),
         ('Para Atraque', 'para_atanque'),
-        ('Para Lavandería', 'para_lavanderia'),
+        ('Para Lavanderia', 'para_lavanderia'),
         ('Acabado', 'acabado'),
-        ('Almacén PT', 'almacen_pt'),
+        ('Almacen PT', 'almacen_pt'),
     ]
     if include_tienda:
         cols.append(('Tienda', 'tienda'))

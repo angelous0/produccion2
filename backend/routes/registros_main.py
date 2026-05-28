@@ -7,7 +7,7 @@ from datetime import date, datetime, timezone, timedelta
 
 def _norm_estado(s):
     """Normaliza un nombre de estado para comparar tolerante a tildes
-    y mayúsculas. 'Lavandería' == 'Lavanderia' == 'LAVANDERIA'.
+    y mayúsculas. 'Lavanderia' == 'Lavanderia' == 'LAVANDERIA'.
     Devuelve '' si s es None/falsy."""
     if not s:
         return ''
@@ -510,7 +510,7 @@ async def get_registros(
             movs_vencidos = d.pop('movs_vencidos', 0) or 0
             if par_json:
                 d['estado_operativo'] = 'PARALIZADA'
-            elif d['estado'] != 'Almacén PT':
+            elif d['estado'] != 'Almacen PT':
                 if movs_vencidos > 0:
                     d['estado_operativo'] = 'EN_RIESGO'
                 elif d.get('fecha_entrega_final'):
@@ -1126,7 +1126,7 @@ async def analisis_estado_registro(registro_id: str, _u=Depends(require_permissi
             movs_por_servicio[sid].append(dict(m))
         
         # Encontrar la etapa actual en la ruta — comparación tolerante a
-        # tildes (cortes viejos guardaron 'Lavandería' con tilde mientras
+        # tildes (cortes viejos guardaron 'Lavanderia' con tilde mientras
         # la ruta usa 'Lavanderia' sin tilde).
         etapa_actual_idx = None
         estado_actual_norm = _norm_estado(estado_actual)

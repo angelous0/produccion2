@@ -57,8 +57,8 @@ def normalize_label(value: Optional[str]) -> str:
 ESTADOS_MATRIZ_ORDEN = [
     "Para Corte", "Corte", "Para Estampado", "Estampado",
     "Para Costura", "Costura", "Para Atraque", "Atraque",
-    "Para Lavandería", "Muestra Lavanderia", "Lavandería",
-    "Para Acabado", "Acabado", "Producto Terminado", "Almacén PT",
+    "Para Lavanderia", "Muestra Lavanderia", "Lavanderia",
+    "Para Acabado", "Acabado", "Producto Terminado", "Almacen PT",
     "Tienda",
 ]
 
@@ -662,7 +662,7 @@ async def wip_por_etapa(
                 )
 
                 # Helper: normaliza nombre (sin tildes, lowercase, espacios trim)
-                # para emparejar "Lavandería" ↔ "Lavanderia", etc.
+                # para emparejar "Lavanderia" ↔ "Lavanderia", etc.
                 import unicodedata as _u
                 def _norm(s: str) -> str:
                     if not s:
@@ -672,7 +672,7 @@ async def wip_por_etapa(
                     return s.lower().strip()
 
                 # Alias manuales para nombres equivalentes pero distintos
-                # (ej. la ruta los llama "Producto Terminado" y la BD "Almacén PT").
+                # (ej. la ruta los llama "Producto Terminado" y la BD "Almacen PT").
                 ALIAS = {
                     "producto terminado": "almacen pt",
                     "almacen pt":         "producto terminado",
@@ -1431,7 +1431,7 @@ async def matriz_produccion(
             LEFT JOIN LATERAL (
                 -- Trae el movimiento del servicio cuyo nombre coincide con el estado
                 -- actual del registro (normalizando tildes). Si el estado no es un
-                -- servicio (ej: "Tienda", "Almacén PT"), no devuelve nada.
+                -- servicio (ej: "Tienda", "Almacen PT"), no devuelve nada.
                 SELECT sp.nombre as ult_servicio,
                        mp.fecha_inicio as ult_fecha_inicio,
                        pp.nombre as ult_persona
@@ -1512,7 +1512,7 @@ async def matriz_produccion(
 
         # Alinear columnas con los estados reales del resultado. Las rutas pueden
         # tener variantes sin tilde ("Lavanderia") mientras los registros guardan
-        # el estado con tilde ("Lavandería"). Si no se corrige aquí, el total sí
+        # el estado con tilde ("Lavanderia"). Si no se corrige aquí, el total sí
         # cuenta esos registros pero la celda queda invisible en la UI.
         estados_resultado = []
         seen_estados = set()
@@ -1756,12 +1756,12 @@ async def ficha_item_detail(
 
     talla_orden = {t["nombre"]: t["orden"] for t in tallas_cat}
 
-    ESTADOS_TALLER   = {"Para Lavandería", "Para Atraque", "Atraque", "Muestra Lavanderia"}
+    ESTADOS_TALLER   = {"Para Lavanderia", "Para Atraque", "Atraque", "Muestra Lavanderia"}
     # Proceso intermedio: en lavandería y/o acabado. Ahí debe poder asignarse el color.
-    ESTADOS_LAV      = {"Lavandería", "Para Acabado", "Acabado"}
+    ESTADOS_LAV      = {"Lavanderia", "Para Acabado", "Acabado"}
     # Stock en almacén: producto listo / en almacén. La tienda se trae directo
     # de Odoo (stock_quant) para evitar doble conteo con los registros.
-    ESTADOS_ALMACEN  = {"Producto Terminado", "Almacén PT"}
+    ESTADOS_ALMACEN  = {"Producto Terminado", "Almacen PT"}
 
     estrella_set: set = set()  # colores ⭐ de la regla aplicable; se llena dentro de "if rows:"
     all_tallas: set = set()
@@ -3164,9 +3164,9 @@ async def validacion_registros(
             "Para Corte": 0, "Corte": 1,
             "Para Costura": 2, "Costura": 3,
             "Para Atraque": 4, "Atraque": 5,
-            "Para Lavandería": 6, "Muestra Lavanderia": 7, "Lavandería": 8,
+            "Para Lavanderia": 6, "Muestra Lavanderia": 7, "Lavanderia": 8,
             "Para Acabado": 9, "Acabado": 10,
-            "Almacén PT": 11, "Tienda": 12,
+            "Almacen PT": 11, "Tienda": 12,
         }
 
         # ── Helpers de MP ──────────────────────────────────────────────────
@@ -3462,7 +3462,7 @@ async def reporte_tiempos_muertos(
             LEFT JOIN produccion.prod_entalles en ON en.id = mod.entalle_id
             LEFT JOIN produccion.prod_telas te ON te.id = mod.tela_id
             LEFT JOIN produccion.prod_hilos_especificos he ON he.id = COALESCE(mod.hilo_especifico_id, r.hilo_especifico_id)
-            WHERE r.estado NOT IN ('Almacén PT', 'Tienda')
+            WHERE r.estado NOT IN ('Almacen PT', 'Tienda')
               AND NOT EXISTS (
                   SELECT 1 FROM produccion.prod_movimientos_produccion m
                   WHERE m.registro_id = r.id AND m.fecha_fin IS NOT NULL
@@ -5454,7 +5454,7 @@ async def cortes_listado(
     - Soporta modelos normales y modelos manuales (modelo_manual JSONB).
     - Default: incluye cortes en Tienda (control total). Pasar incluir_tienda=false para ocultarlos.
 
-    Conciliación (solo para estados 'Almacén PT' y 'Tienda'):
+    Conciliación (solo para estados 'Almacen PT' y 'Tienda'):
     - Compara Distribución Esperada (prod_registro_pt_relacion) vs Ingresado en Odoo
       (stock_move 'done' vinculados al corte vía prod_registro_pt_odoo_vinculo).
     - Devuelve estado: 'completo' | 'parcial' | 'pendiente' | 'sin_distribucion' | None.
@@ -5497,7 +5497,7 @@ async def cortes_listado(
         having_conciliacion = ""
         if solo_pendientes_conciliar:
             having_conciliacion = (
-                " AND r.estado IN ('Almacén PT','Tienda') "
+                " AND r.estado IN ('Almacen PT','Tienda') "
                 " AND COALESCE(conc.total_esperado, 0) > 0 "
                 " AND COALESCE(conc.total_ingresado, 0) < COALESCE(conc.total_esperado, 0) "
             )
@@ -5636,7 +5636,7 @@ async def cortes_listado(
 
         # Estados donde tiene sentido conciliar (ya hay producto terminado entregado).
         # Comparación case-insensitive y sin tildes para evitar problemas con
-        # 'Almacén PT' vs 'Almacen PT'.
+        # 'Almacen PT' vs 'Almacen PT'.
         import unicodedata
         def _norm_estado(s: Optional[str]) -> str:
             if not s:
@@ -5760,7 +5760,7 @@ async def conciliacion_pendiente(
     pool = await get_pool()
     async with pool.acquire() as conn:
         # Filtros de estado
-        estados_validos = ["Almacén PT", "Tienda"] if incluir_tienda else ["Almacén PT"]
+        estados_validos = ["Almacen PT", "Tienda"] if incluir_tienda else ["Almacen PT"]
 
         # ---- Bloque 1: pendiente por producto (template) con sus cortes ----
         # Sacamos por_corte+producto las cantidades esperado/ingresado, filtramos

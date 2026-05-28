@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api", tags=["fallados-v2"])
 # ============================================================================
 # CONSTANTES
 # ============================================================================
-ETAPAS_CALIDAD = ["Para Acabado", "Acabado", "Almacén PT", "Tienda"]
+ETAPAS_CALIDAD = ["Para Acabado", "Acabado", "Almacen PT", "Tienda"]
 ROLES_PUEDEN_REVISAR = {"admin", "acabado", "supervisor_acabado"}
 ROLES_PUEDEN_PRORROGA = {"admin", "supervisor_acabado"}
 MAX_PRORROGAS = 2
@@ -123,7 +123,7 @@ async def cortes_pendientes_revision(
     """Regla de visibilidad (Opción B):
 
     Un corte aparece si:
-      - estado IN ('Para Acabado','Acabado','Almacén PT','Tienda')
+      - estado IN ('Para Acabado','Acabado','Almacen PT','Tienda')
       - estado_op IN ('ABIERTA','EN_PROCESO')
       - Y al menos una de:
           (a) Nunca fue revisado (no hay fila en prod_revision_calidad), o

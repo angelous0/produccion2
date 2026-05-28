@@ -386,7 +386,7 @@ async def update_incidencia(incidencia_id: str, input: IncidenciaUpdate, _u=Depe
                     reg = await conn.fetchrow("SELECT fecha_entrega_final, estado FROM prod_registros WHERE id = $1", registro_id)
                     if mov_vencido and mov_vencido > 0:
                         new_estado = 'EN_RIESGO'
-                    elif reg and reg['fecha_entrega_final'] and reg['fecha_entrega_final'] < date.today() and reg['estado'] != 'Almacén PT':
+                    elif reg and reg['fecha_entrega_final'] and reg['fecha_entrega_final'] < date.today() and reg['estado'] != 'Almacen PT':
                         new_estado = 'EN_RIESGO'
                     else:
                         new_estado = 'NORMAL'
@@ -589,7 +589,7 @@ async def levantar_paralizacion(paralizacion_id: str, _u=Depends(get_current_use
             reg = await conn.fetchrow("SELECT fecha_entrega_final, estado FROM prod_registros WHERE id = $1", registro_id)
             if mov_vencido and mov_vencido > 0:
                 new_estado = 'EN_RIESGO'
-            elif reg and reg['fecha_entrega_final'] and reg['fecha_entrega_final'] < date.today() and reg['estado'] != 'Almacén PT':
+            elif reg and reg['fecha_entrega_final'] and reg['fecha_entrega_final'] < date.today() and reg['estado'] != 'Almacen PT':
                 new_estado = 'EN_RIESGO'
             else:
                 new_estado = 'NORMAL'
@@ -634,7 +634,7 @@ async def update_registro_control(registro_id: str, data: dict, _u=Depends(get_c
         new_estado = 'NORMAL'
         if active_par and active_par > 0:
             new_estado = 'PARALIZADA'
-        elif updated_reg['estado'] != 'Almacén PT':
+        elif updated_reg['estado'] != 'Almacen PT':
             mov_vencido = await conn.fetchval(
                 "SELECT COUNT(*) FROM prod_movimientos_produccion WHERE registro_id = $1 AND fecha_esperada_movimiento < CURRENT_DATE",
                 registro_id

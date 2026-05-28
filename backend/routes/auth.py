@@ -468,9 +468,9 @@ async def get_estructura_permisos():
             "estados_disponibles": [
                 "Para Corte", "Corte", "Para Estampado", "Estampado",
                 "Para Costura", "Costura", "Bordado",
-                "Para Atraque", "Atraque", "Para Lavandería", "Muestra Lavandería", "Lavandería",
+                "Para Atraque", "Atraque", "Para Lavanderia", "Muestra Lavanderia", "Lavanderia",
                 "Para Acabado", "Acabado",
-                "Almacén PT", "Tienda",
+                "Almacen PT", "Tienda",
             ],
             "acciones_produccion": [
                 {"key": "crear_movimientos", "nombre": "Crear movimientos de produccion"},
