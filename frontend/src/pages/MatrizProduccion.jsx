@@ -35,8 +35,8 @@ const MIN_COL_WIDTH = 50;
 // Columnas ocultas y fusiones por defecto (cuando no hay prefs guardadas)
 const COLS_HIDDEN_BY_DEFAULT = ['Para Estampado', 'Estampado'];
 const MERGES_BY_DEFAULT = {
-  'Para Lavandería': ['Atraque', 'Para Atraque'],
-  'Almacén PT': ['Producto Terminado'],
+  'Para Lavanderia': ['Atraque', 'Para Atraque'],
+  'Almacen PT': ['Producto Terminado'],
 };
 
 function getDefaultPrefs(apiCols) {

@@ -10,9 +10,13 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const PAGE_SIZE = 30;
 
 // Estados agrupados como en el mockup v2.
-const ESTADOS_ACTIVOS = ['Corte', 'Costura', 'Estampado', 'Bordado', 'Atraque', 'Lavandería', 'Acabado'];
-const ESTADOS_ESPERA = ['Para Corte', 'Para Costura', 'Para Atraque', 'Para Lavandería', 'Para Acabado'];
-const ESTADOS_FINAL = ['Almacén PT', 'Tienda'];
+// IMPORTANTE: los `key` deben coincidir EXACTO con lo que está en
+// prod_registros.estado (canónico SIN TILDES, igual a las etapas de
+// prod_rutas_produccion). Los `label` pueden mostrarse con tilde si
+// se prefiere visualmente.
+const ESTADOS_ACTIVOS = ['Corte', 'Costura', 'Estampado', 'Bordado', 'Atraque', 'Lavanderia', 'Acabado'];
+const ESTADOS_ESPERA = ['Para Corte', 'Para Costura', 'Para Atraque', 'Para Lavanderia', 'Para Acabado'];
+const ESTADOS_FINAL = ['Almacen PT', 'Tienda'];
 const TODOS_ESTADOS = [...ESTADOS_ACTIVOS, ...ESTADOS_ESPERA, ...ESTADOS_FINAL];
 
 // Chips rápidos arriba (subset de los más usados).
@@ -27,11 +31,11 @@ const CHIPS_RAPIDOS = [
   { key: 'Bordado', label: 'Bordado' },
   { key: 'Para Atraque', label: 'Para Atraque' },
   { key: 'Atraque', label: 'Atraque' },
-  { key: 'Para Lavandería', label: 'Para Lavandería' },
-  { key: 'Lavandería', label: 'Lavandería' },
+  { key: 'Para Lavanderia', label: 'Para Lavandería' },
+  { key: 'Lavanderia', label: 'Lavandería' },
   { key: 'Para Acabado', label: 'Para Acabado' },
   { key: 'Acabado', label: 'Acabado' },
-  { key: 'Almacén PT', label: 'Almacén PT' },
+  { key: 'Almacen PT', label: 'Almacén PT' },
   { key: 'Tienda', label: 'Tienda' },
 ];
 

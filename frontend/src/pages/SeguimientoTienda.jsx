@@ -23,7 +23,7 @@ const fmtDM = (d) => {
 const estadoColor = (estado) => {
   if (!estado) return 'bg-zinc-100 text-zinc-700';
   if (estado === 'Tienda') return 'bg-emerald-100 text-emerald-800 border border-emerald-200';
-  if (estado === 'Almacén PT') return 'bg-blue-100 text-blue-800 border border-blue-200';
+  if (estado === 'Almacen PT') return 'bg-blue-100 text-blue-800 border border-blue-200';
   return 'bg-zinc-100 text-zinc-700 border border-zinc-200';
 };
 

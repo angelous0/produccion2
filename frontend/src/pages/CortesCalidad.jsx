@@ -41,7 +41,7 @@ import { cn } from '../lib/utils';
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const hdrs = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
-const ETAPAS = ['Para Acabado', 'Acabado', 'Almacén PT', 'Tienda'];
+const ETAPAS = ['Para Acabado', 'Acabado', 'Almacen PT', 'Tienda'];
 
 // Mapeo chip → causa enviada al backend (backend acepta 'tela' o 'servicio').
 // Si el chip es uno de los servicios, sería bueno también precargar servicio_id

@@ -70,7 +70,7 @@ const getEstadoOperativoBadge = (estado) => {
 
 const getFechaEntregaBadge = (fecha, estado) => {
   if (!fecha) return <span className="text-muted-foreground text-sm">-</span>;
-  if (estado === 'Almacén PT') return <span className="text-sm font-mono">{formatDate(fecha)}</span>;
+  if (estado === 'Almacen PT') return <span className="text-sm font-mono">{formatDate(fecha)}</span>;
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
   const entrega = new Date(fecha + 'T00:00:00');

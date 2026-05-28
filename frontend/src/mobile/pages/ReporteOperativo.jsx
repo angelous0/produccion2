@@ -20,7 +20,10 @@ const DEFAULT_FILTROS = {
   sinActualizar: false,
 };
 
-const SERVICIOS = ['Costura', 'Estampado', 'Bordado', 'Acabado', 'Lavandería'];
+// Los nombres de servicios coinciden con prod_servicios_produccion.nombre
+// (canónico SIN TILDES). Si el usuario quiere ver "Lavandería" con tilde
+// en el chip, cambiar solo el label visible, no el filtro.
+const SERVICIOS = ['Costura', 'Estampado', 'Bordado', 'Acabado', 'Lavanderia'];
 
 const RIESGO_COLOR = {
   vencido:  { bg: '#27272a', text: '#fff',    border: '#27272a', dot: '#27272a' },

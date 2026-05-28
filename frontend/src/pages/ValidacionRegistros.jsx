@@ -16,12 +16,12 @@ const STAGE_COLORS = {
   'Costura': 'bg-sky-100 text-sky-800 border-sky-200',
   'Para Atraque': 'bg-violet-100 text-violet-800 border-violet-200',
   'Atraque': 'bg-violet-100 text-violet-800 border-violet-200',
-  'Para Lavandería': 'bg-blue-100 text-blue-800 border-blue-200',
-  'Lavandería': 'bg-blue-100 text-blue-800 border-blue-200',
+  'Para Lavanderia': 'bg-blue-100 text-blue-800 border-blue-200',
+  'Lavanderia': 'bg-blue-100 text-blue-800 border-blue-200',
   'Muestra Lavanderia': 'bg-blue-100 text-blue-800 border-blue-200',
   'Para Acabado': 'bg-amber-100 text-amber-800 border-amber-200',
   'Acabado': 'bg-orange-100 text-orange-800 border-orange-200',
-  'Almacén PT': 'bg-red-100 text-red-800 border-red-200',
+  'Almacen PT': 'bg-red-100 text-red-800 border-red-200',
 };
 
 const MP_ITEMS = ['tocuyo', 'tela principal', 'Cierre', 'Tallas', 'Botón', 'Remache x2',
