@@ -84,6 +84,32 @@ async def change_password(data: UserChangePassword, current_user: dict = Depends
 
 # ==================== ENDPOINTS USUARIOS (ADMIN) ====================
 
+
+@router.get("/usuarios/mencionables")
+async def get_usuarios_mencionables(_u: dict = Depends(get_current_user)):
+    """Lista mínima de usuarios para autocomplete de @menciones en chat.
+
+    Accesible para CUALQUIER usuario autenticado (no admin-only).
+    Devuelve solo username + nombre_completo + rol — sin permisos ni nada sensible.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT username, nombre_completo, rol
+            FROM prod_usuarios
+            WHERE activo = TRUE
+            ORDER BY nombre_completo NULLS LAST, username
+        """)
+        return [
+            {
+                "username": r["username"],
+                "nombre_completo": r["nombre_completo"],
+                "rol": r["rol"],
+            }
+            for r in rows
+        ]
+
+
 @router.get("/usuarios")
 async def get_usuarios(current_user: dict = Depends(get_current_user)):
     if current_user['rol'] != 'admin':

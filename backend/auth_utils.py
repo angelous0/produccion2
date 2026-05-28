@@ -1,6 +1,7 @@
 """Shared authentication utilities used across all routers."""
 import os
 import json
+import unicodedata
 from datetime import datetime, timezone, timedelta
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -73,6 +74,55 @@ def check_permission(user: dict, tabla: str, accion: str) -> bool:
         permisos = json.loads(permisos) if permisos else {}
     tabla_permisos = permisos.get(tabla, {})
     return tabla_permisos.get(accion, False)
+
+
+def get_user_permissions(user: dict) -> dict:
+    permisos = user.get('permisos', {}) if user else {}
+    if isinstance(permisos, str):
+        permisos = json.loads(permisos) if permisos else {}
+    return permisos or {}
+
+
+def check_operational_action(user: dict, action_key: str, group: str = 'acciones_produccion') -> bool:
+    if not user:
+        return False
+    rol = user.get('rol', 'lectura')
+    if rol == 'admin':
+        return True
+    if rol == 'lectura':
+        return False
+
+    permisos = get_user_permissions(user)
+    operativos = permisos.get('_operativos')
+    if not operativos:
+        # Compatibilidad con usuarios antiguos: si aun no tienen permisos
+        # operativos granulares, no bloquear por este helper.
+        return True
+    acciones = operativos.get(group)
+    if acciones is None:
+        return True
+    return acciones.get(action_key) is True
+
+
+def check_service_permission(user: dict, servicio_id: str) -> bool:
+    if not user:
+        return False
+    if user.get('rol') == 'admin':
+        return True
+    permisos = get_user_permissions(user)
+    operativos = permisos.get('_operativos')
+    if not operativos or 'servicios_permitidos' not in operativos:
+        return True
+    servicios = operativos.get('servicios_permitidos') or []
+    # Regla historica del modulo: lista vacia = todos los servicios.
+    if len(servicios) == 0:
+        return True
+    return servicio_id in servicios
+
+
+def normalize_permission_label(value: str) -> str:
+    value = unicodedata.normalize('NFD', str(value or ''))
+    return ''.join(c for c in value if unicodedata.category(c) != 'Mn').strip().lower()
 
 
 def require_permission(tabla: str, accion: str):

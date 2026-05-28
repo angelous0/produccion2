@@ -178,6 +178,7 @@ export const RUTA_A_TABLA = {
   '/reportes/muestras-lavanderia': 'reporte_muestras_lavanderia',
   '/reportes/rendimiento-servicios': 'reporte_rendimiento_servicios',
   '/reportes/despachos-tienda': 'reporte_despachos_tienda',
+  '/reportes/seguimiento-tienda': 'reporte_despachos_tienda',
   '/reportes/movimientos-costos': 'reporte_movimientos_costos',
   '/reportes/trazabilidad': 'reporte_lotes',
   '/reportes/alertas': 'reporte_seguimiento',
