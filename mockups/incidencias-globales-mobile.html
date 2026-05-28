@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Incidencias globales + seguimiento — Mockup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --brand: #0f766e;
+    --brand-dark: #0d5f5a;
+    --brand-soft: #f0fdfa;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --bg: #f3f4f6;
+  }
+  body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  .phones-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 32px; padding: 32px; max-width: 1800px; margin: 0 auto; }
+  .phone-frame { width: 380px; border: 12px solid #1f2937; border-radius: 38px; overflow: hidden; background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4); margin: 0 auto; }
+  .phone-notch { height: 28px; background: #1f2937; display: flex; justify-content: center; align-items: center; color: white; font-size: 11px; font-weight: 600; }
+  .phone-body { height: 740px; overflow-y: auto; background: #f9fafb; position: relative; }
+  .header-mobile { background: var(--brand); color: white; padding: 14px 16px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 10; }
+  .screen-title { font-size: 11px; color: #64748b; text-align: center; margin-top: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid #e5e7eb; background: white; }
+  .chip.active { background: var(--brand); color: white; border-color: var(--brand); }
+  .pill { display:inline-flex; align-items:center; gap:4px; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; }
+  .pill-red { background: #fee2e2; color: #b91c1c; }
+  .pill-amber { background: #fef3c7; color: #b45309; }
+  .pill-green { background: #dcfce7; color: #15803d; }
+  .pill-blue { background: #dbeafe; color: #1d4ed8; }
+  .pill-gray { background: #e5e7eb; color: #475569; }
+</style>
+</head>
+<body>
+
+<div class="px-8 pt-8 pb-2 max-w-5xl mx-auto">
+  <h1 class="text-2xl font-bold">Incidencias globales + seguimiento</h1>
+  <p class="text-slate-600 mt-1">
+    Pantallas nuevas para ver todas las incidencias del sistema y hacer seguimiento con timeline de avances.
+  </p>
+</div>
+
+<div class="phones-grid">
+
+  <!-- ====================================================================== -->
+  <!-- 1 · Lista global de incidencias                                         -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">1 · Lista global · chips por estado</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Producción</div>
+            <div class="font-semibold text-[15px]">Incidencias · 14 abiertas</div>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- KPIs sumario -->
+          <div class="grid grid-cols-3 gap-2">
+            <div class="bg-white border border-slate-200 rounded-xl p-2.5 text-center">
+              <div class="font-mono font-extrabold text-lg text-red-600">3</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">Paralizadas</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-2.5 text-center">
+              <div class="font-mono font-extrabold text-lg text-amber-600">14</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">Abiertas</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-2.5 text-center">
+              <div class="font-mono font-extrabold text-lg text-emerald-600">42</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">Resueltas (mes)</div>
+            </div>
+          </div>
+
+          <!-- Buscador -->
+          <div class="relative">
+            <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input class="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-sm" placeholder="Buscar por corte, motivo..." />
+          </div>
+
+          <!-- Chips estado -->
+          <div class="flex gap-1.5 overflow-x-auto pb-1" style="scrollbar-width: none">
+            <button class="chip active flex-shrink-0">Abiertas (14)</button>
+            <button class="chip flex-shrink-0">⛔ Paralizadas (3)</button>
+            <button class="chip flex-shrink-0">Resueltas</button>
+            <button class="chip flex-shrink-0">Todas</button>
+          </div>
+
+          <!-- Lista de incidencias -->
+          <div class="space-y-2">
+            <!-- Incidencia paralizada (la más crítica arriba) -->
+            <a href="#" class="block bg-white border-2 border-red-300 rounded-2xl p-3" style="background:#fef2f2">
+              <div class="flex items-start justify-between gap-2 mb-1">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="pill pill-red">⛔ PARALIZA</span>
+                  <span class="pill pill-amber">ABIERTA</span>
+                </div>
+                <svg class="w-3 h-3 text-slate-300 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+              </div>
+              <div class="font-bold text-[13px] mt-1">Falta hilo específico</div>
+              <div class="text-[11px] text-slate-600 mt-1 leading-relaxed">
+                "Se acabó el hilo 30/3 negro · pedimos al proveedor"
+              </div>
+              <div class="flex items-center gap-2 mt-2 pt-2 border-t border-red-200">
+                <span class="text-[10px] font-mono font-bold text-slate-700">CORTE-128</span>
+                <span class="text-[10px] text-slate-500">·</span>
+                <span class="text-[10px] text-slate-600">Dockers</span>
+                <span class="text-[10px] text-slate-500">·</span>
+                <span class="text-[10px] text-slate-500">hace 2h</span>
+                <span class="ml-auto bg-amber-100 text-amber-700 text-[9px] font-bold rounded-full px-1.5 py-0.5">2 avances</span>
+              </div>
+            </a>
+
+            <!-- Incidencia abierta normal -->
+            <a href="#" class="block bg-white border border-slate-200 rounded-2xl p-3">
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="pill pill-amber">ABIERTA</span>
+                </div>
+                <svg class="w-3 h-3 text-slate-300 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+              </div>
+              <div class="font-bold text-[13px] mt-1">Máquina rota</div>
+              <div class="text-[11px] text-slate-600 mt-1">
+                "Recta industrial 4 con problema motor"
+              </div>
+              <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-100">
+                <span class="text-[10px] font-mono font-bold text-slate-700">CORTE-077</span>
+                <span class="text-[10px] text-slate-500">·</span>
+                <span class="text-[10px] text-slate-600">Polera Q</span>
+                <span class="text-[10px] text-slate-500">·</span>
+                <span class="text-[10px] text-slate-500">ayer</span>
+                <span class="ml-auto bg-slate-100 text-slate-700 text-[9px] font-bold rounded-full px-1.5 py-0.5">0 avances</span>
+              </div>
+            </a>
+
+            <!-- Otra abierta con avances -->
+            <a href="#" class="block bg-white border border-slate-200 rounded-2xl p-3">
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="pill pill-amber">ABIERTA</span>
+                </div>
+                <svg class="w-3 h-3 text-slate-300 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+              </div>
+              <div class="font-bold text-[13px] mt-1">Defecto en tela recibida</div>
+              <div class="text-[11px] text-slate-600 mt-1">
+                "Algunos rollos vienen con manchas · revisamos lote"
+              </div>
+              <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-100">
+                <span class="text-[10px] font-mono font-bold text-slate-700">CORTE-130</span>
+                <span class="text-[10px] text-slate-500">·</span>
+                <span class="text-[10px] text-slate-600">Chinos Slim</span>
+                <span class="text-[10px] text-slate-500">·</span>
+                <span class="text-[10px] text-slate-500">25 may</span>
+                <span class="ml-auto bg-blue-100 text-blue-700 text-[9px] font-bold rounded-full px-1.5 py-0.5">3 avances</span>
+              </div>
+            </a>
+
+            <!-- Una resuelta (gris suave) -->
+            <a href="#" class="block bg-white border border-slate-200 rounded-2xl p-3" style="opacity:.75">
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="pill pill-green">✓ RESUELTA</span>
+                </div>
+                <svg class="w-3 h-3 text-slate-300 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+              </div>
+              <div class="font-bold text-[13px] mt-1" style="text-decoration:line-through;color:#64748b">Avíos llegaron tarde</div>
+              <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-100">
+                <span class="text-[10px] font-mono font-bold text-slate-500">CORTE-101</span>
+                <span class="text-[10px] text-slate-500">·</span>
+                <span class="text-[10px] text-slate-500">22 may · resuelta hoy</span>
+              </div>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 2 · Detalle de incidencia con timeline                                  -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">2 · Detalle · timeline de avances</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">CORTE-128 · Dockers</div>
+            <div class="font-semibold text-[15px] truncate">Incidencia</div>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- Card cabecera de la incidencia -->
+          <div class="bg-white border-2 border-red-300 rounded-2xl p-3" style="background:#fef2f2">
+            <div class="flex items-center gap-1.5 mb-2 flex-wrap">
+              <span class="pill pill-red">⛔ PARALIZA</span>
+              <span class="pill pill-amber">ABIERTA</span>
+              <span class="ml-auto text-[10px] text-slate-500">hace 2h</span>
+            </div>
+            <div class="font-bold text-[15px]">Falta hilo específico</div>
+            <div class="text-[12px] text-slate-700 mt-2 leading-relaxed">
+              Se acabó el hilo 30/3 negro · pedimos al proveedor pero nos avisaron que demora 3 días. Mientras tanto el corte queda parado en costura.
+            </div>
+            <div class="flex items-center gap-2 mt-3 pt-2 border-t border-red-200">
+              <div class="text-[10px] text-slate-600">
+                Reportada por <strong>Raul</strong> el <strong>25/05 14:30</strong>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 mt-1">
+              <div class="text-[10px] text-slate-600">
+                Movimiento afectado: <strong>Costura · María López</strong>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 mt-1">
+              <div class="text-[10px] text-red-700 font-semibold">
+                ⏱ Paralizado hace 2h 15min
+              </div>
+            </div>
+          </div>
+
+          <!-- Timeline de avances -->
+          <div>
+            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-3">
+              Seguimiento (2 avances)
+            </div>
+            <div class="relative pl-7">
+              <div class="absolute left-[10px] top-2 bottom-2 w-0.5 bg-slate-200"></div>
+
+              <!-- Avance 2 (más reciente) -->
+              <div class="relative pb-5">
+                <div class="absolute left-[-22px] top-0.5 w-5 h-5 rounded-full border-4 border-white" style="background:var(--brand);box-shadow:0 0 0 1px var(--brand)"></div>
+                <div class="bg-white border border-teal-200 rounded-xl p-3">
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-[11px] font-semibold">Cristian Cassas</span>
+                    <span class="text-[10px] text-slate-500">hace 30 min</span>
+                  </div>
+                  <div class="text-[12px] text-slate-700 leading-relaxed">
+                    Hablé con el proveedor, me confirma que el hilo llega el viernes. ¿Podemos cambiar a otra ruta mientras?
+                  </div>
+                </div>
+              </div>
+
+              <!-- Avance 1 -->
+              <div class="relative">
+                <div class="absolute left-[-22px] top-0.5 w-4 h-4 rounded-full bg-white border-2" style="border-color:var(--brand)"></div>
+                <div class="bg-white border border-slate-200 rounded-xl p-3">
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-[11px] font-semibold">Cristian Cassas</span>
+                    <span class="text-[10px] text-slate-500">hace 1h 30min</span>
+                  </div>
+                  <div class="text-[12px] text-slate-700 leading-relaxed">
+                    Llamé al proveedor pero no contestaron. Voy a probar otro distribuidor.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reportar nuevo avance -->
+          <div class="bg-teal-50 border border-teal-200 rounded-2xl p-3">
+            <div class="text-[11px] font-bold uppercase tracking-wide mb-2" style="color:var(--brand)">
+              + Reportar avance
+            </div>
+            <textarea class="w-full p-2.5 rounded-xl border border-slate-300 text-sm" rows="3" placeholder="Contá qué se hizo o qué pasó con esta incidencia"></textarea>
+            <button class="w-full mt-2 bg-teal-700 text-white rounded-xl py-2.5 text-sm font-bold">
+              Guardar avance
+            </button>
+          </div>
+
+          <!-- Botón resolver (acción principal final) -->
+          <button class="w-full bg-emerald-600 text-white rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
+            Resolver y reanudar producción
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 3 · Estado resuelto (resumen final)                                     -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">3 · Detalle · ya resuelta</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">CORTE-101 · Polo Q</div>
+            <div class="font-semibold text-[15px] truncate">Incidencia · Resuelta</div>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- Card cabecera resuelta -->
+          <div class="bg-white border border-emerald-200 rounded-2xl p-3" style="background:#f0fdf4">
+            <div class="flex items-center gap-1.5 mb-2 flex-wrap">
+              <span class="pill pill-green">✓ RESUELTA</span>
+              <span class="ml-auto text-[10px] text-slate-500">resuelta hoy 11:20</span>
+            </div>
+            <div class="font-bold text-[15px]" style="text-decoration:line-through;color:#475569">Avíos llegaron tarde</div>
+            <div class="text-[12px] text-slate-700 mt-2 leading-relaxed">
+              El proveedor de etiquetas no entregó a tiempo. Encargamos a otro proveedor.
+            </div>
+
+            <!-- Resumen de duración -->
+            <div class="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-emerald-200 text-center">
+              <div>
+                <div class="font-mono font-bold text-[13px]">3</div>
+                <div class="text-[9px] text-slate-500 uppercase font-bold">Días abierta</div>
+              </div>
+              <div>
+                <div class="font-mono font-bold text-[13px]">5</div>
+                <div class="text-[9px] text-slate-500 uppercase font-bold">Avances</div>
+              </div>
+              <div>
+                <div class="font-mono font-bold text-[13px]">3</div>
+                <div class="text-[9px] text-slate-500 uppercase font-bold">Participantes</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Timeline resumida -->
+          <div>
+            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-3">
+              Historial completo
+            </div>
+            <div class="relative pl-7">
+              <div class="absolute left-[10px] top-2 bottom-2 w-0.5 bg-slate-200"></div>
+
+              <!-- Resolución -->
+              <div class="relative pb-4">
+                <div class="absolute left-[-22px] top-0.5 w-5 h-5 rounded-full flex items-center justify-center" style="background:#10b981">
+                  <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>
+                </div>
+                <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5">
+                  <div class="text-[11px] font-bold text-emerald-700">RESUELTA</div>
+                  <div class="text-[10px] text-emerald-700 mt-0.5">Eduard · hoy 11:20</div>
+                  <div class="text-[11px] text-slate-700 mt-1">Avíos del proveedor B llegaron, producción reanudada.</div>
+                </div>
+              </div>
+
+              <!-- Avances anteriores -->
+              <div class="relative pb-3">
+                <div class="absolute left-[-22px] top-0.5 w-4 h-4 rounded-full bg-white border-2 border-slate-300"></div>
+                <div class="bg-white border border-slate-200 rounded-xl p-2.5">
+                  <div class="text-[11px] font-semibold">Cristian Cassas · hoy 9:15</div>
+                  <div class="text-[11px] text-slate-700 mt-1">Proveedor B confirma entrega en la tarde.</div>
+                </div>
+              </div>
+
+              <div class="relative pb-3">
+                <div class="absolute left-[-22px] top-0.5 w-4 h-4 rounded-full bg-white border-2 border-slate-300"></div>
+                <div class="bg-white border border-slate-200 rounded-xl p-2.5">
+                  <div class="text-[11px] font-semibold">Eduard · ayer 16:45</div>
+                  <div class="text-[11px] text-slate-700 mt-1">Encargamos a proveedor B.</div>
+                </div>
+              </div>
+
+              <div class="relative pb-3">
+                <div class="absolute left-[-22px] top-0.5 w-4 h-4 rounded-full bg-white border-2 border-slate-300"></div>
+                <div class="bg-white border border-slate-200 rounded-xl p-2.5">
+                  <div class="text-[11px] font-semibold">Mirian · ayer 10:30</div>
+                  <div class="text-[11px] text-slate-700 mt-1">Hablamos con proveedor A, no hay stock.</div>
+                </div>
+              </div>
+
+              <!-- Apertura -->
+              <div class="relative">
+                <div class="absolute left-[-22px] top-0.5 w-4 h-4 rounded-full bg-amber-400"></div>
+                <div class="bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                  <div class="text-[11px] font-bold text-amber-800">ABIERTA</div>
+                  <div class="text-[10px] text-amber-800 mt-0.5">Mirian · 22 may 9:00</div>
+                  <div class="text-[11px] text-slate-700 mt-1">Avíos llegaron tarde. El proveedor de etiquetas no entregó a tiempo.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Botón Re-abrir (solo admin) -->
+          <button class="w-full border border-slate-300 text-slate-600 rounded-xl py-2.5 text-sm font-semibold">
+            Re-abrir incidencia
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="px-8 py-12 max-w-5xl mx-auto text-sm text-slate-600 space-y-3">
+  <h2 class="text-lg font-bold text-slate-900">Cómo accedés a esta vista</h2>
+  <ul class="list-disc pl-5 space-y-1">
+    <li>Desde el <strong>Home móvil</strong> agregamos un acceso "Incidencias globales" en la sección Acabado/Calidad (visible para admin y supervisor_acabado).</li>
+    <li>Desde el <strong>menú "Más" (3 puntos)</strong> de cualquier corte tendrás "Ver todas las incidencias del corte" igual que hoy.</li>
+    <li>Cada notificación de "Te mencionaron en una incidencia" o "Incidencia nueva en X" abre el detalle directo.</li>
+  </ul>
+
+  <h2 class="text-lg font-bold text-slate-900 pt-3">Estructura de la lista (pantalla 1)</h2>
+  <ul class="list-disc pl-5 space-y-1">
+    <li><strong>KPIs sumario</strong> arriba: Paralizadas (rojas) · Abiertas (ámbar) · Resueltas en el mes (verde).</li>
+    <li><strong>Chips de filtro</strong>: Abiertas, ⛔ Paralizadas, Resueltas, Todas. Por default arranca en Abiertas.</li>
+    <li><strong>Cada incidencia</strong> muestra: pills de estado, motivo (título), comentario, corte (n_corte + modelo), tiempo desde apertura, contador de avances.</li>
+    <li><strong>Las paralizadas</strong> tienen borde rojo + fondo levemente rojo para distinguirlas.</li>
+    <li><strong>Las resueltas</strong> aparecen con opacidad reducida y título tachado.</li>
+  </ul>
+
+  <h2 class="text-lg font-bold text-slate-900 pt-3">Detalle con seguimiento (pantalla 2)</h2>
+  <ul class="list-disc pl-5 space-y-1">
+    <li><strong>Cabecera</strong> con motivo, comentario inicial, quién la reportó, movimiento afectado y tiempo paralizada (si aplica).</li>
+    <li><strong>Timeline vertical</strong> de avances (usa el mismo patrón que ya tenemos en historial de avances %): el más reciente arriba con punto teal grande, los anteriores con puntos chicos huecos.</li>
+    <li><strong>Card teal "+ Reportar avance"</strong> con textarea y botón. Crea entrada en <code>prod_incidencia_avance</code>.</li>
+    <li><strong>Botón verde grande "Resolver y reanudar producción"</strong> abajo. Setea fecha_resolucion en la incidencia y, si paralizaba, levanta la paralización (cambia estado_operativo del registro de PARALIZADA → ACTIVO).</li>
+  </ul>
+
+  <h2 class="text-lg font-bold text-slate-900 pt-3">Vista de incidencia resuelta (pantalla 3)</h2>
+  <ul class="list-disc pl-5 space-y-1">
+    <li><strong>Card verde</strong> con resumen de duración: días que estuvo abierta, cantidad de avances, cantidad de personas que participaron.</li>
+    <li><strong>Timeline completa</strong> desde apertura hasta resolución, mostrando claramente quién resolvió.</li>
+    <li><strong>Botón "Re-abrir incidencia"</strong> al final (solo admin) por si se descubre que el problema no estaba resuelto del todo.</li>
+  </ul>
+
+  <h2 class="text-lg font-bold text-slate-900 pt-3">Backend necesario</h2>
+  <ul class="list-disc pl-5 space-y-1">
+    <li><strong>Endpoint nuevo</strong>: <code>GET /api/incidencias</code> (sin registro_id) con query params <code>estado</code>, <code>paraliza</code>, <code>search</code>, <code>limit</code>, <code>offset</code>. Devuelve incidencias enriquecidas con <code>registro_n_corte</code>, <code>registro_modelo</code>, <code>motivo_nombre</code>, <code>avances_count</code>, <code>fecha_resolucion</code>, <code>tiempo_paralizada</code>.</li>
+    <li>Endpoints existentes que reutilizamos:
+      <ul class="list-disc pl-5">
+        <li><code>GET /api/incidencias/:id/avances</code> — timeline</li>
+        <li><code>POST /api/incidencias/:id/avances</code> — agregar avance</li>
+        <li><code>PUT /api/incidencias/:id</code> — resolver (con fecha_resolucion)</li>
+      </ul>
+    </li>
+  </ul>
+</div>
+
+</body>
+</html>

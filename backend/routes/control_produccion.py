@@ -145,6 +145,118 @@ async def update_motivo_incidencia(motivo_id: str, input: MotivoCreate, _u=Depen
 
 # ========== INCIDENCIAS (Unificadas con Paralizaciones) ==========
 
+@router.get("/incidencias")
+async def get_incidencias_globales(
+    estado: str = "abiertas",     # "abiertas" | "resueltas" | "todas" | "paralizadas"
+    search: str = "",
+    limit: int = 50,
+    offset: int = 0,
+    _u=Depends(get_current_user),
+):
+    """Lista global de incidencias del sistema (no filtrada por corte).
+
+    Devuelve cada incidencia enriquecida con datos del registro
+    (n_corte, modelo) + motivo_nombre + cuenta de avances + paralizacion.
+
+    Filtros:
+      - estado='abiertas' (default): i.estado = 'ABIERTA'
+      - estado='resueltas': i.estado = 'RESUELTA'
+      - estado='paralizadas': i.estado = 'ABIERTA' + paraliza=TRUE
+      - estado='todas': sin filtro de estado
+      - search: busca en motivo, comentario, n_corte
+    """
+    from server import get_pool
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        conditions = []
+        params_list = []
+        param_idx = 1
+
+        if estado == "abiertas":
+            conditions.append("i.estado = 'ABIERTA'")
+        elif estado == "resueltas":
+            conditions.append("i.estado = 'RESUELTA'")
+        elif estado == "paralizadas":
+            conditions.append("i.estado = 'ABIERTA' AND i.paraliza = TRUE")
+        # estado == 'todas' → sin filtro
+
+        if search:
+            conditions.append(
+                f"(LOWER(COALESCE(m.nombre, '')) LIKE ${param_idx} "
+                f"OR LOWER(COALESCE(i.comentario, '')) LIKE ${param_idx} "
+                f"OR LOWER(COALESCE(r.n_corte, '')) LIKE ${param_idx})"
+            )
+            params_list.append(f"%{search.lower()}%")
+            param_idx += 1
+
+        where_clause = (" AND ".join(conditions)) if conditions else "TRUE"
+
+        # Total para paginación
+        total_row = await conn.fetchrow(
+            f"""SELECT COUNT(*) AS total
+                FROM prod_incidencia i
+                LEFT JOIN prod_motivos_incidencia m ON i.tipo = m.id
+                LEFT JOIN prod_registros r ON i.registro_id = r.id
+                WHERE {where_clause}""",
+            *params_list,
+        )
+        total = total_row["total"] if total_row else 0
+
+        # Lista paginada
+        rows = await conn.fetch(
+            f"""SELECT
+                  i.id, i.registro_id, i.movimiento_id, i.fecha_hora, i.usuario,
+                  i.tipo, i.comentario, i.estado, i.paraliza,
+                  i.paralizacion_id, i.comentario_resolucion, i.updated_at AS fecha_resolucion,
+                  i.created_at,
+                  m.nombre AS motivo_nombre,
+                  r.n_corte AS registro_n_corte,
+                  r.estado AS registro_estado,
+                  COALESCE(mo.nombre, r.modelo_manual->>'nombre_modelo') AS registro_modelo,
+                  p.activa AS paralizacion_activa,
+                  p.fecha_inicio AS paralizacion_inicio,
+                  p.fecha_fin AS paralizacion_fin,
+                  (SELECT COUNT(*) FROM prod_incidencia_avance WHERE incidencia_id = i.id) AS avances_count
+              FROM prod_incidencia i
+              LEFT JOIN prod_motivos_incidencia m ON i.tipo = m.id
+              LEFT JOIN prod_registros r ON i.registro_id = r.id
+              LEFT JOIN prod_modelos mo ON r.modelo_id = mo.id
+              LEFT JOIN prod_paralizacion p ON i.paralizacion_id = p.id
+              WHERE {where_clause}
+              ORDER BY i.fecha_hora DESC NULLS LAST
+              LIMIT ${param_idx} OFFSET ${param_idx + 1}""",
+            *params_list, limit, offset,
+        )
+
+        items = []
+        for r in rows:
+            d = row_to_dict(r)
+            if not d.get("motivo_nombre") and d.get("tipo"):
+                d["motivo_nombre"] = d["tipo"]
+            items.append(d)
+
+        # KPIs globales (para el Home y la cabecera de la lista)
+        kpis_row = await conn.fetchrow(
+            """SELECT
+                 SUM(CASE WHEN estado = 'ABIERTA' THEN 1 ELSE 0 END) AS abiertas,
+                 SUM(CASE WHEN estado = 'ABIERTA' AND paraliza = TRUE THEN 1 ELSE 0 END) AS paralizadas,
+                 SUM(CASE WHEN estado = 'RESUELTA' AND updated_at >= NOW() - INTERVAL '30 days' THEN 1 ELSE 0 END) AS resueltas_mes
+               FROM prod_incidencia"""
+        )
+
+        return {
+            "items": items,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "kpis": {
+                "abiertas": int(kpis_row["abiertas"] or 0) if kpis_row else 0,
+                "paralizadas": int(kpis_row["paralizadas"] or 0) if kpis_row else 0,
+                "resueltas_mes": int(kpis_row["resueltas_mes"] or 0) if kpis_row else 0,
+            },
+        }
+
+
 @router.get("/incidencias/{registro_id}")
 async def get_incidencias(registro_id: str):
     from server import get_pool

@@ -4,7 +4,7 @@ import axios from 'axios';
 import {
   AlertOctagon, ChevronRight, Loader2, AlertTriangle, Clock, Layers,
   QrCode, Package, ArrowUpRight, Plus, DollarSign, Sliders, FlaskConical,
-  Send, BookmarkCheck, History, Box,
+  Send, BookmarkCheck, History, Box, PauseCircle,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { puede, ACCIONES } from '../utils/permisos';
@@ -36,6 +36,8 @@ export const MobileHome = () => {
     stock_bajo: 0,
     stock_agotado: 0,
     notif_no_leidas: 0,
+    inc_abiertas: 0,
+    inc_paralizadas: 0,
   });
 
   useEffect(() => {
@@ -48,6 +50,7 @@ export const MobileHome = () => {
         ingresosRes,
         stockRes,
         notifRes,
+        incRes,
       ] = await Promise.all([
         // Registros activos (urgentes/paralizados/normales)
         axios.get(`${API}/registros?limit=200&excluir_estados=Tienda,CERRADA,ANULADA`)
@@ -67,6 +70,9 @@ export const MobileHome = () => {
         // Notificaciones no leídas
         axios.get(`${API}/notificaciones?solo_no_leidas=true&limit=1`)
           .catch(() => ({ data: { total: 0 } })),
+        // Incidencias globales — solo KPIs (limit=1)
+        axios.get(`${API}/incidencias?estado=todas&limit=1`)
+          .catch(() => ({ data: { kpis: {} } })),
       ]);
       if (cancelado) return;
 
@@ -91,6 +97,11 @@ export const MobileHome = () => {
         ? notifRes.data.total
         : (Array.isArray(notifRes.data) ? notifRes.data.length : 0);
 
+      // Incidencias (KPIs globales)
+      const incKpis = incRes.data?.kpis || {};
+      const incAbiertas = Number(incKpis.abiertas || 0);
+      const incParalizadas = Number(incKpis.paralizadas || 0);
+
       setStats({
         registros: regs,
         fallados_vencidos: Number(kpis.vencidos || kpis.fallados_vencidos || 0),
@@ -99,6 +110,8 @@ export const MobileHome = () => {
         stock_bajo: stockBajo,
         stock_agotado: stockAgotado,
         notif_no_leidas: notifTotal,
+        inc_abiertas: incAbiertas,
+        inc_paralizadas: incParalizadas,
       });
       setLoading(false);
     })();
@@ -378,13 +391,17 @@ function buildResumenAtencion(user, stats) {
     };
   }
 
+  // Incidencias paralizadas (de cualquier corte) — vienen del endpoint global.
+  const incParalizadas = stats.inc_paralizadas || 0;
+
   // ADMIN → todo
   if (rol === 'admin') {
-    if (urgentes === 0 && paralizados === 0 && fallados === 0) return null;
+    if (urgentes === 0 && paralizados === 0 && fallados === 0 && incParalizadas === 0) return null;
     return {
       tono: 'rojo',
       items: [
         ...(urgentes > 0 ? [{ n: urgentes, label: 'Urgentes' }] : []),
+        ...(incParalizadas > 0 ? [{ n: incParalizadas, label: 'Inc. paraliz.' }] : []),
         ...(fallados > 0 ? [{ n: fallados, label: 'Fallados' }] : []),
         ...(paralizados > 0 ? [{ n: paralizados, label: 'Paraliz.' }] : []),
       ].slice(0, 3),
@@ -392,12 +409,13 @@ function buildResumenAtencion(user, stats) {
     };
   }
 
-  // Operarios y supervisores de producción → urgentes + paralizados
-  if (urgentes === 0 && paralizados === 0) return null;
+  // Operarios y supervisores de producción → urgentes + paralizados + inc. paralizadas
+  if (urgentes === 0 && paralizados === 0 && incParalizadas === 0) return null;
   return {
     tono: 'rojo',
     items: [
       ...(urgentes > 0 ? [{ n: urgentes, label: 'Urgentes' }] : []),
+      ...(incParalizadas > 0 ? [{ n: incParalizadas, label: 'Inc. paraliz.' }] : []),
       ...(paralizados > 0 ? [{ n: paralizados, label: 'Paraliz.' }] : []),
     ],
     cta: { label: 'Ver registros', to: '/m/registros' },
@@ -458,6 +476,20 @@ function buildSecciones(user, stats) {
     bg: 'var(--m-brand-soft)', fg: 'var(--m-brand)',
     meta: 'Abrir corte con cámara',
     to: '/m/escanear',
+  });
+  // Incidencias globales — visible para todos los autenticados (es de seguimiento)
+  const incAbiertas = stats.inc_abiertas || 0;
+  const incParaliz = stats.inc_paralizadas || 0;
+  produccion.push({
+    label: 'Incidencias', icon: <PauseCircle size={18} />,
+    bg: incParaliz > 0 ? '#fee2e2' : '#fef3c7',
+    fg: incParaliz > 0 ? '#dc2626' : '#b45309',
+    meta: incAbiertas === 0
+      ? 'Sin incidencias abiertas'
+      : `${incAbiertas} abierta${incAbiertas !== 1 ? 's' : ''}${incParaliz > 0 ? ` · ${incParaliz} ⛔` : ''}`,
+    to: '/m/incidencias',
+    badge: incParaliz > 0 ? incParaliz : (incAbiertas > 0 ? incAbiertas : null),
+    badgeColor: incParaliz > 0 ? '#dc2626' : '#b45309',
   });
   if (puede(user, ACCIONES.CREAR_CORTE)) {
     produccion.push({
