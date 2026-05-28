@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Historial de avances — 3 versiones</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --brand: #0f766e;
+    --brand-dark: #0d5f5a;
+    --brand-soft: #f0fdfa;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --bg: #f3f4f6;
+  }
+  body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  .phones-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 32px; padding: 32px; max-width: 1500px; margin: 0 auto; }
+  .phone-frame { width: 380px; border: 12px solid #1f2937; border-radius: 38px; overflow: hidden; background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4); margin: 0 auto; }
+  .phone-notch { height: 28px; background: #1f2937; display: flex; justify-content: center; align-items: center; color: white; font-size: 11px; font-weight: 600; }
+  .phone-body { height: 740px; overflow-y: auto; background: #f9fafb; position: relative; }
+  .header-mobile { background: var(--brand); color: white; padding: 14px 16px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 10; }
+  .screen-title { font-size: 11px; color: #64748b; text-align: center; margin-top: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+</style>
+</head>
+<body>
+
+<div class="px-8 pt-8 pb-2 max-w-5xl mx-auto">
+  <h1 class="text-2xl font-bold">Historial de avances — 3 propuestas</h1>
+  <p class="text-slate-600 mt-1">
+    Cada propuesta muestra el mismo movimiento de costura (María López · 150 prendas)
+    con 4 reportes de avance históricos. El usuario actual es <strong>María López</strong>,
+    por eso solo ve el botón de basurero en SUS reportes (no en los de Pedro Ruiz).
+  </p>
+</div>
+
+<div class="phones-grid">
+
+  <!-- ====================================================================== -->
+  <!-- OPCIÓN A — Timeline vertical con línea                                  -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">A · Timeline vertical con línea</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">CORTE-006 · Hoodie Urban</div>
+            <div class="font-semibold text-[15px] truncate">Costura · María López</div>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- Card "Avance reportado" actual (referencia) -->
+          <div class="bg-teal-50 border border-teal-200 rounded-2xl p-3">
+            <div class="flex items-center justify-between mb-2">
+              <span class="flex items-center gap-1.5 text-[12px] font-semibold" style="color:var(--brand)">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/></svg>
+                Avance reportado
+              </span>
+              <span class="font-mono font-bold text-lg" style="color:var(--brand)">85%</span>
+            </div>
+            <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+              <div class="h-full" style="width:85%;background:var(--brand)"></div>
+            </div>
+          </div>
+
+          <!-- Botón Reportar -->
+          <button class="w-full border border-teal-600 text-teal-700 rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/></svg>
+            Reportar avance
+          </button>
+
+          <!-- Historial -->
+          <div class="pt-3">
+            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-3">
+              Historial de avances (4)
+            </div>
+
+            <!-- Timeline -->
+            <div class="relative pl-7">
+              <!-- Línea vertical -->
+              <div class="absolute left-[10px] top-2 bottom-2 w-0.5 bg-slate-200"></div>
+
+              <!-- Entry 1 (más reciente, arriba) -->
+              <div class="relative pb-5">
+                <div class="absolute left-[-22px] top-0.5 w-5 h-5 rounded-full border-4 border-white" style="background:var(--brand);box-shadow:0 0 0 1px var(--brand)"></div>
+                <div class="bg-white border border-teal-200 rounded-xl p-3">
+                  <div class="flex items-start justify-between">
+                    <div>
+                      <div class="font-mono font-bold text-xl" style="color:var(--brand)">85%</div>
+                      <div class="text-[11px] text-slate-500 mt-0.5">María López · hace 10 min</div>
+                    </div>
+                    <button class="text-red-500 p-1 rounded hover:bg-red-50">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Entry 2 -->
+              <div class="relative pb-5">
+                <div class="absolute left-[-22px] top-0.5 w-4 h-4 rounded-full bg-white border-2" style="border-color:var(--brand)"></div>
+                <div class="bg-white border border-slate-200 rounded-xl p-3">
+                  <div class="flex items-start justify-between">
+                    <div>
+                      <div class="font-mono font-bold text-base">70%</div>
+                      <div class="text-[11px] text-slate-500 mt-0.5">María López · ayer 4:30 pm</div>
+                    </div>
+                    <button class="text-red-500 p-1 rounded hover:bg-red-50">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Entry 3 (otro usuario - sin botón borrar) -->
+              <div class="relative pb-5">
+                <div class="absolute left-[-22px] top-0.5 w-4 h-4 rounded-full bg-white border-2 border-slate-300"></div>
+                <div class="bg-white border border-slate-200 rounded-xl p-3">
+                  <div class="font-mono font-bold text-base">50%</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">Pedro Ruiz · ayer 10:15 am</div>
+                </div>
+              </div>
+
+              <!-- Entry 4 (más vieja) -->
+              <div class="relative">
+                <div class="absolute left-[-22px] top-0.5 w-4 h-4 rounded-full bg-white border-2 border-slate-300"></div>
+                <div class="bg-white border border-slate-200 rounded-xl p-3">
+                  <div class="flex items-start justify-between">
+                    <div>
+                      <div class="font-mono font-bold text-base">20%</div>
+                      <div class="text-[11px] text-slate-500 mt-0.5">María López · 25 may 9:00 am</div>
+                    </div>
+                    <button class="text-red-500 p-1 rounded hover:bg-red-50">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="text-[10px] text-slate-400 italic text-center mt-3">
+              Solo podés borrar tus propios reportes
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- OPCIÓN B — Lista compacta tipo tabla                                    -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">B · Lista compacta (tabla)</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">CORTE-006 · Hoodie Urban</div>
+            <div class="font-semibold text-[15px] truncate">Costura · María López</div>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- Card avance actual -->
+          <div class="bg-teal-50 border border-teal-200 rounded-2xl p-3">
+            <div class="flex items-center justify-between mb-2">
+              <span class="flex items-center gap-1.5 text-[12px] font-semibold" style="color:var(--brand)">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/></svg>
+                Avance reportado
+              </span>
+              <span class="font-mono font-bold text-lg" style="color:var(--brand)">85%</span>
+            </div>
+            <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+              <div class="h-full" style="width:85%;background:var(--brand)"></div>
+            </div>
+          </div>
+
+          <button class="w-full border border-teal-600 text-teal-700 rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/></svg>
+            Reportar avance
+          </button>
+
+          <!-- Historial -->
+          <div class="pt-3">
+            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-2">
+              Historial de avances (4)
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+              <!-- Entry 1 (más reciente) -->
+              <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+                <span class="font-mono font-bold text-base" style="color:var(--brand);min-width:42px">85%</span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-[12px] font-semibold">María López</div>
+                  <div class="text-[10px] text-slate-500">hace 10 min</div>
+                </div>
+                <button class="text-red-500 p-1.5 rounded hover:bg-red-50">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862"/></svg>
+                </button>
+              </div>
+              <!-- Entry 2 -->
+              <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+                <span class="font-mono font-bold text-base text-slate-700" style="min-width:42px">70%</span>
+                <div class="flex-1">
+                  <div class="text-[12px] font-semibold">María López</div>
+                  <div class="text-[10px] text-slate-500">ayer 4:30 pm</div>
+                </div>
+                <button class="text-red-500 p-1.5 rounded hover:bg-red-50">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862"/></svg>
+                </button>
+              </div>
+              <!-- Entry 3 (otro usuario) -->
+              <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+                <span class="font-mono font-bold text-base text-slate-700" style="min-width:42px">50%</span>
+                <div class="flex-1">
+                  <div class="text-[12px] font-semibold">Pedro Ruiz</div>
+                  <div class="text-[10px] text-slate-500">ayer 10:15 am</div>
+                </div>
+                <!-- sin botón borrar -->
+              </div>
+              <!-- Entry 4 -->
+              <div class="flex items-center gap-3 p-3">
+                <span class="font-mono font-bold text-base text-slate-700" style="min-width:42px">20%</span>
+                <div class="flex-1">
+                  <div class="text-[12px] font-semibold">María López</div>
+                  <div class="text-[10px] text-slate-500">25 may 9:00 am</div>
+                </div>
+                <button class="text-red-500 p-1.5 rounded hover:bg-red-50">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="text-[10px] text-slate-400 italic text-center mt-3">
+              Solo podés borrar tus propios reportes
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- OPCIÓN C — Cards individuales                                           -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">C · Cards individuales</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">CORTE-006 · Hoodie Urban</div>
+            <div class="font-semibold text-[15px] truncate">Costura · María López</div>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- Card avance actual -->
+          <div class="bg-teal-50 border border-teal-200 rounded-2xl p-3">
+            <div class="flex items-center justify-between mb-2">
+              <span class="flex items-center gap-1.5 text-[12px] font-semibold" style="color:var(--brand)">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/></svg>
+                Avance reportado
+              </span>
+              <span class="font-mono font-bold text-lg" style="color:var(--brand)">85%</span>
+            </div>
+            <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+              <div class="h-full" style="width:85%;background:var(--brand)"></div>
+            </div>
+          </div>
+
+          <button class="w-full border border-teal-600 text-teal-700 rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 17l6-6 4 4 8-8"/></svg>
+            Reportar avance
+          </button>
+
+          <!-- Historial -->
+          <div class="pt-3 space-y-3">
+            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide">
+              Historial de avances (4)
+            </div>
+
+            <!-- Card 1 (más reciente - destacada) -->
+            <div class="bg-white border border-teal-200 rounded-xl p-4" style="box-shadow:0 4px 12px -4px rgba(15,118,110,.15)">
+              <div class="flex items-start justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center font-bold text-sm" style="color:var(--brand)">ML</div>
+                  <div>
+                    <div class="text-[12px] font-semibold">María López</div>
+                    <div class="text-[10px] text-slate-500">hace 10 min</div>
+                  </div>
+                </div>
+                <button class="text-red-500 p-1.5 rounded hover:bg-red-50">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862"/></svg>
+                </button>
+              </div>
+              <div class="font-mono font-bold text-2xl" style="color:var(--brand)">85%</div>
+              <div class="h-1 bg-slate-100 rounded mt-2 overflow-hidden">
+                <div class="h-full" style="width:85%;background:var(--brand)"></div>
+              </div>
+            </div>
+
+            <!-- Card 2 -->
+            <div class="bg-white border border-slate-200 rounded-xl p-4">
+              <div class="flex items-start justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-sm text-slate-600">ML</div>
+                  <div>
+                    <div class="text-[12px] font-semibold">María López</div>
+                    <div class="text-[10px] text-slate-500">ayer 4:30 pm</div>
+                  </div>
+                </div>
+                <button class="text-red-500 p-1.5 rounded hover:bg-red-50">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862"/></svg>
+                </button>
+              </div>
+              <div class="font-mono font-bold text-xl text-slate-700">70%</div>
+              <div class="h-1 bg-slate-100 rounded mt-2 overflow-hidden">
+                <div class="h-full bg-slate-400" style="width:70%"></div>
+              </div>
+            </div>
+
+            <!-- Card 3 (otro usuario) -->
+            <div class="bg-white border border-slate-200 rounded-xl p-4">
+              <div class="flex items-start justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center font-bold text-sm text-amber-700">PR</div>
+                  <div>
+                    <div class="text-[12px] font-semibold">Pedro Ruiz</div>
+                    <div class="text-[10px] text-slate-500">ayer 10:15 am</div>
+                  </div>
+                </div>
+                <!-- sin botón -->
+              </div>
+              <div class="font-mono font-bold text-xl text-slate-700">50%</div>
+              <div class="h-1 bg-slate-100 rounded mt-2 overflow-hidden">
+                <div class="h-full bg-slate-400" style="width:50%"></div>
+              </div>
+            </div>
+
+            <!-- Card 4 -->
+            <div class="bg-white border border-slate-200 rounded-xl p-4">
+              <div class="flex items-start justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-sm text-slate-600">ML</div>
+                  <div>
+                    <div class="text-[12px] font-semibold">María López</div>
+                    <div class="text-[10px] text-slate-500">25 may 9:00 am</div>
+                  </div>
+                </div>
+                <button class="text-red-500 p-1.5 rounded hover:bg-red-50">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862"/></svg>
+                </button>
+              </div>
+              <div class="font-mono font-bold text-xl text-slate-700">20%</div>
+              <div class="h-1 bg-slate-100 rounded mt-2 overflow-hidden">
+                <div class="h-full bg-slate-400" style="width:20%"></div>
+              </div>
+            </div>
+
+            <div class="text-[10px] text-slate-400 italic text-center mt-2">
+              Solo podés borrar tus propios reportes
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="px-8 py-12 max-w-5xl mx-auto text-sm text-slate-600 space-y-3">
+  <h2 class="text-lg font-bold text-slate-900">Comparación rápida</h2>
+
+  <table class="w-full text-sm border border-slate-200 rounded">
+    <thead class="bg-slate-100">
+      <tr>
+        <th class="text-left p-2">Criterio</th>
+        <th class="text-left p-2">A · Timeline</th>
+        <th class="text-left p-2">B · Lista</th>
+        <th class="text-left p-2">C · Cards</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="border-t">
+        <td class="p-2 font-medium">Densidad (cuántos caben)</td>
+        <td class="p-2">Media — 4-5 sin scroll</td>
+        <td class="p-2">Alta — 7-8 sin scroll</td>
+        <td class="p-2">Baja — 3 sin scroll</td>
+      </tr>
+      <tr class="border-t bg-slate-50">
+        <td class="p-2 font-medium">Énfasis en el último</td>
+        <td class="p-2">Sí (punto más grande arriba)</td>
+        <td class="p-2">No (todas iguales)</td>
+        <td class="p-2">Sí (sombra y borde teal)</td>
+      </tr>
+      <tr class="border-t">
+        <td class="p-2 font-medium">Sensación de "evolución"</td>
+        <td class="p-2">Fuerte (la línea conecta)</td>
+        <td class="p-2">Débil</td>
+        <td class="p-2">Media</td>
+      </tr>
+      <tr class="border-t bg-slate-50">
+        <td class="p-2 font-medium">Carga visual</td>
+        <td class="p-2">Media</td>
+        <td class="p-2">Baja</td>
+        <td class="p-2">Alta</td>
+      </tr>
+      <tr class="border-t">
+        <td class="p-2 font-medium">Mejor para</td>
+        <td class="p-2">Mostrar progreso temporal</td>
+        <td class="p-2">Movimientos con muchos reportes (10+)</td>
+        <td class="p-2">Pocos reportes, foto rica de cada uno</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="pt-2"><strong>En todas las opciones</strong>: el botón basurero rojo solo aparece en los reportes propios (María López en este ejemplo). Pedro Ruiz tiene un reporte y no se ve el botón. Al tocar basurero pide confirmación y luego llama al DELETE.</p>
+</div>
+
+</body>
+</html>

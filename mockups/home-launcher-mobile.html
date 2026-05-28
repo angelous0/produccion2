@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Home móvil — Launcher final (4 roles)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --brand: #0f766e;
+    --brand-dark: #0d5f5a;
+    --brand-soft: #f0fdfa;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --bg: #f3f4f6;
+  }
+  body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  .phones-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 32px; padding: 32px; max-width: 1800px; margin: 0 auto; }
+  .phone-frame { width: 380px; border: 12px solid #1f2937; border-radius: 38px; overflow: hidden; background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4); margin: 0 auto; }
+  .phone-notch { height: 28px; background: #1f2937; display: flex; justify-content: center; align-items: center; color: white; font-size: 11px; font-weight: 600; }
+  .phone-body { height: 740px; overflow-y: auto; background: #f9fafb; position: relative; }
+  .header-mobile {
+    background: var(--brand); color: white;
+    padding: 16px 16px 14px;
+    display: flex; align-items: center; gap: 10px;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .tabbar {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    background: white; border-top: 1px solid #e5e7eb;
+    height: 64px; position: sticky; bottom: 0;
+  }
+  .tabbar > div {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px; color: #64748b; font-size: 11px; font-weight: 500;
+  }
+  .tabbar > div.active { color: var(--brand); }
+  .screen-title { font-size: 11px; color: #64748b; text-align: center; margin-top: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .role-tag {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 10px; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; margin-left: 6px;
+  }
+  /* Tarjeta urgente — gradiente rojo */
+  .panel-atencion {
+    margin: 16px; padding: 14px;
+    border-radius: 16px; color: white;
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+    box-shadow: 0 10px 25px -10px rgba(220,38,38,.5);
+  }
+  .panel-atencion-amber {
+    background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+    box-shadow: 0 10px 25px -10px rgba(217,119,6,.4);
+  }
+  .panel-atencion-teal {
+    background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+    box-shadow: 0 10px 25px -10px rgba(13,148,136,.4);
+  }
+  .kpi-card {
+    background: white; border: 1px solid #e5e7eb; border-radius: 16px;
+    padding: 14px; margin: 0 16px;
+  }
+  .badge-pill {
+    background: #ef4444; color: white;
+    font-size: 10px; font-weight: 700;
+    border-radius: 999px; padding: 2px 7px;
+    min-width: 22px; text-align: center;
+  }
+  .badge-pill.amber { background: #d97706; }
+  .badge-pill.green { background: #059669; }
+</style>
+</head>
+<body>
+
+<div class="px-8 pt-8 pb-2 max-w-5xl mx-auto">
+  <h1 class="text-2xl font-bold">Home móvil — Diseño final (4 ejemplos por rol)</h1>
+  <p class="text-slate-600 mt-1">
+    Lista compacta agrupada + KPIs sumarios + panel "Requiere atención" <strong>contextual por rol</strong>.
+    Si un rol no tiene nada urgente, el panel no aparece (no se muestran ceros).
+  </p>
+</div>
+
+<div class="phones-grid">
+
+  <!-- ===================================================================== -->
+  <!-- 1. ADMIN (Eduard) — ve todo                                            -->
+  <!-- ===================================================================== -->
+  <div>
+    <div class="screen-title">
+      Eduard <span class="role-tag" style="background:#fecaca;color:#991b1b">admin</span>
+    </div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+
+        <div class="header-mobile">
+          <div class="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center font-bold text-sm">EC</div>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Hola,</div>
+            <div class="font-semibold text-[15px] truncate">Eduard Cárdenas</div>
+          </div>
+          <button class="relative w-9 h-9 rounded-full bg-white/15 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5"/></svg>
+            <span class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 border-2 border-[#0f766e]">5</span>
+          </button>
+        </div>
+
+        <div class="px-4 pt-4 pb-3">
+          <div class="text-[15px] font-bold">Buenas noches, Eduard</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">Miércoles, 27 de mayo</div>
+        </div>
+
+        <!-- Panel atención: ADMIN ve TODO -->
+        <div class="panel-atencion">
+          <div class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide opacity-90">
+            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L1 21h22L12 2zm0 6l8.5 14.5h-17L12 8z"/></svg>
+            Requieren atención
+          </div>
+          <div class="mt-2 grid grid-cols-3 gap-2">
+            <div class="bg-white/15 rounded-lg p-2 text-center">
+              <div class="text-2xl font-extrabold">2</div>
+              <div class="text-[10px] opacity-90">URGENTES</div>
+            </div>
+            <div class="bg-white/15 rounded-lg p-2 text-center">
+              <div class="text-2xl font-extrabold">3</div>
+              <div class="text-[10px] opacity-90">FALLADOS</div>
+            </div>
+            <div class="bg-white/15 rounded-lg p-2 text-center">
+              <div class="text-2xl font-extrabold">1</div>
+              <div class="text-[10px] opacity-90">PARALIZ.</div>
+            </div>
+          </div>
+          <button class="mt-2.5 w-full bg-white text-red-700 rounded-lg py-1.5 text-[11px] font-bold">
+            Ver todos →
+          </button>
+        </div>
+
+        <!-- KPIs sumarios -->
+        <div class="kpi-card">
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <div class="text-[20px] font-extrabold" style="color:var(--brand)">167</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">Activos</div>
+            </div>
+            <div>
+              <div class="text-[20px] font-extrabold text-red-600">2</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">Urgentes</div>
+            </div>
+            <div>
+              <div class="text-[20px] font-extrabold text-amber-600">3</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">Fallados</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lista agrupada -->
+        <div class="px-4 mt-3 mb-3">
+          <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-2">Producción</div>
+          <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#dbeafe;color:#2563eb">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Registros</div>
+                <div class="text-[11px] text-slate-500">167 activos</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:var(--brand-soft);color:var(--brand)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Escanear QR</div>
+                <div class="text-[11px] text-slate-500">Abrir corte con cámara</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+            <div class="flex items-center gap-3 p-3">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#f3e8ff;color:#7e22ce">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Nuevo corte</div>
+                <div class="text-[11px] text-slate-500">Crear registro</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-4 mb-3">
+          <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-2">Inventario</div>
+          <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#ecfdf5;color:#059669">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M20 7L9 18l-5-5"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Ingresos de MP</div>
+                <div class="text-[11px] text-slate-500">8 pendientes</div>
+              </div>
+              <span class="badge-pill">8</span>
+            </div>
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#f0fdfa;color:var(--brand)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Salidas libres</div>
+                <div class="text-[11px] text-slate-500">Mermas, muestras, daño</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#f3e8ff;color:#7e22ce">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Crear material</div>
+                <div class="text-[11px] text-slate-500">Item nuevo de inventario</div>
+              </div>
+              <span class="text-[10px] font-bold text-emerald-600">Nuevo</span>
+            </div>
+            <div class="flex items-center gap-3 p-3">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#fef3c7;color:#b45309">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Ajuste de stock</div>
+                <div class="text-[11px] text-slate-500">Conteo, encontrado, faltante</div>
+              </div>
+              <span class="text-[10px] font-bold text-emerald-600">Nuevo</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-4 mb-3">
+          <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-2">Acabado y Calidad</div>
+          <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#fee2e2;color:#dc2626">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 9v3.75M12 21a9 9 0 100-18 9 9 0 000 18z"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Fallados</div>
+                <div class="text-[11px] text-red-600 font-semibold">3 vencidos</div>
+              </div>
+              <span class="badge-pill">3</span>
+            </div>
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#fef9c3;color:#a16207">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Cobro de arreglos</div>
+                <div class="text-[11px] text-slate-500">2 notas por emitir</div>
+              </div>
+              <span class="badge-pill amber">2</span>
+            </div>
+            <div class="flex items-center gap-3 p-3">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#fef9c3;color:#a16207">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Muestras lavandería</div>
+                <div class="text-[11px] text-slate-500">Sin retorno</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="h-4"></div>
+
+        <div class="tabbar">
+          <div class="active"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3"/></svg><span>Inicio</span></div>
+          <div><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7"/></svg><span>Registros</span></div>
+          <div><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 8v4l3 3"/></svg><span>Historial</span></div>
+          <div><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg><span>Yo</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 2. OMAR — supervisor_acabado                                           -->
+  <!-- ===================================================================== -->
+  <div>
+    <div class="screen-title">
+      Omar <span class="role-tag" style="background:#fde68a;color:#92400e">sup. acabado</span>
+    </div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+
+        <div class="header-mobile">
+          <div class="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center font-bold text-sm">OM</div>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Hola,</div>
+            <div class="font-semibold text-[15px] truncate">Omar</div>
+          </div>
+          <button class="relative w-9 h-9 rounded-full bg-white/15 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5"/></svg>
+            <span class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 border-2 border-[#0f766e]">3</span>
+          </button>
+        </div>
+
+        <div class="px-4 pt-4 pb-3">
+          <div class="text-[15px] font-bold">Buenas noches, Omar</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">Miércoles, 27 de mayo</div>
+        </div>
+
+        <!-- Panel atención: omar ve fallados + urgentes en acabado -->
+        <div class="panel-atencion panel-atencion-amber">
+          <div class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide opacity-90">
+            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L1 21h22L12 2zm0 6l8.5 14.5h-17L12 8z"/></svg>
+            Requieren atención
+          </div>
+          <div class="mt-2 grid grid-cols-2 gap-2">
+            <div class="bg-white/15 rounded-lg p-2 text-center">
+              <div class="text-2xl font-extrabold">3</div>
+              <div class="text-[10px] opacity-90">FALLADOS VENCIDOS</div>
+            </div>
+            <div class="bg-white/15 rounded-lg p-2 text-center">
+              <div class="text-2xl font-extrabold">1</div>
+              <div class="text-[10px] opacity-90">URG. EN ACABADO</div>
+            </div>
+          </div>
+          <button class="mt-2.5 w-full bg-white rounded-lg py-1.5 text-[11px] font-bold" style="color:#b45309">
+            Ver fallados →
+          </button>
+        </div>
+
+        <!-- KPIs: cortes en su servicio -->
+        <div class="kpi-card">
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <div class="text-[20px] font-extrabold" style="color:var(--brand)">14</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">En acabado</div>
+            </div>
+            <div>
+              <div class="text-[20px] font-extrabold text-amber-600">3</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">Fallados</div>
+            </div>
+            <div>
+              <div class="text-[20px] font-extrabold text-emerald-600">8</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">A tienda</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-4 mt-3 mb-3">
+          <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-2">Acabado</div>
+          <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#fef9c3;color:#a16207">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Mis cortes en acabado</div>
+                <div class="text-[11px] text-slate-500">14 activos</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#fee2e2;color:#dc2626">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 9v3.75"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Fallados pendientes</div>
+                <div class="text-[11px] text-red-600 font-semibold">3 vencidos · 5 por vencer</div>
+              </div>
+              <span class="badge-pill">3</span>
+            </div>
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#fef9c3;color:#a16207">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Muestras lavandería</div>
+                <div class="text-[11px] text-slate-500">2 sin retorno</div>
+              </div>
+              <span class="badge-pill amber">2</span>
+            </div>
+            <div class="flex items-center gap-3 p-3">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#f3e8ff;color:#7e22ce">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Matriz de colores</div>
+                <div class="text-[11px] text-slate-500">Editar cortes en su etapa</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-4 mb-3">
+          <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-2">Producción</div>
+          <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#dbeafe;color:#2563eb">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Todos los registros</div>
+                <div class="text-[11px] text-slate-500">Ver lista completa</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+            <div class="flex items-center gap-3 p-3">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:var(--brand-soft);color:var(--brand)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Escanear QR</div>
+                <div class="text-[11px] text-slate-500">Abrir corte rápido</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="h-4"></div>
+
+        <div class="tabbar">
+          <div class="active"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3"/></svg><span>Inicio</span></div>
+          <div><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7"/></svg><span>Registros</span></div>
+          <div><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 8v4l3 3"/></svg><span>Historial</span></div>
+          <div><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg><span>Yo</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 3. RAUL — operario_costura                                             -->
+  <!-- ===================================================================== -->
+  <div>
+    <div class="screen-title">
+      Raul <span class="role-tag" style="background:#bfdbfe;color:#1e40af">op. costura</span>
+    </div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+
+        <div class="header-mobile">
+          <div class="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center font-bold text-sm">R</div>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Hola,</div>
+            <div class="font-semibold text-[15px] truncate">Raul</div>
+          </div>
+          <button class="relative w-9 h-9 rounded-full bg-white/15 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5"/></svg>
+            <span class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 border-2 border-[#0f766e]">2</span>
+          </button>
+        </div>
+
+        <div class="px-4 pt-4 pb-3">
+          <div class="text-[15px] font-bold">Buenas noches, Raul</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">Miércoles, 27 de mayo</div>
+        </div>
+
+        <!-- Panel atención: raul ve urgentes en costura + paralizados de su etapa -->
+        <div class="panel-atencion">
+          <div class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide opacity-90">
+            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L1 21h22L12 2zm0 6l8.5 14.5h-17L12 8z"/></svg>
+            Requieren atención
+          </div>
+          <div class="mt-2 grid grid-cols-2 gap-2">
+            <div class="bg-white/15 rounded-lg p-2 text-center">
+              <div class="text-2xl font-extrabold">2</div>
+              <div class="text-[10px] opacity-90">URG. EN COSTURA</div>
+            </div>
+            <div class="bg-white/15 rounded-lg p-2 text-center">
+              <div class="text-2xl font-extrabold">1</div>
+              <div class="text-[10px] opacity-90">PARALIZADO</div>
+            </div>
+          </div>
+          <button class="mt-2.5 w-full bg-white text-red-700 rounded-lg py-1.5 text-[11px] font-bold">
+            Ver cortes →
+          </button>
+        </div>
+
+        <!-- KPIs simples -->
+        <div class="kpi-card">
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <div class="text-[20px] font-extrabold" style="color:var(--brand)">9</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">En costura</div>
+            </div>
+            <div>
+              <div class="text-[20px] font-extrabold text-red-600">2</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">Urgentes</div>
+            </div>
+            <div>
+              <div class="text-[20px] font-extrabold text-emerald-600">12</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">Cerrados hoy</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-4 mt-3 mb-3">
+          <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-2">Mi trabajo</div>
+          <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#dbeafe;color:#2563eb">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Cortes en costura</div>
+                <div class="text-[11px] text-slate-500">9 activos · 2 urgentes</div>
+              </div>
+              <span class="badge-pill">2</span>
+            </div>
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:var(--brand-soft);color:var(--brand)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Escanear QR</div>
+                <div class="text-[11px] text-slate-500">Abrir corte rápido</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+            <div class="flex items-center gap-3 p-3">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#fef3c7;color:#b45309">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 8v4l3 3"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Mi historial</div>
+                <div class="text-[11px] text-slate-500">Avances de hoy</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-4 mb-3">
+          <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-2">Reportar</div>
+          <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div class="flex items-center gap-3 p-3">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#fef3c7;color:#b45309">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 9v3.75M12 21a9 9 0 100-18"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Reportar incidencia</div>
+                <div class="text-[11px] text-slate-500">Algo bloquea producción</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sin Inventario ni Acabado: Raul no tiene esos permisos -->
+
+        <div class="h-4"></div>
+
+        <div class="tabbar">
+          <div class="active"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3"/></svg><span>Inicio</span></div>
+          <div><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7"/></svg><span>Registros</span></div>
+          <div><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 8v4l3 3"/></svg><span>Historial</span></div>
+          <div><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg><span>Yo</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 4. INVENTARIO — supervisor_inventario                                  -->
+  <!-- ===================================================================== -->
+  <div>
+    <div class="screen-title">
+      Inventario <span class="role-tag" style="background:#a7f3d0;color:#065f46">sup. inventario</span>
+    </div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+
+        <div class="header-mobile">
+          <div class="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center font-bold text-sm">SI</div>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Hola,</div>
+            <div class="font-semibold text-[15px] truncate">Supervisor Inventario</div>
+          </div>
+          <button class="relative w-9 h-9 rounded-full bg-white/15 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5"/></svg>
+          </button>
+        </div>
+
+        <div class="px-4 pt-4 pb-3">
+          <div class="text-[15px] font-bold">Buenas noches</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">Miércoles, 27 de mayo</div>
+        </div>
+
+        <!-- Panel atención: inventario ve stock crítico -->
+        <div class="panel-atencion panel-atencion-amber">
+          <div class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide opacity-90">
+            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L1 21h22L12 2z"/></svg>
+            Requieren atención
+          </div>
+          <div class="mt-2 grid grid-cols-2 gap-2">
+            <div class="bg-white/15 rounded-lg p-2 text-center">
+              <div class="text-2xl font-extrabold">5</div>
+              <div class="text-[10px] opacity-90">STOCK BAJO</div>
+            </div>
+            <div class="bg-white/15 rounded-lg p-2 text-center">
+              <div class="text-2xl font-extrabold">2</div>
+              <div class="text-[10px] opacity-90">AGOTADOS</div>
+            </div>
+          </div>
+          <button class="mt-2.5 w-full bg-white rounded-lg py-1.5 text-[11px] font-bold" style="color:#b45309">
+            Ver alertas →
+          </button>
+        </div>
+
+        <!-- KPIs de inventario -->
+        <div class="kpi-card">
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <div class="text-[20px] font-extrabold" style="color:var(--brand)">297</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">Items</div>
+            </div>
+            <div>
+              <div class="text-[20px] font-extrabold text-amber-600">8</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">Ing. pend.</div>
+            </div>
+            <div>
+              <div class="text-[20px] font-extrabold text-blue-600">23</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">Salidas hoy</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-4 mt-3 mb-3">
+          <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-2">Inventario</div>
+          <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#ecfdf5;color:#059669">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M20 7L9 18l-5-5"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Ingresos de MP</div>
+                <div class="text-[11px] text-slate-500">8 pendientes</div>
+              </div>
+              <span class="badge-pill">8</span>
+            </div>
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#f0fdfa;color:var(--brand)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Salidas libres</div>
+                <div class="text-[11px] text-slate-500">Mermas, muestras, daño</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#f3e8ff;color:#7e22ce">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Crear material</div>
+                <div class="text-[11px] text-slate-500">Nuevo item</div>
+              </div>
+              <span class="text-[10px] font-bold text-emerald-600">Nuevo</span>
+            </div>
+            <div class="flex items-center gap-3 p-3">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#fef3c7;color:#b45309">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M10 4l-6 6 6 6m0-6h12"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Ajuste de stock</div>
+                <div class="text-[11px] text-slate-500">Conteo, encontrado, faltante</div>
+              </div>
+              <span class="text-[10px] font-bold text-emerald-600">Nuevo</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-4 mb-3">
+          <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-2">Producción</div>
+          <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div class="flex items-center gap-3 p-3 border-b border-slate-100">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#dbeafe;color:#2563eb">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Ver registros</div>
+                <div class="text-[11px] text-slate-500">Reservas y descargas</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+            <div class="flex items-center gap-3 p-3">
+              <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:var(--brand-soft);color:var(--brand)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-[13px]">Escanear QR</div>
+                <div class="text-[11px] text-slate-500">Material o corte</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sin Acabado: inventario no tiene esos permisos -->
+
+        <div class="h-4"></div>
+
+        <div class="tabbar">
+          <div class="active"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10"/></svg><span>Inicio</span></div>
+          <div><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10"/></svg><span>Registros</span></div>
+          <div><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 8v4l3 3"/></svg><span>Historial</span></div>
+          <div><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg><span>Yo</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="px-8 py-12 max-w-5xl mx-auto text-sm text-slate-600 space-y-3">
+  <h2 class="text-lg font-bold text-slate-900">Resumen del diseño</h2>
+
+  <p>Tres bloques apilados en este orden, con todos opcionales según rol:</p>
+  <ol class="list-decimal pl-5 space-y-1">
+    <li><strong>Panel "Requiere atención"</strong> — tarjeta con gradiente (rojo si hay cosas críticas, ámbar si solo hay tirones, teal si todo bien). Solo aparece si el rol tiene algo accionable. Contenido contextual:
+      <ul class="list-disc pl-5 mt-1 text-[12px]">
+        <li><strong>admin:</strong> Urgentes + Fallados + Paralizados</li>
+        <li><strong>supervisor_acabado:</strong> Fallados vencidos + Urgentes en acabado</li>
+        <li><strong>operario_costura:</strong> Urgentes en costura + Paralizados</li>
+        <li><strong>supervisor_inventario:</strong> Stock bajo + Agotados</li>
+        <li><strong>supervisor_corte/planificación:</strong> Urgentes + Paralizados</li>
+        <li><strong>mirian:</strong> Urgentes + Paralizados</li>
+        <li><strong>encargada_pt (lorena):</strong> Cortes en PT pendientes de aprobar</li>
+      </ul>
+    </li>
+    <li><strong>KPIs sumarios</strong> — tarjeta blanca con 3 números grandes. Contenido también contextual:
+      <ul class="list-disc pl-5 mt-1 text-[12px]">
+        <li><strong>admin:</strong> Activos / Urgentes / Fallados</li>
+        <li><strong>omar:</strong> En acabado / Fallados / A tienda</li>
+        <li><strong>raul:</strong> En costura / Urgentes / Cerrados hoy</li>
+        <li><strong>inventario:</strong> Items / Ing. pend. / Salidas hoy</li>
+      </ul>
+    </li>
+    <li><strong>Lista compacta agrupada</strong> — secciones por área (Producción / Inventario / Acabado / Reportar). Cada fila con icono color, título, meta, badge si aplica. Filtra por rol con <code>puede()</code>.</li>
+  </ol>
+
+  <p class="pt-2"><strong>Para implementar:</strong> necesito 1-2 endpoints nuevos para alimentar los contadores (ej. <code>/api/registros/atencion?rol=...</code> que devuelva los conteos del panel). Si no querés tocar backend ahora, primero hago todo con queries client-side (varios GET pequeños) y después optimizamos.</p>
+</div>
+
+</body>
+</html>
