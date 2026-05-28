@@ -14,6 +14,9 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '../components/ui/table';
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from '../components/ui/dialog';
+import {
   Scissors, Search, Loader2, ExternalLink, AlertTriangle, Link2, Link2Off,
   CheckCircle2, CircleDashed, AlertCircle, MinusCircle, ChevronDown, ChevronRight,
 } from 'lucide-react';
@@ -56,7 +59,7 @@ const CONC_CONFIG = {
   },
 };
 
-const ConciliacionBadge = ({ conc, expandable, expanded, onToggle }) => {
+const ConciliacionBadge = ({ conc, onClick }) => {
   if (!conc) return <span className="text-[10px] text-muted-foreground/40">—</span>;
   const cfg = CONC_CONFIG[conc.estado] || CONC_CONFIG.sin_distribucion;
   const { Icon } = cfg;
@@ -67,34 +70,60 @@ const ConciliacionBadge = ({ conc, expandable, expanded, onToggle }) => {
     conc.lineas_total > 0
       ? `Líneas: ${conc.lineas_completas}/${conc.lineas_total} completas`
       : null,
-    expandable ? 'Click para ver detalle por producto' : null,
+    onClick ? 'Click para ver resumen' : null,
   ].filter(Boolean).join(' · ');
-
-  // Si es expandible (tiene distribución), el badge mismo es clickable y
-  // muestra un chevron. Si no, es solo informativo.
-  const Wrapper = expandable ? 'button' : 'div';
-  const wrapperProps = expandable
+  const Wrapper = onClick ? 'button' : 'div';
+  const wrapperProps = onClick
     ? {
         type: 'button',
-        onClick: (e) => { e.stopPropagation(); onToggle?.(); },
+        onClick: (e) => { e.stopPropagation(); onClick(); },
         className: 'inline-flex flex-col items-start gap-0.5 text-left hover:bg-muted/40 rounded px-0.5 -mx-0.5',
       }
     : { className: 'inline-flex flex-col items-start gap-0.5' };
-
   return (
     <Wrapper {...wrapperProps} title={tooltip}>
       <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border ${cfg.cls}`}>
         <Icon className="h-3 w-3" />
         {cfg.label}
-        {expandable && (
-          expanded
-            ? <ChevronDown className="h-2.5 w-2.5 ml-0.5" />
-            : <ChevronRight className="h-2.5 w-2.5 ml-0.5" />
-        )}
       </span>
       {conc.pendiente > 0 && (
         <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400">
           faltan {Math.round(conc.pendiente).toLocaleString()}
+        </span>
+      )}
+    </Wrapper>
+  );
+};
+
+// Mini-celda de fallados. Sin click: solo muestra "5 det · 2 pend".
+// Con click: abre el mismo Dialog con el resumen completo.
+const FalladosCell = ({ fallados, onClick }) => {
+  const det = fallados?.detectados || 0;
+  if (det === 0) return <span className="text-[10px] text-muted-foreground/40">—</span>;
+  const pendientes = (fallados.sin_enviar || 0) + (fallados.en_proceso || 0);
+  const resueltos = fallados.resueltos || 0;
+  const Wrapper = onClick ? 'button' : 'div';
+  const wrapperProps = onClick
+    ? {
+        type: 'button',
+        onClick: (e) => { e.stopPropagation(); onClick(); },
+        className: 'inline-flex flex-col items-start gap-0.5 text-left hover:bg-muted/40 rounded px-0.5 -mx-0.5',
+        title: `Detectados: ${det} · Resueltos: ${resueltos} · Pendientes: ${pendientes}`,
+      }
+    : { className: 'inline-flex flex-col items-start gap-0.5' };
+  return (
+    <Wrapper {...wrapperProps}>
+      <span className="text-[11px] font-mono tabular-nums">
+        <span className="font-semibold text-foreground">{det}</span>
+        <span className="text-muted-foreground"> det</span>
+      </span>
+      {pendientes > 0 ? (
+        <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400">
+          faltan {pendientes}
+        </span>
+      ) : (
+        <span className="text-[10px] font-mono text-emerald-700 dark:text-emerald-400">
+          resueltos ✓
         </span>
       )}
     </Wrapper>
@@ -126,16 +155,15 @@ export const ReporteCortes = () => {
   // Resumen de conciliación (lo devuelve el backend en cada respuesta)
   const [resumenConc, setResumenConc] = useState(null);
 
-  // Expand inline de un corte para ver su conciliación detallada por producto.
-  // expandedId: id del corte expandido (null = ninguno)
-  // detalleCache: { [registroId]: { lineas: [...], loading: false, error: null } }
-  const [expandedId, setExpandedId] = useState(null);
+  // Dialog modal con resumen + detalle por producto.
+  // dialogItem: el item del listado abierto en el dialog (null = cerrado)
+  // detalleCache: cache de la respuesta de /conciliacion-odoo por registro_id.
+  const [dialogItem, setDialogItem] = useState(null);
   const [detalleCache, setDetalleCache] = useState({});
 
-  const toggleExpand = useCallback(async (id) => {
-    if (expandedId === id) { setExpandedId(null); return; }
-    setExpandedId(id);
-    // Si ya está cacheado, no refetch.
+  const abrirDialog = useCallback(async (item) => {
+    setDialogItem(item);
+    const id = item.id;
     if (detalleCache[id] && !detalleCache[id].error) return;
     setDetalleCache(prev => ({ ...prev, [id]: { loading: true, lineas: [] } }));
     try {
@@ -147,7 +175,6 @@ export const ReporteCortes = () => {
           lineas: r.data?.detalle || [],
           total_esperado: r.data?.total_esperado || 0,
           total_ingresado: r.data?.total_ingresado || 0,
-          // Balance de diagnóstico (descomposición del pendiente por causa).
           balance: r.data?.balance || null,
         },
       }));
@@ -157,7 +184,7 @@ export const ReporteCortes = () => {
         [id]: { loading: false, lineas: [], error: e?.response?.data?.detail || 'Error al cargar detalle' },
       }));
     }
-  }, [expandedId, detalleCache]);
+  }, [detalleCache]);
 
   // Modal vinculación Odoo — el componente VincularOdooDialog maneja todo
   // el estado interno (lineas, picker, etc). Aquí solo guardamos qué corte
@@ -516,18 +543,17 @@ export const ReporteCortes = () => {
                     <TableHead className="text-right">Prendas</TableHead>
                     <TableHead>Creado</TableHead>
                     <TableHead className="text-center w-[60px]" title="Vinculado a Odoo">Odoo</TableHead>
+                    <TableHead className="w-[100px]" title="Fallados detectados y cuántos quedan pendientes">Fallados</TableHead>
                     <TableHead className="w-[140px]" title="Solo aplica a cortes en Almacén PT / Tienda">Conciliación</TableHead>
                     <TableHead className="w-[60px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.map(i => {
-                    // Es expandible si tiene conciliación (siempre). Incluso
-                    // "Sin distribución" muestra el resumen de fallados, recuperados
-                    // y pendientes que viene en `balance`.
-                    const expandable = !!i.conciliacion;
-                    const isExpanded = expandedId === i.id;
-                    const detalle = detalleCache[i.id];
+                    // Hacemos clickeable el badge si tiene conciliación O si
+                    // tiene fallados detectados — en cualquiera de esos casos
+                    // hay info útil que mostrar en el dialog.
+                    const tieneInfo = !!i.conciliacion || (i.fallados?.detectados || 0) > 0;
                     return (
                     <Fragment key={i.id}>
                     <TableRow
@@ -571,11 +597,15 @@ export const ReporteCortes = () => {
                         </button>
                       </TableCell>
                       <TableCell>
+                        <FalladosCell
+                          fallados={i.fallados}
+                          onClick={tieneInfo ? () => abrirDialog(i) : null}
+                        />
+                      </TableCell>
+                      <TableCell>
                         <ConciliacionBadge
                           conc={i.conciliacion}
-                          expandable={expandable}
-                          expanded={isExpanded}
-                          onToggle={() => toggleExpand(i.id)}
+                          onClick={tieneInfo ? () => abrirDialog(i) : null}
                         />
                       </TableCell>
                       <TableCell className="text-right">
@@ -590,94 +620,6 @@ export const ReporteCortes = () => {
                         </Button>
                       </TableCell>
                     </TableRow>
-                    {/* Fila expandida: detalle de conciliación por producto */}
-                    {isExpanded && (
-                      <TableRow className="bg-muted/30 hover:bg-muted/40">
-                        <TableCell colSpan={12} className="p-0">
-                          <div className="px-6 py-3 space-y-3">
-                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
-                              Detalle de conciliación · corte {i.n_corte || '(sin número)'}
-                            </div>
-                            {detalle?.loading ? (
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Cargando detalle…
-                              </div>
-                            ) : detalle?.error ? (
-                              <div className="text-xs text-rose-600">{detalle.error}</div>
-                            ) : (
-                            <>
-                            {/* Resumen de fallados / recuperados / pendientes
-                                — siempre, aunque el corte no tenga distribución
-                                Odoo o esté ya conciliado al 100%. */}
-                            {detalle?.balance && (
-                              <BalancePanel
-                                balance={detalle.balance}
-                                pendiente={detalle.balance.pendiente_total}
-                                onVerCorte={() => navigate(`/registros/editar/${i.id}`)}
-                                onAjustarOdoo={() => abrirVincular(i)}
-                              />
-                            )}
-                            {detalle?.lineas?.length === 0 ? (
-                              <div className="text-xs text-muted-foreground italic mt-2">
-                                {i.conciliacion?.estado === 'sin_distribucion'
-                                  ? 'Este corte aún no tiene Distribución Esperada. Vinculalo a Odoo para ver el detalle por producto.'
-                                  : 'Sin líneas'}
-                              </div>
-                            ) : (
-                              <div className="rounded-md border bg-background overflow-hidden">
-                                <table className="w-full text-xs">
-                                  <thead className="bg-muted/60">
-                                    <tr>
-                                      <th className="text-left p-2 font-medium">Producto Odoo</th>
-                                      <th className="text-left p-2 font-medium w-[120px]">Marca</th>
-                                      <th className="text-right p-2 font-medium w-[90px]">Esperado</th>
-                                      <th className="text-right p-2 font-medium w-[90px]">Ingresado</th>
-                                      <th className="text-right p-2 font-medium w-[90px]">Pendiente</th>
-                                      <th className="text-center p-2 font-medium w-[110px]">Estado</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {detalle?.lineas?.map((l, idx) => {
-                                      const est = (l.estado || '').toLowerCase();
-                                      const cfgKey = est === 'completo' ? 'completo'
-                                        : est === 'parcial' ? 'parcial'
-                                        : 'pendiente';
-                                      const lineCfg = CONC_CONFIG[cfgKey];
-                                      const LIcon = lineCfg.Icon;
-                                      const pend = Number(l.pendiente) || 0;
-                                      return (
-                                        <tr key={idx} className="border-t">
-                                          <td className="p-2 font-medium">
-                                            {l.producto_nombre || `Template #${l.product_template_id_odoo}`}
-                                            <span className="text-muted-foreground ml-1">(#{l.product_template_id_odoo})</span>
-                                          </td>
-                                          <td className="p-2 text-muted-foreground text-[11px]">
-                                            {l.producto_marca || '—'}
-                                          </td>
-                                          <td className="p-2 text-right font-mono">{Math.round(l.esperado).toLocaleString()}</td>
-                                          <td className="p-2 text-right font-mono">{Math.round(l.ingresado).toLocaleString()}</td>
-                                          <td className={`p-2 text-right font-mono ${pend > 0 ? 'text-amber-700 dark:text-amber-400 font-semibold' : ''}`}>
-                                            {Math.round(pend).toLocaleString()}
-                                          </td>
-                                          <td className="p-2 text-center">
-                                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border ${lineCfg.cls}`}>
-                                              <LIcon className="h-3 w-3" />
-                                              {lineCfg.label}
-                                            </span>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                            </>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
                     </Fragment>
                   );
                   })}
@@ -695,6 +637,101 @@ export const ReporteCortes = () => {
         onSaved={onDistribucionCambio}
         onCleared={onDistribucionCambio}
       />
+
+      {/* Modal resumen de conciliación + fallados */}
+      <Dialog open={!!dialogItem} onOpenChange={(o) => !o && setDialogItem(null)}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          {dialogItem && (() => {
+            const detalle = detalleCache[dialogItem.id];
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-base">
+                    Corte {dialogItem.n_corte || '(sin número)'}
+                    <Badge variant="outline" className="text-[10px]">{dialogItem.estado}</Badge>
+                  </DialogTitle>
+                  <DialogDescription className="text-xs">
+                    {dialogItem.modelo || '—'} · {dialogItem.marca || '—'} · {(dialogItem.prendas || 0).toLocaleString()} prendas
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3 mt-2">
+                  {detalle?.loading ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground py-4">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Cargando detalle…
+                    </div>
+                  ) : detalle?.error ? (
+                    <div className="text-xs text-rose-600">{detalle.error}</div>
+                  ) : (
+                    <>
+                      {detalle?.balance && (
+                        <BalancePanel
+                          balance={detalle.balance}
+                          pendiente={detalle.balance.pendiente_total}
+                          onVerCorte={() => { setDialogItem(null); navigate(`/registros/editar/${dialogItem.id}`); }}
+                          onAjustarOdoo={() => { setDialogItem(null); abrirVincular(dialogItem); }}
+                        />
+                      )}
+                      {detalle?.lineas?.length === 0 ? (
+                        <div className="text-xs text-muted-foreground italic">
+                          {dialogItem.conciliacion?.estado === 'sin_distribucion'
+                            ? 'Este corte aún no tiene Distribución Esperada. Vinculalo a Odoo para ver el detalle por producto.'
+                            : 'Sin líneas de distribución Odoo.'}
+                        </div>
+                      ) : (
+                        <div className="rounded-md border bg-background overflow-hidden">
+                          <table className="w-full text-xs">
+                            <thead className="bg-muted/60">
+                              <tr>
+                                <th className="text-left p-2 font-medium">Producto Odoo</th>
+                                <th className="text-left p-2 font-medium w-[120px]">Marca</th>
+                                <th className="text-right p-2 font-medium w-[90px]">Esperado</th>
+                                <th className="text-right p-2 font-medium w-[90px]">Ingresado</th>
+                                <th className="text-right p-2 font-medium w-[90px]">Pendiente</th>
+                                <th className="text-center p-2 font-medium w-[110px]">Estado</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {detalle?.lineas?.map((l, idx) => {
+                                const est = (l.estado || '').toLowerCase();
+                                const cfgKey = est === 'completo' ? 'completo'
+                                  : est === 'parcial' ? 'parcial'
+                                  : 'pendiente';
+                                const lineCfg = CONC_CONFIG[cfgKey];
+                                const LIcon = lineCfg.Icon;
+                                const pend = Number(l.pendiente) || 0;
+                                return (
+                                  <tr key={idx} className="border-t">
+                                    <td className="p-2 font-medium">
+                                      {l.producto_nombre || `Template #${l.product_template_id_odoo}`}
+                                      <span className="text-muted-foreground ml-1">(#{l.product_template_id_odoo})</span>
+                                    </td>
+                                    <td className="p-2 text-muted-foreground text-[11px]">{l.producto_marca || '—'}</td>
+                                    <td className="p-2 text-right font-mono">{Math.round(l.esperado).toLocaleString()}</td>
+                                    <td className="p-2 text-right font-mono">{Math.round(l.ingresado).toLocaleString()}</td>
+                                    <td className={`p-2 text-right font-mono ${pend > 0 ? 'text-amber-700 dark:text-amber-400 font-semibold' : ''}`}>
+                                      {Math.round(pend).toLocaleString()}
+                                    </td>
+                                    <td className="p-2 text-center">
+                                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border ${lineCfg.cls}`}>
+                                        <LIcon className="h-3 w-3" />
+                                        {lineCfg.label}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

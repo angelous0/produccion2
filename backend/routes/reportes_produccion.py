@@ -5540,7 +5540,14 @@ async def cortes_listado(
                 conc.total_ingresado   AS conc_total_ingresado,
                 conc.lineas_total      AS conc_lineas_total,
                 conc.lineas_completas  AS conc_lineas_completas,
-                conc.lineas_pendientes AS conc_lineas_pendientes
+                conc.lineas_pendientes AS conc_lineas_pendientes,
+                -- Resumen de fallados (cuántos detectados / arreglados / pendientes
+                -- de resolver) para la columna nueva en el Listado de Cortes.
+                COALESCE(fall.detectados, 0)     AS fall_detectados,
+                COALESCE(fall.enviados_arreglo, 0) AS fall_enviados,
+                COALESCE(fall.resueltos, 0)      AS fall_resueltos,
+                COALESCE(fall.en_proceso, 0)     AS fall_en_proceso,
+                COALESCE(fall.sin_enviar, 0)     AS fall_sin_enviar
             FROM prod_registros r
             LEFT JOIN prod_modelos m  ON m.id = r.modelo_id
             LEFT JOIN prod_marcas   ma ON ma.id = m.marca_id
@@ -5573,6 +5580,38 @@ async def cortes_listado(
                     GROUP BY sm.product_tmpl_id
                 ) ing ON ing.tmpl = esp.product_template_id_odoo
             ) conc ON TRUE
+            LEFT JOIN LATERAL (
+                -- Conteo de fallados del corte. "Resueltos" = lo que ya pasó
+                -- por arreglo cerrado (recuperado + liquidación + merma + tela).
+                -- "En proceso" = arreglos abiertos. "Sin enviar" = detectados
+                -- que aún no se mandaron a ningún arreglo.
+                SELECT
+                    COALESCE(f.detectados, 0)                                     AS detectados,
+                    COALESCE(a.enviadas, 0)                                       AS enviados_arreglo,
+                    COALESCE(a.recuperadas, 0)
+                      + COALESCE(a.a_liquidacion, 0)
+                      + COALESCE(a.a_merma, 0)
+                      + COALESCE(a.a_tela, 0)                                     AS resueltos,
+                    COALESCE(a.en_proceso, 0)                                     AS en_proceso,
+                    GREATEST(COALESCE(f.detectados, 0) - COALESCE(a.enviadas, 0), 0) AS sin_enviar
+                FROM (SELECT 1) _dummy
+                LEFT JOIN LATERAL (
+                    SELECT SUM(cantidad_detectada) AS detectados
+                    FROM produccion.prod_fallados
+                    WHERE registro_id = r.id
+                ) f ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT
+                        SUM(cantidad)                                                                  AS enviadas,
+                        SUM(CASE WHEN estado <> 'COMPLETADO' THEN cantidad ELSE 0 END)                 AS en_proceso,
+                        SUM(CASE WHEN estado  = 'COMPLETADO' THEN COALESCE(cantidad_recuperada,0) END) AS recuperadas,
+                        SUM(CASE WHEN estado  = 'COMPLETADO' THEN COALESCE(cantidad_liquidacion,0) END)AS a_liquidacion,
+                        SUM(CASE WHEN estado  = 'COMPLETADO' THEN COALESCE(cantidad_merma,0) END)      AS a_merma,
+                        SUM(CASE WHEN estado  = 'COMPLETADO' THEN COALESCE(cantidad_pasa_a_tela,0) END)AS a_tela
+                    FROM produccion.prod_registro_arreglos
+                    WHERE registro_id = r.id
+                ) a ON TRUE
+            ) fall ON TRUE
             WHERE {where_clause}{having_conciliacion}
             ORDER BY
                 -- 1° Cortes SIN n_corte (vacíos / NULL) primero — son los que necesitan
@@ -5662,6 +5701,14 @@ async def cortes_listado(
                 "pt_relaciones_count": int(r["pt_relaciones_count"] or 0),
                 # null si no aplica (corte no está en Almacén PT/Tienda).
                 "conciliacion": conciliacion,
+                # Resumen de fallados (siempre, para todos los estados)
+                "fallados": {
+                    "detectados":  int(r["fall_detectados"] or 0),
+                    "enviados":    int(r["fall_enviados"] or 0),
+                    "resueltos":   int(r["fall_resueltos"] or 0),
+                    "en_proceso":  int(r["fall_en_proceso"] or 0),
+                    "sin_enviar":  int(r["fall_sin_enviar"] or 0),
+                },
             })
 
         # Resumen agregado de conciliación (útil para el header del reporte)
@@ -6017,6 +6064,8 @@ async def conciliacion_pendiente(
             "sin_distribucion": sin_distribucion,
             "resumen":          resumen,
         }
+
+
 
 
 
