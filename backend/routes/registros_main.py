@@ -16,6 +16,54 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/api")
 
+
+async def _ruta_id_para_registro(conn, registro) -> Optional[str]:
+    """Devuelve la ruta_produccion_id que aplica a este registro.
+
+    Estrategia (en orden):
+      1) Si el registro tiene `modelo_id` y ese modelo tiene
+         `ruta_produccion_id` → usar esa (override por modelo catalogado).
+      2) Sino, mirar `modelo_manual->>'tipo_id'` y buscar la ruta default
+         del tipo en `prod_tipos.ruta_produccion_id` (fallback por tipo).
+      3) Si nada de eso, devolver None (el registro queda sin ruta y
+         el sistema cae al fallback genérico `usa_ruta: False`).
+    """
+    # asyncpg.Record no siempre soporta .get(); usamos acceso por índice
+    # con guarda.
+    def _f(key, default=None):
+        try:
+            return registro[key]
+        except Exception:
+            return default
+
+    # 1) Modelo catalogado
+    modelo_id = _f('modelo_id')
+    if modelo_id:
+        m = await conn.fetchrow(
+            "SELECT ruta_produccion_id FROM prod_modelos WHERE id = $1",
+            modelo_id,
+        )
+        if m and m['ruta_produccion_id']:
+            return m['ruta_produccion_id']
+    # 2) Fallback por tipo en modelo_manual (JSONB; asyncpg lo devuelve
+    #    como string en este proyecto, así que parseamos defensivamente).
+    mm = _f('modelo_manual')
+    if isinstance(mm, str):
+        try:
+            mm = json.loads(mm)
+        except Exception:
+            mm = None
+    tipo_id = mm.get('tipo_id') if isinstance(mm, dict) else None
+    if tipo_id:
+        t = await conn.fetchrow(
+            "SELECT ruta_produccion_id FROM prod_tipos WHERE id = $1",
+            tipo_id,
+        )
+        if t and t['ruta_produccion_id']:
+            return t['ruta_produccion_id']
+    return None
+
+
 @router.get("/estados")
 async def get_estados():
     return {"estados": ESTADOS_PRODUCCION}
@@ -957,10 +1005,9 @@ async def get_estados_disponibles_registro(registro_id: str, _u=Depends(require_
         if not registro:
             raise HTTPException(status_code=404, detail="Registro no encontrado")
         
-        # Obtener ruta del modelo
-        modelo = await conn.fetchrow("SELECT ruta_produccion_id FROM prod_modelos WHERE id = $1", registro['modelo_id']) if registro['modelo_id'] else None
-        ruta_id = modelo['ruta_produccion_id'] if modelo and modelo['ruta_produccion_id'] else None
-        
+        # Obtener ruta: modelo catalogado primero, fallback al tipo del modelo_manual.
+        ruta_id = await _ruta_id_para_registro(conn, registro)
+
         if ruta_id:
             ruta = await conn.fetchrow("SELECT etapas, nombre FROM prod_rutas_produccion WHERE id = $1", ruta_id)
             if ruta and ruta['etapas']:
@@ -991,9 +1038,8 @@ async def analisis_estado_registro(registro_id: str, _u=Depends(require_permissi
         
         estado_actual = registro['estado']
 
-        # Obtener ruta del modelo
-        modelo = await conn.fetchrow("SELECT ruta_produccion_id FROM prod_modelos WHERE id = $1", registro['modelo_id']) if registro['modelo_id'] else None
-        ruta_id = modelo['ruta_produccion_id'] if modelo and modelo['ruta_produccion_id'] else None
+        # Obtener ruta: modelo catalogado primero, fallback al tipo del modelo_manual.
+        ruta_id = await _ruta_id_para_registro(conn, registro)
 
         if not ruta_id:
             return {
@@ -1198,8 +1244,7 @@ async def validar_cambio_estado(registro_id: str, body: dict, current_user: dict
                 "paralizado": True
             }
 
-        modelo = await conn.fetchrow("SELECT ruta_produccion_id FROM prod_modelos WHERE id = $1", registro['modelo_id']) if registro['modelo_id'] else None
-        ruta_id = modelo['ruta_produccion_id'] if modelo and modelo['ruta_produccion_id'] else None
+        ruta_id = await _ruta_id_para_registro(conn, registro)
 
         if not ruta_id:
             return {"permitido": True, "bloqueos": [], "sugerencia_movimiento": None}
@@ -1591,3 +1636,4 @@ async def update_single_registro_talla(registro_id: str, talla_id: str, input: R
             )
             await _sync_jsonb_tallas_from_table(conn, registro_id)
             return {"id": new_id, "talla_id": talla_id, "cantidad_real": input.cantidad_real}
+
