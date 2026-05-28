@@ -108,8 +108,9 @@ async def create_tipo(input: TipoCreate, _u=Depends(get_current_user)):
             max_orden = await conn.fetchval("SELECT COALESCE(MAX(orden), 0) FROM prod_tipos")
             tipo.orden = max_orden + 1
         await conn.execute(
-            "INSERT INTO prod_tipos (id, nombre, marca_ids, orden, created_at) VALUES ($1, $2, $3, $4, $5)",
-            tipo.id, tipo.nombre, json.dumps(tipo.marca_ids), tipo.orden, tipo.created_at.replace(tzinfo=None)
+            "INSERT INTO prod_tipos (id, nombre, marca_ids, orden, ruta_produccion_id, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+            tipo.id, tipo.nombre, json.dumps(tipo.marca_ids), tipo.orden,
+            tipo.ruta_produccion_id, tipo.created_at.replace(tzinfo=None)
         )
     return tipo
 
@@ -120,9 +121,17 @@ async def update_tipo(tipo_id: str, input: TipoCreate, _u=Depends(get_current_us
         result = await conn.fetchrow("SELECT * FROM prod_tipos WHERE id = $1", tipo_id)
         if not result:
             raise HTTPException(status_code=404, detail="Tipo no encontrado")
-        await conn.execute("UPDATE prod_tipos SET nombre = $1, marca_ids = $2, orden = $3 WHERE id = $4", 
-                          input.nombre, json.dumps(input.marca_ids), input.orden, tipo_id)
-        return {**row_to_dict(result), "nombre": input.nombre, "marca_ids": input.marca_ids, "orden": input.orden}
+        await conn.execute(
+            "UPDATE prod_tipos SET nombre = $1, marca_ids = $2, orden = $3, ruta_produccion_id = $4 WHERE id = $5",
+            input.nombre, json.dumps(input.marca_ids), input.orden, input.ruta_produccion_id, tipo_id,
+        )
+        return {
+            **row_to_dict(result),
+            "nombre": input.nombre,
+            "marca_ids": input.marca_ids,
+            "orden": input.orden,
+            "ruta_produccion_id": input.ruta_produccion_id,
+        }
 
 @router.delete("/tipos/{tipo_id}")
 async def delete_tipo(tipo_id: str, _u=Depends(get_current_user)):

@@ -50,6 +50,7 @@ class TipoBase(BaseModel):
     nombre: str
     marca_ids: List[str] = []
     orden: int = 0
+    ruta_produccion_id: Optional[str] = None
 
 class TipoCreate(TipoBase):
     pass

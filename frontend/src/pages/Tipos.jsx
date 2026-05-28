@@ -45,11 +45,12 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export const Tipos = () => {
   const [items, setItems] = useState([]);
   const [marcas, setMarcas] = useState([]);
+  const [rutas, setRutas] = useState([]);
   const [loading, setLoading] = useState(true);
   const { saving, guard } = useSaving();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [formData, setFormData] = useState({ nombre: '', marca_ids: [], orden: 0 });
+  const [formData, setFormData] = useState({ nombre: '', marca_ids: [], orden: 0, ruta_produccion_id: null });
   const [popoverOpen, setPopoverOpen] = useState(false);
 
   const { sensors, handleDragEnd, isSaving, modifiers } = useSortableTable(items, setItems, 'tipos');
@@ -74,9 +75,19 @@ export const Tipos = () => {
     }
   };
 
+  const fetchRutas = async () => {
+    try {
+      const response = await axios.get(`${API}/rutas-produccion`);
+      setRutas(response.data || []);
+    } catch (error) {
+      console.error('Error fetching rutas:', error);
+    }
+  };
+
   useEffect(() => {
     fetchItems();
     fetchMarcas();
+    fetchRutas();
   }, []);
 
   const handleSubmit = guard(async (e) => {
@@ -91,7 +102,7 @@ export const Tipos = () => {
       }
       setDialogOpen(false);
       setEditingItem(null);
-      setFormData({ nombre: '', marca_ids: [], orden: 0 });
+      setFormData({ nombre: '', marca_ids: [], orden: 0, ruta_produccion_id: null });
       fetchItems();
     } catch (error) {
       toast.error('Error al guardar tipo');
@@ -100,7 +111,12 @@ export const Tipos = () => {
 
   const handleEdit = (item) => {
     setEditingItem(item);
-    setFormData({ nombre: item.nombre, marca_ids: item.marca_ids || [], orden: item.orden || 0 });
+    setFormData({
+      nombre: item.nombre,
+      marca_ids: item.marca_ids || [],
+      orden: item.orden || 0,
+      ruta_produccion_id: item.ruta_produccion_id || null,
+    });
     setDialogOpen(true);
   };
 
@@ -117,7 +133,7 @@ export const Tipos = () => {
 
   const handleNew = () => {
     setEditingItem(null);
-    setFormData({ nombre: '', marca_ids: [], orden: 0 });
+    setFormData({ nombre: '', marca_ids: [], orden: 0, ruta_produccion_id: null });
     setDialogOpen(true);
   };
 
@@ -154,19 +170,20 @@ export const Tipos = () => {
                 <TableHead className="w-[40px]"></TableHead>
                 <TableHead>Nombre</TableHead>
                 <TableHead>Marcas</TableHead>
+                <TableHead className="w-[180px]" title="Ruta default que heredan los cortes con este tipo (modelo_manual)">Ruta de producción</TableHead>
                 <TableHead className="w-[100px]">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8">
+                  <TableCell colSpan={5} className="text-center py-8">
                     Cargando...
                   </TableCell>
                 </TableRow>
               ) : items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     No hay tipos registrados
                   </TableCell>
                 </TableRow>
@@ -194,6 +211,16 @@ export const Tipos = () => {
                             <span className="text-muted-foreground text-sm">Sin marcas</span>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const ruta = rutas.find(r => r.id === item.ruta_produccion_id);
+                          return ruta ? (
+                            <Badge variant="outline" className="text-xs">{ruta.nombre}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-xs italic">Sin ruta (fallback genérico)</span>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-2">
@@ -277,6 +304,25 @@ export const Tipos = () => {
                     </Command>
                   </PopoverContent>
                 </Popover>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ruta">Ruta de producción</Label>
+                <select
+                  id="ruta"
+                  value={formData.ruta_produccion_id || ''}
+                  onChange={(e) => setFormData({ ...formData, ruta_produccion_id: e.target.value || null })}
+                  className="w-full h-10 px-3 rounded-md border bg-background text-sm"
+                  data-testid="select-ruta-tipo"
+                >
+                  <option value="">— Sin ruta (usa fallback genérico) —</option>
+                  {rutas.map(r => (
+                    <option key={r.id} value={r.id}>{r.nombre}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Los cortes con este tipo (modelo_manual) van a heredar esta ruta
+                  cuando no tengan un modelo catalogado con su propia ruta.
+                </p>
               </div>
             </div>
             <DialogFooter>
