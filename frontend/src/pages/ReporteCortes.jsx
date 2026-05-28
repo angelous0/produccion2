@@ -522,11 +522,10 @@ export const ReporteCortes = () => {
                 </TableHeader>
                 <TableBody>
                   {filtered.map(i => {
-                    // Es expandible si tiene conciliación con líneas (parcial/pendiente/completo).
-                    // Sin_distribucion no tiene líneas que mostrar.
-                    const expandable = !!i.conciliacion
-                      && i.conciliacion.lineas_total > 0
-                      && i.conciliacion.estado !== 'sin_distribucion';
+                    // Es expandible si tiene conciliación (siempre). Incluso
+                    // "Sin distribución" muestra el resumen de fallados, recuperados
+                    // y pendientes que viene en `balance`.
+                    const expandable = !!i.conciliacion;
                     const isExpanded = expandedId === i.id;
                     const detalle = detalleCache[i.id];
                     return (
@@ -605,12 +604,12 @@ export const ReporteCortes = () => {
                               </div>
                             ) : detalle?.error ? (
                               <div className="text-xs text-rose-600">{detalle.error}</div>
-                            ) : detalle?.lineas?.length === 0 ? (
-                              <div className="text-xs text-muted-foreground italic">Sin líneas</div>
                             ) : (
                             <>
-                            {/* Balance de diagnóstico — solo si hay pendiente > 0 */}
-                            {detalle?.balance && detalle.balance.pendiente_total > 0 && (
+                            {/* Resumen de fallados / recuperados / pendientes
+                                — siempre, aunque el corte no tenga distribución
+                                Odoo o esté ya conciliado al 100%. */}
+                            {detalle?.balance && (
                               <BalancePanel
                                 balance={detalle.balance}
                                 pendiente={detalle.balance.pendiente_total}
@@ -618,6 +617,13 @@ export const ReporteCortes = () => {
                                 onAjustarOdoo={() => abrirVincular(i)}
                               />
                             )}
+                            {detalle?.lineas?.length === 0 ? (
+                              <div className="text-xs text-muted-foreground italic mt-2">
+                                {i.conciliacion?.estado === 'sin_distribucion'
+                                  ? 'Este corte aún no tiene Distribución Esperada. Vinculalo a Odoo para ver el detalle por producto.'
+                                  : 'Sin líneas'}
+                              </div>
+                            ) : (
                               <div className="rounded-md border bg-background overflow-hidden">
                                 <table className="w-full text-xs">
                                   <thead className="bg-muted/60">
@@ -665,6 +671,7 @@ export const ReporteCortes = () => {
                                   </tbody>
                                 </table>
                               </div>
+                            )}
                             </>
                             )}
                           </div>
