@@ -2,18 +2,20 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
-  ArrowLeft, Loader2, Copy, Check, QrCode, AlertCircle, Printer,
+  ArrowLeft, Loader2, Copy, Check, QrCode, Share2,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 /**
- * Identificación del corte (vista QR placeholder).
+ * Identificación del corte — QR escaneable real (Sprint 38a).
  *
- * No tenemos lib QR instalada y la generación oficial se hace desde web
- * (decisión previa del proyecto). Esta pantalla muestra el n_corte muy
- * grande para que el operario lo pueda dictar/anotar fácilmente y un
- * botón para copiarlo al portapapeles.
+ * El QR contiene el `n_corte` directamente. El móvil escáner usa el prefijo
+ * "CORTE-" para identificar que es un corte y navega a /m/registros/:id.
+ *
+ * Esta misma pantalla también sirve para que el operario lea/copie/comparta
+ * el número si no tiene cámara a la mano.
  */
 export const MobileQRCorte = () => {
   const { id: registroId } = useParams();
@@ -76,30 +78,44 @@ export const MobileQRCorte = () => {
       </div>
 
       <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Cuadro con el n_corte enorme */}
+        {/* QR escaneable del corte */}
         <div style={{
           background: 'white', border: '1px solid #e5e7eb', borderRadius: 16,
-          padding: '32px 16px', textAlign: 'center',
+          padding: '24px 16px', textAlign: 'center',
         }}>
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 4,
             fontSize: 11, color: '#64748b', fontWeight: 700,
             textTransform: 'uppercase', letterSpacing: '.06em',
+            marginBottom: 12,
           }}>
-            <QrCode size={12} /> N° de corte
+            <QrCode size={12} /> Código del corte
           </div>
+
+          {registro?.n_corte && (
+            <div style={{
+              display: 'inline-block', padding: 12, background: 'white',
+              borderRadius: 8, border: '1px solid #f1f5f9',
+            }}>
+              <QRCodeSVG
+                value={`${window.location.origin}/m/registros/${registroId}`}
+                size={200}
+                level="M"
+                includeMargin={false}
+              />
+            </div>
+          )}
+
           <div style={{
             fontFamily: 'ui-monospace, monospace', fontWeight: 800,
-            fontSize: 'clamp(28px, 9vw, 44px)', lineHeight: 1.1,
-            letterSpacing: '.04em', marginTop: 12, color: '#0f172a',
+            fontSize: 'clamp(20px, 6vw, 28px)', lineHeight: 1.1,
+            letterSpacing: '.04em', marginTop: 16, color: '#0f172a',
             wordBreak: 'break-all',
           }}>
             {registro?.n_corte || '—'}
           </div>
-          {/* Patrón decorativo tipo código de barras (NO escaneable) */}
-          <BarrasDecorativas seed={registro?.n_corte || ''} />
-          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>
-            (patrón decorativo · no escaneable)
+          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 6 }}>
+            Escaneá este código con la cámara del móvil para abrir el corte.
           </div>
         </div>
 
@@ -113,29 +129,37 @@ export const MobileQRCorte = () => {
         </div>
 
         {/* Botones */}
-        <button
-          onClick={copiar}
-          className="m-btn m-btn-primary"
-          disabled={!registro?.n_corte || copiado}
-          style={{ minHeight: 48 }}
-        >
-          {copiado ? <><Check size={18} /> Copiado al portapapeles</>
-                   : <><Copy size={18} /> Copiar N° de corte</>}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={copiar}
+            className="m-btn m-btn-outline"
+            disabled={!registro?.n_corte || copiado}
+            style={{ flex: 1, minHeight: 44 }}
+          >
+            {copiado ? <><Check size={16} /> Copiado</>
+                     : <><Copy size={16} /> Copiar código</>}
+          </button>
+          {typeof navigator !== 'undefined' && navigator.share && registro?.n_corte && (
+            <button
+              onClick={() => navigator.share({
+                title: `Corte ${registro.n_corte}`,
+                text: `${registro.modelo_nombre || ''} · ${registro.n_corte}`,
+              }).catch(() => { /* user canceled */ })}
+              className="m-btn m-btn-outline"
+              style={{ flex: 1, minHeight: 44 }}
+            >
+              <Share2 size={16} /> Compartir
+            </button>
+          )}
+        </div>
 
-        {/* Aviso honesto */}
         <div style={{
-          background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12,
-          padding: 12, display: 'flex', gap: 10, alignItems: 'flex-start',
-          fontSize: 12, color: '#475569', lineHeight: 1.5,
+          background: '#f0fdfa', border: '1px solid #99f6e4',
+          color: '#0f766e', borderRadius: 12,
+          padding: 12, fontSize: 12, lineHeight: 1.5,
         }}>
-          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-          <span>
-            El <strong>QR escaneable oficial</strong> se imprime desde la
-            <Printer size={11} style={{ display: 'inline', verticalAlign: 'middle', margin: '0 2px' }} />
-            versión web (Reportes → Etiquetas).
-            En móvil sólo puedes consultar y compartir el código.
-          </span>
+          <strong>Imprimir la etiqueta física:</strong> desde la versión escritorio,
+          abrí el corte y usá el botón "Imprimir QR" para sacar la etiqueta 10×10 cm.
         </div>
       </div>
     </>
@@ -156,41 +180,5 @@ const Fila = ({ label, value }) => (
     }}>{value}</div>
   </div>
 );
-
-/**
- * Genera un patrón visual estilo "barras" a partir del texto del n_corte.
- * NO es un código escaneable — sólo decorativo. La idea es que ayude a
- * distinguir visualmente dos cortes distintos y que la pantalla no se vea
- * vacía como un cuadro de solo texto.
- */
-const BarrasDecorativas = ({ seed }) => {
-  if (!seed) return null;
-  // Hash simple determinístico
-  const bytes = [];
-  for (let i = 0; i < seed.length; i++) bytes.push(seed.charCodeAt(i));
-  const barras = [];
-  for (let i = 0; i < 48; i++) {
-    const v = bytes[i % bytes.length] ^ (i * 31);
-    const ancho = (v % 4) + 1; // 1 a 4
-    const negro = (v % 2 === 0);
-    barras.push({ ancho, negro });
-  }
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'stretch', height: 40, marginTop: 18,
-      justifyContent: 'center', overflow: 'hidden',
-    }}>
-      {barras.map((b, i) => (
-        <div
-          key={i}
-          style={{
-            width: `${b.ancho * 2}px`, marginRight: 1,
-            background: b.negro ? '#0f172a' : 'transparent',
-          }}
-        />
-      ))}
-    </div>
-  );
-};
 
 export default MobileQRCorte;
