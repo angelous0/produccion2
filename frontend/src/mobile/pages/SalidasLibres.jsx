@@ -7,6 +7,7 @@ import {
   RotateCcw, Sliders, Trash2, MoreHorizontal,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -28,7 +29,7 @@ const TIPOS = [
 export const MobileSalidasLibres = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const puedeCrear = user?.rol === 'admin' || user?.rol === 'supervisor_inventario';
+  const puedeCrear = puede(user, ACCIONES.CREAR_SALIDA_LIBRE);
 
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);

@@ -7,6 +7,7 @@ import {
   ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -24,7 +25,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export const MobileCobroArreglos = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const esAdmin = user?.rol === 'admin';
+  const esAdmin = puede(user, ACCIONES.GENERAR_NOTA_COBRO);
 
   const [tab, setTab] = useState('por_cobrar'); // 'por_cobrar' | 'notas'
   const [arreglos, setArreglos] = useState([]);

@@ -5,6 +5,9 @@ import {
   ArrowLeft, Loader2, AlertTriangle, AlertOctagon, Check,
   CheckCircle2, ChevronDown, Send, Layers,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
+import { PantallaBloqueada } from '../components/PantallaBloqueada';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -29,6 +32,8 @@ const CAUSAS = [
 export const MobileNuevoFallado = () => {
   const { id: registroId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const puedeFallar = puede(user, ACCIONES.REPORTAR_FALLADO);
 
   const [registro, setRegistro] = useState(null);
   const [servicios, setServicios] = useState([]);
@@ -192,6 +197,10 @@ export const MobileNuevoFallado = () => {
       setEnviando(false);
     }
   };
+
+  if (!puedeFallar) {
+    return <PantallaBloqueada titulo="Marcar fallado" mensaje="Tu rol no permite marcar fallados de un corte." />;
+  }
 
   if (loadingInicial) {
     return (

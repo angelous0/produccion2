@@ -4,6 +4,7 @@ import { Search, QrCode, Loader2, ArrowLeft, Plus } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { RegistroCard } from './Home';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const PAGE_SIZE = 30;
@@ -22,7 +23,7 @@ const FILTROS = [
 export const MobileRegistrosList = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const puedeCrear = user?.rol === 'admin';
+  const puedeCrear = puede(user, ACCIONES.CREAR_CORTE);
   const [registros, setRegistros] = useState([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -31,6 +32,7 @@ export const MobileRegistrosList = () => {
   const [search, setSearch] = useState('');
   const [searchDeb, setSearchDeb] = useState('');
   const [filtro, setFiltro] = useState('todos');
+  const [error, setError] = useState(null); // { status, message }
 
   // Debounce buscador
   useEffect(() => {
@@ -55,6 +57,7 @@ export const MobileRegistrosList = () => {
     const fetchPrimera = async () => {
       setLoading(true);
       setOffset(0);
+      setError(null);
       try {
         const params = buildParams(0);
         const res = await axios.get(`${API}/registros?${params}`);
@@ -64,9 +67,28 @@ export const MobileRegistrosList = () => {
         if (filtroObj?.soloUrgentes) items = items.filter(r => r.urgente);
         setRegistros(items);
         setTotal(filtroObj?.soloUrgentes ? items.length : totalReal);
-      } catch {
+      } catch (e) {
         setRegistros([]);
         setTotal(0);
+        const status = e?.response?.status;
+        const detail = e?.response?.data?.detail;
+        if (status === 403) {
+          setError({
+            status,
+            message: typeof detail === 'string'
+              ? detail
+              : 'Tu usuario no tiene permiso para ver registros.',
+          });
+        } else if (status === 401) {
+          setError({ status, message: 'Tu sesión expiró. Cerrá sesión y volvé a entrar.' });
+        } else {
+          setError({
+            status: status || 'red',
+            message: typeof detail === 'string'
+              ? detail
+              : (status ? `Error ${status} al cargar registros` : 'No se pudo conectar con el servidor'),
+          });
+        }
       } finally {
         setLoading(false);
       }
@@ -126,7 +148,12 @@ export const MobileRegistrosList = () => {
             Registros · {loading ? '…' : `${registros.length} de ${total}`}
           </div>
         </div>
-        <button className="m-h-icon" aria-label="Escanear corte" title="Próximamente">
+        <button
+          className="m-h-icon"
+          onClick={() => navigate('/m/escanear')}
+          aria-label="Escanear corte"
+          title="Escanear QR del corte"
+        >
           <QrCode size={18} />
         </button>
       </div>
@@ -164,6 +191,29 @@ export const MobileRegistrosList = () => {
             </button>
           ))}
         </div>
+
+        {/* Banner de error (403, 401, red) */}
+        {error && (
+          <div style={{
+            background: error.status === 403 ? '#fef3c7' : '#fee2e2',
+            border: `1px solid ${error.status === 403 ? '#fcd34d' : '#fca5a5'}`,
+            color: error.status === 403 ? '#92400e' : '#b91c1c',
+            borderRadius: 12, padding: 12, fontSize: 13,
+            display: 'flex', gap: 10, alignItems: 'flex-start',
+          }}>
+            <span style={{ fontWeight: 700 }}>
+              {error.status === 403 ? '⚠' : error.status === 401 ? '🔒' : '❌'}
+            </span>
+            <div style={{ flex: 1 }}>
+              <strong>{error.message}</strong>
+              {error.status === 403 && (
+                <div style={{ fontSize: 11, marginTop: 4, opacity: 0.85 }}>
+                  Pide a un admin que actualice tus permisos (registros.ver).
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Lista */}
         {loading ? (

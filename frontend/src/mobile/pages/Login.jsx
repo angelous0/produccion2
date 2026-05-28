@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Bell, Box, Loader2 } from 'lucide-react';
+import { Bell, Box, Loader2, Monitor } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { forceDesktop } from '../../utils/deviceDetection';
 
 export const MobileLogin = () => {
   const { login } = useAuth();
@@ -151,7 +152,24 @@ export const MobileLogin = () => {
 
         {/* Footer */}
         <div style={{ textAlign: 'center', fontSize: 11, opacity: 0.55, paddingTop: 16 }}>
-          ERP Producción · v2.4.0
+          <button
+            type="button"
+            onClick={() => {
+              forceDesktop();
+              window.location.href = '/login';
+            }}
+            style={{
+              background: 'transparent', border: 0,
+              color: 'white', opacity: 0.7,
+              fontSize: 11, cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              marginBottom: 6, textDecoration: 'underline',
+            }}
+          >
+            <Monitor size={12} />
+            Ver versión escritorio
+          </button>
+          <div>ERP Producción · v2.4.0</div>
         </div>
       </div>
     </div>

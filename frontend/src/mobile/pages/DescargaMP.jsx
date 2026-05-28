@@ -3,8 +3,10 @@ import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import axios from 'axios';
 import {
   ArrowLeft, ArrowRight, Loader2, Search, Check, AlertTriangle,
-  Package, CheckCircle2,
+  Package, CheckCircle2, Lock,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -19,6 +21,9 @@ export const MobileDescargaMP = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const preselectItemId = searchParams.get('item_id'); // deep-link desde Materiales
+  const { user } = useAuth();
+  // Cualquiera de los dos permisos basta (solo TELA o todo). Si no, bloqueado.
+  const puedeDescargar = puede(user, ACCIONES.DESCARGAR_MP) || puede(user, ACCIONES.DESCARGAR_MP_SOLO_TELA);
 
   const [step, setStep] = useState(1);
   const [registro, setRegistro] = useState(null);
@@ -197,6 +202,26 @@ export const MobileDescargaMP = () => {
   };
 
   /* ─────── Render ─────── */
+  if (!puedeDescargar) {
+    return (
+      <>
+        <div className="m-header">
+          <button className="m-h-icon" onClick={() => navigate(-1)} aria-label="Volver">
+            <ArrowLeft size={18} />
+          </button>
+          <div style={{ flex: 1, fontWeight: 600 }}>Descarga MP</div>
+        </div>
+        <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
+          <Lock size={36} style={{ margin: '0 auto 12px' }} />
+          <div style={{ fontWeight: 700 }}>Sin permiso</div>
+          <div style={{ fontSize: 13, marginTop: 6 }}>
+            Tu rol no permite descargar materiales a un corte.
+          </div>
+        </div>
+      </>
+    );
+  }
+
   if (loadingInicial) {
     return (
       <div style={{ padding: 60, textAlign: 'center', color: '#64748b' }}>

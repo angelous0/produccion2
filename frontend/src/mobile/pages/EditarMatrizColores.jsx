@@ -7,6 +7,7 @@ import {
   Copy, Check,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -27,7 +28,10 @@ export const MobileEditarMatrizColores = () => {
   const { id: registroId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const esAdmin = user?.rol === 'admin';
+  // esAdmin acá significa "puede aprobar/desaprobar matriz" — solo admin tiene ese permiso.
+  // Editar la matriz (mientras no esté aprobada) lo puede hacer también supervisor_acabado.
+  const esAdmin = puede(user, ACCIONES.APROBAR_MATRIZ_COLORES);
+  const puedeEditarMatriz = puede(user, ACCIONES.EDITAR_MATRIZ_COLORES) || esAdmin;
 
   const [ctx, setCtx] = useState(null);
   const [paleta, setPaleta] = useState([]);

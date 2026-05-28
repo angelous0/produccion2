@@ -6,6 +6,7 @@ import {
   Calendar, User, Lock, History, Info,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -29,7 +30,7 @@ export const MobileProrrogaArreglo = () => {
   const { id: registroId, arregloId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const puedeProrrogar = user?.rol === 'admin' || user?.rol === 'supervisor_acabado';
+  const puedeProrrogar = puede(user, ACCIONES.PRORROGA_ARREGLO);
 
   const [arreglo, setArreglo] = useState(null);
   const [registro, setRegistro] = useState(null);

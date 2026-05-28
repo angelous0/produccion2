@@ -27,6 +27,7 @@ import { MobileIngresoDetalle } from './pages/IngresoDetalle';
 import { MobileSalidasLibres } from './pages/SalidasLibres';
 import { MobileNuevaSalidaLibre } from './pages/NuevaSalidaLibre';
 import { MobileReservasRegistro } from './pages/ReservasRegistro';
+import { MobileEscanearQR } from './pages/EscanearQR';
 import { MobileEditarMatrizColores } from './pages/EditarMatrizColores';
 import { MobileMuestrasLavanderia } from './pages/MuestrasLavanderia';
 import { MobileNuevaMuestraLavanderia } from './pages/NuevaMuestraLavanderia';
@@ -134,6 +135,7 @@ export const MobileApp = () => {
         <Route path="salidas-libres" element={<MobileSalidasLibres />} />
         <Route path="salidas-libres/nueva" element={<MobileNuevaSalidaLibre />} />
         <Route path="yo" element={<MobileMiPerfil />} />
+        <Route path="escanear" element={<MobileEscanearQR />} />
         <Route path="*" element={<Navigate to="/m" replace />} />
       </Route>
     </Routes>

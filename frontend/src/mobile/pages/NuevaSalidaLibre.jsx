@@ -6,6 +6,7 @@ import {
   ChevronDown, X, Lock, Info,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -28,7 +29,7 @@ const TIPOS = [
 export const MobileNuevaSalidaLibre = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const puedeCrear = user?.rol === 'admin' || user?.rol === 'supervisor_inventario';
+  const puedeCrear = puede(user, ACCIONES.CREAR_SALIDA_LIBRE);
 
   // Catálogos
   const [items, setItems] = useState([]);

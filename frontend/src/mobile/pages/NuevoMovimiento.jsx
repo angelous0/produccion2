@@ -3,10 +3,24 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import {
   ArrowLeft, Loader2, Check, AlertTriangle, ChevronDown,
-  CheckCircle2, User, DollarSign,
+  CheckCircle2, User, DollarSign, Lock,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { serviciosPermitidos } from '../utils/permisos';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+/**
+ * Normaliza un nombre de servicio a la clave canónica usada en permisos.
+ * "Costura", "COSTURA", "Lavandería" → "costura", "costura", "lavanderia"
+ */
+function normalizarNombreServicio(nombre) {
+  if (!nombre) return '';
+  return String(nombre)
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // sin acentos
+    .trim();
+}
 
 /**
  * Crear nuevo movimiento de producción.
@@ -17,6 +31,11 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export const MobileNuevoMovimiento = () => {
   const { id: registroId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  // Servicios que ESTE usuario puede crear según su rol (lista de claves canónicas).
+  const serviciosUsuario = useMemo(() => serviciosPermitidos(user), [user]);
+  const puedeCrearAlgunMovimiento = serviciosUsuario.length > 0;
 
   const [registro, setRegistro] = useState(null);
   const [servicios, setServicios] = useState([]);
@@ -83,6 +102,16 @@ export const MobileNuevoMovimiento = () => {
     });
     return ids;
   }, [movimientosPrevios]);
+
+  // Servicios que el USUARIO puede crear según su rol.
+  // Si es admin, ve todos. Si no, filtramos por nombre canónico.
+  const serviciosVisibles = useMemo(() => {
+    if (user?.rol === 'admin') return servicios;
+    return servicios.filter(s => {
+      const canon = normalizarNombreServicio(s.nombre);
+      return serviciosUsuario.includes(canon);
+    });
+  }, [servicios, serviciosUsuario, user]);
 
   // Personas que ofrecen el servicio seleccionado
   const personasFiltradas = useMemo(() => {
@@ -222,15 +251,29 @@ export const MobileNuevoMovimiento = () => {
       </div>
 
       <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Bloqueo si el usuario no puede crear ningún tipo de movimiento */}
+        {!puedeCrearAlgunMovimiento && (
+          <div className="m-card" style={{
+            background: '#fef3c7', border: '1px solid #fcd34d',
+            color: '#92400e', padding: 16, textAlign: 'center',
+          }}>
+            <Lock size={28} style={{ margin: '0 auto 8px' }} />
+            <div style={{ fontWeight: 700, fontSize: 14 }}>Sin permiso para crear movimientos</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>
+              Tu rol ({user?.rol || 'sin rol'}) no permite crear movimientos en este sistema.
+            </div>
+          </div>
+        )}
+
         {/* Servicio */}
-        <div>
+        <div style={{ opacity: puedeCrearAlgunMovimiento ? 1 : 0.5, pointerEvents: puedeCrearAlgunMovimiento ? 'auto' : 'none' }}>
           <span className="m-label-xs">Servicio</span>
           <div style={{
             display: 'flex', gap: 6, overflowX: 'auto',
             paddingBottom: 4, marginTop: 8,
             WebkitOverflowScrolling: 'touch',
           }}>
-            {servicios.map(s => {
+            {serviciosVisibles.map(s => {
               const cerrado = serviciosCerrados.has(s.id);
               const activo = servicioId === s.id;
               return (

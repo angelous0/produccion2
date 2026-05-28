@@ -7,6 +7,8 @@ import {
   AlertOctagon, Info,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
+import { PantallaBloqueada } from '../components/PantallaBloqueada';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -22,6 +24,7 @@ export const MobileCerrarCorte = () => {
   const { id: registroId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const puedeCerrar = puede(user, ACCIONES.CERRAR_OP);
 
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -73,6 +76,10 @@ export const MobileCerrarCorte = () => {
       setEnviando(false);
     }
   };
+
+  if (!puedeCerrar) {
+    return <PantallaBloqueada titulo="Cerrar registro" mensaje="Solo el administrador puede cerrar un corte." />;
+  }
 
   if (loading) {
     return (

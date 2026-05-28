@@ -6,6 +6,7 @@ import {
   AlertCircle, Check, Clock,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -21,7 +22,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export const MobileIngresosMP = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const puedeCrear = user?.rol === 'admin' || user?.rol === 'supervisor_inventario';
+  const puedeCrear = puede(user, ACCIONES.CREAR_INGRESO_MP);
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);

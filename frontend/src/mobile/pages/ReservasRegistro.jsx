@@ -6,6 +6,7 @@ import {
   ChevronUp, ChevronDown, BookmarkCheck, Check, Plus, X, Layers,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -21,8 +22,9 @@ export const MobileReservasRegistro = () => {
   const { id: registroId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const puedeAnular = user?.rol === 'admin';
-  const puedeReservar = user?.rol === 'admin' || user?.rol === 'supervisor_inventario';
+  const puedeAnular = puede(user, ACCIONES.ANULAR_RESERVA);
+  const puedeReservar = puede(user, ACCIONES.RESERVAR_MP);
+  const puedeGenerar = puede(user, ACCIONES.GENERAR_REQUERIMIENTO);
 
   const [registro, setRegistro] = useState(null);
   const [reservas, setReservas] = useState([]);
@@ -180,7 +182,7 @@ export const MobileReservasRegistro = () => {
               </div>
             )}
 
-            {puedeReservar ? (
+            {puedeGenerar ? (
               <button
                 onClick={generarRequerimiento}
                 disabled={generando}

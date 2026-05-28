@@ -3,9 +3,11 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import {
   ArrowLeft, Loader2, AlertTriangle, Check,
-  CheckCircle2, PauseCircle, Send,
+  CheckCircle2, PauseCircle, Send, Lock,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
+import { PantallaBloqueada } from '../components/PantallaBloqueada';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -22,6 +24,7 @@ export const MobileNuevaIncidencia = () => {
   const { id: registroId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const puedeReportar = puede(user, ACCIONES.REPORTAR_INCIDENCIA);
 
   const [registro, setRegistro] = useState(null);
   const [motivos, setMotivos] = useState([]);
@@ -90,6 +93,10 @@ export const MobileNuevaIncidencia = () => {
       setEnviando(false);
     }
   };
+
+  if (!puedeReportar) {
+    return <PantallaBloqueada titulo="Reportar incidencia" mensaje="Tu rol no permite reportar incidencias." />;
+  }
 
   if (loadingInicial) {
     return (

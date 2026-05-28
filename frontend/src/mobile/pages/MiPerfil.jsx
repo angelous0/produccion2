@@ -1,6 +1,7 @@
 import { useNavigate, Link } from 'react-router-dom';
 import { Lock, KeyRound, Bell, LogOut, Type, ChevronRight, Receipt, Package, ArrowUpRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
 
 export const MobileMiPerfil = () => {
   const { user, logout } = useAuth();
@@ -52,7 +53,7 @@ export const MobileMiPerfil = () => {
             to="/m/notificaciones"
             right={<ChevronRight size={16} style={{ color: '#cbd5e1' }} />}
           />
-          {user?.rol === 'admin' && (
+          {puede(user, ACCIONES.GENERAR_NOTA_COBRO) && (
             <ActionRow
               icon={<Receipt size={18} />}
               label="Cobro de arreglos"
@@ -60,21 +61,21 @@ export const MobileMiPerfil = () => {
               right={<ChevronRight size={16} style={{ color: '#cbd5e1' }} />}
             />
           )}
-          {(user?.rol === 'admin' || user?.rol === 'supervisor_inventario') && (
-            <>
-              <ActionRow
-                icon={<Package size={18} />}
-                label="Ingresos de MP"
-                to="/m/ingresos"
-                right={<ChevronRight size={16} style={{ color: '#cbd5e1' }} />}
-              />
-              <ActionRow
-                icon={<ArrowUpRight size={18} />}
-                label="Salidas libres"
-                to="/m/salidas-libres"
-                right={<ChevronRight size={16} style={{ color: '#cbd5e1' }} />}
-              />
-            </>
+          {puede(user, ACCIONES.CREAR_INGRESO_MP) && (
+            <ActionRow
+              icon={<Package size={18} />}
+              label="Ingresos de MP"
+              to="/m/ingresos"
+              right={<ChevronRight size={16} style={{ color: '#cbd5e1' }} />}
+            />
+          )}
+          {puede(user, ACCIONES.CREAR_SALIDA_LIBRE) && (
+            <ActionRow
+              icon={<ArrowUpRight size={18} />}
+              label="Salidas libres"
+              to="/m/salidas-libres"
+              right={<ChevronRight size={16} style={{ color: '#cbd5e1' }} />}
+            />
           )}
         </div>
 

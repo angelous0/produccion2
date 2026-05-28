@@ -6,6 +6,7 @@ import {
   Info, Check, X, Plus, AlertOctagon, Package, Lock,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -27,7 +28,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export const MobileNuevoCorte = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const esAdmin = user?.rol === 'admin';
+  const puedeCrear = puede(user, ACCIONES.CREAR_CORTE);
 
   // Catálogos
   const [lineas, setLineas] = useState([]);
@@ -202,7 +203,7 @@ export const MobileNuevoCorte = () => {
     return !!nombreModeloManual.trim();
   }, [lineaNegocioId, modo, modeloId, nombreModeloManual]);
 
-  if (!esAdmin) {
+  if (!puedeCrear) {
     return (
       <>
         <div className="m-header">

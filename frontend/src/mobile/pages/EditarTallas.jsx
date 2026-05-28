@@ -5,6 +5,9 @@ import {
   ArrowLeft, Loader2, Save, AlertTriangle, Package,
   Plus, AlertCircle, Lock, Check, X, Info,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
+import { PantallaBloqueada } from '../components/PantallaBloqueada';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -25,6 +28,8 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export const MobileEditarTallas = () => {
   const { id: registroId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const puedeEditarTallas = puede(user, ACCIONES.EDITAR_TALLAS);
 
   const [registro, setRegistro] = useState(null);
   const [tallasModelo, setTallasModelo] = useState([]); // [{talla_id, talla_nombre, cantidad_real, talla_orden}]
@@ -194,6 +199,10 @@ export const MobileEditarTallas = () => {
       setGuardando(false);
     }
   };
+
+  if (!puedeEditarTallas) {
+    return <PantallaBloqueada titulo="Editar tallas" mensaje="Tu rol no permite editar tallas de un corte." />;
+  }
 
   if (loading) {
     return (

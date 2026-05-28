@@ -5,6 +5,9 @@ import {
   ArrowLeft, Loader2, Send, Plus, Trash2,
   AlertTriangle, FlaskConical, Check, X, Info, ChevronDown,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
+import { PantallaBloqueada } from '../components/PantallaBloqueada';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -26,6 +29,8 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export const MobileNuevaMuestraLavanderia = () => {
   const { id: registroId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const puedeCrearMuestra = puede(user, ACCIONES.CREAR_MUESTRA_LAVANDERIA);
 
   const [registro, setRegistro] = useState(null);
   const [lavanderias, setLavanderias] = useState([]);
@@ -157,6 +162,10 @@ export const MobileNuevaMuestraLavanderia = () => {
       setEnviando(false);
     }
   };
+
+  if (!puedeCrearMuestra) {
+    return <PantallaBloqueada titulo="Nueva muestra" mensaje="Tu rol no permite crear muestras a lavandería." />;
+  }
 
   if (loading) {
     return (
