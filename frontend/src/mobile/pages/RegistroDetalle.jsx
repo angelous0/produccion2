@@ -1,24 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import {
   ArrowLeft, QrCode, MessageSquare, MoreVertical,
   ArrowDownToLine, Plus, AlertTriangle, AlertOctagon,
   List, Grid, Package, Layers, FlaskConical, AlertCircle, DollarSign,
-  ChevronRight, Lock, Loader2, Copy, Ban, Check, X,
+  ChevronRight, Lock, Loader2, Copy, Ban, Check, X, ChevronDown,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export const MobileRegistroDetalle = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [registro, setRegistro] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Sheets
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [accion, setAccion] = useState(null); // 'cerrar' | 'anular'
+  const [cambiarEstadoAbierto, setCambiarEstadoAbierto] = useState(false);
+
+  // Permiso para cambiar estados (viene del JSON _operativos)
+  const puedeCambiarEstado =
+    user?.rol === 'admin' ||
+    user?.permisos?._operativos?.acciones_produccion?.cambiar_estados === true;
 
   const fetchRegistro = async () => {
     try {
@@ -135,7 +143,25 @@ export const MobileRegistroDetalle = () => {
               </div>
             </div>
             <div>
-              <span className={`m-pill ${estadoPillClass(registro.estado)}`}>{registro.estado || '—'}</span>
+              {puedeCambiarEstado && !inactiva ? (
+                <button
+                  onClick={() => setCambiarEstadoAbierto(true)}
+                  className={`m-pill ${estadoPillClass(registro.estado)}`}
+                  style={{
+                    border: '1.5px dashed currentColor',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                  title="Tocá para cambiar el estado"
+                >
+                  {registro.estado || '—'}
+                  <ChevronDown size={11} />
+                </button>
+              ) : (
+                <span className={`m-pill ${estadoPillClass(registro.estado)}`}>{registro.estado || '—'}</span>
+              )}
               {registro.urgente && (
                 <span className="m-pill m-pill-red" style={{ marginLeft: 4 }}><AlertOctagon size={10} /> URG</span>
               )}
@@ -250,6 +276,19 @@ export const MobileRegistroDetalle = () => {
           onClose={() => setAccion(null)}
           onDone={async () => {
             setAccion(null);
+            await fetchRegistro();
+          }}
+        />
+      )}
+
+      {/* Bottom sheet: Cambiar estado del corte */}
+      {cambiarEstadoAbierto && (
+        <CambiarEstadoSheet
+          registro={registro}
+          user={user}
+          onClose={() => setCambiarEstadoAbierto(false)}
+          onDone={async () => {
+            setCambiarEstadoAbierto(false);
             await fetchRegistro();
           }}
         />
@@ -571,6 +610,512 @@ function fmtFecha(d) {
     const date = new Date(d);
     return date.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' });
   } catch { return '—'; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CambiarEstadoSheet · 3 fases (select → confirm | error)
+   ───────────────────────────────────────────────────────────────────────────
+   1) Cargar estados disponibles + permisos + movimientos abiertos.
+   2) Filtrar lo que puede asignar el usuario y marcar el "siguiente" lógico.
+   3) Al elegir un estado:
+        - si requiere etapa anterior cerrada y no lo está → fase "error"
+        - si destino es "estado activo" (Corte/Costura/Atraque/Lavandería/Acabado)
+          → fase "confirm" con detalle de movimiento que se va a crear
+        - si destino es "Para X" o "Almacén PT/Tienda" → fase "confirm" sin movimiento
+   4) Confirmar: PUT /registros/:id + opcional POST /movimientos-produccion.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Una etapa "activa" (que crea movimiento al entrar) es la que tiene `servicio_id`
+ * asociado en la ruta del modelo. Las etapas de espera ("Para X") y los estados
+ * finales ("Tienda", "Almacén PT" sin servicio) no tienen servicio_id y no crean
+ * movimiento. Esta lógica viene de la configuración real de la ruta — no
+ * hardcodeamos nombres.
+ */
+function etapaCreaMovimiento(etapa) {
+  return !!etapa?.servicio_id;
+}
+
+const CambiarEstadoSheet = ({ registro, user, onClose, onDone }) => {
+  // Fase interna: 'select' | 'confirm' | 'error'
+  const [fase, setFase] = useState('select');
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null);          // { estados, etapas_completas, estado_actual, usa_ruta }
+  const [movimientos, setMovimientos] = useState([]);
+  const [destinoElegido, setDestinoElegido] = useState(null); // string del estado destino
+  const [bloqueo, setBloqueo] = useState(null);    // { mensaje, movimientoAbierto }
+  const [observacion, setObservacion] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState('');
+
+  // Permisos del usuario
+  const esAdmin = user?.rol === 'admin';
+  const estadosPermitidos = user?.permisos?._operativos?.estados_permitidos || [];
+
+  // ─── Carga inicial ──────────────────────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const [estRes, movRes] = await Promise.all([
+          axios.get(`${API}/registros/${registro.id}/estados-disponibles`),
+          axios.get(`${API}/movimientos-produccion?registro_id=${registro.id}&limit=200`),
+        ]);
+        setData(estRes.data || null);
+        const items = movRes.data?.items || movRes.data || [];
+        setMovimientos(Array.isArray(items) ? items : []);
+      } catch {
+        setData(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registro.id]);
+
+  // ─── Cálculos derivados ─────────────────────────────────────────────────
+  const todosLosEstados = data?.estados || [];
+  const etapasCompletas = data?.etapas_completas || [];
+  const estadoActual = data?.estado_actual || registro.estado;
+
+  // Identificar siguiente lógico
+  const siguienteLogico = useMemo(() => {
+    if (!todosLosEstados.length || !estadoActual) return null;
+    const idx = todosLosEstados.indexOf(estadoActual);
+    if (idx === -1 || idx >= todosLosEstados.length - 1) return null;
+    return todosLosEstados[idx + 1];
+  }, [todosLosEstados, estadoActual]);
+
+  // Estados que el usuario puede asignar
+  const estadosVisibles = useMemo(() => {
+    if (esAdmin) return todosLosEstados;
+    return todosLosEstados.filter(e => estadosPermitidos.includes(e));
+  }, [todosLosEstados, estadosPermitidos, esAdmin]);
+
+  const estadosNoVisibles = useMemo(() => {
+    return todosLosEstados.filter(e => !estadosVisibles.includes(e) && e !== estadoActual);
+  }, [todosLosEstados, estadosVisibles, estadoActual]);
+
+  // Etapa de la ruta correspondiente al estado destino
+  const etapaDestino = useMemo(() => {
+    if (!destinoElegido || !etapasCompletas.length) return null;
+    return etapasCompletas.find(e => e.nombre === destinoElegido);
+  }, [destinoElegido, etapasCompletas]);
+
+  // ¿El destino es una etapa con servicio asociado? Si sí, crea movimiento.
+  // Esto se basa en la ruta del modelo (no en nombres hardcoded).
+  const destinoCreaMovimiento = etapaCreaMovimiento(etapaDestino);
+
+  // Alias retro-compatible para no romper el resto del código:
+  const destinoEsActivo = destinoCreaMovimiento;
+  const servicioDestino = etapaDestino;
+
+  // ─── Lógica al elegir un destino ────────────────────────────────────────
+  const elegirDestino = (estado) => {
+    setDestinoElegido(estado);
+    setError('');
+    // Validar: si hay etapa anterior con movimiento abierto, bloquear.
+    const idxDestino = todosLosEstados.indexOf(estado);
+    if (idxDestino > 0 && etapasCompletas.length) {
+      // Recorremos las etapas anteriores en la ruta
+      const idxEnEtapas = etapasCompletas.findIndex(e => e.nombre === estado);
+      if (idxEnEtapas > 0) {
+        for (let i = idxEnEtapas - 1; i >= 0; i--) {
+          const et = etapasCompletas[i];
+          const sid = et.servicio_id;
+          if (!sid) continue;
+          // ¿Hay movimientos de este servicio?
+          const movs = movimientos.filter(m => m.servicio_id === sid);
+          if (movs.length === 0) continue;
+          // ¿Alguno está abierto (sin fecha_fin)?
+          const abierto = movs.find(m => m.fecha_inicio && !m.fecha_fin);
+          if (abierto) {
+            setBloqueo({
+              etapaAbierta: et.nombre,
+              movimientoAbierto: abierto,
+              destinoIntentado: estado,
+            });
+            setFase('error');
+            return;
+          }
+        }
+      }
+    }
+    // Sin bloqueo → pasar a confirmar
+    setFase('confirm');
+  };
+
+  // ─── Confirmar el cambio ────────────────────────────────────────────────
+  const confirmar = async () => {
+    if (!destinoElegido) return;
+    setError('');
+    setEnviando(true);
+    try {
+      // 1) Cambiar el estado del registro
+      const payload = { ...registro, estado: destinoElegido };
+      await axios.put(`${API}/registros/${registro.id}`, payload);
+
+      // 2) Si el destino es estado activo, crear movimiento (si no hay uno abierto ya)
+      if (destinoEsActivo && servicioDestino?.servicio_id) {
+        const yaHayMov = movimientos.find(
+          m => m.servicio_id === servicioDestino.servicio_id
+            && m.fecha_inicio && !m.fecha_fin
+        );
+        if (!yaHayMov) {
+          // Calculamos cantidad enviada = total prendas del corte
+          const totalPzs = Object.values(registro.tallas || {}).reduce(
+            (s, n) => s + (Number(n) || 0), 0
+          );
+          await axios.post(`${API}/movimientos-produccion`, {
+            registro_id: registro.id,
+            servicio_id: servicioDestino.servicio_id,
+            cantidad_enviada: totalPzs || 0,
+            fecha_inicio: new Date().toISOString().slice(0, 10),
+            observaciones: observacion || `Auto-creado al pasar a ${destinoElegido}`,
+          });
+        }
+      }
+
+      onDone();
+    } catch (e) {
+      const det = e?.response?.data?.detail;
+      setError(typeof det === 'string' ? det : 'No se pudo cambiar el estado');
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  // ─── Render ─────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <SheetShell onClose={onClose}>
+        <div style={{ textAlign: 'center', padding: 32 }}>
+          <Loader2 className="m-spin" size={28} style={{ color: '#94a3b8' }} />
+        </div>
+      </SheetShell>
+    );
+  }
+
+  // ── FASE: SELECT ─────────────────────────────────────────────────────────
+  if (fase === 'select') {
+    return (
+      <SheetShell onClose={onClose}>
+        <div style={{ fontWeight: 700, fontSize: 17 }}>Cambiar estado</div>
+        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2, fontFamily: 'ui-monospace, monospace' }}>
+          {registro.n_corte} · {registro.modelo_nombre || registro.modelo_manual?.nombre_modelo || '—'}
+        </div>
+
+        {/* Estado actual */}
+        <div style={{
+          background: '#f8fafc', borderRadius: 10, padding: 10,
+          marginTop: 14, display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <span style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+            Actual
+          </span>
+          <span className={`m-pill ${estadoPillClass(estadoActual)}`}>{estadoActual || '—'}</span>
+        </div>
+
+        {/* Lista de opciones que puede asignar */}
+        {estadosVisibles.length === 0 ? (
+          <div style={{
+            marginTop: 16, padding: 16, textAlign: 'center',
+            background: '#fef3c7', borderRadius: 10, color: '#92400e', fontSize: 13,
+          }}>
+            Tu rol no tiene estados habilitados para cambiar este corte.
+          </div>
+        ) : (
+          <>
+            <div className="m-label-xs" style={{ marginTop: 16, marginBottom: 8 }}>
+              A qué estado pasar
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {estadosVisibles.filter(e => e !== estadoActual).map(est => {
+                const esSiguiente = est === siguienteLogico;
+                const etapaInfo = etapasCompletas.find(e => e.nombre === est);
+                const esActivo = etapaCreaMovimiento(etapaInfo);
+                return (
+                  <button
+                    key={est}
+                    onClick={() => elegirDestino(est)}
+                    style={{
+                      background: 'white',
+                      border: esSiguiente ? '2px solid var(--m-brand)' : '1px solid #e5e7eb',
+                      borderRadius: 12, padding: 12,
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      textAlign: 'left', cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 8,
+                      background: esActivo ? '#dbeafe' : '#fef3c7',
+                      color: esActivo ? '#2563eb' : '#b45309',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 700, flexShrink: 0,
+                    }}>
+                      {esActivo ? '→' : '⏸'}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 600, fontSize: 13 }}>{est}</span>
+                        {esSiguiente && (
+                          <span style={{
+                            background: 'var(--m-brand-soft)', color: 'var(--m-brand)',
+                            fontSize: 9, fontWeight: 700, padding: '2px 6px',
+                            borderRadius: 999, letterSpacing: '.04em',
+                          }}>
+                            SIGUIENTE
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+                        {esActivo
+                          ? 'Crea movimiento de ' + est + ' con fecha inicio = ahora'
+                          : 'Estado de espera (sin movimiento)'}
+                      </div>
+                    </div>
+                    <ChevronRight size={16} style={{ color: '#cbd5e1' }} />
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* Estados que NO puede asignar */}
+        {!esAdmin && estadosNoVisibles.length > 0 && (
+          <>
+            <div className="m-label-xs" style={{ marginTop: 16, marginBottom: 8 }}>
+              Otros estados (tu rol no los puede asignar)
+            </div>
+            <div style={{
+              background: '#f8fafc', borderRadius: 10, padding: 10,
+              fontSize: 11, color: '#64748b',
+            }}>
+              {estadosNoVisibles.join(' · ')}
+            </div>
+          </>
+        )}
+
+        <button
+          onClick={onClose}
+          className="m-btn m-btn-outline"
+          style={{ width: '100%', marginTop: 16, borderColor: '#cbd5e1', color: '#64748b' }}
+        >
+          Cancelar
+        </button>
+      </SheetShell>
+    );
+  }
+
+  // ── FASE: CONFIRM ────────────────────────────────────────────────────────
+  if (fase === 'confirm') {
+    const totalPzs = Object.values(registro.tallas || {}).reduce((s, n) => s + (Number(n) || 0), 0);
+    return (
+      <SheetShell onClose={onClose}>
+        <div style={{ textAlign: 'center', marginBottom: 12 }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%',
+            background: 'var(--m-brand-soft)', color: 'var(--m-brand)',
+            margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Check size={26} />
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 17 }}>Pasar a {destinoElegido}</div>
+          <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
+            {registro.n_corte}
+          </div>
+        </div>
+
+        <div className="m-label-xs" style={{ marginBottom: 8 }}>Esto va a suceder</div>
+
+        {/* Cambio de estado */}
+        <div className="m-card" style={{ padding: 12, marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <Check size={18} style={{ color: 'var(--m-brand)', marginTop: 1, flexShrink: 0 }} />
+            <div style={{ flex: 1, fontSize: 12 }}>
+              <div style={{ fontWeight: 600 }}>Estado cambia</div>
+              <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span className={`m-pill ${estadoPillClass(estadoActual)}`} style={{ fontSize: 9 }}>{estadoActual}</span>
+                <ChevronRight size={11} style={{ color: '#94a3b8' }} />
+                <span className={`m-pill ${estadoPillClass(destinoElegido)}`} style={{ fontSize: 9 }}>{destinoElegido}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Auto-crear movimiento si aplica */}
+        {destinoEsActivo && servicioDestino?.servicio_id && (
+          <div className="m-card" style={{
+            background: 'var(--m-brand-soft)', borderColor: '#5eead4',
+            padding: 12, marginBottom: 8,
+          }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <Plus size={18} style={{ color: 'var(--m-brand)', marginTop: 1, flexShrink: 0 }} />
+              <div style={{ flex: 1, fontSize: 12 }}>
+                <div style={{ fontWeight: 700, color: 'var(--m-brand)' }}>
+                  Se crea movimiento de {destinoElegido}
+                </div>
+                <div style={{ marginTop: 6, color: '#475569', lineHeight: 1.6 }}>
+                  Servicio: <strong>{destinoElegido}</strong><br/>
+                  Fecha inicio: <strong>hoy</strong><br/>
+                  Cantidad enviada: <strong>{totalPzs || 0} prendas</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Observación opcional */}
+        <div style={{ marginTop: 10 }}>
+          <div className="m-label-xs" style={{ marginBottom: 4 }}>
+            Observación (opcional)
+          </div>
+          <textarea
+            value={observacion}
+            onChange={(e) => setObservacion(e.target.value)}
+            placeholder="Ej: arranco con todas las prendas"
+            rows={2}
+            style={{
+              width: '100%', padding: 10, fontSize: 13,
+              border: '1px solid #d1d5db', borderRadius: 10,
+              fontFamily: 'inherit', resize: 'none',
+            }}
+          />
+        </div>
+
+        {error && (
+          <div style={{
+            background: '#fef2f2', color: '#b91c1c', border: '1px solid #fca5a5',
+            borderRadius: 10, padding: 10, fontSize: 12, marginTop: 10,
+            display: 'flex', gap: 8, alignItems: 'flex-start',
+          }}>
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+          <button
+            onClick={() => setFase('select')}
+            className="m-btn m-btn-outline"
+            style={{ flex: 1 }}
+          >
+            <X size={16} /> Cancelar
+          </button>
+          <button
+            onClick={confirmar}
+            disabled={enviando}
+            className="m-btn m-btn-primary"
+            style={{ flex: 1.5 }}
+          >
+            {enviando
+              ? <><Loader2 className="m-spin" size={16} /> Aplicando…</>
+              : <><Check size={16} /> Confirmar</>}
+          </button>
+        </div>
+      </SheetShell>
+    );
+  }
+
+  // ── FASE: ERROR (etapa anterior abierta) ────────────────────────────────
+  if (fase === 'error' && bloqueo) {
+    const mov = bloqueo.movimientoAbierto;
+    const enviado = Number(mov?.cantidad_enviada || 0);
+    const recibido = Number(mov?.cantidad_recibida || 0);
+    const pendiente = Math.max(0, enviado - recibido);
+    return (
+      <SheetShell onClose={onClose}>
+        <div style={{ textAlign: 'center', marginBottom: 12 }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%',
+            background: '#fee2e2', color: '#dc2626',
+            margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <AlertTriangle size={26} />
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 17 }}>
+            No se puede pasar a {bloqueo.destinoIntentado}
+          </div>
+          <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
+            {registro.n_corte}
+          </div>
+        </div>
+
+        <div style={{
+          background: '#fef2f2', border: '1px solid #fca5a5', color: '#7f1d1d',
+          borderRadius: 12, padding: 12, fontSize: 12, marginBottom: 12,
+        }}>
+          <strong>El movimiento de {bloqueo.etapaAbierta} sigue abierto.</strong>
+          <div style={{ marginTop: 6, lineHeight: 1.5, color: '#991b1b' }}>
+            No podés pasar el corte a {bloqueo.destinoIntentado} sin antes cerrar el
+            movimiento de {bloqueo.etapaAbierta}. Cerralo desde la lista de movimientos
+            cuando termine.
+          </div>
+        </div>
+
+        {/* Detalle del movimiento abierto */}
+        <div className="m-label-xs" style={{ marginBottom: 6 }}>Movimiento pendiente</div>
+        <div className="m-card" style={{ borderColor: '#fcd34d', padding: 12, marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>
+                {bloqueo.etapaAbierta} · {mov?.persona_nombre || '—'}
+              </div>
+              <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+                Inicio: {mov?.fecha_inicio || '—'}
+              </div>
+            </div>
+            <span className="m-pill m-pill-blue" style={{ fontSize: 9 }}>en curso</span>
+          </div>
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4,
+            marginTop: 8, paddingTop: 8, borderTop: '1px solid #f1f5f9', textAlign: 'center',
+          }}>
+            <div>
+              <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: 14 }}>{enviado}</div>
+              <div style={{ fontSize: 9, color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>enviado</div>
+            </div>
+            <div>
+              <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: 14, color: '#15803d' }}>{recibido}</div>
+              <div style={{ fontSize: 9, color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>recibido</div>
+            </div>
+            <div>
+              <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: 14, color: '#b45309' }}>{pendiente}</div>
+              <div style={{ fontSize: 9, color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>pendiente</div>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={() => {
+            onClose();
+            navigateToMov(registro.id, mov.id);
+          }}
+          className="m-btn m-btn-primary"
+          style={{ width: '100%' }}
+        >
+          <Check size={16} /> Ir a cerrar movimiento
+        </button>
+        <button
+          onClick={() => setFase('select')}
+          className="m-btn m-btn-outline"
+          style={{ width: '100%', marginTop: 8 }}
+        >
+          Volver a estados
+        </button>
+      </SheetShell>
+    );
+  }
+
+  return null;
+};
+
+/**
+ * Helper para navegar al detalle del movimiento abierto (usado desde la fase error).
+ * Lo definimos como function suelta para evitar dependencia circular con useNavigate.
+ */
+function navigateToMov(registroId, movId) {
+  window.location.href = `/m/registros/${registroId}/movimientos/${movId}`;
 }
 
 export default MobileRegistroDetalle;

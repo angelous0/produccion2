@@ -3,8 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
   ArrowLeft, Loader2, Check, Calendar, User, DollarSign,
-  AlertTriangle, Trash2, CheckCircle2, TrendingUp,
+  AlertTriangle, Trash2, CheckCircle2, TrendingUp, History,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -19,11 +20,16 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export const MobileMovimientoDetalle = () => {
   const { id: registroId, movId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [registro, setRegistro] = useState(null);
   const [mov, setMov] = useState(null);
   const [servicios, setServicios] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Historial de avances (Sprint 41-historial)
+  const [historial, setHistorial] = useState([]);
+  const [borrando, setBorrando] = useState(null); // id del registro en proceso
 
   // bottom sheets
   const [showCerrar, setShowCerrar] = useState(false);
@@ -32,16 +38,18 @@ export const MobileMovimientoDetalle = () => {
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [regRes, movRes, srvRes] = await Promise.all([
+        const [regRes, movRes, srvRes, histRes] = await Promise.all([
           axios.get(`${API}/registros/${registroId}`),
           axios.get(`${API}/movimientos-produccion?registro_id=${registroId}&limit=200`),
           axios.get(`${API}/servicios-produccion`).catch(() => ({ data: [] })),
+          axios.get(`${API}/reportes-produccion/costura/avance-historial/${movId}`).catch(() => ({ data: [] })),
         ]);
         setRegistro(regRes.data);
         const items = movRes.data?.items || movRes.data || [];
         const found = (Array.isArray(items) ? items : []).find(m => m.id === movId);
         setMov(found || null);
         setServicios(Array.isArray(srvRes.data) ? srvRes.data : (srvRes.data?.items || []));
+        setHistorial(Array.isArray(histRes.data) ? histRes.data : []);
       } catch {
         setMov(null);
       } finally {
@@ -50,6 +58,35 @@ export const MobileMovimientoDetalle = () => {
     };
     fetchAll();
   }, [registroId, movId]);
+
+  // Refresca solo el historial (tras reportar o borrar)
+  const refreshHistorial = async () => {
+    try {
+      const res = await axios.get(
+        `${API}/reportes-produccion/costura/avance-historial/${movId}`
+      );
+      setHistorial(Array.isArray(res.data) ? res.data : []);
+    } catch { /* no-op */ }
+  };
+
+  // Borrar una entrada del historial (solo el autor o admin)
+  const borrarHistorialEntry = async (entry) => {
+    const ok = window.confirm(
+      `¿Borrar el reporte de ${entry.avance_porcentaje}% del ${fmtFechaCorta(entry.fecha)}? ` +
+      `El avance actual se recalculará tomando el último reporte que quede.`
+    );
+    if (!ok) return;
+    setBorrando(entry.id);
+    try {
+      await axios.delete(`${API}/reportes-produccion/costura/avance-historial/${entry.id}`);
+      // Recargamos historial y también el movimiento (el avance % puede haber cambiado)
+      await Promise.all([refreshHistorial(), refreshMov()]);
+    } catch (e) {
+      window.alert(e?.response?.data?.detail || 'No se pudo borrar el reporte');
+    } finally {
+      setBorrando(null);
+    }
+  };
 
   // ¿El servicio del movimiento usa reporte de avance %?
   const servicioActual = useMemo(
@@ -224,6 +261,16 @@ export const MobileMovimientoDetalle = () => {
           </div>
         )}
 
+        {/* Historial de avances — Lista compacta (Opción B) */}
+        {usaAvance && historial.length > 0 && (
+          <HistorialAvancesCard
+            historial={historial}
+            user={user}
+            borrando={borrando}
+            onBorrar={borrarHistorialEntry}
+          />
+        )}
+
         {/* Acciones */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
           {/* Reportar avance (solo si el servicio usa avance %) */}
@@ -287,7 +334,8 @@ export const MobileMovimientoDetalle = () => {
           onClose={() => setShowAvance(false)}
           onGuardado={async () => {
             setShowAvance(false);
-            await refreshMov();
+            // Refrescar tanto el movimiento (avance_porcentaje) como el historial
+            await Promise.all([refreshMov(), refreshHistorial()]);
           }}
         />
       )}
@@ -686,6 +734,149 @@ function fmtFecha(iso) {
 }
 function hoyISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Historial de avances · Lista compacta (Opción B)
+   ─────────────────────────────────────────────────────────────────────────
+   Muestra cada reporte como fila: % grande monospace + autor + fecha relativa.
+   El botón borrar solo aparece si el usuario actual es admin o el autor del
+   reporte. El backend recalcula el avance_porcentaje del movimiento al borrar.
+   ───────────────────────────────────────────────────────────────────────── */
+const HistorialAvancesCard = ({ historial, user, borrando, onBorrar }) => {
+  // El historial viene del backend en orden ASC (más viejo primero).
+  // Para mostrarlo lo invertimos: el más reciente arriba.
+  const entradas = useMemo(() => [...historial].reverse(), [historial]);
+  const miNombre = (user?.nombre_completo || user?.username || '').toLowerCase();
+  const esAdmin = user?.rol === 'admin';
+
+  return (
+    <div>
+      <div className="m-label-xs" style={{
+        display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8,
+      }}>
+        <History size={11} />
+        Historial de avances ({historial.length})
+      </div>
+
+      <div className="m-card" style={{ padding: 0, overflow: 'hidden' }}>
+        {entradas.map((e, i) => {
+          const usuario = (e.usuario || '').toLowerCase();
+          const puedeBorrar = esAdmin || (usuario && usuario === miNombre);
+          const esUltimo = i === 0; // el más reciente
+          return (
+            <div
+              key={e.id}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: 12,
+                borderBottom: i < entradas.length - 1 ? '1px solid #f1f5f9' : 0,
+              }}
+            >
+              <span style={{
+                fontFamily: 'ui-monospace, monospace',
+                fontWeight: 700, fontSize: 15,
+                color: esUltimo ? 'var(--m-brand)' : '#475569',
+                minWidth: 44,
+              }}>
+                {e.avance_porcentaje}%
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>
+                  {e.usuario || 'Sin usuario'}
+                </div>
+                <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                  {fmtFechaRelativa(e.fecha)}
+                </div>
+              </div>
+              {puedeBorrar ? (
+                <button
+                  onClick={() => onBorrar(e)}
+                  disabled={borrando === e.id}
+                  aria-label="Borrar reporte"
+                  style={{
+                    padding: 6, background: 'transparent', border: 0,
+                    color: '#dc2626', borderRadius: 6,
+                    cursor: borrando === e.id ? 'wait' : 'pointer',
+                    opacity: borrando === e.id ? 0.5 : 1,
+                  }}
+                >
+                  {borrando === e.id
+                    ? <Loader2 className="m-spin" size={14} />
+                    : <Trash2 size={15} />}
+                </button>
+              ) : (
+                <div style={{ width: 28 }} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{
+        fontSize: 10, color: '#94a3b8', fontStyle: 'italic',
+        textAlign: 'center', marginTop: 6,
+      }}>
+        Solo podés borrar tus propios reportes
+        {esAdmin && ' (admin puede borrar todos)'}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Convierte una fecha ISO a algo legible:
+ *  - "hace 10 min" si < 1h
+ *  - "hoy 14:30" si es hoy
+ *  - "ayer 16:00" si es ayer
+ *  - "25 may 9:00" si es de este año
+ *  - "25/05/2024" si es de otro año
+ */
+function fmtFechaRelativa(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const ahora = new Date();
+  const diffMs = ahora - d;
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffH = Math.floor(diffMin / 60);
+
+  if (diffMin < 1) return 'hace segundos';
+  if (diffMin < 60) return `hace ${diffMin} min`;
+
+  // Mismo día calendario
+  const esHoy = d.toDateString() === ahora.toDateString();
+  const ayer = new Date(ahora);
+  ayer.setDate(ahora.getDate() - 1);
+  const esAyer = d.toDateString() === ayer.toDateString();
+  const hora = d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+  if (esHoy) return diffH < 6 ? `hace ${diffH} h` : `hoy ${hora}`;
+  if (esAyer) return `ayer ${hora}`;
+
+  // Mismo año
+  const mismoAnio = d.getFullYear() === ahora.getFullYear();
+  if (mismoAnio) {
+    const dia = d.getDate();
+    const mes = d.toLocaleString('es-PE', { month: 'short' }).replace('.', '');
+    return `${dia} ${mes} ${hora}`;
+  }
+  return d.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+/**
+ * Formato corto de fecha para el confirm de borrar.
+ *  "25/05 16:30"
+ */
+function fmtFechaCorta(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm} ${hh}:${min}`;
 }
 
 export default MobileMovimientoDetalle;
