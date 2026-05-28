@@ -410,6 +410,9 @@ class ModeloManual(BaseModel):
     hilo_texto: Optional[str] = None
     hilo_especifico_id: Optional[str] = None
     hilo_especifico_texto: Optional[str] = None
+    # Override directo de la ruta de producción. Si None, el helper
+    # `_ruta_id_para_registro` cae al tipo (prod_tipos.ruta_produccion_id).
+    ruta_produccion_id: Optional[str] = None
 
 class RegistroBase(BaseModel):
     n_corte: str
@@ -438,10 +441,13 @@ class Registro(RegistroBase):
     tallas: List[TallaCantidadItem] = []
     distribucion_colores: List[TallaConColores] = []
 
+# Catálogo global de estados (canónico SIN TILDES, coincide con etapas de
+# prod_rutas_produccion). Cualquier estado guardado debe estar normalizado;
+# `normalizar_estado()` abajo es la fuente de verdad para esa normalización.
 ESTADOS_PRODUCCION = [
     "Para Corte", "Corte", "Para Costura", "Costura", "Para Atraque", "Atraque",
-    "Para Lavandería", "Muestra Lavanderia", "Lavandería", "Para Acabado",
-    "Acabado", "Almacén PT", "Tienda"
+    "Para Lavanderia", "Muestra Lavanderia", "Lavanderia", "Para Acabado",
+    "Acabado", "Almacen PT", "Tienda"
 ]
 
 class RegistroTallaBase(BaseModel):

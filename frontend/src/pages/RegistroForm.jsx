@@ -93,7 +93,10 @@ export const RegistroForm = () => {
     hilo_id: '', hilo_texto: '', hilo_modo: 'select',
     hilo_especifico_id: '', hilo_especifico_texto: '', hilo_especifico_modo: 'select',
     nombre_modelo: '',
+    ruta_produccion_id: '',           // override de ruta (vacío = heredar del tipo)
+    ruta_produccion_origen: 'tipo',   // 'tipo' = heredada | 'manual' = override del usuario
   });
+  const [catalogoRutasMM, setCatalogoRutasMM] = useState([]);
   const [catalogoHilos, setCatalogoHilos] = useState([]);
   const [catalogoHilosEsp, setCatalogoHilosEsp] = useState([]);
 
@@ -232,6 +235,7 @@ export const RegistroForm = () => {
     // Catálogos para modo manual
     axios.get(`${API}/marcas`).then(r => setCatalogoMarcas(r.data)).catch(() => {});
     axios.get(`${API}/tipos`).then(r => setCatalogoTipos(r.data)).catch(() => {});
+    axios.get(`${API}/rutas-produccion`).then(r => setCatalogoRutasMM(r.data || [])).catch(() => {});
     axios.get(`${API}/telas`).then(r => setCatalogoTelas(r.data)).catch(() => {});
     axios.get(`${API}/entalles`).then(r => setCatalogoEntalles(r.data)).catch(() => {});
     axios.get(`${API}/hilos`).then(r => setCatalogoHilos(r.data)).catch(() => {});
@@ -322,6 +326,10 @@ export const RegistroForm = () => {
           hilo_id: mm.hilo_id || '', hilo_texto: mm.hilo_texto || mm.hilo || '', hilo_modo: mm.hilo_id ? 'select' : (mm.hilo_texto || mm.hilo ? 'text' : 'select'),
           hilo_especifico_id: mm.hilo_especifico_id || '', hilo_especifico_texto: mm.hilo_especifico_texto || mm.hilo_especifico || '', hilo_especifico_modo: mm.hilo_especifico_id ? 'select' : (mm.hilo_especifico_texto || mm.hilo_especifico ? 'text' : 'select'),
           nombre_modelo: mm.nombre_modelo || '',
+          // Si el JSON guardado tiene ruta_produccion_id, es un override
+          // manual; sino marcamos origen='tipo' para que se herede en runtime.
+          ruta_produccion_id: mm.ruta_produccion_id || '',
+          ruta_produccion_origen: mm.ruta_produccion_id ? 'manual' : 'tipo',
         });
       }
       setTallasSeleccionadas(registro.tallas || []);
@@ -1055,6 +1063,12 @@ export const RegistroForm = () => {
           hilo_texto: modeloManualForm.hilo_modo === 'text' ? modeloManualForm.hilo_texto : (catalogoHilos.find(h => h.id === modeloManualForm.hilo_id)?.nombre || modeloManualForm.hilo_texto || null),
           hilo_especifico_id: modeloManualForm.hilo_especifico_modo === 'select' ? modeloManualForm.hilo_especifico_id || null : null,
           hilo_especifico_texto: modeloManualForm.hilo_especifico_modo === 'text' ? modeloManualForm.hilo_especifico_texto : (catalogoHilosEsp.find(h => h.id === modeloManualForm.hilo_especifico_id)?.nombre || modeloManualForm.hilo_especifico_texto || null),
+          // Ruta de producción: solo guardar si el usuario hizo override
+          // manual. Si origen='tipo' dejamos null para que la herencia
+          // funcione (si cambia la ruta del tipo, el corte la sigue).
+          ruta_produccion_id: modeloManualForm.ruta_produccion_origen === 'manual'
+            ? (modeloManualForm.ruta_produccion_id || null)
+            : null,
         };
       } else {
         payload.modelo_manual = null;
@@ -1396,6 +1410,7 @@ export const RegistroForm = () => {
                   catalogoMarcas={catalogoMarcas} catalogoTipos={catalogoTipos}
                   catalogoTelas={catalogoTelas} catalogoEntalles={catalogoEntalles}
                   catalogoHilos={catalogoHilos} catalogoHilosEsp={catalogoHilosEsp}
+                  catalogoRutasMM={catalogoRutasMM}
                   setCatalogoTipos={setCatalogoTipos} setCatalogoEntalles={setCatalogoEntalles}
                   setCatalogoTelas={setCatalogoTelas} setCatalogoHilos={setCatalogoHilos}
                   onCrearPT={handleCrearPT}
@@ -1467,6 +1482,7 @@ export const RegistroForm = () => {
                     catalogoMarcas={catalogoMarcas} catalogoTipos={catalogoTipos}
                     catalogoTelas={catalogoTelas} catalogoEntalles={catalogoEntalles}
                     catalogoHilos={catalogoHilos} catalogoHilosEsp={catalogoHilosEsp}
+                  catalogoRutasMM={catalogoRutasMM}
                     setCatalogoTipos={setCatalogoTipos} setCatalogoEntalles={setCatalogoEntalles}
                     setCatalogoTelas={setCatalogoTelas} setCatalogoHilos={setCatalogoHilos}
                     onCrearPT={handleCrearPT}

@@ -1,7 +1,38 @@
 """Router for production registros: CRUD, estados, tallas."""
 import json
+import unicodedata
 import uuid
 from datetime import date, datetime, timezone, timedelta
+
+
+def _norm_estado(s):
+    """Normaliza un nombre de estado para comparar tolerante a tildes
+    y mayúsculas. 'Lavandería' == 'Lavanderia' == 'LAVANDERIA'.
+    Devuelve '' si s es None/falsy."""
+    if not s:
+        return ''
+    s = str(s).strip()
+    # NFKD descompone caracteres con tilde en (letra + acento). Eliminamos
+    # los combining marks (categoría 'Mn') y bajamos a lower.
+    s = unicodedata.normalize('NFKD', s)
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    return s.lower()
+
+
+def _canonizar_estado(s):
+    """Devuelve el estado en su forma canónica (sin tildes, capitalización
+    original del catálogo). Si el input matchea por normalización con algún
+    valor de ESTADOS_PRODUCCION, devuelve ese valor canónico. Sino devuelve
+    el input tal cual (para no romper valores legítimos no catalogados como
+    'CERRADA', 'ANULADA' u otros estados especiales)."""
+    from models import ESTADOS_PRODUCCION
+    if not s:
+        return s
+    objetivo = _norm_estado(s)
+    for canon in ESTADOS_PRODUCCION:
+        if _norm_estado(canon) == objetivo:
+            return canon
+    return s
 from fastapi import APIRouter, HTTPException, Depends, Query
 from db import get_pool
 from auth_utils import get_current_user, require_permiso as require_permission
@@ -23,9 +54,11 @@ async def _ruta_id_para_registro(conn, registro) -> Optional[str]:
     Estrategia (en orden):
       1) Si el registro tiene `modelo_id` y ese modelo tiene
          `ruta_produccion_id` → usar esa (override por modelo catalogado).
-      2) Sino, mirar `modelo_manual->>'tipo_id'` y buscar la ruta default
+      2) Si `modelo_manual->>'ruta_produccion_id'` está seteado → usar esa
+         (override directo elegido en el form manual, gana sobre el tipo).
+      3) Sino, mirar `modelo_manual->>'tipo_id'` y buscar la ruta default
          del tipo en `prod_tipos.ruta_produccion_id` (fallback por tipo).
-      3) Si nada de eso, devolver None (el registro queda sin ruta y
+      4) Si nada de eso, devolver None (el registro queda sin ruta y
          el sistema cae al fallback genérico `usa_ruta: False`).
     """
     # asyncpg.Record no siempre soporta .get(); usamos acceso por índice
@@ -45,22 +78,33 @@ async def _ruta_id_para_registro(conn, registro) -> Optional[str]:
         )
         if m and m['ruta_produccion_id']:
             return m['ruta_produccion_id']
-    # 2) Fallback por tipo en modelo_manual (JSONB; asyncpg lo devuelve
-    #    como string en este proyecto, así que parseamos defensivamente).
+    # Parsear modelo_manual (JSONB; asyncpg lo devuelve como string en este
+    # proyecto, así que parseamos defensivamente).
     mm = _f('modelo_manual')
     if isinstance(mm, str):
         try:
             mm = json.loads(mm)
         except Exception:
             mm = None
-    tipo_id = mm.get('tipo_id') if isinstance(mm, dict) else None
-    if tipo_id:
-        t = await conn.fetchrow(
-            "SELECT ruta_produccion_id FROM prod_tipos WHERE id = $1",
-            tipo_id,
-        )
-        if t and t['ruta_produccion_id']:
-            return t['ruta_produccion_id']
+    if isinstance(mm, dict):
+        # 2) Override directo en el form manual
+        mm_ruta = mm.get('ruta_produccion_id')
+        if mm_ruta:
+            r = await conn.fetchrow(
+                "SELECT id FROM prod_rutas_produccion WHERE id = $1",
+                mm_ruta,
+            )
+            if r:
+                return mm_ruta
+        # 3) Fallback por tipo
+        tipo_id = mm.get('tipo_id')
+        if tipo_id:
+            t = await conn.fetchrow(
+                "SELECT ruta_produccion_id FROM prod_tipos WHERE id = $1",
+                tipo_id,
+            )
+            if t and t['ruta_produccion_id']:
+                return t['ruta_produccion_id']
     return None
 
 
@@ -632,7 +676,7 @@ async def create_registro(input: RegistroCreate, current_user: dict = Depends(re
         await conn.execute(
             """INSERT INTO prod_registros (id, n_corte, modelo_id, curva, estado, urgente, hilo_especifico_id, tallas, distribucion_colores, fecha_creacion, pt_item_id, empresa_id, observaciones, linea_negocio_id, fecha_entrega_final, fecha_inicio_real, modelo_manual)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)""",
-            registro.id, registro.n_corte, registro.modelo_id, registro.curva, registro.estado, registro.urgente,
+            registro.id, registro.n_corte, registro.modelo_id, registro.curva, _canonizar_estado(registro.estado), registro.urgente,
             registro.hilo_especifico_id, tallas_json, dist_json, registro.fecha_creacion.replace(tzinfo=None),
             registro.pt_item_id, registro.empresa_id, registro.observaciones, registro.linea_negocio_id, fecha_ef, fecha_ir,
             modelo_manual_json,
@@ -918,7 +962,7 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
         modelo_manual_json = json.dumps(input.modelo_manual.model_dump()) if input.modelo_manual else None
         await conn.execute(
             """UPDATE prod_registros SET n_corte=$1, modelo_id=$2, curva=$3, estado=$4, urgente=$5, hilo_especifico_id=$6, tallas=$7, distribucion_colores=$8, pt_item_id=$9, observaciones=$10, linea_negocio_id=$11, fecha_entrega_final=$13, fecha_inicio_real=$14, modelo_manual=$15 WHERE id=$12""",
-            input.n_corte, input.modelo_id, input.curva, input.estado, input.urgente, input.hilo_especifico_id, tallas_json, dist_json, input.pt_item_id, input.observaciones, input.linea_negocio_id, registro_id, fecha_ef, fecha_ir, modelo_manual_json
+            input.n_corte, input.modelo_id, input.curva, _canonizar_estado(input.estado), input.urgente, input.hilo_especifico_id, tallas_json, dist_json, input.pt_item_id, input.observaciones, input.linea_negocio_id, registro_id, fecha_ef, fecha_ir, modelo_manual_json
         )
 
         # Cascada de línea de negocio (solo admin con bypass):
@@ -1081,10 +1125,13 @@ async def analisis_estado_registro(registro_id: str, _u=Depends(require_permissi
                 movs_por_servicio[sid] = []
             movs_por_servicio[sid].append(dict(m))
         
-        # Encontrar la etapa actual en la ruta
+        # Encontrar la etapa actual en la ruta — comparación tolerante a
+        # tildes (cortes viejos guardaron 'Lavandería' con tilde mientras
+        # la ruta usa 'Lavanderia' sin tilde).
         etapa_actual_idx = None
+        estado_actual_norm = _norm_estado(estado_actual)
         for i, et in enumerate(etapas_sorted):
-            if et.get('nombre') == estado_actual:
+            if _norm_estado(et.get('nombre')) == estado_actual_norm:
                 etapa_actual_idx = i
                 break
         
@@ -1131,9 +1178,23 @@ async def analisis_estado_registro(registro_id: str, _u=Depends(require_permissi
         etapas_visibles_sorted = [e for e in etapas_sorted if e.get('aparece_en_estado', True)]
         ultima_etapa = etapas_visibles_sorted[-1]['nombre'] if etapas_visibles_sorted else None
 
-        # 1. Estado actual no está en la ruta
+        # 1. Estado actual no está en la ruta — comparación tolerante a
+        # tildes. Si matchea por normalización pero no exacto, sugerimos
+        # el nombre canónico de la ruta como `estado_sugerido` para que
+        # el botón "Aplicar" corrija el dato.
         nombres_ruta = [e['nombre'] for e in etapas_sorted]
-        if estado_actual not in nombres_ruta:
+        nombres_ruta_norm = {_norm_estado(n): n for n in nombres_ruta}
+        nombre_canonico = nombres_ruta_norm.get(estado_actual_norm)
+        if nombre_canonico and nombre_canonico != estado_actual:
+            # Match por normalización: solo difiere por tilde/case. Sugerir
+            # canónico sin marcar como error duro.
+            estado_sugerido = nombre_canonico
+            inconsistencias.append({
+                "tipo": "estado_tilde_inconsistente",
+                "mensaje": f"El estado '{estado_actual}' difiere por tildes/mayúsculas. La ruta usa '{nombre_canonico}'.",
+                "severidad": "warning"
+            })
+        elif estado_actual not in nombres_ruta:
             # Caso especial: registro CERRADO — sugerir la última etapa de la ruta
             if estado_actual == 'CERRADA':
                 estado_sugerido = ultima_etapa

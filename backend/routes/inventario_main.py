@@ -1185,9 +1185,13 @@ async def create_salida(
         await conn.execute("UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2", input.cantidad, input.item_id)
 
         # === FASE 2: Actualizar cantidad_consumida en requerimiento ===
+        # Si el item NO está en el BOM del corte (caso típico: salidas
+        # disparadas desde la versión móvil sobre un item fuera de la lista
+        # planificada), creamos la línea con origen='MANUAL' para que
+        # aparezca en la pestaña Materiales y los contadores cuadren.
         if input.registro_id:
             if input.talla_id:
-                await conn.execute("""
+                upd_status = await conn.execute("""
                     UPDATE prod_registro_requerimiento_mp
                     SET cantidad_consumida = cantidad_consumida + $1,
                         estado = CASE
@@ -1198,7 +1202,7 @@ async def create_salida(
                     WHERE registro_id = $2 AND item_id = $3 AND talla_id = $4
                 """, input.cantidad, input.registro_id, input.item_id, input.talla_id)
             else:
-                await conn.execute("""
+                upd_status = await conn.execute("""
                     UPDATE prod_registro_requerimiento_mp
                     SET cantidad_consumida = cantidad_consumida + $1,
                         estado = CASE
@@ -1208,6 +1212,22 @@ async def create_salida(
                         updated_at = CURRENT_TIMESTAMP
                     WHERE registro_id = $2 AND item_id = $3 AND talla_id IS NULL
                 """, input.cantidad, input.registro_id, input.item_id)
+
+            # asyncpg devuelve "UPDATE N"; si N==0 no había línea en el BOM.
+            try:
+                filas_afectadas = int(str(upd_status).split()[-1])
+            except Exception:
+                filas_afectadas = 0
+            if filas_afectadas == 0:
+                await conn.execute("""
+                    INSERT INTO prod_registro_requerimiento_mp
+                      (id, registro_id, item_id, talla_id,
+                       cantidad_requerida, cantidad_reservada, cantidad_consumida,
+                       estado, empresa_id, origen, observaciones)
+                    VALUES ($1, $2, $3, $4, $5, 0, $5, 'COMPLETO', $6, 'MANUAL',
+                            'Auto-creado desde salida directa (item fuera del BOM)')
+                """, str(uuid.uuid4()), input.registro_id, input.item_id,
+                    input.talla_id, input.cantidad, empresa_id)
             
             # Liberar TODA la reserva restante para este item/registro (la materia prima ya se consumió)
             reserva_row = await conn.fetchrow("""

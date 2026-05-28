@@ -189,6 +189,7 @@ export const RegistroDatosCard = ({
   modeloManualForm, setModeloManualForm,
   catalogoMarcas = [], catalogoTipos = [], catalogoTelas = [], catalogoEntalles = [],
   catalogoHilos = [], catalogoHilosEsp = [],
+  catalogoRutasMM = [],
   setCatalogoTipos, setCatalogoEntalles, setCatalogoTelas, setCatalogoHilos,
   onCrearPT,
   registroId,
@@ -710,6 +711,62 @@ export const RegistroDatosCard = ({
                 modo={modeloManualForm.hilo_especifico_modo}
                 onChange={(v) => updateManualField('hilo_especifico', v)} />
             </div>
+
+            {/* Ruta de producción — override directo en el form manual.
+                Si vacío, el backend hereda la ruta del tipo seleccionado
+                (prod_tipos.ruta_produccion_id). */}
+            {(() => {
+              const tipoSel = catalogoTipos.find(t => t.id === modeloManualForm.tipo_id);
+              const rutaHeredadaId = tipoSel?.ruta_produccion_id || null;
+              const rutaHeredadaNombre = catalogoRutasMM.find(r => r.id === rutaHeredadaId)?.nombre || null;
+              const valor = modeloManualForm.ruta_produccion_id || '';
+              const esOverride = modeloManualForm.ruta_produccion_origen === 'manual' && !!modeloManualForm.ruta_produccion_id;
+              return (
+                <div className="space-y-1 pt-1" data-testid="campo-ruta-manual">
+                  <Label className="text-xs flex items-center gap-2">
+                    Ruta de producción
+                    {esOverride && (
+                      <span className="text-[10px] font-normal text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                        Override manual
+                      </span>
+                    )}
+                    {!esOverride && rutaHeredadaNombre && (
+                      <span className="text-[10px] font-normal text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                        Heredada del tipo
+                      </span>
+                    )}
+                  </Label>
+                  <select
+                    value={valor}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setModeloManualForm({
+                        ...modeloManualForm,
+                        ruta_produccion_id: v,
+                        ruta_produccion_origen: v ? 'manual' : 'tipo',
+                      });
+                    }}
+                    className="w-full h-9 px-3 rounded-md border bg-background text-sm"
+                    data-testid="select-ruta-manual"
+                  >
+                    <option value="">
+                      {rutaHeredadaNombre
+                        ? `— Heredar del tipo (${rutaHeredadaNombre}) —`
+                        : (modeloManualForm.tipo_id
+                            ? '— Tipo sin ruta default (usará fallback genérico) —'
+                            : '— Elegí un tipo o seleccioná una ruta acá —')}
+                    </option>
+                    {catalogoRutasMM.map(r => (
+                      <option key={r.id} value={r.id}>{r.nombre}</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Si dejás vacío, el corte hereda la ruta del tipo elegido arriba.
+                    Si seleccionás una, esta gana sobre la herencia (override).
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         )}
 
