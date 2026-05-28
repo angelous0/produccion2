@@ -331,10 +331,21 @@ async def get_vinculos_odoo(registro_id: str, current_user: dict = Depends(get_c
         )
         template_ids_corte = [int(r['product_template_id_odoo']) for r in tpl_rows]
 
+        # Locations marcadas como ingreso de producción (para calcular qty
+        # NETO: lo que entra menos lo que sale de AP, así las
+        # re-clasificaciones de variante suman 0).
+        loc_rows = await conn.fetch(
+            "SELECT odoo_location_id FROM produccion.prod_locations_ingreso_produccion WHERE activo = TRUE"
+        )
+        loc_ingreso_ids = [int(r['odoo_location_id']) for r in loc_rows] or [-1]
+
         vinculos = await conn.fetch("""
             SELECT v.id, v.stock_inventory_odoo_id, v.created_at, v.created_by,
                    si.name as ajuste_nombre, si.date as ajuste_fecha, si.state as ajuste_estado,
-                   (SELECT COALESCE(SUM(sm.product_qty), 0)
+                   (SELECT COALESCE(
+                      SUM(CASE WHEN sm.location_dest_id = ANY($2::int[]) THEN sm.product_qty ELSE 0 END)
+                      - SUM(CASE WHEN sm.location_id      = ANY($2::int[]) THEN sm.product_qty ELSE 0 END),
+                      0)
                     FROM odoo.stock_move sm
                     WHERE sm.inventory_id = v.stock_inventory_odoo_id
                       AND sm.state = 'done') as total_moves_qty
@@ -342,14 +353,19 @@ async def get_vinculos_odoo(registro_id: str, current_user: dict = Depends(get_c
             LEFT JOIN odoo.stock_inventory si ON si.odoo_id = v.stock_inventory_odoo_id
             WHERE v.registro_id = $1
             ORDER BY v.created_at DESC
-        """, registro_id)
+        """, registro_id, loc_ingreso_ids)
 
         result = []
         for v in vinculos:
             templates_detalle = []
             if template_ids_corte:
+                # Incluimos templates con qty=0 (re-clasificaciones) para
+                # que el ajuste se cuente como match aunque no agregue stock.
                 detalle_rows = await conn.fetch(
-                    """SELECT sm.product_tmpl_id, SUM(sm.product_qty) as qty,
+                    """SELECT sm.product_tmpl_id,
+                              SUM(CASE WHEN sm.location_dest_id = ANY($3::int[]) THEN sm.product_qty ELSE 0 END)
+                              - SUM(CASE WHEN sm.location_id      = ANY($3::int[]) THEN sm.product_qty ELSE 0 END)
+                              AS qty,
                               pt.name as nombre
                        FROM odoo.stock_move sm
                        LEFT JOIN odoo.product_template pt ON pt.odoo_id = sm.product_tmpl_id
@@ -357,7 +373,7 @@ async def get_vinculos_odoo(registro_id: str, current_user: dict = Depends(get_c
                          AND sm.product_tmpl_id = ANY($2::int[])
                        GROUP BY sm.product_tmpl_id, pt.name
                        ORDER BY qty DESC""",
-                    v['stock_inventory_odoo_id'], template_ids_corte,
+                    v['stock_inventory_odoo_id'], template_ids_corte, loc_ingreso_ids,
                 )
                 templates_detalle = [
                     {"template_id": d['product_tmpl_id'], "nombre": d['nombre'], "qty": float(d['qty'])}
@@ -459,16 +475,28 @@ async def get_conciliacion_odoo(registro_id: str, current_user: dict = Depends(g
             GROUP BY r.product_template_id_odoo, pt.name, pt.marca, pt.tipo
         """, registro_id)
 
-        # B) Ingresado: solo de ajustes vinculados a este registro
+        # B) Ingresado NETO: solo de ajustes vinculados a este registro,
+        # contando lo que ENTRA a una location de ingreso (AP) menos lo
+        # que SALE. Los ajustes de re-clasificación de variante (que
+        # mueven 1 ud Negro→Virtual y 1 ud Carbon←Virtual) suman 0 neto.
+        loc_rows = await conn.fetch(
+            "SELECT odoo_location_id FROM produccion.prod_locations_ingreso_produccion WHERE activo = TRUE"
+        )
+        loc_ingreso_ids = [int(r['odoo_location_id']) for r in loc_rows]
+        if not loc_ingreso_ids:
+            loc_ingreso_ids = [-1]  # fallback: ninguna location → ingresado = 0
         ingresado_rows = await conn.fetch("""
-            SELECT sm.product_tmpl_id, SUM(sm.product_qty) as ingresado
+            SELECT sm.product_tmpl_id,
+                   SUM(CASE WHEN sm.location_dest_id = ANY($2::int[]) THEN sm.product_qty ELSE 0 END)
+                   - SUM(CASE WHEN sm.location_id      = ANY($2::int[]) THEN sm.product_qty ELSE 0 END)
+                   AS ingresado
             FROM odoo.stock_move sm
             JOIN produccion.prod_registro_pt_odoo_vinculo v
               ON v.stock_inventory_odoo_id = sm.inventory_id
               AND v.registro_id = $1
             WHERE sm.state = 'done'
             GROUP BY sm.product_tmpl_id
-        """, registro_id)
+        """, registro_id, loc_ingreso_ids)
 
         ingresado_map = {r['product_tmpl_id']: float(r['ingresado']) for r in ingresado_rows}
 
@@ -754,9 +782,16 @@ async def buscar_stock_inventories(
         params.append(limit)
         limit_idx = idx
 
+        # total_qty NETO: solo cuenta lo que ENTRA a una location de
+        # ingreso menos lo que SALE. Re-clasificaciones (Negro→Carbon)
+        # suman 0 en lugar del valor engañoso 2.
+        loc_ids_for_qty = location_ids if location_ids else [-1]
         rows = await conn.fetch(f"""
             SELECT si.odoo_id, si.name, si.date, si.state, si.location_id,
-                   (SELECT COALESCE(SUM(sm.product_qty), 0)
+                   (SELECT COALESCE(
+                     SUM(CASE WHEN sm.location_dest_id = ANY(${limit_idx + 1}::int[]) THEN sm.product_qty ELSE 0 END)
+                     - SUM(CASE WHEN sm.location_id      = ANY(${limit_idx + 1}::int[]) THEN sm.product_qty ELSE 0 END),
+                     0)
                     FROM odoo.stock_move sm
                     WHERE sm.inventory_id = si.odoo_id AND sm.state = 'done') as total_qty,
                    (SELECT v.registro_id
@@ -767,7 +802,7 @@ async def buscar_stock_inventories(
             WHERE {where_clause}
             ORDER BY si.date DESC
             LIMIT ${limit_idx}
-        """, *params)
+        """, *params, loc_ids_for_qty)
 
         # 4) Si filtramos por corte, obtener detalle por template para cada ajuste
         result = []
@@ -787,8 +822,15 @@ async def buscar_stock_inventories(
                 "templates_total": len(template_ids_corte),
             }
             if template_ids_corte:
+                # qty NETO por template (entra a AP menos sale de AP).
+                # IMPORTANTE: incluimos también filas con qty=0 (típico de
+                # re-clasificaciones de variante) para que `templates_match`
+                # cuente el ajuste y el auto-vinculador lo tome.
                 detalle_rows = await conn.fetch(
-                    """SELECT sm.product_tmpl_id, SUM(sm.product_qty) as qty,
+                    """SELECT sm.product_tmpl_id,
+                              SUM(CASE WHEN sm.location_dest_id = ANY($3::int[]) THEN sm.product_qty ELSE 0 END)
+                              - SUM(CASE WHEN sm.location_id      = ANY($3::int[]) THEN sm.product_qty ELSE 0 END)
+                              AS qty,
                               pt.name as nombre
                        FROM odoo.stock_move sm
                        LEFT JOIN odoo.product_template pt ON pt.odoo_id = sm.product_tmpl_id
@@ -796,7 +838,7 @@ async def buscar_stock_inventories(
                          AND sm.product_tmpl_id = ANY($2::int[])
                        GROUP BY sm.product_tmpl_id, pt.name
                        ORDER BY qty DESC""",
-                    r['odoo_id'], template_ids_corte,
+                    r['odoo_id'], template_ids_corte, loc_ids_for_qty,
                 )
                 base["templates_detalle"] = [
                     {

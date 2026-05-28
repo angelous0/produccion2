@@ -711,22 +711,42 @@ export const DistribucionPTPanel = ({ registroId }) => {
             <p className="text-xs text-muted-foreground text-center py-4">Sin ajustes vinculados. Usa el boton "Vincular Ajuste" para agregar.</p>
           ) : (
             <div className="space-y-2">
-              {vinculos.map(v => (
-                <div key={v.id} className="flex items-center justify-between bg-blue-50/50 border border-blue-200/60 rounded-md px-3 py-2"
+              {vinculos.map(v => {
+                // Un ajuste con qty neta 0 es típicamente una re-clasificación
+                // de variante en Odoo (saca 1 ud de un color y agrega 1 a otro
+                // del mismo template). Lo marcamos visualmente para que se
+                // entienda que NO es un error y queda como referencia.
+                const esReclasificacion = Number(v.total_moves_qty) === 0;
+                return (
+                <div key={v.id}
+                  className={`flex items-center justify-between rounded-md px-3 py-2 border ${
+                    esReclasificacion
+                      ? 'bg-amber-50/50 border-amber-200/60'
+                      : 'bg-blue-50/50 border-blue-200/60'
+                  }`}
                   data-testid={`vinculo-${v.id}`}>
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium">{v.ajuste_nombre || `Ajuste #${v.stock_inventory_odoo_id}`}</span>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-medium flex items-center gap-1.5">
+                      {v.ajuste_nombre || `Ajuste #${v.stock_inventory_odoo_id}`}
+                      {esReclasificacion && (
+                        <span className="text-[9px] font-normal px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                          Re-clasificación (no agrega stock)
+                        </span>
+                      )}
+                    </span>
                     <span className="text-[10px] text-muted-foreground">
                       ID Odoo: {v.stock_inventory_odoo_id} | Qty Total: {v.total_moves_qty} | {v.ajuste_fecha ? new Date(v.ajuste_fecha).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : ''}
                     </span>
                   </div>
                   <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50 shrink-0"
                     disabled={desvinculando === v.id}
-                    onClick={() => desvincularAjuste(v.id)} data-testid={`btn-desvincular-${v.id}`}>
+                    onClick={() => desvincularAjuste(v.id)} data-testid={`btn-desvincular-${v.id}`}
+                    title="Desvincular este ajuste">
                     {desvinculando === v.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
                   </Button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
