@@ -4,7 +4,7 @@ import axios from 'axios';
 import {
   AlertOctagon, ChevronRight, Loader2, AlertTriangle, Clock, Layers,
   QrCode, Package, ArrowUpRight, Plus, DollarSign, Sliders, FlaskConical,
-  Send, BookmarkCheck, History, Box, PauseCircle,
+  Send, BookmarkCheck, History, Box, PauseCircle, BarChart3,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { puede, ACCIONES } from '../utils/permisos';
@@ -490,6 +490,13 @@ function buildSecciones(user, stats) {
     to: '/m/incidencias',
     badge: incParaliz > 0 ? incParaliz : (incAbiertas > 0 ? incAbiertas : null),
     badgeColor: incParaliz > 0 ? '#dc2626' : '#b45309',
+  });
+  // Reporte operativo — seguimiento por servicio/persona/corte
+  produccion.push({
+    label: 'Reporte operativo', icon: <BarChart3 size={18} />,
+    bg: '#f0fdfa', fg: '#0f766e',
+    meta: 'Cortes por servicio y persona',
+    to: '/m/reporte-operativo',
   });
   if (puede(user, ACCIONES.CREAR_CORTE)) {
     produccion.push({

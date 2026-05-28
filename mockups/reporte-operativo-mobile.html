@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Reporte Operativo — Mockup móvil</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --brand: #0f766e;
+    --brand-dark: #0d5f5a;
+    --brand-soft: #f0fdfa;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --bg: #f3f4f6;
+  }
+  body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  .phones-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 32px; padding: 32px; max-width: 1800px; margin: 0 auto; }
+  .phone-frame { width: 380px; border: 12px solid #1f2937; border-radius: 38px; overflow: hidden; background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4); margin: 0 auto; }
+  .phone-notch { height: 28px; background: #1f2937; display: flex; justify-content: center; align-items: center; color: white; font-size: 11px; font-weight: 600; }
+  .phone-body { height: 760px; overflow-y: auto; background: #f9fafb; position: relative; }
+  .header-mobile { background: var(--brand); color: white; padding: 14px 16px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 10; }
+  .screen-title { font-size: 11px; color: #64748b; text-align: center; margin-top: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid #e5e7eb; background: white; white-space: nowrap; }
+  .chip.active { background: var(--brand); color: white; border-color: var(--brand); }
+  .pill { display:inline-flex; align-items:center; gap:4px; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; line-height: 1.2; }
+  .pill-red { background: #fee2e2; color: #b91c1c; }
+  .pill-amber { background: #fef3c7; color: #b45309; }
+  .pill-green { background: #dcfce7; color: #15803d; }
+  .pill-blue { background: #dbeafe; color: #1d4ed8; }
+  .pill-gray { background: #e5e7eb; color: #475569; }
+  .pill-black { background: #1f2937; color: white; }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+  .legend-dot { display:inline-block; width:8px; height:8px; border-radius:50%; }
+</style>
+</head>
+<body>
+
+<div class="px-8 pt-8 pb-2 max-w-5xl mx-auto">
+  <h1 class="text-2xl font-bold">Reporte Operativo — versión móvil</h1>
+  <p class="text-slate-600 mt-1">
+    El reporte de escritorio (tabla densa con muchas columnas) traducido a una experiencia mobile-first.
+    Propuesta en 3 capas: <b>Vista por persona</b> (resumen alto-nivel), <b>Persona expandida</b> (sus cortes) y <b>Detalle de corte</b>.
+    Filtros en bottom sheet. Lista plana opcional para cuando lo que importa es el riesgo, no quién lo trabaja.
+  </p>
+  <div class="mt-3 flex flex-wrap gap-3 text-xs text-slate-600">
+    <span><span class="legend-dot bg-zinc-800"></span>&nbsp;Vencido</span>
+    <span><span class="legend-dot bg-red-500"></span>&nbsp;Crítico</span>
+    <span><span class="legend-dot bg-amber-500"></span>&nbsp;Atención</span>
+    <span><span class="legend-dot bg-emerald-500"></span>&nbsp;Normal</span>
+  </div>
+</div>
+
+<div class="phones-grid">
+
+  <!-- ====================================================================== -->
+  <!-- 1 · Vista por persona — colapsado                                       -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">1 · Vista por persona · colapsado (default)</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Reporte Operativo</div>
+            <div class="font-semibold text-[15px]">Costura · 12 personas</div>
+          </div>
+          <button class="p-1.5 rounded-lg bg-white/15 hover:bg-white/25">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+          </button>
+          <button class="p-1.5 rounded-lg bg-white/15 hover:bg-white/25">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+        </div>
+
+        <!-- Selector de servicio (scroll horizontal) -->
+        <div class="px-3 pt-3 pb-2 bg-white border-b border-slate-200">
+          <div class="flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
+            <span class="chip active">Costura</span>
+            <span class="chip">Estampado</span>
+            <span class="chip">Bordado</span>
+            <span class="chip">Acabado</span>
+            <span class="chip">Lavandería</span>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- KPIs principales -->
+          <div class="grid grid-cols-4 gap-2">
+            <div class="bg-white border border-slate-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-lg leading-none text-slate-900">12</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold mt-1">Personas</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-lg leading-none text-slate-900">34</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold mt-1">Registros</div>
+            </div>
+            <div class="bg-zinc-900 border border-zinc-900 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-lg leading-none text-white">3</div>
+              <div class="text-[9px] text-zinc-300 uppercase font-bold mt-1">Vencidos</div>
+            </div>
+            <div class="bg-red-50 border border-red-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-lg leading-none text-red-600">5</div>
+              <div class="text-[9px] text-red-700 uppercase font-bold mt-1">Críticos</div>
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-base leading-none text-amber-700">7</div>
+              <div class="text-[9px] text-amber-700 uppercase font-bold mt-1">Sin actualizar</div>
+            </div>
+            <div class="bg-orange-50 border border-orange-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-base leading-none text-orange-700">4</div>
+              <div class="text-[9px] text-orange-700 uppercase font-bold mt-1">Incidencias</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-base leading-none text-slate-900">4 320</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold mt-1">Prendas</div>
+            </div>
+          </div>
+
+          <!-- Toggles vista + filtros -->
+          <div class="flex items-center gap-2">
+            <div class="flex bg-slate-200 rounded-lg p-0.5 text-[11px] font-semibold flex-1">
+              <button class="flex-1 py-1 px-2 rounded-md bg-white shadow-sm text-slate-900">En curso</button>
+              <button class="flex-1 py-1 px-2 rounded-md text-slate-500">Todos</button>
+            </div>
+            <div class="flex bg-slate-200 rounded-lg p-0.5 text-[11px] font-semibold">
+              <button class="py-1 px-2 rounded-md bg-white shadow-sm">👥</button>
+              <button class="py-1 px-2 rounded-md text-slate-500">≡</button>
+            </div>
+            <button class="relative px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-[11px] font-semibold flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              Filtros
+              <span class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">2</span>
+            </button>
+          </div>
+
+          <!-- Buscador -->
+          <div class="relative">
+            <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input class="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm" placeholder="Buscar persona, corte, modelo…" />
+          </div>
+
+          <!-- Lista de personas (colapsadas) -->
+          <div class="text-[10px] text-slate-500 uppercase tracking-wider font-bold px-1">Personas · ordenadas por riesgo</div>
+
+          <!-- Persona 1 — con vencidos -->
+          <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <div class="flex items-center gap-2.5 p-3 active:bg-slate-50">
+              <div class="w-9 h-9 rounded-full bg-zinc-900 text-white font-bold text-sm flex items-center justify-center flex-shrink-0">JR</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-semibold text-sm truncate">JOSE RAMIREZ</span>
+                  <span class="pill pill-gray">EXT</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">4 cortes · 820 prendas · 45% prom.</div>
+                <div class="flex gap-1 mt-1.5 flex-wrap">
+                  <span class="pill pill-black">1 venc.</span>
+                  <span class="pill pill-red">2 crít.</span>
+                  <span class="pill pill-amber">1 inc.</span>
+                </div>
+              </div>
+              <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          </div>
+
+          <!-- Persona 2 -->
+          <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <div class="flex items-center gap-2.5 p-3 active:bg-slate-50">
+              <div class="w-9 h-9 rounded-full bg-red-600 text-white font-bold text-sm flex items-center justify-center flex-shrink-0">MQ</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-semibold text-sm truncate">MARIA QUISPE</span>
+                  <span class="pill pill-blue">INT</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">3 cortes · 540 prendas · 62% prom.</div>
+                <div class="flex gap-1 mt-1.5 flex-wrap">
+                  <span class="pill pill-red">2 crít.</span>
+                  <span class="pill pill-amber">3 sin act.</span>
+                </div>
+              </div>
+              <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          </div>
+
+          <!-- Persona 3 -->
+          <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <div class="flex items-center gap-2.5 p-3 active:bg-slate-50">
+              <div class="w-9 h-9 rounded-full bg-amber-500 text-white font-bold text-sm flex items-center justify-center flex-shrink-0">LC</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-semibold text-sm truncate">LUIS CASTRO</span>
+                  <span class="pill pill-gray">EXT</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">2 cortes · 380 prendas · 78% prom.</div>
+                <div class="flex gap-1 mt-1.5 flex-wrap">
+                  <span class="pill pill-amber">1 atn.</span>
+                  <span class="pill pill-orange-100 text-orange-700" style="background:#ffedd5;color:#9a3412">1 inc.</span>
+                </div>
+              </div>
+              <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          </div>
+
+          <!-- Persona 4 — sin alertas -->
+          <div class="bg-white border border-slate-200 rounded-xl overflow-hidden opacity-95">
+            <div class="flex items-center gap-2.5 p-3 active:bg-slate-50">
+              <div class="w-9 h-9 rounded-full bg-emerald-600 text-white font-bold text-sm flex items-center justify-center flex-shrink-0">AF</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-semibold text-sm truncate">ANA FLORES</span>
+                  <span class="pill pill-blue">INT</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">2 cortes · 290 prendas · 91% prom.</div>
+                <div class="flex gap-1 mt-1.5">
+                  <span class="pill pill-green">Al día</span>
+                </div>
+              </div>
+              <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-xl overflow-hidden opacity-95">
+            <div class="flex items-center gap-2.5 p-3 active:bg-slate-50">
+              <div class="w-9 h-9 rounded-full bg-emerald-600 text-white font-bold text-sm flex items-center justify-center flex-shrink-0">CP</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-semibold text-sm truncate">CARLA PUMA</span>
+                  <span class="pill pill-gray">EXT</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">3 cortes · 410 prendas · 88% prom.</div>
+                <div class="flex gap-1 mt-1.5">
+                  <span class="pill pill-green">Al día</span>
+                </div>
+              </div>
+              <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          </div>
+
+          <div class="text-center text-[11px] text-slate-400 py-2">+ 7 personas más</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 2 · Persona expandida con sus cortes                                    -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">2 · Persona expandida · cortes como cards</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Costura · Reporte operativo</div>
+            <div class="font-semibold text-[15px] truncate">JOSE RAMIREZ</div>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- Card persona expandida -->
+          <div class="bg-white border border-slate-200 rounded-xl p-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-10 h-10 rounded-full bg-zinc-900 text-white font-bold text-sm flex items-center justify-center flex-shrink-0">JR</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-semibold text-sm">JOSE RAMIREZ</span>
+                  <span class="pill pill-gray">EXTERNO</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Tarifa promedio · S/ 4.20 · &nbsp;DNI 09876543</div>
+              </div>
+            </div>
+            <div class="grid grid-cols-4 gap-1.5 mt-3">
+              <div class="bg-slate-50 rounded-lg p-1.5 text-center">
+                <div class="font-mono font-bold text-base leading-none">4</div>
+                <div class="text-[9px] text-slate-500 uppercase mt-0.5">Cortes</div>
+              </div>
+              <div class="bg-slate-50 rounded-lg p-1.5 text-center">
+                <div class="font-mono font-bold text-base leading-none">820</div>
+                <div class="text-[9px] text-slate-500 uppercase mt-0.5">Prendas</div>
+              </div>
+              <div class="bg-slate-50 rounded-lg p-1.5 text-center">
+                <div class="font-mono font-bold text-base leading-none">45%</div>
+                <div class="text-[9px] text-slate-500 uppercase mt-0.5">Avance</div>
+              </div>
+              <div class="bg-red-50 rounded-lg p-1.5 text-center">
+                <div class="font-mono font-bold text-base leading-none text-red-600">3</div>
+                <div class="text-[9px] text-red-700 uppercase mt-0.5">Riesgo</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="text-[10px] text-slate-500 uppercase tracking-wider font-bold px-1">Sus cortes · ordenados por riesgo</div>
+
+          <!-- ╔══════════════════════════════════════════════════════════════ ╗ -->
+          <!-- ║  CASO A · Corte VENCIDO en curso (avance < 100%) — sucio       ║ -->
+          <!-- ║  Acción primaria: Avance · resto en barra → Acabado y +Inc.    ║ -->
+          <!-- ╚══════════════════════════════════════════════════════════════ ╝ -->
+          <div class="bg-white border-l-4 border-zinc-900 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl overflow-hidden">
+            <div class="p-3">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-mono font-bold text-base">C-2451</span>
+                    <span class="pill pill-black">VENCIDO</span>
+                  </div>
+                  <div class="text-sm font-semibold truncate mt-0.5">PEKERMAN 001</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">Polo M/C · M · French Terry · Hilo recubierto</div>
+                </div>
+                <span class="font-mono text-xs font-bold text-slate-900 whitespace-nowrap">300 prd</span>
+              </div>
+
+              <!-- Avance bar -->
+              <div class="mt-2">
+                <div class="flex items-center justify-between text-[10px] text-slate-500 mb-0.5">
+                  <span>Avance</span>
+                  <span class="font-mono font-bold text-slate-900">35%</span>
+                </div>
+                <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div class="h-full bg-zinc-900" style="width:35%"></div>
+                </div>
+              </div>
+
+              <!-- Datos clave en grid -->
+              <div class="grid grid-cols-3 gap-1.5 mt-2.5 text-[11px]">
+                <div class="bg-slate-50 rounded-md p-1.5">
+                  <div class="text-[9px] text-slate-500 uppercase">Días</div>
+                  <div class="font-mono font-bold text-zinc-900">18 / 14d</div>
+                </div>
+                <div class="bg-slate-50 rounded-md p-1.5">
+                  <div class="text-[9px] text-slate-500 uppercase">Sin actual.</div>
+                  <div class="font-mono font-bold text-amber-700">6d</div>
+                </div>
+                <div class="bg-red-50 rounded-md p-1.5">
+                  <div class="text-[9px] text-red-700 uppercase">Inc.</div>
+                  <div class="font-mono font-bold text-red-700">1 abierta</div>
+                </div>
+              </div>
+
+              <div class="mt-2 text-[11px] text-slate-600 italic bg-slate-50 rounded-md p-1.5 border border-slate-200">
+                <b>Obs:</b> Fecha vencida; 6d sin actualizar; 1 incidencia
+              </div>
+
+              <!-- Acciones · primaria = Avance (porque está al 35%) -->
+              <div class="flex gap-1.5 mt-2.5">
+                <button class="flex-1 bg-teal-600 text-white text-[11px] font-semibold rounded-md py-1.5">Avance</button>
+                <button class="flex-1 bg-white border border-red-300 text-red-600 text-[11px] font-semibold rounded-md py-1.5">+ Inc.</button>
+                <button class="px-2 bg-white border border-slate-300 rounded-md">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                </button>
+              </div>
+              <!-- Salidas: en Costura hay 2 caminos posibles → el operario decide -->
+              <div class="flex gap-1.5 mt-1.5">
+                <button class="flex-1 bg-white border border-slate-300 text-[11px] font-semibold rounded-md py-1.5 text-slate-700">→ Atraque</button>
+                <button class="flex-1 bg-white border border-slate-300 text-[11px] font-semibold rounded-md py-1.5 text-slate-700">→ Lavandería</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ╔══════════════════════════════════════════════════════════════ ╗ -->
+          <!-- ║  CASO B · Corte al 100% LISTO PARA CERRAR (sin incidencias)    ║ -->
+          <!-- ║  Acción primaria: Pasar a Acabado (cerrar+abrir en 1 toque)    ║ -->
+          <!-- ╚══════════════════════════════════════════════════════════════ ╝ -->
+          <div class="bg-white border-l-4 border-emerald-500 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl overflow-hidden ring-1 ring-emerald-100">
+            <div class="p-3">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="font-mono font-bold text-base">C-2483</span>
+                    <span class="pill pill-green">LISTO</span>
+                  </div>
+                  <div class="text-sm font-semibold truncate mt-0.5">VICUÑA 044</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">Casaca · L · Polar antipiling</div>
+                </div>
+                <span class="font-mono text-xs font-bold text-slate-900 whitespace-nowrap">220 prd</span>
+              </div>
+              <div class="mt-2">
+                <div class="flex items-center justify-between text-[10px] text-slate-500 mb-0.5">
+                  <span>Avance</span>
+                  <span class="font-mono font-bold text-emerald-700">100%</span>
+                </div>
+                <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div class="h-full bg-emerald-500" style="width:100%"></div>
+                </div>
+              </div>
+              <div class="grid grid-cols-3 gap-1.5 mt-2.5 text-[11px]">
+                <div class="bg-slate-50 rounded-md p-1.5">
+                  <div class="text-[9px] text-slate-500 uppercase">Días</div>
+                  <div class="font-mono font-bold">10 / 12d</div>
+                </div>
+                <div class="bg-slate-50 rounded-md p-1.5">
+                  <div class="text-[9px] text-slate-500 uppercase">Sin actual.</div>
+                  <div class="font-mono font-bold">0d</div>
+                </div>
+                <div class="bg-slate-50 rounded-md p-1.5">
+                  <div class="text-[9px] text-slate-500 uppercase">Inc.</div>
+                  <div class="font-mono font-bold">0</div>
+                </div>
+              </div>
+
+              <!-- 100% listo → 2 salidas posibles, las dos destacadas en verde -->
+              <div class="text-[10px] text-emerald-700 text-center font-semibold uppercase tracking-wide mt-2.5 mb-1">Pasar a siguiente · ¿qué camino?</div>
+              <div class="grid grid-cols-2 gap-1.5">
+                <button class="bg-emerald-600 text-white text-[12px] font-semibold rounded-md py-2 flex items-center justify-center gap-1">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  Atraque
+                </button>
+                <button class="bg-emerald-600 text-white text-[12px] font-semibold rounded-md py-2 flex items-center justify-center gap-1">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  Lavandería
+                </button>
+              </div>
+              <div class="text-[10px] text-slate-500 text-center mt-1">Cierra costura y abre el siguiente</div>
+
+              <!-- Acciones secundarias -->
+              <div class="flex gap-1.5 mt-2">
+                <button class="flex-1 bg-white border border-slate-300 text-[11px] font-semibold rounded-md py-1.5 text-slate-600">Avance</button>
+                <button class="flex-1 bg-white border border-red-300 text-red-600 text-[11px] font-semibold rounded-md py-1.5">+ Inc.</button>
+                <button class="px-2 bg-white border border-slate-300 rounded-md">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ╔══════════════════════════════════════════════════════════════ ╗ -->
+          <!-- ║  CASO C · 100% pero con INCIDENCIA abierta — caso sucio        ║ -->
+          <!-- ║  Pill "Mov. abierto", Pasar a Sgte deshabilitado               ║ -->
+          <!-- ╚══════════════════════════════════════════════════════════════ ╝ -->
+          <div class="bg-white border-l-4 border-amber-500 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl overflow-hidden">
+            <div class="p-3">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="font-mono font-bold text-base">C-2470</span>
+                    <span class="pill pill-amber">ATENCIÓN</span>
+                    <span class="pill pill-red">1 INC.</span>
+                  </div>
+                  <div class="text-sm font-semibold truncate mt-0.5">PEKERMAN 008</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">Polo M/L · L · Piqué</div>
+                </div>
+                <span class="font-mono text-xs font-bold text-slate-900 whitespace-nowrap">200 prd</span>
+              </div>
+              <div class="mt-2">
+                <div class="flex items-center justify-between text-[10px] text-slate-500 mb-0.5">
+                  <span>Avance</span>
+                  <span class="font-mono font-bold text-amber-700">100%</span>
+                </div>
+                <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div class="h-full bg-amber-500" style="width:100%"></div>
+                </div>
+              </div>
+              <div class="mt-2 text-[11px] bg-amber-50 border border-amber-200 text-amber-800 rounded-md p-2 flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span>Resolvé la incidencia para pasar al siguiente servicio</span>
+              </div>
+              <div class="flex gap-1.5 mt-2.5">
+                <button class="flex-1 bg-red-600 text-white text-[11px] font-semibold rounded-md py-1.5">Ver Inc.</button>
+                <button class="px-2 bg-white border border-slate-300 rounded-md">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                </button>
+              </div>
+              <!-- Salidas deshabilitadas hasta que resuelva la incidencia -->
+              <div class="grid grid-cols-2 gap-1.5 mt-1.5">
+                <button class="bg-slate-100 text-slate-400 text-[11px] font-semibold rounded-md py-1.5 cursor-not-allowed" disabled>→ Atraque</button>
+                <button class="bg-slate-100 text-slate-400 text-[11px] font-semibold rounded-md py-1.5 cursor-not-allowed" disabled>→ Lavandería</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ╔══════════════════════════════════════════════════════════════ ╗ -->
+          <!-- ║  CASO D · Normal colapsado · sin alertas                      ║ -->
+          <!-- ╚══════════════════════════════════════════════════════════════ ╝ -->
+          <div class="bg-white border-l-4 border-emerald-500 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl p-3">
+            <div class="flex items-center gap-2">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-mono font-bold text-sm">C-2502</span>
+                  <span class="pill pill-green">NORMAL</span>
+                </div>
+                <div class="text-[12px] text-slate-700 truncate mt-0.5">PEKERMAN 003 · 150 prd · 72%</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+          </div>
+
+          <!-- ╔══════════════════════════════════════════════════════════════ ╗ -->
+          <!-- ║  CASO E · Mov. abierto en etapa anterior — advertencia        ║ -->
+          <!-- ╚══════════════════════════════════════════════════════════════ ╝ -->
+          <div class="bg-white border-l-4 border-amber-500 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl p-3">
+            <div class="flex items-center gap-2">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="font-mono font-bold text-sm">C-2510</span>
+                  <span class="pill pill-amber">MOV. ABIERTO · COSTURA</span>
+                </div>
+                <div class="text-[12px] text-slate-700 truncate mt-0.5">VICUÑA 022 · 150 prd · 65%</div>
+                <div class="text-[10px] text-amber-700 mt-0.5">Cerrar movimiento de Costura antes de cambiar estado</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 3 · Lista plana ordenada por riesgo                                     -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">3 · Vista plana · ordenada por riesgo (≡)</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Reporte Operativo</div>
+            <div class="font-semibold text-[15px]">Costura · 34 cortes</div>
+          </div>
+          <button class="p-1.5 rounded-lg bg-white/15">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+        </div>
+
+        <div class="px-3 pt-3 pb-2 bg-white border-b border-slate-200">
+          <div class="flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
+            <span class="chip active">Costura</span>
+            <span class="chip">Estampado</span>
+            <span class="chip">Bordado</span>
+            <span class="chip">Acabado</span>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <div class="flex items-center gap-2">
+            <div class="flex bg-slate-200 rounded-lg p-0.5 text-[11px] font-semibold flex-1">
+              <button class="flex-1 py-1 px-2 rounded-md bg-white shadow-sm">En curso</button>
+              <button class="flex-1 py-1 px-2 rounded-md text-slate-500">Todos</button>
+            </div>
+            <div class="flex bg-slate-200 rounded-lg p-0.5 text-[11px] font-semibold">
+              <button class="py-1 px-2 rounded-md text-slate-500">👥</button>
+              <button class="py-1 px-2 rounded-md bg-white shadow-sm">≡</button>
+            </div>
+            <button class="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-[11px] font-semibold flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              Filtros
+            </button>
+          </div>
+
+          <!-- Etiquetas de sección -->
+          <div class="pt-1">
+            <div class="text-[10px] text-zinc-700 uppercase font-bold flex items-center gap-2 mb-1.5">
+              <span class="legend-dot bg-zinc-800"></span> Vencidos · 3
+            </div>
+            <!-- card compacta -->
+            <div class="bg-white border border-zinc-300 rounded-xl p-2.5 mb-1.5">
+              <div class="flex items-center gap-2">
+                <span class="pill pill-black">V</span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-mono font-bold text-sm">C-2451</span>
+                    <span class="text-[11px] text-slate-500 truncate">· PEKERMAN 001</span>
+                  </div>
+                  <div class="text-[11px] text-slate-500 truncate">JOSE RAMIREZ · 300 prd · 18d / 14d · 35%</div>
+                </div>
+                <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              </div>
+            </div>
+            <div class="bg-white border border-zinc-300 rounded-xl p-2.5 mb-1.5">
+              <div class="flex items-center gap-2">
+                <span class="pill pill-black">V</span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-mono font-bold text-sm">C-2399</span>
+                    <span class="text-[11px] text-slate-500 truncate">· VICUÑA 015</span>
+                  </div>
+                  <div class="text-[11px] text-slate-500 truncate">MARIA QUISPE · 180 prd · 22d / 18d · 55%</div>
+                </div>
+                <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              </div>
+            </div>
+
+            <div class="text-[10px] text-red-700 uppercase font-bold flex items-center gap-2 mt-3 mb-1.5">
+              <span class="legend-dot bg-red-500"></span> Críticos · 5
+            </div>
+            <div class="bg-white border border-red-200 rounded-xl p-2.5 mb-1.5">
+              <div class="flex items-center gap-2">
+                <span class="pill pill-red">C</span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-mono font-bold text-sm">C-2483</span>
+                    <span class="text-[11px] text-slate-500 truncate">· VICUÑA 044</span>
+                  </div>
+                  <div class="text-[11px] text-slate-500 truncate">JOSE RAMIREZ · 220 prd · 10d / 12d · 48%</div>
+                </div>
+                <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              </div>
+            </div>
+            <div class="bg-white border border-red-200 rounded-xl p-2.5 mb-1.5">
+              <div class="flex items-center gap-2">
+                <span class="pill pill-red">C</span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-mono font-bold text-sm">C-2470</span>
+                    <span class="text-[11px] text-slate-500 truncate">· PEKERMAN 008</span>
+                  </div>
+                  <div class="text-[11px] text-slate-500 truncate">MARIA QUISPE · 200 prd · 8d / 10d · 40%</div>
+                </div>
+                <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              </div>
+            </div>
+
+            <div class="text-[10px] text-amber-700 uppercase font-bold flex items-center gap-2 mt-3 mb-1.5">
+              <span class="legend-dot bg-amber-500"></span> Atención · 4
+            </div>
+            <div class="bg-white border border-amber-200 rounded-xl p-2.5 mb-1.5">
+              <div class="flex items-center gap-2">
+                <span class="pill pill-amber">A</span>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-mono font-bold text-sm">C-2495</span>
+                    <span class="text-[11px] text-slate-500 truncate">· PEKERMAN 011</span>
+                  </div>
+                  <div class="text-[11px] text-slate-500 truncate">LUIS CASTRO · 180 prd · 7d / 10d · 68%</div>
+                </div>
+                <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              </div>
+            </div>
+
+            <div class="text-[10px] text-emerald-700 uppercase font-bold flex items-center gap-2 mt-3 mb-1.5">
+              <span class="legend-dot bg-emerald-500"></span> Normal · 22
+            </div>
+            <div class="text-center text-[11px] text-slate-400 py-2">Tocá para mostrar 22 cortes normales</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 4 · Detalle de corte (vista completa)                                   -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">4 · Detalle de corte · todas las columnas</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">JOSE RAMIREZ · Costura</div>
+            <div class="font-semibold text-[15px]">Corte C-2451</div>
+          </div>
+          <button class="p-1.5 rounded-lg bg-white/15">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- Riesgo banner -->
+          <div class="bg-zinc-900 text-white rounded-xl p-3 flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <div class="flex-1">
+              <div class="text-[11px] opacity-85 uppercase font-bold">Riesgo</div>
+              <div class="font-bold text-sm">VENCIDO · 4 días pasado plazo</div>
+            </div>
+          </div>
+
+          <!-- Obs -->
+          <div class="bg-white border border-slate-200 rounded-xl p-3">
+            <div class="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1.5">Observaciones</div>
+            <ul class="text-[12px] text-slate-700 space-y-1">
+              <li class="flex gap-1.5"><span class="text-zinc-700">•</span> Fecha vencida — entrega era el 24-may</li>
+              <li class="flex gap-1.5"><span class="text-amber-600">•</span> 6 días sin actualizar avance</li>
+              <li class="flex gap-1.5"><span class="text-red-600">•</span> 1 incidencia abierta — Tela manchada</li>
+            </ul>
+          </div>
+
+          <!-- Avance -->
+          <div class="bg-white border border-slate-200 rounded-xl p-3">
+            <div class="flex items-center justify-between mb-1">
+              <div class="text-[11px] text-slate-500 uppercase font-bold">Avance</div>
+              <div class="font-mono font-bold text-lg">35%</div>
+            </div>
+            <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full bg-zinc-900" style="width:35%"></div>
+            </div>
+            <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+              <span>Última actualización · hace 6d</span>
+              <span class="text-amber-600 font-semibold">Atrasado</span>
+            </div>
+          </div>
+
+          <!-- Datos del corte como rows -->
+          <div class="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+            <div class="flex items-center justify-between px-3 py-2 text-[12px]">
+              <span class="text-slate-500">Modelo</span>
+              <span class="font-semibold">PEKERMAN 001</span>
+            </div>
+            <div class="flex items-center justify-between px-3 py-2 text-[12px]">
+              <span class="text-slate-500">Tipo</span>
+              <span class="font-semibold">Polo M/C</span>
+            </div>
+            <div class="flex items-center justify-between px-3 py-2 text-[12px]">
+              <span class="text-slate-500">Entalle</span>
+              <span class="font-semibold">M</span>
+            </div>
+            <div class="flex items-center justify-between px-3 py-2 text-[12px]">
+              <span class="text-slate-500">Tela</span>
+              <span class="font-semibold">French Terry</span>
+            </div>
+            <div class="flex items-center justify-between px-3 py-2 text-[12px]">
+              <span class="text-slate-500">Hilo específico</span>
+              <span class="font-semibold">Recubierto plomo</span>
+            </div>
+            <div class="flex items-center justify-between px-3 py-2 text-[12px]">
+              <span class="text-slate-500">Cantidad</span>
+              <span class="font-mono font-semibold">300 prendas</span>
+            </div>
+            <div class="flex items-center justify-between px-3 py-2 text-[12px]">
+              <span class="text-slate-500">Inicio servicio</span>
+              <span class="font-semibold">10-may-26</span>
+            </div>
+            <div class="flex items-center justify-between px-3 py-2 text-[12px]">
+              <span class="text-slate-500">Plazo</span>
+              <span class="font-semibold">14d (24-may-26)</span>
+            </div>
+            <div class="flex items-center justify-between px-3 py-2 text-[12px]">
+              <span class="text-slate-500">Días transcurridos</span>
+              <span class="font-mono font-bold text-zinc-900">18d</span>
+            </div>
+            <div class="flex items-center justify-between px-3 py-2 text-[12px]">
+              <span class="text-slate-500">Días sin actualizar</span>
+              <span class="font-mono font-bold text-amber-700">6d</span>
+            </div>
+            <div class="flex items-center justify-between px-3 py-2 text-[12px]">
+              <span class="text-slate-500">Incidencias</span>
+              <span class="font-mono font-bold text-red-700">1 abierta</span>
+            </div>
+          </div>
+
+          <!-- Acciones · primaria contextual según avance -->
+          <button class="w-full bg-teal-600 text-white text-sm font-semibold rounded-xl py-3 flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Reportar avance · 35%
+          </button>
+
+          <!-- Salidas posibles desde Costura · el operario elige -->
+          <div class="bg-white border border-slate-200 rounded-xl p-3">
+            <div class="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2">Pasar a siguiente servicio</div>
+            <div class="grid grid-cols-2 gap-2">
+              <button class="bg-white border border-slate-300 text-slate-900 text-sm font-semibold rounded-lg py-2.5 flex items-center justify-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                Atraque
+              </button>
+              <button class="bg-white border border-slate-300 text-slate-900 text-sm font-semibold rounded-lg py-2.5 flex items-center justify-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                Lavandería
+              </button>
+            </div>
+            <div class="text-[10px] text-slate-500 mt-1.5">Saliendo de Costura, el operario decide si el corte lleva atraque o va directo a lavandería.</div>
+          </div>
+
+          <button class="w-full bg-white border border-red-300 text-red-600 text-sm font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Reportar incidencia
+          </button>
+          <button class="w-full bg-white border border-slate-300 text-slate-700 text-[12px] font-semibold rounded-xl py-2 flex items-center justify-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Ver registro completo
+          </button>
+
+          <button class="w-full bg-slate-50 border border-slate-200 text-slate-700 text-[12px] font-semibold rounded-xl py-2 flex items-center justify-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Historial de avances (4 entradas)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 5 · Bottom sheet de filtros                                             -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">5 · Bottom sheet · filtros</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body relative">
+        <!-- Pantalla de fondo atenuada -->
+        <div class="opacity-50">
+          <div class="header-mobile">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+            <div class="flex-1 min-w-0">
+              <div class="text-[11px] opacity-85">Reporte Operativo</div>
+              <div class="font-semibold text-[15px]">Costura · 12 personas</div>
+            </div>
+          </div>
+          <div class="p-3 space-y-3">
+            <div class="grid grid-cols-4 gap-2">
+              <div class="bg-white border border-slate-200 rounded-xl p-2 h-12"></div>
+              <div class="bg-white border border-slate-200 rounded-xl p-2 h-12"></div>
+              <div class="bg-zinc-900 rounded-xl p-2 h-12"></div>
+              <div class="bg-red-50 border border-red-200 rounded-xl p-2 h-12"></div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl h-16"></div>
+            <div class="bg-white border border-slate-200 rounded-xl h-16"></div>
+          </div>
+        </div>
+        <!-- Overlay -->
+        <div class="absolute inset-0 bg-black/40"></div>
+        <!-- Bottom sheet -->
+        <div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl">
+          <div class="flex justify-center pt-2 pb-1"><div class="w-10 h-1 bg-slate-300 rounded-full"></div></div>
+          <div class="px-4 pt-2 pb-4">
+            <div class="flex items-center justify-between mb-3">
+              <div class="font-bold text-base">Filtros</div>
+              <button class="text-[11px] text-teal-600 font-semibold uppercase">Limpiar</button>
+            </div>
+
+            <div class="space-y-3">
+              <div>
+                <div class="text-[10px] text-slate-500 uppercase font-bold mb-1.5">Riesgo</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span class="chip active">Todos</span>
+                  <span class="chip">Vencidos</span>
+                  <span class="chip">Críticos</span>
+                  <span class="chip">Atención</span>
+                  <span class="chip">Normal</span>
+                </div>
+              </div>
+
+              <div>
+                <div class="text-[10px] text-slate-500 uppercase font-bold mb-1.5">Persona</div>
+                <div class="relative">
+                  <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                  <input class="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm" placeholder="Todas" />
+                </div>
+              </div>
+
+              <div>
+                <div class="text-[10px] text-slate-500 uppercase font-bold mb-1.5">Tipo de persona</div>
+                <div class="flex gap-1.5">
+                  <span class="chip active">Todos</span>
+                  <span class="chip">Internos</span>
+                  <span class="chip">Externos</span>
+                </div>
+              </div>
+
+              <div>
+                <div class="text-[10px] text-slate-500 uppercase font-bold mb-1.5">Estado del corte</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span class="chip active">En curso</span>
+                  <span class="chip">Todos</span>
+                  <span class="chip">Terminados</span>
+                </div>
+              </div>
+
+              <div>
+                <div class="text-[10px] text-slate-500 uppercase font-bold mb-1.5">Otros</div>
+                <div class="space-y-1.5">
+                  <label class="flex items-center gap-2 text-[12px]">
+                    <input type="checkbox" class="w-4 h-4 rounded" checked /> Solo vencidos
+                  </label>
+                  <label class="flex items-center gap-2 text-[12px]">
+                    <input type="checkbox" class="w-4 h-4 rounded" /> Solo con incidencias
+                  </label>
+                  <label class="flex items-center gap-2 text-[12px]">
+                    <input type="checkbox" class="w-4 h-4 rounded" checked /> Sin actualizar ≥3d
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <button class="w-full bg-teal-600 text-white font-semibold rounded-xl py-2.5 mt-4 text-sm">
+              Aplicar filtros · 14 cortes
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 6 · Estado vacío y carga                                                -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">6 · Estados · vacío y carga</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Reporte Operativo</div>
+            <div class="font-semibold text-[15px]">Acabado</div>
+          </div>
+        </div>
+
+        <div class="px-3 pt-3 pb-2 bg-white border-b border-slate-200">
+          <div class="flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
+            <span class="chip">Costura</span>
+            <span class="chip">Estampado</span>
+            <span class="chip">Bordado</span>
+            <span class="chip active">Acabado</span>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-4">
+          <div class="grid grid-cols-4 gap-2">
+            <div class="bg-white border border-slate-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-lg leading-none">0</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold mt-1">Personas</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-lg leading-none">0</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold mt-1">Registros</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-lg leading-none">0</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold mt-1">Vencidos</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-lg leading-none">0</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold mt-1">Críticos</div>
+            </div>
+          </div>
+
+          <div class="bg-white border border-dashed border-slate-300 rounded-xl py-10 px-4 text-center">
+            <svg class="w-12 h-12 text-slate-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+            <div class="font-semibold text-sm text-slate-700">Sin actividad en Acabado</div>
+            <div class="text-[11px] text-slate-500 mt-1">No hay cortes en curso para este servicio.<br>Cambia el filtro o el servicio.</div>
+            <button class="mt-3 bg-teal-600 text-white text-[12px] font-semibold rounded-lg px-3 py-1.5">Ver todos los servicios</button>
+          </div>
+
+          <!-- Skeleton de carga -->
+          <div>
+            <div class="text-[10px] text-slate-500 uppercase tracking-wider font-bold px-1 mb-2">Cargando…</div>
+            <div class="space-y-2">
+              <div class="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-full bg-slate-200 animate-pulse"></div>
+                <div class="flex-1 space-y-1.5">
+                  <div class="h-3 bg-slate-200 rounded animate-pulse w-3/5"></div>
+                  <div class="h-2.5 bg-slate-100 rounded animate-pulse w-4/5"></div>
+                </div>
+              </div>
+              <div class="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-full bg-slate-200 animate-pulse"></div>
+                <div class="flex-1 space-y-1.5">
+                  <div class="h-3 bg-slate-200 rounded animate-pulse w-2/5"></div>
+                  <div class="h-2.5 bg-slate-100 rounded animate-pulse w-3/5"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Comentarios de diseño -->
+<div class="max-w-5xl mx-auto px-8 pb-12">
+  <!-- Reglas de acciones contextuales -->
+  <div class="bg-teal-50 border border-teal-200 rounded-xl p-5 mt-6">
+    <h2 class="font-bold text-base mb-3 text-teal-900">Reglas de acciones en cada card</h2>
+    <p class="text-sm text-slate-700 mb-2">
+      La acción primaria de cada corte cambia según su estado real, no es siempre la misma. Esto se ve en los 5 casos del mockup #2:
+    </p>
+    <div class="bg-amber-50 border border-amber-200 rounded-md p-3 mb-3 text-[12px] text-amber-900">
+      <b>Saliendo de Costura hay 2 caminos posibles · el operario decide.</b> No se sabe de antemano si el corte llevará atraque — eso recién se decide cuando termina costura, por eso el mockup muestra <b>dos botones de salida</b> (<code class="bg-white px-1 rounded">→ Atraque</code> y <code class="bg-white px-1 rounded">→ Lavandería</code>) en vez de uno solo. En las demás etapas (Atraque, Lavandería, Acabado, etc.) sí hay un único siguiente servicio, ahí basta un botón.
+    </div>
+    <div class="space-y-2">
+      <div class="bg-white rounded-lg p-3 border border-slate-200">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="pill pill-gray">CASO A</span>
+          <span class="font-semibold text-sm">Avance &lt; 100%</span>
+        </div>
+        <div class="text-[12px] text-slate-600">Acción primaria <b>Avance</b> (teal). Secundarias: <b>→ Acabado</b> (sigue el siguiente servicio de la ruta del modelo) y <b>+ Inc.</b></div>
+      </div>
+      <div class="bg-white rounded-lg p-3 border border-emerald-200">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="pill pill-green">CASO B</span>
+          <span class="font-semibold text-sm">Avance 100% · sin incidencias</span>
+        </div>
+        <div class="text-[12px] text-slate-600">Acción primaria <b>Pasar a Acabado</b> (verde, grande) — en <b>1 toque</b> cierra el movimiento de costura y abre el de acabado. Acciones secundarias quedan abajo.</div>
+      </div>
+      <div class="bg-white rounded-lg p-3 border border-amber-200">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="pill pill-amber">CASO C</span>
+          <span class="font-semibold text-sm">100% con incidencia abierta</span>
+        </div>
+        <div class="text-[12px] text-slate-600">→ Acabado <b>deshabilitado</b>. Mensaje "Resolvé la incidencia para pasar a Acabado". Acción primaria <b>Ver Inc.</b> (rojo).</div>
+      </div>
+      <div class="bg-white rounded-lg p-3 border border-slate-200">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="pill pill-gray">CASO D</span>
+          <span class="font-semibold text-sm">Normal · colapsado</span>
+        </div>
+        <div class="text-[12px] text-slate-600">No requiere atención. Card mínima. Toque para expandir.</div>
+      </div>
+      <div class="bg-white rounded-lg p-3 border border-amber-200">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="pill pill-amber">CASO E</span>
+          <span class="font-semibold text-sm">Movimiento abierto en etapa anterior</span>
+        </div>
+        <div class="text-[12px] text-slate-600">Pill amarillo <b>"Mov. abierto · Costura"</b> visible desde la lista colapsada. Avisa antes de tocar y chocar con el bloqueo. Aplica también a cortes que estás viendo desde la siguiente etapa.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl p-5 mt-6">
+    <h2 class="font-bold text-base mb-2">Decisiones de diseño · qué cambia respecto al escritorio</h2>
+    <ul class="text-sm text-slate-700 space-y-1.5 list-disc pl-5">
+      <li><b>KPIs reordenados:</b> primero los críticos para móvil (Vencidos · Críticos en grande), Personas/Registros/Prendas como contexto secundario. El usuario mobile no viene a hacer análisis: viene a saber qué está mal.</li>
+      <li><b>Grid 4×2 de KPIs</b> en lugar de 7 columnas. Los KPIs de "Vencidos" y "Críticos" rompen el patrón en colores fuertes (negro / rojo) para captar la mirada.</li>
+      <li><b>Tabla → cards.</b> Las 16 columnas se vuelven una card por corte con jerarquía: badge de riesgo + corte + modelo arriba, avance como barra, datos clave en grid 3×1 (Días, Sin actualizar, Inc.), obs. abajo, acciones al final.</li>
+      <li><b>2 vistas con toggle 👥 / ≡ :</b> agrupada por persona (default para supervisor) o lista plana ordenada por riesgo (para "qué arreglo primero"). En lista plana hay encabezados de sección por nivel.</li>
+      <li><b>Filtros en bottom sheet</b> con conteo en el botón ("Aplicar · 14 cortes") en vez de una fila densa de selects. Los más usados (Riesgo, Persona, Estado) primero.</li>
+      <li><b>Selector de servicio como chips horizontales</b> sticky bajo el header — más rápido que abrir un select.</li>
+      <li><b>Borde lateral de color</b> en cada card de corte indica nivel de riesgo sin tener que leer el badge.</li>
+      <li><b>Acciones inline</b> en cada corte: Avance, Estado, +Inc, ⋯ — las 3 cosas más comunes a un toque, sin tener que entrar al detalle.</li>
+      <li><b>Cards normales colapsadas</b> en vista persona para que dominen las que necesitan atención.</li>
+      <li><b>Botón export en header</b> (📤) — sigue disponible PDF/Excel para cuando se necesita el reporte formal.</li>
+    </ul>
+
+    <h2 class="font-bold text-base mb-2 mt-5">Lo que NO va al móvil</h2>
+    <ul class="text-sm text-slate-700 space-y-1.5 list-disc pl-5">
+      <li>Editor inline de avance con click directo en celda. En móvil → toque abre el bottom sheet del corte (mejor target táctil).</li>
+      <li>Ver/Editar tarifa por corte. Se ve en detalle pero no se edita ahí — sigue en el módulo de tarifas.</li>
+      <li>Selección múltiple para acciones masivas. Puede agregarse después si haces seguimiento por lote.</li>
+    </ul>
+
+    <h2 class="font-bold text-base mb-2 mt-5">Para decidir</h2>
+    <ul class="text-sm text-slate-700 space-y-1.5 list-disc pl-5">
+      <li><b>¿Dónde entra esto en el menú móvil?</b> Propuesta: en el Home, fila "Reporte operativo" dentro de Producción. O integrarlo como una pestaña dentro del Home contextual del supervisor.</li>
+      <li><b>¿Filtro por servicio sticky o como parte del header?</b> En el mockup va sticky bajo el header — ocupa 38px pero ahorra muchos toques. Alternativa: meterlo en el sheet de filtros y mostrar el servicio activo en el subtítulo del header.</li>
+      <li><b>¿Default agrupada o plana?</b> Sugerencia: agrupada para roles de supervisor/dueño, plana para roles operativos enfocados en "qué hago hoy". O recordar la última elección del usuario en localStorage.</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>
