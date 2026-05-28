@@ -45,9 +45,18 @@ import { formatDate } from '../lib/dateUtils';
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const ROLES = [
-  { value: 'admin', label: 'Administrador', color: 'bg-red-500' },
-  { value: 'usuario', label: 'Usuario', color: 'bg-blue-500' },
-  { value: 'lectura', label: 'Solo Lectura', color: 'bg-gray-500' },
+  { value: 'admin',                          label: 'Administrador',           color: 'bg-red-500' },
+  { value: 'usuario',                        label: 'Usuario',                 color: 'bg-blue-500' },
+  { value: 'lectura',                        label: 'Solo Lectura',            color: 'bg-gray-500' },
+  // Roles operativos del flujo de producción (Sprint 38p)
+  { value: 'operario',                       label: 'Operario',                color: 'bg-slate-500' },
+  { value: 'operario_costura',               label: 'Operario Costura',        color: 'bg-blue-600' },
+  { value: 'supervisor_corte_planificacion', label: 'Sup. Corte / Planif.',    color: 'bg-purple-600' },
+  { value: 'supervisor_corte',               label: 'Supervisor Corte',        color: 'bg-indigo-600' },
+  { value: 'supervisor_atraque_lavanderia',  label: 'Sup. Atraque / Lav.',     color: 'bg-cyan-600' },
+  { value: 'supervisor_acabado',             label: 'Supervisor Acabado',      color: 'bg-amber-600' },
+  { value: 'supervisor_inventario',          label: 'Supervisor Inventario',   color: 'bg-emerald-600' },
+  { value: 'encargada_pt',                   label: 'Encargada PT / Tienda',   color: 'bg-pink-600' },
 ];
 
 const CATEGORIA_ICONS = {
@@ -128,7 +137,6 @@ const PERMISOS_CATEGORIAS_BASE = [
       { key: 'servicios_produccion', nombre: 'Servicios', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
       { key: 'personas_produccion', nombre: 'Personas', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
       { key: 'rutas_produccion', nombre: 'Rutas de Producción', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
-      { key: 'movimientos_produccion', nombre: 'Movimientos', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
       { key: 'motivos_incidencia', nombre: 'Motivos Incidencia', acciones: ['ver', 'crear', 'editar', 'eliminar'] },
       { key: 'reporte_productividad', nombre: 'Productividad', acciones: ['ver'] },
     ],
@@ -578,7 +586,8 @@ export const Usuarios = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        {user.rol === 'usuario' && (
+                        {/* Editar permisos: para todos menos admin (admin tiene todo) y lectura (solo ver) */}
+                        {user.rol !== 'admin' && user.rol !== 'lectura' && (
                           <Button
                             variant="ghost"
                             size="icon"

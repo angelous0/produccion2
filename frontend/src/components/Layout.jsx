@@ -2,6 +2,7 @@ import { Navigate, NavLink, Outlet, useNavigate, useLocation } from 'react-route
 import { useEffect, useState, useRef } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { labelRol } from '../mobile/utils/permisos';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -602,12 +603,8 @@ export const Layout = () => {
                 <DropdownMenuLabel>
                   <div className="flex flex-col">
                     <span>{user?.nombre_completo || user?.username}</span>
-                    <span className="text-xs font-normal text-muted-foreground capitalize">
-                      {user?.rol === 'admin'
-                        ? 'Administrador'
-                        : user?.rol === 'lectura'
-                        ? 'Solo Lectura'
-                        : 'Usuario'}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {labelRol(user?.rol)}
                     </span>
                   </div>
                 </DropdownMenuLabel>
@@ -844,8 +841,8 @@ export const Layout = () => {
                 {!sidebarCollapsed && (
                   <div className="hidden md:block min-w-0">
                     <p className="text-sm font-medium truncate">{user?.nombre_completo || user?.username}</p>
-                    <p className="text-[10px] text-muted-foreground capitalize">
-                      {user?.rol === 'admin' ? 'Administrador' : user?.rol === 'lectura' ? 'Solo Lectura' : 'Usuario'}
+                    <p className="text-[10px] text-muted-foreground">
+                      {labelRol(user?.rol)}
                     </p>
                   </div>
                 )}

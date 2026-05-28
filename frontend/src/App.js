@@ -1,6 +1,6 @@
 import "@/App.css";
 import React, { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -10,6 +10,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Registros } from "./pages/Registros";
 import { RegistroForm } from "./pages/RegistroForm";
 import { Loader2 } from "lucide-react";
+import { shouldUseMobile } from "./utils/deviceDetection";
 
 // Mobile app (vista operario)
 const MobileApp = lazy(() => import("./mobile/MobileApp").then(m => ({ default: m.MobileApp })));
@@ -83,6 +84,7 @@ const ValidacionRegistros = lazy(() => import("./pages/ValidacionRegistros").the
 const SeguimientoTienda = lazy(() => import("./pages/SeguimientoTienda"));
 const ReporteCortes = lazy(() => import("./pages/ReporteCortes").then(m => ({ default: m.ReporteCortes })));
 const ConciliacionPendiente = lazy(() => import("./pages/ConciliacionPendiente").then(m => ({ default: m.ConciliacionPendiente })));
+const RegistroQRPrint = lazy(() => import("./pages/RegistroQRPrint"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center h-64">
@@ -114,7 +116,7 @@ const ProtectedRoute = ({ children }) => {
 // Componente para rutas públicas (login)
 const PublicRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
-  
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -122,11 +124,29 @@ const PublicRoute = ({ children }) => {
       </div>
     );
   }
-  
+
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
   }
-  
+
+  return children;
+};
+
+/**
+ * Detecta si el dispositivo es móvil y redirige a /m/<resto>.
+ * Se aplica sobre las rutas de escritorio (/ y /login) — si el usuario es móvil,
+ * lo manda a la versión correspondiente de /m. La detección respeta ?desktop=1
+ * y la flag persistente en localStorage (ver utils/deviceDetection.js).
+ */
+const MobileRedirect = ({ children, mobilePath }) => {
+  const location = useLocation();
+  if (shouldUseMobile()) {
+    // Preservar query string excepto ?desktop=1
+    const params = new URLSearchParams(location.search);
+    params.delete('desktop');
+    const qs = params.toString();
+    return <Navigate to={`${mobilePath}${qs ? `?${qs}` : ''}`} replace />;
+  }
   return children;
 };
 
@@ -135,18 +155,24 @@ function AppRoutes() {
     <Routes>
       {/* Ruta pública - Login */}
       <Route path="/login" element={
-        <PublicRoute>
-          <Login />
-        </PublicRoute>
+        <MobileRedirect mobilePath="/m/login">
+          <PublicRoute>
+            <Login />
+          </PublicRoute>
+        </MobileRedirect>
       } />
-      
+
       {/* Rutas protegidas */}
       <Route path="/" element={
         <ProtectedRoute>
           <Layout />
         </ProtectedRoute>
       }>
-        <Route index element={<Dashboard />} />
+        <Route index element={
+          <MobileRedirect mobilePath="/m">
+            <Dashboard />
+          </MobileRedirect>
+        } />
         <Route path="usuarios" element={<LazyWrap><Usuarios /></LazyWrap>} />
         <Route path="auditoria" element={<LazyWrap><AuditoriaLogs /></LazyWrap>} />
         <Route path="historial-actividad" element={<LazyWrap><HistorialActividad /></LazyWrap>} />
@@ -173,6 +199,7 @@ function AppRoutes() {
         <Route path="registros" element={<Registros />} />
         <Route path="registros/nuevo" element={<RegistroForm />} />
         <Route path="registros/editar/:id" element={<RegistroForm />} />
+        <Route path="registros/:id/qr" element={<LazyWrap><RegistroQRPrint /></LazyWrap>} />
         <Route path="registros/importar" element={<LazyWrap><ImportRegistros /></LazyWrap>} />
         <Route path="inventario" element={<LazyWrap><Inventario /></LazyWrap>} />
         <Route path="inventario/ingresos" element={<LazyWrap><InventarioIngresos /></LazyWrap>} />

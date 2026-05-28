@@ -37,10 +37,12 @@ import { toast } from 'sonner';
 import { NumericInput } from '../components/ui/numeric-input';
 import { formatDate } from '../lib/dateUtils';
 import { formatCurrency, cn } from '../lib/utils';
+import { usePermissions } from '../hooks/usePermissions';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export const MovimientosProduccion = () => {
+  const permisosMovimientos = usePermissions('movimientos_produccion');
   const [movimientos, setMovimientos] = useState([]);
   const [servicios, setServicios] = useState([]);
   const [personas, setPersonas] = useState([]);
@@ -442,6 +444,10 @@ export const MovimientosProduccion = () => {
     return est === filtroEstado;
   };
 
+  const canCreateMovimiento = permisosMovimientos.canCreate && permisosMovimientos.canAction('crear_movimientos');
+  const canEditMovimiento = permisosMovimientos.canEdit && permisosMovimientos.canAction('editar_movimientos');
+  const serviciosOperacion = servicios.filter((servicio) => permisosMovimientos.canService(servicio.id));
+
   return (
     <div className="space-y-6" data-testid="movimientos-produccion-page">
       <div className="flex items-center justify-between">
@@ -454,10 +460,12 @@ export const MovimientosProduccion = () => {
             Historial completo de movimientos de producción
           </p>
         </div>
-        <Button onClick={handleOpenCreateDialog} data-testid="btn-nuevo-movimiento-page">
-          <Plus className="h-4 w-4 mr-2" />
-          Nuevo Movimiento
-        </Button>
+        {canCreateMovimiento && (
+          <Button onClick={handleOpenCreateDialog} data-testid="btn-nuevo-movimiento-page">
+            <Plus className="h-4 w-4 mr-2" />
+            Nuevo Movimiento
+          </Button>
+        )}
       </div>
 
       {/* Filtros */}
@@ -653,22 +661,26 @@ export const MovimientosProduccion = () => {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleOpenEdit(mov)}
-                            data-testid={`edit-movimiento-${mov.id}`}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(mov.id)}
-                            data-testid={`delete-movimiento-${mov.id}`}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          {canEditMovimiento && permisosMovimientos.canService(mov.servicio_id) && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleOpenEdit(mov)}
+                                data-testid={`edit-movimiento-${mov.id}`}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDelete(mov.id)}
+                                data-testid={`delete-movimiento-${mov.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -740,7 +752,7 @@ export const MovimientosProduccion = () => {
                   <SelectValue placeholder="Seleccionar servicio..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {servicios.map((servicio) => (
+                  {serviciosOperacion.map((servicio) => (
                     <SelectItem key={servicio.id} value={servicio.id}>
                       {servicio.nombre}
                     </SelectItem>
@@ -951,7 +963,7 @@ export const MovimientosProduccion = () => {
                   <SelectValue placeholder="Seleccionar servicio..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {servicios.map((servicio) => (
+                  {serviciosOperacion.map((servicio) => (
                     <SelectItem key={servicio.id} value={servicio.id}>
                       {servicio.nombre}
                     </SelectItem>

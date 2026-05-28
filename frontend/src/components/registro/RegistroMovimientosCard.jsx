@@ -16,9 +16,9 @@ export const RegistroMovimientosCard = ({
   onCopiarDesdeRegistro,
 }) => {
   const showAvance = serviciosProduccion.some(s => s.usa_avance_porcentaje && movimientosProduccion.some(m => m.servicio_id === s.id));
-  const canCreate = permisos?.canAction?.('crear_movimientos') !== false;
-  const canEditMov = permisos?.canAction?.('editar_movimientos') !== false;
-  const canCheckService = (servicioId) => permisos?.canService?.(servicioId) !== false;
+  const canCreate = permisos?.canAction?.('crear_movimientos') === true;
+  const canEditMov = permisos?.canAction?.('editar_movimientos') === true;
+  const canCheckService = (servicioId) => permisos?.canService?.(servicioId) === true;
 
   // "Activo" = movimiento más reciente/actual por FECHAS REALES del servicio,
   // no por orden de inserción en BD. Prioridad:

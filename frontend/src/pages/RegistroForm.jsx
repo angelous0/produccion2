@@ -14,7 +14,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Save, Scissors, FileText } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { MuestrasLavanderiaSection } from '../components/MuestrasLavanderiaSection';
-import { ClipboardList, Play, ShieldAlert, Package, Activity, Clock, AlertTriangle as AlertTriangleIcon, ArrowRight, MessageCircle, Cog } from 'lucide-react';
+import { ClipboardList, Play, ShieldAlert, Package, Activity, Clock, AlertTriangle as AlertTriangleIcon, ArrowRight, MessageCircle, Cog, QrCode as QrCodeIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { SalidaRollosDialog } from '../components/SalidaRollosDialog';
 import { TrazabilidadPanel } from '../components/TrazabilidadPanel';
@@ -1282,6 +1282,22 @@ export const RegistroForm = () => {
         handleSubmit={handleSubmit} permisos={perms} setConvOpen={setConvOpen} convRefreshKey={convRefreshKey}
         cameFromRegistro={cameFromRegistro} navegacion={navegacion}
       />
+
+      {/* Acceso rápido a Imprimir QR (solo cuando es un corte existente) */}
+      {isEditing && id && (
+        <div className="flex justify-end -mt-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(`/registros/${id}/qr`, '_blank')}
+            className="gap-2"
+          >
+            <QrCodeIcon className="h-4 w-4" />
+            Imprimir QR
+          </Button>
+        </div>
+      )}
 
       {/* Banner incidencias abiertas (no paralizado) */}
       {isEditing && incidenciasAbiertas > 0 && !isParalizado && (
