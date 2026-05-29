@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cambiar estado v2 — Mockup móvil</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --brand: #0f766e;
+    --brand-dark: #0d5f5a;
+    --brand-soft: #f0fdfa;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --bg: #f3f4f6;
+  }
+  body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  .phones-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 32px; padding: 32px; max-width: 1800px; margin: 0 auto; }
+  .phone-frame { width: 380px; border: 12px solid #1f2937; border-radius: 38px; overflow: hidden; background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4); margin: 0 auto; }
+  .phone-notch { height: 28px; background: #1f2937; display: flex; justify-content: center; align-items: center; color: white; font-size: 11px; font-weight: 600; }
+  .phone-body { height: 760px; overflow-y: auto; background: #f9fafb; position: relative; }
+  .header-mobile { background: var(--brand); color: white; padding: 14px 16px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 10; }
+  .screen-title { font-size: 11px; color: #64748b; text-align: center; margin-top: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .pill { display:inline-flex; align-items:center; gap:4px; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; line-height: 1.2; }
+  .pill-red    { background: #fee2e2; color: #b91c1c; }
+  .pill-amber  { background: #fef3c7; color: #b45309; }
+  .pill-green  { background: #dcfce7; color: #15803d; }
+  .pill-blue   { background: #dbeafe; color: #1d4ed8; }
+  .pill-gray   { background: #e5e7eb; color: #475569; }
+  .pill-teal   { background: #ccfbf1; color: #115e59; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid #e5e7eb; background: white; white-space: nowrap; }
+  .chip.active { background: var(--brand); color: white; border-color: var(--brand); }
+  .ruta-step {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    position: relative;
+  }
+  .ruta-step::after {
+    content: ''; position: absolute; top: 9px; right: -50%; left: 50%;
+    height: 2px; background: #e5e7eb; z-index: 0;
+  }
+  .ruta-step:last-child::after { display: none; }
+  .ruta-step.done::after { background: #15803d; }
+  .ruta-step .dot {
+    position: relative; z-index: 1;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: white; border: 2px solid #cbd5e1;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ruta-step.done .dot { background: #15803d; border-color: #15803d; color: white; }
+  .ruta-step.current .dot { background: #0f766e; border-color: #0f766e; box-shadow: 0 0 0 4px rgba(15,118,110,.18); }
+  .ruta-step.skipped .dot { background: #f1f5f9; border-color: #cbd5e1; opacity: .5; }
+  .ruta-step .label { font-size: 8.5px; color: #64748b; margin-top: 4px; text-align: center; line-height: 1.2; }
+  .ruta-step.done .label { color: #15803d; font-weight: 700; }
+  .ruta-step.current .label { color: #0f766e; font-weight: 800; }
+  .ruta-step.skipped .label { color: #94a3b8; text-decoration: line-through; }
+</style>
+</head>
+<body>
+
+<div class="px-8 pt-8 pb-2 max-w-5xl mx-auto">
+  <h1 class="text-2xl font-bold">Cambiar estado v2 — basado en la ruta del modelo</h1>
+  <p class="text-slate-600 mt-1">
+    Hoy el sheet muestra estados según permisos del rol pero <b>ignora dónde estás parado en la ruta</b>.
+    Por eso a Diana le sale "Para Atraque" cuando ya está en "Para Lavandería" (estaría yendo hacia atrás).
+    La v2 calcula el siguiente paso real según la ruta del modelo y el estado actual.
+  </p>
+</div>
+
+<div class="phones-grid">
+
+  <!-- ====================================================================== -->
+  <!-- 1 · ANTES — el bug actual                                               -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">1 · ANTES · el bug actual (lo que viste vos)</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body relative">
+        <div class="opacity-40">
+          <div class="header-mobile">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+            <div class="flex-1 min-w-0">
+              <div class="text-[11px] opacity-85">Registro</div>
+              <div class="font-semibold text-[15px]">098</div>
+            </div>
+          </div>
+          <div class="p-3">
+            <div class="bg-white border border-slate-200 rounded-xl p-3 mb-3">
+              <div class="font-bold">CLOVER BLACK</div>
+              <div class="text-xs text-slate-500">Element Premium</div>
+              <div class="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 border-dashed border-amber-500 text-amber-700 text-xs font-bold">Para Lavanderia ▾</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom sheet -->
+        <div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl">
+          <div class="flex justify-center pt-2 pb-1"><div class="w-10 h-1 bg-slate-300 rounded-full"></div></div>
+          <div class="px-4 pt-2 pb-4 space-y-3">
+            <div class="font-bold text-base">Cambiar estado</div>
+            <div class="text-[11px] font-mono text-slate-500">098 · CLOVER BLACK</div>
+
+            <div class="bg-slate-50 rounded-lg p-2.5 text-[12px]">
+              <span class="text-slate-500 uppercase font-bold mr-1.5">ACTUAL</span>
+              <span class="pill pill-amber">Para Lavanderia</span>
+            </div>
+
+            <div class="text-[10px] text-slate-500 uppercase font-bold tracking-wider mt-3">A qué estado pasar</div>
+
+            <div class="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-bold text-sm">Para Atraque</div>
+                <div class="text-[11px] text-slate-500">Estado de espera (sin movimiento)</div>
+              </div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                <svg class="w-4 h-4 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-bold text-sm">Atraque</div>
+                <div class="text-[11px] text-slate-500">Crea movimiento de Atraque con fecha inicio = ahora</div>
+              </div>
+            </div>
+
+            <!-- Problema señalizado -->
+            <div class="bg-red-50 border border-red-300 rounded-lg p-3 mt-3 text-[11px] text-red-800 flex gap-2 items-start">
+              <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <div>
+                <b>Problemas:</b><br>
+                · Te ofrece volver atrás (Atraque ya pasó)<br>
+                · No aparece <b>Lavandería</b> que es el siguiente lógico<br>
+                · Texto técnico "Crea movimiento de... con fecha inicio = ahora"
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 2 · DESPUÉS — caso simple (1 siguiente)                                 -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">2 · DESPUÉS · caso normal · 1 botón grande</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body relative">
+        <div class="opacity-40">
+          <div class="header-mobile">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+            <div class="flex-1 min-w-0">
+              <div class="text-[11px] opacity-85">Registro</div>
+              <div class="font-semibold text-[15px]">098</div>
+            </div>
+          </div>
+          <div class="p-3">
+            <div class="bg-white border border-slate-200 rounded-xl p-3 mb-3">
+              <div class="font-bold">CLOVER BLACK</div>
+              <div class="text-xs text-slate-500">Element Premium</div>
+              <div class="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 border-dashed border-amber-500 text-amber-700 text-xs font-bold">Para Lavanderia ▾</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl">
+          <div class="flex justify-center pt-2 pb-1"><div class="w-10 h-1 bg-slate-300 rounded-full"></div></div>
+          <div class="px-4 pt-2 pb-4 space-y-3">
+            <div class="font-bold text-base">¿Avanzar el corte?</div>
+            <div class="text-[11px] font-mono text-slate-500">098 · CLOVER BLACK</div>
+
+            <!-- Mini timeline de la ruta -->
+            <div class="bg-slate-50 rounded-lg p-3 mt-2">
+              <div class="text-[9px] text-slate-500 uppercase font-bold tracking-wider mb-2">Ruta del modelo</div>
+              <div class="flex">
+                <div class="ruta-step done">
+                  <div class="dot">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="label">Costura</div>
+                </div>
+                <div class="ruta-step done">
+                  <div class="dot">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <div class="label">Atraque</div>
+                </div>
+                <div class="ruta-step current">
+                  <div class="dot"></div>
+                  <div class="label">Para Lavandería</div>
+                </div>
+                <div class="ruta-step">
+                  <div class="dot"></div>
+                  <div class="label">Lavandería</div>
+                </div>
+                <div class="ruta-step">
+                  <div class="dot"></div>
+                  <div class="label">Acabado</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="text-[12px] text-slate-600 mt-1 mb-1">
+              Estás en <b class="text-amber-700">Para Lavandería</b>. El siguiente paso es:
+            </div>
+
+            <!-- Acción principal grande -->
+            <button class="w-full bg-teal-600 text-white rounded-xl p-4 flex items-center gap-3 text-left active:bg-teal-700">
+              <div class="w-12 h-12 rounded-lg bg-white/20 flex items-center justify-center">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </div>
+              <div class="flex-1">
+                <div class="font-bold text-base">Empezar Lavandería</div>
+                <div class="text-[11px] opacity-90">Se crea el movimiento con fecha de hoy</div>
+              </div>
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+
+            <div class="flex gap-2">
+              <button class="flex-1 bg-white border border-slate-300 text-slate-700 rounded-lg py-2.5 font-semibold text-[12px]">
+                Ver historial
+              </button>
+              <button class="flex-1 bg-white border border-slate-300 text-slate-700 rounded-lg py-2.5 font-semibold text-[12px]">
+                Cancelar
+              </button>
+            </div>
+
+            <button class="w-full text-[11px] text-slate-400 underline pt-2">
+              Otros estados (admin) ▾
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 3 · DESPUÉS — bifurcación (Atraque opcional)                            -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">3 · DESPUÉS · bifurcación · 2 botones (Atraque opcional)</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body relative">
+        <div class="opacity-40">
+          <div class="header-mobile">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+            <div class="flex-1 min-w-0">
+              <div class="text-[11px] opacity-85">Registro</div>
+              <div class="font-semibold text-[15px]">2451</div>
+            </div>
+          </div>
+          <div class="p-3">
+            <div class="bg-white border border-slate-200 rounded-xl p-3 mb-3">
+              <div class="font-bold">PEKERMAN 001</div>
+              <div class="text-xs text-slate-500">Polo M/C</div>
+              <div class="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold">Costura ✓ 100%</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl">
+          <div class="flex justify-center pt-2 pb-1"><div class="w-10 h-1 bg-slate-300 rounded-full"></div></div>
+          <div class="px-4 pt-2 pb-4 space-y-3">
+            <div class="font-bold text-base">¿Hacia dónde va?</div>
+            <div class="text-[11px] font-mono text-slate-500">2451 · PEKERMAN 001 · Costura terminada</div>
+
+            <!-- Mini timeline con bifurcación -->
+            <div class="bg-slate-50 rounded-lg p-3 mt-2">
+              <div class="text-[9px] text-slate-500 uppercase font-bold tracking-wider mb-2">Ruta del modelo</div>
+              <div class="flex items-center">
+                <div class="ruta-step done">
+                  <div class="dot"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+                  <div class="label">Costura</div>
+                </div>
+                <div class="ruta-step" style="flex:.7">
+                  <div class="dot" style="background:#fef3c7; border-color:#fde68a"></div>
+                  <div class="label" style="color:#92400e">Atraque<br><span style="font-size:7px">opcional</span></div>
+                </div>
+                <div class="ruta-step" style="flex:1.3">
+                  <div class="dot"></div>
+                  <div class="label">Lavandería</div>
+                </div>
+                <div class="ruta-step">
+                  <div class="dot"></div>
+                  <div class="label">Acabado</div>
+                </div>
+              </div>
+              <div class="text-[10px] text-amber-700 mt-2 text-center">Atraque es opcional en esta ruta</div>
+            </div>
+
+            <div class="text-[12px] text-slate-600 mt-1">
+              Costura terminó. Elegí el siguiente paso:
+            </div>
+
+            <!-- Dos botones grandes -->
+            <div class="grid grid-cols-2 gap-2">
+              <button class="bg-teal-600 text-white rounded-xl p-3 text-left active:bg-teal-700">
+                <div class="flex items-center gap-1.5 mb-1">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                  <span class="font-bold text-sm">→ Atraque</span>
+                </div>
+                <div class="text-[10px] opacity-90">Pasa por atraque y después lavandería</div>
+              </button>
+              <button class="bg-purple-600 text-white rounded-xl p-3 text-left active:bg-purple-700">
+                <div class="flex items-center gap-1.5 mb-1">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="12 19 5 12 12 5"/><path d="M19 12H5" transform="rotate(180 12 12)"/></svg>
+                  <span class="font-bold text-sm">⏭ Lavandería</span>
+                </div>
+                <div class="text-[10px] opacity-90">Saltea Atraque, va directo a Lavandería</div>
+              </button>
+            </div>
+
+            <div class="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-[11px] text-slate-600 mt-1">
+              <b>Tip:</b> "Saltea Atraque" registra que este corte no llevó atraque (decisión queda en el historial).
+            </div>
+
+            <button class="w-full bg-white border border-slate-300 text-slate-700 rounded-lg py-2.5 font-semibold text-[12px] mt-2">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 4 · Botón compacto en header del registro                               -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">4 · Header del registro · botón "Avanzar" siempre visible</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Registro</div>
+            <div class="font-semibold text-[15px]">098</div>
+          </div>
+          <button class="p-1.5 rounded-lg bg-white/15">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          </button>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- Card del modelo con CTA prominente -->
+          <div class="bg-white border border-slate-200 rounded-xl p-3">
+            <div class="flex items-start gap-2">
+              <div class="flex-1">
+                <div class="font-bold text-base">CLOVER BLACK</div>
+                <div class="text-xs text-slate-500">Element Premium</div>
+                <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-[11px] font-bold">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  Para Lavanderia
+                </div>
+              </div>
+            </div>
+
+            <!-- Botón "Avanzar" big + ghost menu para cambiar a otro estado -->
+            <div class="flex gap-2 mt-3">
+              <button class="flex-1 bg-teal-600 text-white rounded-lg py-2.5 font-bold text-sm flex items-center justify-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                Empezar Lavandería
+              </button>
+              <button class="px-3 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+              </button>
+            </div>
+            <div class="text-[10px] text-slate-400 text-center mt-1.5">Tocá ⋯ para forzar otro estado (admin)</div>
+          </div>
+
+          <!-- Mini timeline siempre visible -->
+          <div class="bg-white border border-slate-200 rounded-xl p-3">
+            <div class="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2">Ruta</div>
+            <div class="flex">
+              <div class="ruta-step done">
+                <div class="dot"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div class="label">Costura</div>
+              </div>
+              <div class="ruta-step done">
+                <div class="dot"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div class="label">Atraque</div>
+              </div>
+              <div class="ruta-step current">
+                <div class="dot"></div>
+                <div class="label">Lavandería</div>
+              </div>
+              <div class="ruta-step">
+                <div class="dot"></div>
+                <div class="label">Acabado</div>
+              </div>
+              <div class="ruta-step">
+                <div class="dot"></div>
+                <div class="label">Tienda</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Resto del contenido (skeletons) -->
+          <div class="bg-white border border-slate-200 rounded-xl p-3 h-20"></div>
+          <div class="bg-white border border-slate-200 rounded-xl p-3 h-24"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 5 · Caso final (Producto Terminado/Tienda)                              -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">5 · Caso final · ya está en Tienda</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Registro</div>
+            <div class="font-semibold text-[15px]">091</div>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <div class="bg-white border border-slate-200 rounded-xl p-3">
+            <div class="font-bold text-base">PEKERMAN 005</div>
+            <div class="text-xs text-slate-500">Polo M/C</div>
+            <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-bold">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              En Tienda
+            </div>
+
+            <!-- En vez de "Avanzar", mensaje claro de finalización -->
+            <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mt-3 text-[12px] text-emerald-900 flex gap-2 items-center">
+              <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg>
+              <div>
+                <b>Corte terminado.</b><br>
+                <span class="text-[11px]">Llegó al final de la ruta. Solo admin puede cambiar el estado.</span>
+              </div>
+            </div>
+
+            <button class="w-full bg-white border border-slate-300 text-slate-500 rounded-lg py-2.5 font-semibold text-[12px] mt-2">
+              Otros estados (admin) ▾
+            </button>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-xl p-3">
+            <div class="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2">Ruta · completada</div>
+            <div class="flex">
+              <div class="ruta-step done">
+                <div class="dot"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div class="label">Costura</div>
+              </div>
+              <div class="ruta-step skipped">
+                <div class="dot"></div>
+                <div class="label">Atraque<br>(salteado)</div>
+              </div>
+              <div class="ruta-step done">
+                <div class="dot"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div class="label">Lavandería</div>
+              </div>
+              <div class="ruta-step done">
+                <div class="dot"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div class="label">Acabado</div>
+              </div>
+              <div class="ruta-step done">
+                <div class="dot"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div class="label">Tienda</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 6 · "Otros estados" desplegado (admin)                                  -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">6 · "Otros estados" desplegado (modo admin)</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body relative">
+        <div class="opacity-40">
+          <div class="header-mobile">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+            <div class="flex-1 min-w-0">
+              <div class="text-[11px] opacity-85">Registro</div>
+              <div class="font-semibold text-[15px]">098</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl">
+          <div class="flex justify-center pt-2 pb-1"><div class="w-10 h-1 bg-slate-300 rounded-full"></div></div>
+          <div class="px-4 pt-2 pb-4 space-y-3 max-h-[700px] overflow-y-auto">
+            <div class="font-bold text-base">Cambiar a otro estado</div>
+            <div class="text-[11px] font-mono text-slate-500">098 · CLOVER BLACK · Para Lavandería</div>
+
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-[11px] text-amber-900 flex gap-2 items-start">
+              <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span><b>Modo admin.</b> Estos estados no son el siguiente lógico de la ruta. Cambiarlos puede dejar movimientos inconsistentes — usar solo si es necesario.</span>
+            </div>
+
+            <!-- Agrupado por sección de la ruta -->
+            <div>
+              <div class="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2 mt-2">Hacia adelante (de la ruta)</div>
+              <div class="space-y-1.5">
+                <button class="w-full bg-white border border-slate-200 rounded-lg p-2.5 flex items-center justify-between active:bg-slate-50">
+                  <div class="text-left">
+                    <div class="font-bold text-[13px]">Lavandería</div>
+                    <div class="text-[10px] text-slate-500">Siguiente real · crea movimiento</div>
+                  </div>
+                  <span class="pill pill-green">Sgte</span>
+                </button>
+                <button class="w-full bg-white border border-slate-200 rounded-lg p-2.5 flex items-center justify-between">
+                  <div class="text-left">
+                    <div class="font-bold text-[13px]">Para Acabado</div>
+                    <div class="text-[10px] text-slate-500">Salta Lavandería</div>
+                  </div>
+                  <span class="pill pill-amber">Salta</span>
+                </button>
+                <button class="w-full bg-white border border-slate-200 rounded-lg p-2.5 flex items-center justify-between">
+                  <div class="text-left">
+                    <div class="font-bold text-[13px]">Acabado</div>
+                    <div class="text-[10px] text-slate-500">Salta Lavandería</div>
+                  </div>
+                  <span class="pill pill-amber">Salta</span>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div class="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2 mt-3">Hacia atrás (re-trabajo)</div>
+              <div class="space-y-1.5">
+                <button class="w-full bg-white border border-slate-200 rounded-lg p-2.5 flex items-center justify-between">
+                  <div class="text-left">
+                    <div class="font-bold text-[13px]">Costura</div>
+                    <div class="text-[10px] text-slate-500">Vuelve a costura</div>
+                  </div>
+                  <span class="pill pill-red">Atrás</span>
+                </button>
+                <button class="w-full bg-white border border-slate-200 rounded-lg p-2.5 flex items-center justify-between">
+                  <div class="text-left">
+                    <div class="font-bold text-[13px]">Atraque</div>
+                    <div class="text-[10px] text-slate-500">Vuelve a atraque</div>
+                  </div>
+                  <span class="pill pill-red">Atrás</span>
+                </button>
+              </div>
+            </div>
+
+            <button class="w-full bg-slate-100 text-slate-700 rounded-lg py-2.5 font-semibold text-[12px] mt-2">
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============================================================ -->
+<!-- Notas de diseño                                              -->
+<!-- ============================================================ -->
+<div class="max-w-5xl mx-auto px-8 pb-16">
+
+  <div class="bg-white border border-slate-200 rounded-xl p-5 mt-6">
+    <h2 class="font-bold text-base mb-2">Reglas de cálculo del "siguiente paso"</h2>
+    <p class="text-sm text-slate-700 mb-2">El frontend ya no decide qué mostrar. El backend devuelve, según la ruta del modelo + estado actual:</p>
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 text-[12px] font-mono leading-relaxed">
+      <div>actual = "Para Lavanderia"</div>
+      <div>ruta   = [Para Corte, Corte, Para Costura, Costura, Para Atraque, Atraque, Para Lavanderia, Lavanderia, Para Acabado, Acabado, Tienda]</div>
+      <div>obligatorio[Atraque] = false</div>
+      <div class="mt-2">→ siguientes_directos = [Lavanderia]   <span class="text-slate-500">// el inmediato tras "Para X" es siempre "X"</span></div>
+      <div>→ siguientes_salto = []                            <span class="text-slate-500">// no hay etapas opcionales por delante</span></div>
+    </div>
+
+    <p class="text-sm text-slate-700 mt-3 mb-2">En cambio, en pantalla 3:</p>
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 text-[12px] font-mono leading-relaxed">
+      <div>actual = "Costura" (terminada, avance = 100%)</div>
+      <div>obligatorio[Atraque] = false</div>
+      <div class="mt-2">→ siguientes_directos = [Para Atraque]</div>
+      <div>→ siguientes_salto = [Para Lavanderia]              <span class="text-slate-500">// saltea la etapa opcional</span></div>
+    </div>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl p-5 mt-6">
+    <h2 class="font-bold text-base mb-2">Qué cambia respecto al sheet actual</h2>
+    <ul class="text-sm text-slate-700 space-y-1.5 list-disc pl-5">
+      <li><b>Solo el siguiente posible</b> según la ruta del modelo, no toda la lista.</li>
+      <li><b>1 botón gigante</b> si hay un solo siguiente. <b>2 botones</b> si hay etapa opcional por delante (ej. Atraque).</li>
+      <li><b>Etiquetas claras</b> en lugar de jerga: "Empezar Lavandería" en vez de "Lavanderia · Crea movimiento con fecha inicio = ahora".</li>
+      <li><b>Mini timeline</b> arriba mostrando dónde estás en la ruta — Diana ve el contexto sin tener que recordar.</li>
+      <li><b>Bordados/Estampados u otros servicios que no están en la ruta del modelo nunca aparecen</b> (ya pasa hoy en backend, solo confirmamos que se respeta).</li>
+      <li><b>"Otros estados" plegado por defecto</b> — solo admin necesita forzar saltos o retrocesos. Y cuando lo abre, los estados están agrupados por <b>"Hacia adelante / Hacia atrás"</b> con pills.</li>
+      <li><b>Estado "ya terminado"</b> (Tienda) muestra mensaje de finalización en vez de opciones, evita confusiones.</li>
+    </ul>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl p-5 mt-6">
+    <h2 class="font-bold text-base mb-2">Cambios técnicos necesarios</h2>
+    <ul class="text-sm text-slate-700 space-y-1.5 list-disc pl-5">
+      <li><b>Backend</b> · nuevo endpoint o ampliar <code class="bg-slate-100 px-1 rounded">GET /registros/{id}/estados-disponibles</code> para devolver una estructura más rica:
+        <pre class="bg-slate-50 border border-slate-200 rounded p-2 text-[11px] mt-1 overflow-x-auto">{
+  "estado_actual": "Para Lavanderia",
+  "siguientes_directos": [{ "nombre": "Lavanderia", "es_inmediato": true, "crea_movimiento": true }],
+  "siguientes_salto":     [],
+  "otros_adelante":       ["Para Acabado", "Acabado", "Tienda"],
+  "otros_atras":          ["Costura", "Atraque"],
+  "es_final":             false
+}</pre>
+      </li>
+      <li><b>Frontend móvil</b> · reemplazar el sheet actual del componente <code class="bg-slate-100 px-1 rounded">CambiarEstadoSheet</code> en <code class="bg-slate-100 px-1 rounded">RegistroDetalle.jsx</code> por el nuevo diseño con:
+        <ul class="list-disc pl-5 mt-1">
+          <li>Pregunta del título según el caso ("¿Avanzar el corte?" o "¿Hacia dónde va?")</li>
+          <li>Mini timeline visualizando la ruta</li>
+          <li>Botones grandes con etiquetas claras y subtítulo descriptivo</li>
+          <li>Sección "Otros estados (admin)" plegada</li>
+        </ul>
+      </li>
+      <li><b>Mini timeline reutilizable</b> · componente que pinta los pasos de la ruta con colores (done/current/skipped). Útil para reusar en el header del registro también (pantalla 4).</li>
+    </ul>
+  </div>
+
+  <div class="bg-teal-50 border border-teal-200 rounded-xl p-5 mt-6">
+    <h2 class="font-bold text-base mb-2">Pregunta para vos antes de implementar</h2>
+    <p class="text-sm text-slate-700 mb-2">
+      Para el <b>Atraque opcional</b>: ¿la decisión de saltarlo es <b>del modelo</b> (algunos modelos tienen ruta con atraque y otros no) o <b>del corte</b> (siempre te aparece la bifurcación al salir de costura)?
+    </p>
+    <ul class="text-sm text-slate-700 space-y-1.5 list-disc pl-5">
+      <li><b>Si es del modelo:</b> en la ruta del modelo Atraque está o no está. Nunca hay bifurcación en el sheet — siempre 1 solo botón. La pantalla 3 no aplica.</li>
+      <li><b>Si es del corte:</b> en la ruta el Atraque está marcado <code>obligatorio: false</code>. Al salir de costura el sheet ofrece los 2 botones (pantalla 3). Esto es lo que asumí.</li>
+    </ul>
+    <p class="text-sm text-slate-700 mt-2">
+      Lo que cuente acá define el modelo de datos y la UX. Mi recomendación: si en la práctica los modelos saben de antemano si llevan atraque, voy con la primera (más simple). Si Diana decide caso a caso, voy con la segunda.
+    </p>
+  </div>
+
+</div>
+
+</body>
+</html>

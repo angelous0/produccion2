@@ -587,9 +587,24 @@ const CorteCard = ({ it, servicio, onNavigateCorte, onNavigateRegistro, onNuevaI
             {[it.tipo_nombre, it.entalle_nombre, it.tela_nombre].filter(Boolean).join(' · ')}
           </div>
         </div>
-        <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
-          {(it.cantidad_enviada || 0).toLocaleString()} prd
-        </span>
+        <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, fontWeight: 700 }}>
+            {(it.cantidad_enviada || 0).toLocaleString()} prd
+          </span>
+          {Number(it.muestras_activas || 0) > 0 && (
+            <div
+              title="Prendas en muestras sin volver"
+              style={{
+                marginTop: 2, display: 'inline-block',
+                background: '#f3e8ff', color: '#7c3aed',
+                fontSize: 9, fontWeight: 800, padding: '1px 5px',
+                borderRadius: 999, fontFamily: 'ui-monospace, monospace',
+              }}
+            >
+              +m{it.muestras_activas}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Barra de avance */}

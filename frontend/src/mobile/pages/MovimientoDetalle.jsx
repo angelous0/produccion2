@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
   ArrowLeft, Loader2, Check, Calendar, User, DollarSign,
-  AlertTriangle, Trash2, CheckCircle2, TrendingUp, History,
+  AlertTriangle, Trash2, CheckCircle2, TrendingUp, History, ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -33,6 +33,7 @@ export const MobileMovimientoDetalle = () => {
 
   // bottom sheets
   const [showCerrar, setShowCerrar] = useState(false);
+  const [sugerenciaCierre, setSugerenciaCierre] = useState(null); // Sprint 44b
   const [showAvance, setShowAvance] = useState(false);
 
   useEffect(() => {
@@ -323,6 +324,33 @@ export const MobileMovimientoDetalle = () => {
           onClose={() => setShowCerrar(false)}
           onCerrado={async () => {
             setShowCerrar(false);
+            await refreshMov();
+            // Sprint 44b: tras cerrar, sugerir cambio de estado si aplica
+            try {
+              const r = await axios.get(`${API}/registros/${mov.registro_id}/estados-disponibles`);
+              const sigDir = r.data?.siguientes_directos || [];
+              // Buscar el "Para X" del siguiente servicio (después del servicio cerrado)
+              const sigPara = sigDir.find(e => /^para\s+/i.test(e.nombre || ''));
+              if (sigPara) {
+                setSugerenciaCierre({
+                  estadoActual: r.data?.estado_actual,
+                  estadoSugerido: sigPara.nombre,
+                });
+              }
+            } catch {}
+          }}
+        />
+      )}
+
+      {/* Sprint 44b: sheet de sugerencia tras cerrar movimiento */}
+      {sugerenciaCierre && (
+        <SugerirCambioEstadoSheet
+          registroId={mov.registro_id}
+          estadoActual={sugerenciaCierre.estadoActual}
+          estadoSugerido={sugerenciaCierre.estadoSugerido}
+          onClose={() => setSugerenciaCierre(null)}
+          onAplicado={async () => {
+            setSugerenciaCierre(null);
             await refreshMov();
           }}
         />
@@ -878,5 +906,102 @@ function fmtFechaCorta(iso) {
   const min = String(d.getMinutes()).padStart(2, '0');
   return `${dd}/${mm} ${hh}:${min}`;
 }
+
+/* ─────── Sprint 44b: sugerir cambio de estado tras cerrar movimiento ─────── */
+const SugerirCambioEstadoSheet = ({ registroId, estadoActual, estadoSugerido, onClose, onAplicado }) => {
+  const [aplicando, setAplicando] = useState(false);
+  const [error, setError] = useState('');
+
+  const aplicar = async () => {
+    setAplicando(true);
+    setError('');
+    try {
+      const r = await axios.get(`${API}/registros/${registroId}`);
+      const reg = r.data;
+      await axios.put(`${API}/registros/${registroId}`, { ...reg, estado: estadoSugerido });
+      onAplicado();
+    } catch (e) {
+      const det = e?.response?.data?.detail;
+      setError(typeof det === 'string' ? det : 'No se pudo cambiar el estado');
+    } finally {
+      setAplicando(false);
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+        zIndex: 100, display: 'flex', alignItems: 'flex-end',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'white', width: '100%',
+          borderTopLeftRadius: 20, borderTopRightRadius: 20,
+          padding: '12px 20px 20px',
+        }}
+      >
+        <div style={{
+          width: 40, height: 4, background: '#cbd5e1', borderRadius: 2,
+          margin: '0 auto 12px',
+        }} />
+
+        <div style={{ textAlign: 'center', marginBottom: 12 }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: '50%',
+            background: 'var(--m-brand-soft)', color: 'var(--m-brand)',
+            margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Check size={24} />
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>Movimiento cerrado</div>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+            ¿También avanzás el estado del corte?
+          </div>
+        </div>
+
+        <div className="m-card" style={{
+          background: '#f8fafc', padding: 12, marginBottom: 12,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          fontSize: 13,
+        }}>
+          <span style={{ color: '#64748b' }}>{estadoActual || '—'}</span>
+          <ChevronRight size={14} style={{ color: '#94a3b8' }} />
+          <strong style={{ color: 'var(--m-brand)' }}>{estadoSugerido}</strong>
+        </div>
+
+        {error && (
+          <div style={{
+            background: '#fef2f2', color: '#b91c1c', border: '1px solid #fca5a5',
+            borderRadius: 10, padding: 10, fontSize: 12, marginBottom: 10,
+            display: 'flex', gap: 8, alignItems: 'flex-start',
+          }}>
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} className="m-btn m-btn-outline" style={{ flex: 1 }}>
+            No, dejarlo así
+          </button>
+          <button
+            onClick={aplicar}
+            disabled={aplicando}
+            className="m-btn m-btn-primary"
+            style={{ flex: 1.5 }}
+          >
+            {aplicando
+              ? <><Loader2 className="m-spin" size={16} /> Aplicando…</>
+              : <><Check size={16} /> Sí, avanzar</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default MobileMovimientoDetalle;

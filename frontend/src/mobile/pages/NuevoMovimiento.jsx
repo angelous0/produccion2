@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import {
   ArrowLeft, Loader2, Check, AlertTriangle, ChevronDown,
-  CheckCircle2, User, DollarSign, Lock,
+  CheckCircle2, User, DollarSign, Lock, ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { serviciosPermitidos } from '../utils/permisos';
@@ -60,17 +60,22 @@ export const MobileNuevoMovimiento = () => {
   const [tarifaOverride, setTarifaOverride] = useState(null); // null = usar la sugerida
   const [editandoTarifa, setEditandoTarifa] = useState(false);
 
+  // Sprint 44b: para sugerir cambio de estado tras crear el movimiento
+  const [estadosDisponibles, setEstadosDisponibles] = useState(null);
+
   // 1) Cargar todo lo necesario
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [regRes, servRes, persRes, movRes] = await Promise.all([
+        const [regRes, servRes, persRes, movRes, estRes] = await Promise.all([
           axios.get(`${API}/registros/${registroId}`),
           axios.get(`${API}/servicios-produccion`).catch(() => ({ data: [] })),
           axios.get(`${API}/personas-produccion`).catch(() => ({ data: [] })),
           axios.get(`${API}/movimientos-produccion?registro_id=${registroId}&limit=200`).catch(() => ({ data: { items: [] } })),
+          axios.get(`${API}/registros/${registroId}/estados-disponibles`).catch(() => ({ data: null })),
         ]);
         setRegistro(regRes.data);
+        setEstadosDisponibles(estRes.data || null);
         setServicios(Array.isArray(servRes.data) ? servRes.data : (servRes.data?.items || []));
         setPersonas(Array.isArray(persRes.data) ? persRes.data : (persRes.data?.items || []));
         const movs = movRes.data?.items || movRes.data || [];
@@ -194,12 +199,28 @@ export const MobileNuevoMovimiento = () => {
       };
       if (fechaEsperada) body.fecha_esperada_movimiento = fechaEsperada;
       const res = await axios.post(`${API}/movimientos-produccion`, body);
+
+      // Sprint 44b: sugerir cambio de estado si el siguiente directo de la ruta
+      // coincide con el servicio del movimiento recién creado.
+      // Caso típico: estás "Para Lavandería" → creás movimiento de Lavandería →
+      // sugerimos pasar a "Lavandería" (estado de proceso).
+      let sugerenciaEstado = null;
+      const sigDir = estadosDisponibles?.siguientes_directos || [];
+      const matchSugerencia = sigDir.find(e =>
+        e.servicio_id === servicioId &&
+        // es estado de proceso (no "Para X")
+        !/^para\s+/i.test(e.nombre || '')
+      );
+      if (matchSugerencia) sugerenciaEstado = matchSugerencia.nombre;
+
       setExito({
         movimiento: res.data,
         servicio: servicioActual,
         persona: personaActual,
         cantidad: Number(cantidadEnviada),
         costo: costoEstimado,
+        sugerenciaEstado,
+        estadoActualPrev: registro?.estado || null,
       });
     } catch (e) {
       const detail = e?.response?.data?.detail || 'Error al crear movimiento';
@@ -656,43 +677,117 @@ const PersonaPicker = ({ personas, servicioId, onElegir, onClose }) => {
 };
 
 /* ───────── Pantalla éxito ───────── */
-const ExitoMov = ({ data, registroId, onNuevo }) => (
-  <div style={{
-    minHeight: '100%', display: 'flex', flexDirection: 'column',
-    background: 'linear-gradient(180deg, var(--m-brand-soft) 0%, white 100%)',
-    padding: 32, textAlign: 'center', alignItems: 'center', justifyContent: 'center',
-  }}>
+const ExitoMov = ({ data, registroId, onNuevo }) => {
+  const [aplicando, setAplicando] = useState(false);
+  const [aplicado, setAplicado] = useState(false);
+  const navigate = useNavigate();
+
+  // Sprint 44b: aplicar sugerencia de cambio de estado en 1 toque
+  const aplicarCambioEstado = async () => {
+    if (!data.sugerenciaEstado) return;
+    setAplicando(true);
+    try {
+      // Recargamos el registro fresco antes de hacer PUT (otros campos no se pierden)
+      const regRes = await axios.get(`${API}/registros/${registroId}`);
+      const reg = regRes.data;
+      await axios.put(`${API}/registros/${registroId}`, {
+        ...reg,
+        estado: data.sugerenciaEstado,
+      });
+      setAplicado(true);
+    } catch {
+      // Si falla, dejamos el botón disponible para reintentar
+    } finally {
+      setAplicando(false);
+    }
+  };
+
+  return (
     <div style={{
-      width: 96, height: 96, borderRadius: '50%', background: 'white',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: '0 10px 30px -10px rgba(15,118,110,.4)', marginBottom: 16,
+      minHeight: '100%', display: 'flex', flexDirection: 'column',
+      background: 'linear-gradient(180deg, var(--m-brand-soft) 0%, white 100%)',
+      padding: 32, textAlign: 'center', alignItems: 'center', justifyContent: 'center',
     }}>
-      <CheckCircle2 size={56} style={{ color: '#0f766e' }} />
-    </div>
-    <div style={{ fontSize: 20, fontWeight: 700 }}>Movimiento creado</div>
-    <div style={{ fontSize: 14, color: '#475569', marginTop: 4, maxWidth: 280 }}>
-      {data.cantidad} prendas enviadas a {data.persona?.nombre} para <strong>{data.servicio?.nombre}</strong>
-    </div>
+      <div style={{
+        width: 96, height: 96, borderRadius: '50%', background: 'white',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        boxShadow: '0 10px 30px -10px rgba(15,118,110,.4)', marginBottom: 16,
+      }}>
+        <CheckCircle2 size={56} style={{ color: '#0f766e' }} />
+      </div>
+      <div style={{ fontSize: 20, fontWeight: 700 }}>Movimiento creado</div>
+      <div style={{ fontSize: 14, color: '#475569', marginTop: 4, maxWidth: 280 }}>
+        {data.cantidad} prendas enviadas a {data.persona?.nombre} para <strong>{data.servicio?.nombre}</strong>
+      </div>
 
-    <div className="m-card" style={{ width: '100%', maxWidth: 320, marginTop: 24, textAlign: 'left' }}>
-      <Row k="Servicio" v={data.servicio?.nombre || '—'} />
-      <Row k="Persona / Taller" v={data.persona?.nombre || '—'} small />
-      <Row k="Enviadas" v={data.cantidad} mono />
-      {data.costo > 0 && (
-        <Row k="Costo estimado" v={`S/. ${data.costo.toFixed(2)}`} mono />
+      <div className="m-card" style={{ width: '100%', maxWidth: 320, marginTop: 24, textAlign: 'left' }}>
+        <Row k="Servicio" v={data.servicio?.nombre || '—'} />
+        <Row k="Persona / Taller" v={data.persona?.nombre || '—'} small />
+        <Row k="Enviadas" v={data.cantidad} mono />
+        {data.costo > 0 && (
+          <Row k="Costo estimado" v={`S/. ${data.costo.toFixed(2)}`} mono />
+        )}
+      </div>
+
+      {/* Sprint 44b: sugerencia de cambio de estado */}
+      {data.sugerenciaEstado && !aplicado && (
+        <div className="m-card" style={{
+          width: '100%', maxWidth: 320, marginTop: 16,
+          background: '#fffbeb', border: '1px solid #fde68a',
+          padding: 14, textAlign: 'left',
+        }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <ArrowRight size={18} style={{ color: '#b45309', flexShrink: 0, marginTop: 1 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#92400e' }}>
+                ¿También avanzar el estado?
+              </div>
+              <div style={{ fontSize: 11, color: '#78350f', marginTop: 4, lineHeight: 1.5 }}>
+                El corte está en <strong>{data.estadoActualPrev || '—'}</strong> y acabás de crear el movimiento.
+                Sugerencia: pasar a <strong>{data.sugerenciaEstado}</strong>.
+              </div>
+              <button
+                onClick={aplicarCambioEstado}
+                disabled={aplicando}
+                className="m-btn"
+                style={{
+                  marginTop: 10, background: '#b45309', color: 'white',
+                  borderColor: '#b45309', width: '100%', minHeight: 38, fontSize: 13,
+                }}
+              >
+                {aplicando
+                  ? <><Loader2 className="m-spin" size={14} /> Aplicando…</>
+                  : <><ArrowRight size={14} /> Avanzar a {data.sugerenciaEstado}</>}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
-    </div>
+      {data.sugerenciaEstado && aplicado && (
+        <div className="m-card" style={{
+          width: '100%', maxWidth: 320, marginTop: 16,
+          background: '#dcfce7', border: '1px solid #86efac',
+          padding: 12, textAlign: 'left',
+          display: 'flex', gap: 10, alignItems: 'center',
+        }}>
+          <CheckCircle2 size={18} style={{ color: '#15803d', flexShrink: 0 }} />
+          <div style={{ fontSize: 12, color: '#14532d' }}>
+            Listo. Estado del corte ahora es <strong>{data.sugerenciaEstado}</strong>.
+          </div>
+        </div>
+      )}
 
-    <div style={{ width: '100%', maxWidth: 320, marginTop: 24, display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <Link to={`/m/registros/${registroId}`} className="m-btn m-btn-primary" style={{ textDecoration: 'none' }}>
-        Volver al registro
-      </Link>
-      <button className="m-btn m-btn-outline" onClick={onNuevo}>
-        Crear otro movimiento
-      </button>
+      <div style={{ width: '100%', maxWidth: 320, marginTop: 24, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <Link to={`/m/registros/${registroId}`} className="m-btn m-btn-primary" style={{ textDecoration: 'none' }}>
+          Volver al registro
+        </Link>
+        <button className="m-btn m-btn-outline" onClick={onNuevo}>
+          Crear otro movimiento
+        </button>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const Row = ({ k, v, mono = false, small = false }) => (
   <div style={{

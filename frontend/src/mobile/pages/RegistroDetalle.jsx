@@ -6,6 +6,7 @@ import {
   ArrowDownToLine, Plus, AlertTriangle, AlertOctagon,
   List, Grid, Package, Layers, FlaskConical, AlertCircle, DollarSign,
   ChevronRight, Lock, Loader2, Copy, Ban, Check, X, ChevronDown,
+  ArrowRight, SkipForward,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -287,9 +288,13 @@ export const MobileRegistroDetalle = () => {
           registro={registro}
           user={user}
           onClose={() => setCambiarEstadoAbierto(false)}
-          onDone={async () => {
+          onDone={async (movIdParaAbrir) => {
             setCambiarEstadoAbierto(false);
             await fetchRegistro();
+            // Sprint 44b: si se creó o falta completar un movimiento, llevar al detalle
+            if (movIdParaAbrir) {
+              navigate(`/m/registros/${registro.id}/movimientos/${movIdParaAbrir}`);
+            }
           }}
         />
       )}
@@ -677,15 +682,30 @@ const CambiarEstadoSheet = ({ registro, user, onClose, onDone }) => {
   const etapasCompletas = data?.etapas_completas || [];
   const estadoActual = data?.estado_actual || registro.estado;
 
-  // Identificar siguiente lógico
+  // Sprint 44: datos nuevos del backend
+  const siguientesDirectos = data?.siguientes_directos || [];
+  const siguientesSalto    = data?.siguientes_salto    || [];
+  const otrosAdelante      = data?.otros_adelante      || [];
+  const otrosAtras         = data?.otros_atras         || [];
+  const esFinal            = data?.es_final            || false;
+
+  // Filtro por permisos (los nuevos endpoints devuelven etapas, no strings)
+  const puedeUsar = (nombreEstado) => esAdmin || estadosPermitidos.includes(nombreEstado);
+
+  const sigDirPermitidos = siguientesDirectos.filter(e => puedeUsar(e.nombre));
+  const sigSaltoPermitidos = siguientesSalto.filter(e => puedeUsar(e.nombre));
+
+  // Identificar siguiente lógico (mantenido por compatibilidad con código antiguo)
   const siguienteLogico = useMemo(() => {
+    if (siguientesDirectos.length > 0) return siguientesDirectos[0].nombre;
     if (!todosLosEstados.length || !estadoActual) return null;
     const idx = todosLosEstados.indexOf(estadoActual);
     if (idx === -1 || idx >= todosLosEstados.length - 1) return null;
     return todosLosEstados[idx + 1];
-  }, [todosLosEstados, estadoActual]);
+  }, [siguientesDirectos, todosLosEstados, estadoActual]);
 
-  // Estados que el usuario puede asignar
+  // Estados que el usuario puede asignar (legacy, ya no se usa en la UI nueva pero
+  // se conserva por si algún otro componente lo consume).
   const estadosVisibles = useMemo(() => {
     if (esAdmin) return todosLosEstados;
     return todosLosEstados.filter(e => estadosPermitidos.includes(e));
@@ -749,33 +769,46 @@ const CambiarEstadoSheet = ({ registro, user, onClose, onDone }) => {
     if (!destinoElegido) return;
     setError('');
     setEnviando(true);
+
+    // Movimiento abierto del servicio destino (si existe)
+    const movExistente = (destinoEsActivo && servicioDestino?.servicio_id)
+      ? movimientos.find(m =>
+          m.servicio_id === servicioDestino.servicio_id &&
+          m.fecha_inicio && !m.fecha_fin
+        )
+      : null;
+
     try {
       // 1) Cambiar el estado del registro
       const payload = { ...registro, estado: destinoElegido };
       await axios.put(`${API}/registros/${registro.id}`, payload);
 
-      // 2) Si el destino es estado activo, crear movimiento (si no hay uno abierto ya)
-      if (destinoEsActivo && servicioDestino?.servicio_id) {
-        const yaHayMov = movimientos.find(
-          m => m.servicio_id === servicioDestino.servicio_id
-            && m.fecha_inicio && !m.fecha_fin
+      // 2) Si destino activo Y no hay movimiento, crear uno nuevo y abrirlo
+      let movIdParaAbrir = null;
+      if (destinoEsActivo && servicioDestino?.servicio_id && !movExistente) {
+        const totalPzs = Object.values(registro.tallas || {}).reduce(
+          (s, n) => s + (Number(n) || 0), 0
         );
-        if (!yaHayMov) {
-          // Calculamos cantidad enviada = total prendas del corte
-          const totalPzs = Object.values(registro.tallas || {}).reduce(
-            (s, n) => s + (Number(n) || 0), 0
-          );
-          await axios.post(`${API}/movimientos-produccion`, {
-            registro_id: registro.id,
-            servicio_id: servicioDestino.servicio_id,
-            cantidad_enviada: totalPzs || 0,
-            fecha_inicio: new Date().toISOString().slice(0, 10),
-            observaciones: observacion || `Auto-creado al pasar a ${destinoElegido}`,
-          });
+        const resp = await axios.post(`${API}/movimientos-produccion`, {
+          registro_id: registro.id,
+          servicio_id: servicioDestino.servicio_id,
+          cantidad_enviada: totalPzs || 0,
+          fecha_inicio: new Date().toISOString().slice(0, 10),
+          observaciones: observacion || `Auto-creado al pasar a ${destinoElegido}`,
+        });
+        movIdParaAbrir = resp.data?.id || null;
+      }
+
+      // 3) Si el movimiento existe pero le falta data, también abrimos su detalle
+      if (movExistente) {
+        const faltaPersona = !movExistente.persona_id;
+        const faltaFecha = !movExistente.fecha_inicio;
+        if (faltaPersona || faltaFecha) {
+          movIdParaAbrir = movExistente.id;
         }
       }
 
-      onDone();
+      onDone(movIdParaAbrir);
     } catch (e) {
       const det = e?.response?.data?.detail;
       setError(typeof det === 'string' ? det : 'No se pudo cambiar el estado');
@@ -795,111 +828,172 @@ const CambiarEstadoSheet = ({ registro, user, onClose, onDone }) => {
     );
   }
 
-  // ── FASE: SELECT ─────────────────────────────────────────────────────────
+  // ── FASE: SELECT (Sprint 44 · rediseño v2) ──────────────────────────────
   if (fase === 'select') {
+    const noTieneOpciones = sigDirPermitidos.length === 0 && sigSaltoPermitidos.length === 0;
+    const hayBifurcacion = sigDirPermitidos.length > 0 && sigSaltoPermitidos.length > 0;
+
+    // Helper: subtítulo del botón según si es estado de espera o de proceso
+    const subtituloBoton = (etapa) => {
+      if (!etapa) return '';
+      const creaMov = etapaCreaMovimiento(etapa);
+      const nombre = etapa.nombre || '';
+      // Estados de espera (típicamente "Para X") no crean movimiento
+      if (!creaMov) return 'Queda en espera, sin movimiento';
+      return `Crea movimiento de ${nombre} con fecha de hoy`;
+    };
+
+    const tituloPregunta = hayBifurcacion ? '¿Hacia dónde va?' : '¿Avanzar el corte?';
+
     return (
       <SheetShell onClose={onClose}>
-        <div style={{ fontWeight: 700, fontSize: 17 }}>Cambiar estado</div>
+        <div style={{ fontWeight: 700, fontSize: 17 }}>{tituloPregunta}</div>
         <div style={{ fontSize: 11, color: '#64748b', marginTop: 2, fontFamily: 'ui-monospace, monospace' }}>
           {registro.n_corte} · {registro.modelo_nombre || registro.modelo_manual?.nombre_modelo || '—'}
         </div>
 
-        {/* Estado actual */}
-        <div style={{
-          background: '#f8fafc', borderRadius: 10, padding: 10,
-          marginTop: 14, display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <span style={{ fontSize: 10, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-            Actual
-          </span>
-          <span className={`m-pill ${estadoPillClass(estadoActual)}`}>{estadoActual || '—'}</span>
-        </div>
-
-        {/* Lista de opciones que puede asignar */}
-        {estadosVisibles.length === 0 ? (
-          <div style={{
-            marginTop: 16, padding: 16, textAlign: 'center',
-            background: '#fef3c7', borderRadius: 10, color: '#92400e', fontSize: 13,
-          }}>
-            Tu rol no tiene estados habilitados para cambiar este corte.
-          </div>
-        ) : (
-          <>
-            <div className="m-label-xs" style={{ marginTop: 16, marginBottom: 8 }}>
-              A qué estado pasar
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {estadosVisibles.filter(e => e !== estadoActual).map(est => {
-                const esSiguiente = est === siguienteLogico;
-                const etapaInfo = etapasCompletas.find(e => e.nombre === est);
-                const esActivo = etapaCreaMovimiento(etapaInfo);
-                return (
-                  <button
-                    key={est}
-                    onClick={() => elegirDestino(est)}
-                    style={{
-                      background: 'white',
-                      border: esSiguiente ? '2px solid var(--m-brand)' : '1px solid #e5e7eb',
-                      borderRadius: 12, padding: 12,
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      textAlign: 'left', cursor: 'pointer',
-                    }}
-                  >
-                    <div style={{
-                      width: 36, height: 36, borderRadius: 8,
-                      background: esActivo ? '#dbeafe' : '#fef3c7',
-                      color: esActivo ? '#2563eb' : '#b45309',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontWeight: 700, flexShrink: 0,
-                    }}>
-                      {esActivo ? '→' : '⏸'}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 600, fontSize: 13 }}>{est}</span>
-                        {esSiguiente && (
-                          <span style={{
-                            background: 'var(--m-brand-soft)', color: 'var(--m-brand)',
-                            fontSize: 9, fontWeight: 700, padding: '2px 6px',
-                            borderRadius: 999, letterSpacing: '.04em',
-                          }}>
-                            SIGUIENTE
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
-                        {esActivo
-                          ? 'Crea movimiento de ' + est + ' con fecha inicio = ahora'
-                          : 'Estado de espera (sin movimiento)'}
-                      </div>
-                    </div>
-                    <ChevronRight size={16} style={{ color: '#cbd5e1' }} />
-                  </button>
-                );
-              })}
-            </div>
-          </>
+        {/* Mini timeline de la ruta */}
+        {etapasCompletas.length > 0 && (
+          <RutaTimeline
+            etapas={etapasCompletas}
+            estadoActual={estadoActual}
+            siguientes={[...sigDirPermitidos, ...sigSaltoPermitidos].map(e => e.nombre)}
+          />
         )}
 
-        {/* Estados que NO puede asignar */}
-        {!esAdmin && estadosNoVisibles.length > 0 && (
-          <>
-            <div className="m-label-xs" style={{ marginTop: 16, marginBottom: 8 }}>
-              Otros estados (tu rol no los puede asignar)
+        {/* Texto contextual */}
+        <div style={{
+          background: '#f8fafc', borderRadius: 10, padding: '8px 10px',
+          marginTop: 10, fontSize: 12, color: '#475569',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span style={{ fontSize: 9, color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+            Actual
+          </span>
+          <span className={`m-pill ${estadoPillClass(estadoActual)}`} style={{ fontSize: 10 }}>
+            {estadoActual || '—'}
+          </span>
+        </div>
+
+        {/* Caso: ya está al final de la ruta */}
+        {esFinal && (
+          <div style={{
+            marginTop: 14, padding: 14,
+            background: '#dcfce7', border: '1px solid #86efac', borderRadius: 10,
+            color: '#14532d', fontSize: 13,
+            display: 'flex', gap: 10, alignItems: 'flex-start',
+          }}>
+            <Check size={20} style={{ flexShrink: 0, marginTop: 1, color: '#15803d' }} />
+            <div>
+              <div style={{ fontWeight: 700 }}>Corte terminado</div>
+              <div style={{ fontSize: 11, marginTop: 2 }}>
+                Llegó al final de la ruta. Solo admin puede modificar el estado.
+              </div>
             </div>
+          </div>
+        )}
+
+        {/* Caso: sin permisos para los siguientes (no admin y sin permiso al sgte) */}
+        {!esFinal && noTieneOpciones && (
+          <div style={{
+            marginTop: 14, padding: 14,
+            background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10,
+            color: '#92400e', fontSize: 13,
+          }}>
+            Tu rol no puede asignar el siguiente estado. Pedile a un admin.
+          </div>
+        )}
+
+        {/* Acción principal: botón gigante (1 directo) */}
+        {!esFinal && sigDirPermitidos.length === 1 && !hayBifurcacion && (
+          <button
+            onClick={() => elegirDestino(sigDirPermitidos[0].nombre)}
+            style={{
+              width: '100%', marginTop: 14,
+              background: 'var(--m-brand)', color: 'white',
+              border: 0, borderRadius: 12, padding: 14,
+              display: 'flex', alignItems: 'center', gap: 12,
+              textAlign: 'left', cursor: 'pointer',
+            }}
+          >
             <div style={{
-              background: '#f8fafc', borderRadius: 10, padding: 10,
-              fontSize: 11, color: '#64748b',
+              width: 44, height: 44, borderRadius: 10,
+              background: 'rgba(255,255,255,.18)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}>
-              {estadosNoVisibles.join(' · ')}
+              <ArrowRight size={22} />
             </div>
-          </>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>
+                {tituloAccionDirecta(sigDirPermitidos[0])}
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.9, marginTop: 2 }}>
+                {subtituloBoton(sigDirPermitidos[0])}
+              </div>
+            </div>
+            <ChevronRight size={18} style={{ opacity: 0.8 }} />
+          </button>
+        )}
+
+        {/* Bifurcación: 2 botones lado a lado */}
+        {!esFinal && hayBifurcacion && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 14 }}>
+            {sigDirPermitidos.map(etapa => (
+              <button
+                key={etapa.nombre}
+                onClick={() => elegirDestino(etapa.nombre)}
+                style={{
+                  background: 'var(--m-brand)', color: 'white',
+                  border: 0, borderRadius: 12, padding: 12,
+                  textAlign: 'left', cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                  <ArrowRight size={14} />
+                  <span style={{ fontWeight: 800, fontSize: 13 }}>{etapa.nombre}</span>
+                </div>
+                <div style={{ fontSize: 10, opacity: 0.9, lineHeight: 1.3 }}>
+                  Sigue la ruta normal
+                </div>
+              </button>
+            ))}
+            {sigSaltoPermitidos.map(etapa => (
+              <button
+                key={etapa.nombre}
+                onClick={() => elegirDestino(etapa.nombre)}
+                style={{
+                  background: '#7c3aed', color: 'white',
+                  border: 0, borderRadius: 12, padding: 12,
+                  textAlign: 'left', cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                  <SkipForward size={14} />
+                  <span style={{ fontWeight: 800, fontSize: 13 }}>{etapa.nombre}</span>
+                </div>
+                <div style={{ fontSize: 10, opacity: 0.9, lineHeight: 1.3 }}>
+                  Saltea etapa opcional
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Otros estados (plegable) */}
+        {(otrosAdelante.length > 0 || otrosAtras.length > 0) && (
+          <OtrosEstadosPlegable
+            otrosAdelante={otrosAdelante}
+            otrosAtras={otrosAtras}
+            esAdmin={esAdmin}
+            puedeUsar={puedeUsar}
+            onElegir={elegirDestino}
+          />
         )}
 
         <button
           onClick={onClose}
           className="m-btn m-btn-outline"
-          style={{ width: '100%', marginTop: 16, borderColor: '#cbd5e1', color: '#64748b' }}
+          style={{ width: '100%', marginTop: 14, borderColor: '#cbd5e1', color: '#64748b' }}
         >
           Cancelar
         </button>
@@ -910,6 +1004,20 @@ const CambiarEstadoSheet = ({ registro, user, onClose, onDone }) => {
   // ── FASE: CONFIRM ────────────────────────────────────────────────────────
   if (fase === 'confirm') {
     const totalPzs = Object.values(registro.tallas || {}).reduce((s, n) => s + (Number(n) || 0), 0);
+
+    // Sprint 44b: detectar si ya existe un movimiento abierto del servicio destino.
+    // Si existe → no creamos otro, solo cambiamos el estado y avisamos.
+    const movExistente = (destinoEsActivo && servicioDestino?.servicio_id)
+      ? movimientos.find(m =>
+          m.servicio_id === servicioDestino.servicio_id &&
+          m.fecha_inicio && !m.fecha_fin
+        )
+      : null;
+
+    const necesitaCompletarMov = movExistente && (
+      !movExistente.fecha_inicio || !movExistente.persona_id
+    );
+
     return (
       <SheetShell onClose={onClose}>
         <div style={{ textAlign: 'center', marginBottom: 12 }}>
@@ -943,8 +1051,9 @@ const CambiarEstadoSheet = ({ registro, user, onClose, onDone }) => {
           </div>
         </div>
 
-        {/* Auto-crear movimiento si aplica */}
-        {destinoEsActivo && servicioDestino?.servicio_id && (
+        {/* Movimiento: tres casos posibles */}
+        {destinoEsActivo && servicioDestino?.servicio_id && !movExistente && (
+          // Caso 1: NO existe → se crea uno nuevo
           <div className="m-card" style={{
             background: 'var(--m-brand-soft)', borderColor: '#5eead4',
             padding: 12, marginBottom: 8,
@@ -959,6 +1068,39 @@ const CambiarEstadoSheet = ({ registro, user, onClose, onDone }) => {
                   Servicio: <strong>{destinoElegido}</strong><br/>
                   Fecha inicio: <strong>hoy</strong><br/>
                   Cantidad enviada: <strong>{totalPzs || 0} prendas</strong>
+                </div>
+                <div style={{ marginTop: 6, fontSize: 10, color: '#0f766e', fontStyle: 'italic' }}>
+                  Después te llevamos a completar fecha y persona.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {destinoEsActivo && movExistente && (
+          // Caso 2 y 3: YA existe un movimiento abierto del servicio
+          <div className="m-card" style={{
+            background: necesitaCompletarMov ? '#fef3c7' : '#dcfce7',
+            borderColor: necesitaCompletarMov ? '#fcd34d' : '#86efac',
+            padding: 12, marginBottom: 8,
+          }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              {necesitaCompletarMov
+                ? <AlertCircle size={18} style={{ color: '#b45309', marginTop: 1, flexShrink: 0 }} />
+                : <Check size={18} style={{ color: '#15803d', marginTop: 1, flexShrink: 0 }} />}
+              <div style={{ flex: 1, fontSize: 12 }}>
+                <div style={{ fontWeight: 700, color: necesitaCompletarMov ? '#92400e' : '#14532d' }}>
+                  Ya existe un movimiento de {destinoElegido}
+                </div>
+                <div style={{ marginTop: 6, color: '#475569', lineHeight: 1.6 }}>
+                  Fecha inicio: <strong>{movExistente.fecha_inicio || '— pendiente'}</strong><br/>
+                  Persona: <strong>{movExistente.persona_nombre || movExistente.persona || '— pendiente'}</strong><br/>
+                  Cantidad enviada: <strong>{movExistente.cantidad_enviada ?? '—'} prendas</strong>
+                </div>
+                <div style={{ marginTop: 6, fontSize: 11, color: necesitaCompletarMov ? '#92400e' : '#15803d', fontWeight: 600 }}>
+                  {necesitaCompletarMov
+                    ? '⚠ Faltan datos. Solo cambiamos el estado y te llevamos a completar el movimiento.'
+                    : '✓ Movimiento ya completo. Solo cambiamos el estado del corte.'}
                 </div>
               </div>
             </div>
@@ -1116,6 +1258,267 @@ const CambiarEstadoSheet = ({ registro, user, onClose, onDone }) => {
  */
 function navigateToMov(registroId, movId) {
   window.location.href = `/m/registros/${registroId}/movimientos/${movId}`;
+}
+
+/* ──────── Sprint 44 · sub-componentes del CambiarEstadoSheet ──────── */
+
+/**
+ * Agrupa etapas consecutivas del mismo servicio (típicamente "Para X" + "X")
+ * en un solo "paso" del timeline. Etapas sin servicio_id quedan como pasos
+ * independientes (ej. Tienda, Almacén PT).
+ *
+ * Para cada grupo identifica si el estado actual cae dentro y en qué sub-fase:
+ *   - 'espera': estado tipo "Para X" (avance 0%, sin movimiento iniciado)
+ *   - 'proceso': estado tipo "X" (movimiento iniciado)
+ */
+function agruparEtapasPorServicio(etapas) {
+  const grupos = [];
+  let cur = null;
+  for (const e of etapas) {
+    const sid = e.servicio_id || null;
+    if (sid && cur && cur.servicio_id === sid) {
+      cur.etapas.push(e);
+    } else {
+      cur = { servicio_id: sid, etapas: [e] };
+      grupos.push(cur);
+    }
+  }
+  // Nombre corto del grupo (el del estado "de proceso", o el primero si no existe)
+  for (const g of grupos) {
+    const proc = g.etapas.find(x => !/^para\s+/i.test(x.nombre || ''));
+    g.nombreCorto = (proc?.nombre) || g.etapas[0]?.nombre || '—';
+    g.obligatorio = !g.etapas.some(x => x.obligatorio === false);
+  }
+  return grupos;
+}
+
+/**
+ * Mini timeline horizontal de la ruta · v2 agrupado por servicio.
+ * Cada dot representa un servicio (no un estado), reduciendo de ~15 puntos
+ * a ~8 cuando la ruta tiene espera+proceso por servicio.
+ */
+const RutaTimeline = ({ etapas, estadoActual, siguientes = [] }) => {
+  const grupos = useMemo(() => agruparEtapasPorServicio(etapas), [etapas]);
+
+  // ¿En qué grupo cae el actual y en qué sub-fase?
+  let idxActual = -1;
+  let fase = null;     // 'espera' | 'proceso' | null
+  grupos.forEach((g, gi) => {
+    const idxDentro = g.etapas.findIndex(e => e.nombre === estadoActual);
+    if (idxDentro >= 0) {
+      idxActual = gi;
+      const e = g.etapas[idxDentro];
+      fase = /^para\s+/i.test(e.nombre || '') ? 'espera' : 'proceso';
+    }
+  });
+
+  const nombresSgte = new Set(siguientes || []);
+
+  return (
+    <div style={{
+      marginTop: 12,
+      background: '#f8fafc', borderRadius: 10, padding: '10px 8px',
+    }}>
+      <div style={{
+        fontSize: 9, color: '#64748b', textTransform: 'uppercase',
+        fontWeight: 700, letterSpacing: '.04em', marginBottom: 8, paddingLeft: 4,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <span>Ruta del modelo</span>
+        {fase && (
+          <span style={{
+            textTransform: 'none', fontSize: 9, color: fase === 'proceso' ? '#0f766e' : '#b45309',
+            background: fase === 'proceso' ? '#ccfbf1' : '#fef3c7',
+            padding: '1px 6px', borderRadius: 999, fontWeight: 700, letterSpacing: 0,
+          }}>
+            {fase === 'proceso' ? 'En proceso' : 'En espera'}
+          </span>
+        )}
+      </div>
+      <div style={{
+        display: 'flex', position: 'relative',
+        overflowX: 'auto', paddingBottom: 4,
+        scrollbarWidth: 'none',
+      }}>
+        {grupos.map((g, i) => {
+          const esActual = i === idxActual;
+          const esPasado = idxActual >= 0 && i < idxActual;
+          const tieneSgte = g.etapas.some(e => nombresSgte.has(e.nombre));
+          const esOpcional = g.obligatorio === false;
+          const noUltimo = i < grupos.length - 1;
+
+          let dotBg = 'white', dotBorder = '#cbd5e1', dotShadow = 'none', labelColor = '#64748b', labelWeight = 600;
+          let lineColor = esPasado ? '#15803d' : '#e5e7eb';
+          if (esPasado) { dotBg = '#15803d'; dotBorder = '#15803d'; labelColor = '#15803d'; labelWeight = 700; }
+          if (esActual) {
+            dotBg = '#0f766e'; dotBorder = '#0f766e';
+            dotShadow = '0 0 0 4px rgba(15,118,110,.18)';
+            labelColor = '#0f766e'; labelWeight = 800;
+          }
+          if (tieneSgte && !esActual && !esPasado) {
+            dotBorder = '#0f766e';
+            labelColor = '#0f766e'; labelWeight = 700;
+          }
+          if (esOpcional && !esPasado && !esActual && !tieneSgte) {
+            dotBg = '#fef3c7'; dotBorder = '#fde68a'; labelColor = '#92400e';
+          }
+
+          return (
+            <div key={(g.servicio_id || g.nombreCorto) + i} style={{
+              minWidth: 64, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', position: 'relative', flexShrink: 0,
+            }}>
+              {noUltimo && (
+                <div style={{
+                  position: 'absolute', top: 11, left: '50%', right: '-50%',
+                  height: 2, background: lineColor, zIndex: 0,
+                }} />
+              )}
+              <div style={{
+                position: 'relative', zIndex: 1,
+                width: 22, height: 22, borderRadius: '50%',
+                background: dotBg, border: `2px solid ${dotBorder}`,
+                boxShadow: dotShadow,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'white',
+              }}>
+                {esPasado && <Check size={12} />}
+              </div>
+              <div style={{
+                fontSize: 10, color: labelColor, fontWeight: labelWeight,
+                marginTop: 4, textAlign: 'center', lineHeight: 1.2,
+                padding: '0 2px', maxWidth: 70,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }} title={g.nombreCorto}>
+                {g.nombreCorto}
+              </div>
+              {esOpcional && !esPasado && (
+                <div style={{ fontSize: 8, color: '#92400e', marginTop: 1 }}>opcional</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Sección "Otros estados" plegable. Estados separados en hacia adelante /
+ * hacia atrás. Solo aparecen si hay al menos uno. Los que el rol no puede
+ * usar se ven deshabilitados.
+ */
+const OtrosEstadosPlegable = ({ otrosAdelante, otrosAtras, esAdmin, puedeUsar, onElegir }) => {
+  const [open, setOpen] = useState(false);
+  const count = otrosAdelante.length + otrosAtras.length;
+  if (count === 0) return null;
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{
+          width: '100%', background: 'transparent', border: 0,
+          padding: 8, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          fontSize: 11, color: '#64748b', fontWeight: 600,
+        }}
+      >
+        Otros estados ({count}) {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      </button>
+
+      {open && (
+        <div style={{ marginTop: 4 }}>
+          {!esAdmin && (
+            <div style={{
+              background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8,
+              padding: 8, fontSize: 11, color: '#92400e',
+              display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 8,
+            }}>
+              <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span>Tu rol puede ver estos estados pero quizás no asignarlos. Los que no podés tocar se ven en gris.</span>
+            </div>
+          )}
+
+          {otrosAdelante.length > 0 && (
+            <>
+              <div className="m-label-xs" style={{ marginBottom: 6 }}>Hacia adelante</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+                {otrosAdelante.map(e => (
+                  <EstadoChipBtn
+                    key={'a-' + e.nombre}
+                    etapa={e}
+                    habilitado={puedeUsar(e.nombre)}
+                    onClick={() => onElegir(e.nombre)}
+                    tag="Salta"
+                    tagBg="#fef3c7"
+                    tagFg="#b45309"
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {otrosAtras.length > 0 && (
+            <>
+              <div className="m-label-xs" style={{ marginBottom: 6 }}>Hacia atrás (re-trabajo)</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {otrosAtras.map(e => (
+                  <EstadoChipBtn
+                    key={'b-' + e.nombre}
+                    etapa={e}
+                    habilitado={puedeUsar(e.nombre)}
+                    onClick={() => onElegir(e.nombre)}
+                    tag="Atrás"
+                    tagBg="#fee2e2"
+                    tagFg="#b91c1c"
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const EstadoChipBtn = ({ etapa, habilitado, onClick, tag, tagBg, tagFg }) => (
+  <button
+    onClick={habilitado ? onClick : undefined}
+    disabled={!habilitado}
+    style={{
+      background: 'white', border: '1px solid #e5e7eb',
+      borderRadius: 8, padding: '8px 10px',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      cursor: habilitado ? 'pointer' : 'not-allowed',
+      opacity: habilitado ? 1 : 0.5,
+      textAlign: 'left',
+    }}
+  >
+    <span style={{ fontSize: 12, fontWeight: 600 }}>{etapa.nombre}</span>
+    <span style={{
+      padding: '2px 6px', borderRadius: 999,
+      background: tagBg, color: tagFg,
+      fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
+    }}>
+      {tag}
+    </span>
+  </button>
+);
+
+/**
+ * Devuelve el título de la acción según si el estado destino es "espera"
+ * (tipo "Para X") o "proceso" ("X"). Para X → "Marcar listo para X". Para
+ * proceso → "Empezar X".
+ */
+function tituloAccionDirecta(etapa) {
+  if (!etapa) return '';
+  const nombre = etapa.nombre || '';
+  const creaMov = etapaCreaMovimiento(etapa);
+  if (creaMov) return `Empezar ${nombre}`;
+  // Estado de espera (tipo "Para X")
+  return `Pasar a ${nombre}`;
 }
 
 export default MobileRegistroDetalle;
