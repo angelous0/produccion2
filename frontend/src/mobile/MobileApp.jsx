@@ -31,6 +31,8 @@ import { MobileEscanearQR } from './pages/EscanearQR';
 import { MobileIncidenciasGlobales } from './pages/IncidenciasGlobales';
 import { MobileIncidenciaDetalle } from './pages/IncidenciaDetalle';
 import { MobileReporteOperativo } from './pages/ReporteOperativo';
+import { MobileEnviosDeMuestra } from './pages/EnviosDeMuestra';
+import { MobileSeleccionarCorteMuestra } from './pages/SeleccionarCorteMuestra';
 import { MobileEditarMatrizColores } from './pages/EditarMatrizColores';
 import { MobileMuestrasLavanderia } from './pages/MuestrasLavanderia';
 import { MobileNuevaMuestraLavanderia } from './pages/NuevaMuestraLavanderia';
@@ -142,6 +144,8 @@ export const MobileApp = () => {
         <Route path="incidencias" element={<MobileIncidenciasGlobales />} />
         <Route path="incidencias/:id" element={<MobileIncidenciaDetalle />} />
         <Route path="reporte-operativo" element={<MobileReporteOperativo />} />
+        <Route path="envios-muestra" element={<MobileEnviosDeMuestra />} />
+        <Route path="envios-muestra/seleccionar-corte" element={<MobileSeleccionarCorteMuestra />} />
         <Route path="*" element={<Navigate to="/m" replace />} />
       </Route>
     </Routes>

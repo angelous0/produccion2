@@ -498,6 +498,21 @@ function buildSecciones(user, stats) {
     meta: 'Cortes por servicio y persona',
     to: '/m/reporte-operativo',
   });
+  // Envíos de muestra (Lavandería + Diseño)
+  const muestrasSinVolver = stats.muestras_sin_volver || 0;
+  const muestrasDemoradas = stats.muestras_demoradas || 0;
+  if (puede(user, ACCIONES.CREAR_MUESTRA_LAVANDERIA) || muestrasSinVolver > 0) {
+    produccion.push({
+      label: 'Envíos de muestra', icon: <FlaskConical size={18} />,
+      bg: '#f3e8ff', fg: '#7c3aed',
+      meta: muestrasSinVolver === 0
+        ? 'Lavandería o Diseño'
+        : `${muestrasSinVolver} sin volver${muestrasDemoradas > 0 ? ` · ${muestrasDemoradas} demoradas` : ''}`,
+      to: '/m/envios-muestra',
+      badge: muestrasSinVolver > 0 ? muestrasSinVolver : null,
+      badgeColor: muestrasDemoradas > 0 ? '#b45309' : '#7c3aed',
+    });
+  }
   if (puede(user, ACCIONES.CREAR_CORTE)) {
     produccion.push({
       label: 'Nuevo corte', icon: <Plus size={18} />,
@@ -562,14 +577,7 @@ function buildSecciones(user, stats) {
       to: '/m/cobro',
     });
   }
-  if (puede(user, ACCIONES.CREAR_MUESTRA_LAVANDERIA)) {
-    acabado.push({
-      label: 'Muestras lavandería', icon: <FlaskConical size={18} />,
-      bg: '#fef9c3', fg: '#a16207',
-      meta: 'Envíos parciales de prueba',
-      to: '/m/registros', // TODO: pantalla específica si se crea
-    });
-  }
+  // (La entrada "Muestras lavandería" fue movida a "Envíos de muestra" en Producción - Sprint 43)
   if (acabado.length > 0) secs.push({ titulo: 'Acabado y calidad', items: acabado });
 
   // ─── Otros ─────────────────────────────────────────────────────────

@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Muestras v2 (Lavandería + Diseño) — Mockup móvil</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --brand: #0f766e;
+    --brand-dark: #0d5f5a;
+    --brand-soft: #f0fdfa;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --bg: #f3f4f6;
+  }
+  body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  .phones-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 32px; padding: 32px; max-width: 1800px; margin: 0 auto; }
+  .phone-frame { width: 380px; border: 12px solid #1f2937; border-radius: 38px; overflow: hidden; background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4); margin: 0 auto; }
+  .phone-notch { height: 28px; background: #1f2937; display: flex; justify-content: center; align-items: center; color: white; font-size: 11px; font-weight: 600; }
+  .phone-body { height: 760px; overflow-y: auto; background: #f9fafb; position: relative; }
+  .header-mobile { background: var(--brand); color: white; padding: 14px 16px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 10; }
+  .screen-title { font-size: 11px; color: #64748b; text-align: center; margin-top: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid #e5e7eb; background: white; white-space: nowrap; }
+  .chip.active { background: var(--brand); color: white; border-color: var(--brand); }
+  .pill { display:inline-flex; align-items:center; gap:4px; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; line-height: 1.2; }
+  .pill-red    { background: #fee2e2; color: #b91c1c; }
+  .pill-amber  { background: #fef3c7; color: #b45309; }
+  .pill-green  { background: #dcfce7; color: #15803d; }
+  .pill-blue   { background: #dbeafe; color: #1d4ed8; }
+  .pill-gray   { background: #e5e7eb; color: #475569; }
+  .pill-purple { background: #f3e8ff; color: #7c3aed; }
+  .pill-teal   { background: #ccfbf1; color: #115e59; }
+  .input { width: 100%; background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+  .step-dot { width: 6px; height: 6px; border-radius: 50%; background: #cbd5e1; }
+  .step-dot.done { background: var(--brand); }
+</style>
+</head>
+<body>
+
+<div class="px-8 pt-8 pb-2 max-w-5xl mx-auto">
+  <h1 class="text-2xl font-bold">Muestras v2 — Lavandería + Diseño</h1>
+  <p class="text-slate-600 mt-1">
+    Nuevo flujo: Diana saca prendas del corte y las envía a <b>Lavandería</b> o a <b>Diseño</b> (uso interno).
+    Cantidad obligatoria, colores opcionales (se asignan después). Retornos parciales. Una muestra que estaba en Diseño puede pasar a Lavandería y ya no volver.
+  </p>
+
+  <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4 text-sm text-amber-900">
+    <b>Bug actual que se arregla:</b> hoy el form obliga a elegir al menos 1 color con cantidad &gt; 0 antes de poder enviar. Diana llena fecha + lavandería, toca "Enviar" y el backend rechaza. En v2 los colores son opcionales: la muestra se crea con destino + cantidad + fecha, y los colores se agregan después si la lavandería los define.
+  </div>
+
+  <div class="bg-teal-50 border border-teal-200 rounded-lg p-3 mt-3 text-sm text-teal-900">
+    <b>Cuándo aplican los colores:</b> solo cuando el destino es <b>Lavandería</b> (porque ahí se va a teñir/lavar y se necesita saber qué tonos). Cuando va a <b>Diseño</b> es para tomar medidas, evaluar la prenda o consultar — <b>no se piden colores</b>. Si después Diseño la pasa a Lavandería, ahí recién aparece la sección de colores.
+  </div>
+
+  <div class="mt-3 flex flex-wrap gap-3 text-xs text-slate-600">
+    <span><span class="pill pill-blue">EN DESTINO</span> esperando que devuelvan o decidan</span>
+    <span><span class="pill pill-green">DEVUELTA</span> volvió total o parcial</span>
+    <span><span class="pill pill-purple">PASÓ A LAVANDERÍA</span> estaba en Diseño, se mandó</span>
+    <span><span class="pill pill-teal">CERRADA EN LAVANDERÍA</span> fue directo, se quedó</span>
+  </div>
+</div>
+
+<div class="phones-grid">
+
+  <!-- ====================================================================== -->
+  <!-- 1 · Nueva muestra — paso 1: destino + persona                            -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">1 · Nueva muestra · destino y persona</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">PEKERMAN 001 · C-2451</div>
+            <div class="font-semibold text-[15px]">Nueva muestra</div>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-4">
+
+          <!-- Selector destino · 2 opciones grandes -->
+          <div>
+            <div class="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2">¿A dónde va?</div>
+            <div class="grid grid-cols-2 gap-2">
+              <button class="bg-teal-50 border-2 border-teal-600 rounded-xl p-3 text-left">
+                <div class="flex items-center gap-2 mb-1">
+                  <svg class="w-5 h-5 text-teal-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 21h18M3 10h18M5 6l7-4 7 4"/><path d="M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
+                  <span class="font-bold text-sm text-teal-900">Lavandería</span>
+                </div>
+                <div class="text-[10px] text-teal-700">Envío directo · esperan tonos</div>
+              </button>
+              <button class="bg-white border border-slate-200 rounded-xl p-3 text-left">
+                <div class="flex items-center gap-2 mb-1">
+                  <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v2"/></svg>
+                  <span class="font-bold text-sm text-slate-900">Diseño</span>
+                </div>
+                <div class="text-[10px] text-slate-500">Uso interno · puede volver</div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Lavandería destino (porque eligió Lavandería arriba) -->
+          <div>
+            <label class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Lavandería destino</label>
+            <button class="w-full mt-1 bg-white border border-slate-200 rounded-lg px-3 py-2.5 flex items-center justify-between text-left">
+              <div class="flex items-center gap-2">
+                <div class="w-7 h-7 rounded-full bg-teal-600 text-white text-[11px] font-bold flex items-center justify-center">LA</div>
+                <div>
+                  <div class="text-sm font-semibold">Lavandería Aurora</div>
+                  <div class="text-[10px] text-slate-500">Externa · Lince</div>
+                </div>
+              </div>
+              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+          </div>
+
+          <!-- Cantidad y fecha -->
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Cantidad</label>
+              <div class="relative mt-1">
+                <input class="input pr-12 font-mono text-right text-lg font-bold" value="6" />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 uppercase font-bold">prendas</span>
+              </div>
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Fecha envío</label>
+              <input class="input mt-1" type="date" value="2026-05-28" />
+              <div class="text-[10px] text-slate-400 mt-0.5">Por defecto: hoy</div>
+            </div>
+          </div>
+
+          <!-- Colores plegado (opcionales) -->
+          <div class="bg-white border border-slate-200 rounded-xl p-3">
+            <button class="w-full flex items-center justify-between text-left">
+              <div>
+                <div class="text-sm font-semibold text-slate-700">Colores a probar</div>
+                <div class="text-[10px] text-slate-500">Opcional · podés agregarlos después</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="pill pill-gray">0</span>
+                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+            </button>
+          </div>
+
+          <!-- Observaciones -->
+          <div>
+            <label class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Observaciones (opcional)</label>
+            <textarea class="input mt-1 h-16" placeholder="Algún detalle para la lavandería..."></textarea>
+          </div>
+
+          <!-- Botón enviar -->
+          <button class="w-full bg-teal-600 text-white font-semibold rounded-xl py-3 mt-2 text-sm flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            Registrar envío
+          </button>
+          <div class="text-center text-[10px] text-slate-400 -mt-2">Quedará como "En Lavandería Aurora" esperando que vuelva</div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 2 · Nueva muestra · DESTINO = DISEÑO                                    -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">2 · Nueva muestra · destino = Diseño</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">PEKERMAN 001 · C-2451</div>
+            <div class="font-semibold text-[15px]">Nueva muestra</div>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-4">
+          <!-- Selector destino · Diseño activo -->
+          <div>
+            <div class="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2">¿A dónde va?</div>
+            <div class="grid grid-cols-2 gap-2">
+              <button class="bg-white border border-slate-200 rounded-xl p-3 text-left">
+                <div class="flex items-center gap-2 mb-1">
+                  <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 21h18M3 10h18M5 6l7-4 7 4"/></svg>
+                  <span class="font-bold text-sm text-slate-700">Lavandería</span>
+                </div>
+                <div class="text-[10px] text-slate-500">Envío directo · esperan tonos</div>
+              </button>
+              <button class="bg-purple-50 border-2 border-purple-600 rounded-xl p-3 text-left">
+                <div class="flex items-center gap-2 mb-1">
+                  <svg class="w-5 h-5 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v2"/></svg>
+                  <span class="font-bold text-sm text-purple-900">Diseño</span>
+                </div>
+                <div class="text-[10px] text-purple-700">Uso interno · puede volver</div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Persona de Diseño -->
+          <div>
+            <label class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">¿Quién de Diseño la recibe?</label>
+            <button class="w-full mt-1 bg-white border border-slate-200 rounded-lg px-3 py-2.5 flex items-center justify-between text-left">
+              <div class="flex items-center gap-2">
+                <div class="w-7 h-7 rounded-full bg-purple-600 text-white text-[11px] font-bold flex items-center justify-center">DG</div>
+                <div>
+                  <div class="text-sm font-semibold">Diana García</div>
+                  <div class="text-[10px] text-slate-500">Diseño · Interna</div>
+                </div>
+              </div>
+              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="text-[10px] text-slate-400 mt-1">Diseño decide después si las devuelve o las pasa a una lavandería.</div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Cantidad</label>
+              <div class="relative mt-1">
+                <input class="input pr-12 font-mono text-right text-lg font-bold" value="3" />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 uppercase font-bold">prendas</span>
+              </div>
+            </div>
+            <div>
+              <label class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Fecha envío</label>
+              <input class="input mt-1" type="date" value="2026-05-28" />
+            </div>
+          </div>
+
+          <!-- Motivo (opcional · solo para Diseño) -->
+          <div>
+            <label class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">¿Para qué?</label>
+            <div class="grid grid-cols-3 gap-1.5 mt-1">
+              <button class="bg-purple-50 border-2 border-purple-600 rounded-lg py-2 text-[11px] font-semibold text-purple-900">Medidas</button>
+              <button class="bg-white border border-slate-200 rounded-lg py-2 text-[11px] font-semibold text-slate-700">Evaluación</button>
+              <button class="bg-white border border-slate-200 rounded-lg py-2 text-[11px] font-semibold text-slate-700">Consulta</button>
+            </div>
+          </div>
+
+          <!-- Observaciones -->
+          <div>
+            <label class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Observaciones (opcional)</label>
+            <textarea class="input mt-1 h-14" placeholder="Algún detalle para Diseño..."></textarea>
+          </div>
+
+          <!-- Aviso: en Diseño no hay colores -->
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-[11px] text-slate-600 flex gap-2 items-start">
+            <svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span><b>Sin colores en Diseño.</b> Los colores se piden solo si después Diana decide pasar la muestra a una lavandería.</span>
+          </div>
+
+          <button class="w-full bg-purple-600 text-white font-semibold rounded-xl py-3 mt-2 text-sm flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="7" r="4"/></svg>
+            Entregar a Diana
+          </button>
+          <div class="text-center text-[10px] text-slate-400 -mt-2">Quedará como "Con Diana García" hasta que devuelva o pase a lavandería</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 3 · Listado de muestras del corte                                       -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">3 · Listado · todas las muestras del corte</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">PEKERMAN 001 · C-2451</div>
+            <div class="font-semibold text-[15px]">Muestras · 4</div>
+          </div>
+          <button class="p-1.5 rounded-lg bg-white/15">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+
+        <div class="p-3 space-y-3">
+
+          <!-- Resumen -->
+          <div class="grid grid-cols-3 gap-2">
+            <div class="bg-white border border-slate-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-lg leading-none text-slate-900">15</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold mt-1">Total enviadas</div>
+            </div>
+            <div class="bg-blue-50 border border-blue-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-lg leading-none text-blue-700">5</div>
+              <div class="text-[9px] text-blue-700 uppercase font-bold mt-1">Sin volver</div>
+            </div>
+            <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-lg leading-none text-emerald-700">10</div>
+              <div class="text-[9px] text-emerald-700 uppercase font-bold mt-1">Cerradas</div>
+            </div>
+          </div>
+
+          <!-- Filtro -->
+          <div style="display:flex;gap:6px;overflow-x:auto" class="scrollbar-hide">
+            <span class="chip active">Todas</span>
+            <span class="chip">Sin volver</span>
+            <span class="chip">A Lavandería</span>
+            <span class="chip">A Diseño</span>
+          </div>
+
+          <!-- Muestra 1 · EN DESTINO (Lavandería) -->
+          <div class="bg-white border-l-4 border-blue-500 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl p-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-start gap-2 min-w-0">
+                <div class="w-8 h-8 rounded-full bg-teal-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">LA</div>
+                <div class="min-w-0">
+                  <div class="text-sm font-semibold truncate">Lavandería Aurora</div>
+                  <div class="text-[10px] text-slate-500 mt-0.5">Enviada · 28-may · hace 2h</div>
+                </div>
+              </div>
+              <span class="pill pill-blue">EN DESTINO</span>
+            </div>
+            <div class="flex items-center gap-2 mt-2 text-[11px]">
+              <span class="font-mono font-bold text-base">6</span>
+              <span class="text-slate-500">prendas enviadas</span>
+              <span class="ml-auto pill pill-gray">0 colores</span>
+            </div>
+            <div class="flex gap-1.5 mt-2.5">
+              <button class="flex-1 bg-emerald-600 text-white text-[11px] font-semibold rounded-md py-1.5">Marcar retorno</button>
+              <button class="flex-1 bg-white border border-slate-300 text-[11px] font-semibold rounded-md py-1.5">+ Colores</button>
+            </div>
+          </div>
+
+          <!-- Muestra 2 · EN DESTINO (Diseño - Diana) -->
+          <div class="bg-white border-l-4 border-purple-500 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl p-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-start gap-2 min-w-0">
+                <div class="w-8 h-8 rounded-full bg-purple-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">DG</div>
+                <div class="min-w-0">
+                  <div class="text-sm font-semibold truncate">Diana García <span class="text-[10px] font-normal text-purple-700">· Diseño</span></div>
+                  <div class="text-[10px] text-slate-500 mt-0.5">Enviada · 26-may · hace 2 días</div>
+                </div>
+              </div>
+              <span class="pill pill-blue">EN DESTINO</span>
+            </div>
+            <div class="flex items-center gap-2 mt-2 text-[11px] flex-wrap">
+              <span class="font-mono font-bold text-base">3</span>
+              <span class="text-slate-500">prendas con Diseño</span>
+              <span class="pill pill-purple ml-auto">Medidas</span>
+            </div>
+            <!-- 2 acciones (devolver o pasar a lavandería). No hay colores en Diseño. -->
+            <div class="flex gap-1.5 mt-2.5">
+              <button class="flex-1 bg-emerald-600 text-white text-[11px] font-semibold rounded-md py-1.5">Devolver</button>
+              <button class="flex-1 bg-teal-600 text-white text-[11px] font-semibold rounded-md py-1.5 flex items-center justify-center gap-1">
+                → Lavandería
+              </button>
+            </div>
+          </div>
+
+          <!-- Muestra 3 · DEVUELTA PARCIAL -->
+          <div class="bg-white border-l-4 border-emerald-500 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl p-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-start gap-2 min-w-0">
+                <div class="w-8 h-8 rounded-full bg-purple-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">DG</div>
+                <div class="min-w-0">
+                  <div class="text-sm font-semibold truncate">Diana García <span class="text-[10px] font-normal text-purple-700">· Diseño</span></div>
+                  <div class="text-[10px] text-slate-500 mt-0.5">Devuelta · 24-may · parcial</div>
+                </div>
+              </div>
+              <span class="pill pill-green">DEVUELTA</span>
+            </div>
+            <div class="flex items-center gap-2 mt-2 text-[11px]">
+              <span class="font-mono font-bold text-base text-emerald-700">4 / 6</span>
+              <span class="text-slate-500">volvieron · faltan</span>
+              <span class="pill pill-amber">2 no dev.</span>
+            </div>
+            <div class="text-[10px] text-slate-500 mt-1.5 bg-slate-50 rounded p-1.5 border border-slate-200">
+              "Las otras 2 se quedaron de muestra de referencia" — Diana
+            </div>
+          </div>
+
+          <!-- Muestra 4 · PASÓ A LAVANDERÍA -->
+          <div class="bg-white border-l-4 border-fuchsia-500 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl p-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-start gap-2 min-w-0">
+                <div class="w-8 h-8 rounded-full bg-purple-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">DG</div>
+                <div class="min-w-0">
+                  <div class="text-sm font-semibold truncate">Diana García <span class="text-[10px] font-normal text-purple-700">· Diseño</span></div>
+                  <div class="text-[10px] text-slate-500 mt-0.5">Estaba con Diseño · pasó a Lavandería</div>
+                </div>
+              </div>
+              <span class="pill pill-purple">→ LAVANDERÍA</span>
+            </div>
+            <div class="flex items-center gap-2 mt-2 text-[11px]">
+              <span class="font-mono font-bold text-base">3</span>
+              <span class="text-slate-500">prendas</span>
+              <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              <span class="font-semibold text-teal-700">Lav. Aurora</span>
+            </div>
+            <div class="text-[10px] text-slate-500 mt-1.5">22-may · ya no vuelve</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 4 · Sheet: Marcar retorno (parcial)                                     -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">4 · Sheet · marcar retorno (parcial)</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body relative">
+        <div class="opacity-40">
+          <div class="header-mobile">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+            <div class="flex-1 min-w-0">
+              <div class="text-[11px] opacity-85">PEKERMAN 001 · C-2451</div>
+              <div class="font-semibold text-[15px]">Muestras · 4</div>
+            </div>
+          </div>
+          <div class="p-3 space-y-3">
+            <div class="bg-white border border-slate-200 rounded-xl h-16"></div>
+            <div class="bg-white border border-slate-200 rounded-xl h-20"></div>
+          </div>
+        </div>
+        <div class="absolute inset-0 bg-black/40"></div>
+        <div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl">
+          <div class="flex justify-center pt-2 pb-1"><div class="w-10 h-1 bg-slate-300 rounded-full"></div></div>
+          <div class="px-4 pt-2 pb-4 space-y-3">
+            <div>
+              <div class="font-bold text-base">Marcar retorno</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">De Diana García · Diseño · 3 prendas</div>
+            </div>
+
+            <div>
+              <label class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Fecha retorno</label>
+              <input class="input mt-1" type="date" value="2026-05-28" />
+            </div>
+
+            <div>
+              <label class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">¿Volvieron todas?</label>
+              <div class="grid grid-cols-2 gap-2 mt-1.5">
+                <button class="bg-white border border-slate-300 rounded-lg py-2 text-sm font-semibold text-slate-700">
+                  Sí, las 3
+                </button>
+                <button class="bg-amber-50 border-2 border-amber-500 rounded-lg py-2 text-sm font-semibold text-amber-900">
+                  No, parcial
+                </button>
+              </div>
+            </div>
+
+            <!-- Si eligió parcial -->
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+              <label class="text-[10px] text-amber-900 uppercase font-bold tracking-wider">¿Cuántas volvieron?</label>
+              <div class="flex items-center gap-2">
+                <input class="input font-mono text-right text-lg font-bold w-20 bg-white" value="2" />
+                <span class="text-sm text-amber-900">de 3</span>
+                <span class="ml-auto pill pill-amber">1 no devuelta</span>
+              </div>
+              <input class="input bg-white text-[12px]" placeholder="¿Por qué no volvió 1? (opcional)" value="Se la quedaron de referencia" />
+            </div>
+
+            <button class="w-full bg-emerald-600 text-white font-semibold rounded-xl py-3 text-sm">
+              Confirmar retorno · 2 prendas
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 5 · Sheet: Pasar a Lavandería (desde Diseño)                             -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">5 · Sheet · pasar a Lavandería desde Diseño</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body relative">
+        <div class="opacity-40">
+          <div class="header-mobile">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+            <div class="flex-1 min-w-0">
+              <div class="text-[11px] opacity-85">PEKERMAN 001</div>
+              <div class="font-semibold text-[15px]">Muestras · 4</div>
+            </div>
+          </div>
+        </div>
+        <div class="absolute inset-0 bg-black/40"></div>
+        <div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl">
+          <div class="flex justify-center pt-2 pb-1"><div class="w-10 h-1 bg-slate-300 rounded-full"></div></div>
+          <div class="px-4 pt-2 pb-4 space-y-3">
+            <div>
+              <div class="font-bold text-base">Pasar a Lavandería</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">Diana García las pasa a una lavandería. Ya no volverán al corte.</div>
+            </div>
+
+            <div>
+              <label class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">¿A qué lavandería?</label>
+              <div class="space-y-2 mt-1.5">
+                <button class="w-full bg-teal-50 border-2 border-teal-600 rounded-lg p-3 flex items-center gap-2.5 text-left">
+                  <div class="w-7 h-7 rounded-full bg-teal-600 text-white text-[10px] font-bold flex items-center justify-center">LA</div>
+                  <div class="flex-1">
+                    <div class="text-sm font-semibold">Lavandería Aurora</div>
+                    <div class="text-[10px] text-slate-500">Externa · Lince</div>
+                  </div>
+                  <svg class="w-4 h-4 text-teal-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+                <button class="w-full bg-white border border-slate-200 rounded-lg p-3 flex items-center gap-2.5 text-left">
+                  <div class="w-7 h-7 rounded-full bg-slate-500 text-white text-[10px] font-bold flex items-center justify-center">SC</div>
+                  <div class="flex-1">
+                    <div class="text-sm font-semibold">Sechura Color</div>
+                    <div class="text-[10px] text-slate-500">Externa · ATE</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Fecha en que pasó</label>
+              <input class="input mt-1" type="date" value="2026-05-28" />
+            </div>
+
+            <div class="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-[11px] text-slate-700">
+              <b>Resumen:</b> Las 3 prendas dejarán de aparecer como "con Diana" y se contarán como <b>enviadas a Lavandería Aurora</b>.
+              <br><span class="text-slate-500">Total a Lav. Aurora del corte pasará de 6 a 9 prendas.</span>
+            </div>
+
+            <!-- Nuevo: aviso sobre colores -->
+            <div class="bg-teal-50 border border-teal-200 rounded-lg p-2.5 text-[11px] text-teal-900 flex gap-2 items-start">
+              <svg class="w-3.5 h-3.5 text-teal-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span>Después de confirmar vas a poder <b>agregar los colores que pidió Diana</b> a la lavandería (opcional).</span>
+            </div>
+
+            <button class="w-full bg-teal-600 text-white font-semibold rounded-xl py-3 text-sm">
+              Confirmar · Pasar 3 a Lav. Aurora
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 6 · Detalle de una muestra · con colores agregados después               -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">6 · Detalle muestra · colores agregados después</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">PEKERMAN 001 · C-2451</div>
+            <div class="font-semibold text-[15px]">Muestra · Lav. Aurora</div>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- Estado actual -->
+          <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-teal-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">LA</div>
+            <div class="flex-1">
+              <div class="text-[10px] text-blue-700 uppercase font-bold tracking-wider">En destino</div>
+              <div class="font-semibold text-sm">Lavandería Aurora</div>
+              <div class="text-[11px] text-slate-600">Hace 4 días · esperando devolución</div>
+            </div>
+          </div>
+
+          <!-- Resumen de cantidades -->
+          <div class="grid grid-cols-3 gap-2">
+            <div class="bg-white border border-slate-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-bold text-base">6</div>
+              <div class="text-[9px] text-slate-500 uppercase mt-0.5">Enviadas</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-bold text-base text-slate-400">—</div>
+              <div class="text-[9px] text-slate-500 uppercase mt-0.5">Devueltas</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-bold text-base text-slate-400">—</div>
+              <div class="text-[9px] text-slate-500 uppercase mt-0.5">Faltan</div>
+            </div>
+          </div>
+
+          <!-- Colores agregados después -->
+          <div class="bg-white border border-slate-200 rounded-xl p-3">
+            <div class="flex items-center justify-between mb-2">
+              <div class="font-semibold text-sm">Colores a probar</div>
+              <button class="text-[11px] text-teal-600 font-semibold">+ Agregar</button>
+            </div>
+            <div class="space-y-2">
+              <div class="flex items-center gap-2 bg-slate-50 rounded-lg p-2">
+                <div class="w-6 h-6 rounded border border-slate-200" style="background:#a8d5e5"></div>
+                <div class="flex-1">
+                  <div class="text-[12px] font-semibold">Azul claro</div>
+                  <div class="text-[10px] text-slate-500">2 prendas</div>
+                </div>
+                <span class="pill pill-gray">PENDIENTE</span>
+              </div>
+              <div class="flex items-center gap-2 bg-slate-50 rounded-lg p-2">
+                <div class="w-6 h-6 rounded border border-slate-200" style="background:#5b8aa8"></div>
+                <div class="flex-1">
+                  <div class="text-[12px] font-semibold">Azul medio</div>
+                  <div class="text-[10px] text-slate-500">2 prendas</div>
+                </div>
+                <span class="pill pill-gray">PENDIENTE</span>
+              </div>
+              <div class="flex items-center gap-2 bg-slate-50 rounded-lg p-2">
+                <div class="w-6 h-6 rounded border border-slate-200" style="background:#e5dccc"></div>
+                <div class="flex-1">
+                  <div class="text-[12px] font-semibold">Crudo</div>
+                  <div class="text-[10px] text-slate-500">2 prendas</div>
+                </div>
+                <span class="pill pill-gray">PENDIENTE</span>
+              </div>
+            </div>
+            <div class="text-[10px] text-slate-500 mt-2 bg-slate-50 rounded p-1.5">
+              Suma colores: 6 / 6 ✓
+            </div>
+          </div>
+
+          <!-- Acciones -->
+          <div class="grid grid-cols-2 gap-2">
+            <button class="bg-emerald-600 text-white text-sm font-semibold rounded-xl py-2.5">Marcar retorno</button>
+            <button class="bg-white border border-slate-300 text-sm font-semibold rounded-xl py-2.5">Editar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 7-bis · Entrada desde Home (sin corte preseleccionado)                  -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">8 · Home · entrada "Envíos de muestra" en Producción</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile" style="background: var(--brand);">
+          <div class="w-9 h-9 rounded-full bg-white/15 text-white font-bold text-sm flex items-center justify-center">DG</div>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Hola,</div>
+            <div class="font-semibold text-[15px]">Diana García</div>
+          </div>
+          <button class="p-1.5 rounded-lg bg-white/15 relative">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">6</span>
+          </button>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <div class="text-[10px] text-slate-500 uppercase tracking-wider font-bold px-1">Producción</div>
+
+          <!-- Patrón real del Home -->
+          <a class="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3 active:bg-slate-50" href="#">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#dbeafe;color:#2563eb">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            </div>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">Registros</div>
+              <div class="text-[11px] text-slate-500">34 activos · 3 urgentes</div>
+            </div>
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
+
+          <a class="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3 active:bg-slate-50" href="#">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#f0fdfa;color:#0f766e">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            </div>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">Escanear QR</div>
+              <div class="text-[11px] text-slate-500">Abrir corte con cámara</div>
+            </div>
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
+
+          <a class="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3 active:bg-slate-50" href="#">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#fef3c7;color:#b45309">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="10" y1="15" x2="10" y2="9"/><line x1="14" y1="15" x2="14" y2="9"/></svg>
+            </div>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">Incidencias</div>
+              <div class="text-[11px] text-slate-500">10 abiertas · 3 ⛔</div>
+            </div>
+            <span class="bg-amber-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">10</span>
+          </a>
+
+          <a class="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3 active:bg-slate-50" href="#">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#f0fdfa;color:#0f766e">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M3 3h18l-2 18H5L3 3z"/></svg>
+            </div>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">Reporte operativo</div>
+              <div class="text-[11px] text-slate-500">Cortes por servicio y persona</div>
+            </div>
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
+
+          <!-- NUEVO · Envíos de muestra (entrada única, sin atajos extras) -->
+          <a class="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3 active:bg-slate-50" href="#">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#f3e8ff;color:#7c3aed">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            </div>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">Envíos de muestra</div>
+              <div class="text-[11px] text-slate-500">5 sin volver · 2 demoradas</div>
+            </div>
+            <span class="bg-purple-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">5</span>
+          </a>
+
+          <a class="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3 active:bg-slate-50" href="#">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#f3e8ff;color:#7e22ce">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </div>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">Nuevo corte</div>
+              <div class="text-[11px] text-slate-500">Crear registro</div>
+            </div>
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
+
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-[11px] text-slate-600 mt-2">
+            <b>Flujo:</b> Diana toca "Envíos de muestra" → ve la lista → desde ahí toca <b>+ Nueva</b> (ver pantalla 10).<br>
+            <span class="text-slate-400">No hay un atajo separado de "Nueva muestra" en el Home, todo arranca desde la lista.</span>
+          </div>
+
+          <div class="text-[10px] text-slate-400 uppercase tracking-wider font-bold px-1 pt-1">⚠ Cambio importante</div>
+          <div class="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-[11px] text-amber-900">
+            La entrada existente <b>"Muestras lavandería"</b> en la sección "Acabado y calidad" se elimina. Pasa a llamarse <b>"Envíos de muestra"</b> y se mueve a Producción (acá arriba) porque Diana lo usa todos los días, no es solo de cierre.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 9 · Nueva muestra desde Home · paso 0 = elegir corte                    -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">9 · Nueva muestra desde Home · elegir corte</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Nueva muestra</div>
+            <div class="font-semibold text-[15px]">¿De qué corte salen?</div>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- Pasos del wizard -->
+          <div class="flex items-center gap-1 justify-center mb-1">
+            <span class="text-[10px] font-bold text-purple-700">CORTE</span>
+            <div class="w-6 h-px bg-slate-300"></div>
+            <span class="text-[10px] text-slate-400">DESTINO</span>
+            <div class="w-6 h-px bg-slate-300"></div>
+            <span class="text-[10px] text-slate-400">CANTIDAD</span>
+          </div>
+
+          <!-- 2 caminos para elegir corte -->
+          <button class="w-full bg-teal-600 text-white rounded-xl p-3 flex items-center gap-3 active:bg-teal-700">
+            <div class="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            </div>
+            <div class="flex-1 text-left">
+              <div class="font-bold text-sm">Escanear QR del corte</div>
+              <div class="text-[11px] opacity-90">Cámara · más rápido</div>
+            </div>
+          </button>
+
+          <div class="flex items-center gap-3">
+            <div class="flex-1 h-px bg-slate-200"></div>
+            <span class="text-[10px] text-slate-400 uppercase font-bold">o buscarlo</span>
+            <div class="flex-1 h-px bg-slate-200"></div>
+          </div>
+
+          <!-- Buscador -->
+          <div class="relative">
+            <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input class="input pl-9" placeholder="Buscar por n° corte o modelo..." value="2451" />
+          </div>
+
+          <!-- Resultados -->
+          <div class="text-[10px] text-slate-500 uppercase tracking-wider font-bold px-1">Resultados</div>
+
+          <button class="w-full bg-white border border-slate-200 rounded-xl p-3 text-left active:bg-slate-50">
+            <div class="flex items-center gap-2">
+              <div class="font-mono font-bold text-base">C-2451</div>
+              <span class="pill pill-red">CRÍTICO</span>
+            </div>
+            <div class="text-sm font-semibold mt-1">PEKERMAN 001</div>
+            <div class="text-[11px] text-slate-500 mt-0.5">Polo M/C · M · 300 prd · En Costura · José R.</div>
+          </button>
+
+          <button class="w-full bg-white border border-slate-200 rounded-xl p-3 text-left active:bg-slate-50">
+            <div class="flex items-center gap-2">
+              <div class="font-mono font-bold text-base">C-2452</div>
+              <span class="pill pill-green">NORMAL</span>
+            </div>
+            <div class="text-sm font-semibold mt-1">PEKERMAN 002</div>
+            <div class="text-[11px] text-slate-500 mt-0.5">Polo M/C · L · 250 prd · En Costura</div>
+          </button>
+
+          <!-- Atajo: cortes recientes -->
+          <div class="text-[10px] text-slate-500 uppercase tracking-wider font-bold px-1 pt-2">Cortes recientes</div>
+          <div class="grid grid-cols-3 gap-2">
+            <button class="bg-white border border-slate-200 rounded-lg p-2 text-center active:bg-slate-50">
+              <div class="font-mono font-bold text-sm">C-2483</div>
+              <div class="text-[9px] text-slate-500 mt-0.5">VICUÑA 044</div>
+            </button>
+            <button class="bg-white border border-slate-200 rounded-lg p-2 text-center active:bg-slate-50">
+              <div class="font-mono font-bold text-sm">C-2510</div>
+              <div class="text-[9px] text-slate-500 mt-0.5">VICUÑA 022</div>
+            </button>
+            <button class="bg-white border border-slate-200 rounded-lg p-2 text-center active:bg-slate-50">
+              <div class="font-mono font-bold text-sm">C-2502</div>
+              <div class="text-[9px] text-slate-500 mt-0.5">PEKERMAN 003</div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 10 · Lista global de muestras (de todo el sistema)                       -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">10 · Lista "Envíos de muestra" · botón + Nueva arriba</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Producción</div>
+            <div class="font-semibold text-[15px]">Envíos de muestra · 12</div>
+          </div>
+          <button class="p-1.5 rounded-lg bg-purple-500" title="Nueva">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <!-- KPIs -->
+          <div class="grid grid-cols-3 gap-2">
+            <div class="bg-blue-50 border border-blue-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-lg leading-none text-blue-700">5</div>
+              <div class="text-[9px] text-blue-700 uppercase font-bold mt-1">Sin volver</div>
+            </div>
+            <div class="bg-amber-50 border border-amber-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-lg leading-none text-amber-700">2</div>
+              <div class="text-[9px] text-amber-700 uppercase font-bold mt-1">+ de 5d</div>
+            </div>
+            <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2 text-center">
+              <div class="font-mono font-extrabold text-lg leading-none text-emerald-700">7</div>
+              <div class="text-[9px] text-emerald-700 uppercase font-bold mt-1">Cerradas</div>
+            </div>
+          </div>
+
+          <!-- Filtros chips -->
+          <div style="display:flex;gap:6px;overflow-x:auto" class="scrollbar-hide">
+            <span class="chip active">Sin volver</span>
+            <span class="chip">A Lavandería</span>
+            <span class="chip">A Diseño</span>
+            <span class="chip">Cerradas</span>
+            <span class="chip">Todas</span>
+          </div>
+
+          <div class="relative">
+            <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input class="input pl-9" placeholder="Buscar corte o persona..." />
+          </div>
+
+          <!-- Muestra 1 -->
+          <a href="#" class="bg-white border-l-4 border-blue-500 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl p-3 block active:bg-slate-50">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="font-mono font-bold text-sm">C-2451</span>
+                  <span class="text-[11px] text-slate-500 truncate">PEKERMAN 001</span>
+                </div>
+                <div class="text-[11px] mt-1 flex items-center gap-1.5">
+                  <span class="text-slate-500">→</span>
+                  <span class="font-semibold">Lav. Aurora</span>
+                  <span class="text-slate-400">·</span>
+                  <span class="font-mono font-bold">6 prd</span>
+                </div>
+                <div class="text-[10px] text-slate-400 mt-0.5">Hace 2h</div>
+              </div>
+              <span class="pill pill-blue">EN DESTINO</span>
+            </div>
+          </a>
+
+          <!-- Muestra 2 - hace + 5d, en amber -->
+          <a href="#" class="bg-white border-l-4 border-amber-500 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl p-3 block active:bg-slate-50">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="font-mono font-bold text-sm">C-2399</span>
+                  <span class="text-[11px] text-slate-500 truncate">VICUÑA 015</span>
+                </div>
+                <div class="text-[11px] mt-1 flex items-center gap-1.5">
+                  <span class="text-slate-500">→</span>
+                  <span class="font-semibold text-purple-700">Diana García</span>
+                  <span class="text-slate-400">·</span>
+                  <span class="font-mono font-bold">4 prd</span>
+                </div>
+                <div class="text-[10px] text-amber-700 mt-0.5 font-semibold">⚠ Hace 7 días sin volver</div>
+              </div>
+              <span class="pill pill-amber">DEMORADA</span>
+            </div>
+          </a>
+
+          <!-- Muestra 3 - en destino diseño -->
+          <a href="#" class="bg-white border-l-4 border-purple-500 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl p-3 block active:bg-slate-50">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="font-mono font-bold text-sm">C-2483</span>
+                  <span class="text-[11px] text-slate-500 truncate">VICUÑA 044</span>
+                </div>
+                <div class="text-[11px] mt-1 flex items-center gap-1.5">
+                  <span class="text-slate-500">→</span>
+                  <span class="font-semibold text-purple-700">Diana García</span>
+                  <span class="text-slate-400">·</span>
+                  <span class="font-mono font-bold">3 prd</span>
+                  <span class="pill pill-purple ml-1" style="font-size:9px;padding:1px 5px">Medidas</span>
+                </div>
+                <div class="text-[10px] text-slate-400 mt-0.5">Hace 2 días</div>
+              </div>
+              <span class="pill pill-blue">EN DESTINO</span>
+            </div>
+          </a>
+
+          <!-- Muestra 4 - devuelta parcial -->
+          <a href="#" class="bg-white border-l-4 border-emerald-500 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl p-3 block active:bg-slate-50 opacity-80">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="font-mono font-bold text-sm">C-2370</span>
+                  <span class="text-[11px] text-slate-500 truncate">PEKERMAN 005</span>
+                </div>
+                <div class="text-[11px] mt-1 flex items-center gap-1.5">
+                  <span class="text-slate-500">→</span>
+                  <span class="font-semibold text-purple-700">Diana García</span>
+                  <span class="text-slate-400">·</span>
+                  <span class="font-mono font-bold text-emerald-700">4 / 6</span>
+                  <span class="text-slate-500">vuelta</span>
+                </div>
+                <div class="text-[10px] text-slate-400 mt-0.5">Devuelta · 24-may</div>
+              </div>
+              <span class="pill pill-green">DEVUELTA</span>
+            </div>
+          </a>
+
+          <div class="text-center text-[11px] text-slate-400 py-2">+ 8 más</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- 7 · Card de corte en Reporte Operativo con pill de muestras              -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">7 · Mejora al Reporte Operativo · mostrar muestras vivas</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body">
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Costura · Reporte operativo</div>
+            <div class="font-semibold text-[15px]">JOSE RAMIREZ</div>
+          </div>
+        </div>
+
+        <div class="p-3 space-y-3">
+          <div class="bg-purple-50 border border-purple-200 rounded-lg p-3 text-[12px] text-purple-900">
+            <b>¿Qué cambia acá?</b><br>
+            Esta es la pantalla del <b>Reporte Operativo</b> que ya implementamos. La <b>única mejora</b> es agregar un pill chiquito <span class="pill pill-purple">+m6</span> al lado de la cantidad de prendas en cada card, <b>solo cuando ese corte tiene muestras "afuera" sin volver</b>.<br><br>
+            Así, cuando mirás el reporte ves de un vistazo: "C-2451 tiene 300 prd en producción + 6 que están como muestra (no las pierdas de vista)". Si tocás el pill, abre un desglose (ver más abajo).
+          </div>
+
+          <!-- Card de corte con pill de muestras -->
+          <div class="bg-white border-l-4 border-zinc-900 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl overflow-hidden">
+            <div class="p-3">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="font-mono font-bold text-base">C-2451</span>
+                    <span class="pill" style="background:#1f2937;color:white">VENCIDO</span>
+                  </div>
+                  <div class="text-sm font-semibold truncate mt-0.5">PEKERMAN 001</div>
+                  <div class="text-[11px] text-slate-500 mt-0.5">Polo M/C · M · French Terry</div>
+                </div>
+                <div class="text-right whitespace-nowrap">
+                  <div class="font-mono text-xs font-bold text-slate-900">300 prd</div>
+                  <div class="flex items-center gap-1 justify-end mt-0.5">
+                    <span class="pill pill-purple" style="font-size:9px;padding:1px 5px">+m6</span>
+                    <span class="text-[9px] text-slate-400">en muestra</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Avance -->
+              <div class="mt-2">
+                <div class="flex items-center justify-between text-[10px] text-slate-500 mb-0.5">
+                  <span>Avance</span>
+                  <span class="font-mono font-bold text-slate-900">35%</span>
+                </div>
+                <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div class="h-full bg-zinc-900" style="width:35%"></div>
+                </div>
+              </div>
+
+              <div class="flex gap-1.5 mt-2.5">
+                <button class="flex-1 bg-teal-600 text-white text-[11px] font-semibold rounded-md py-1.5">Avance</button>
+                <button class="flex-1 bg-white border border-red-300 text-red-600 text-[11px] font-semibold rounded-md py-1.5">+ Inc.</button>
+                <button class="px-2 bg-white border border-slate-300 rounded-md">⋯</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card sin muestras activas para comparar -->
+          <div class="bg-white border-l-4 border-emerald-500 border-r border-y border-r-slate-200 border-y-slate-200 rounded-xl p-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-mono font-bold text-base">C-2502</span>
+                  <span class="pill pill-green">NORMAL</span>
+                </div>
+                <div class="text-sm font-semibold truncate mt-0.5">PEKERMAN 003</div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Polo M/C · L · French Terry</div>
+              </div>
+              <div class="text-right">
+                <div class="font-mono text-xs font-bold text-slate-900">150 prd</div>
+                <div class="text-[9px] text-slate-400 mt-0.5">sin muestras</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Detalle de cómo se desglosa al tocar el pill -->
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+            <div class="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2">Al tocar +m6 abre:</div>
+            <div class="bg-white border border-slate-200 rounded-lg p-2.5 space-y-2 text-[12px]">
+              <div class="flex items-center justify-between">
+                <span class="text-slate-700">300 prd</span>
+                <span class="font-semibold">producción</span>
+              </div>
+              <div class="flex items-center justify-between text-purple-700">
+                <span>6 prd</span>
+                <span class="font-semibold">muestra · Lav. Aurora · pendiente</span>
+              </div>
+              <div class="flex items-center justify-between text-purple-700">
+                <span>0 prd</span>
+                <span class="font-semibold">muestra · Diana · ya devolvió</span>
+              </div>
+              <div class="border-t border-slate-100 pt-1.5 mt-1.5 flex items-center justify-between text-[12px] font-bold">
+                <span>306</span>
+                <span>total movido del corte</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============================================================ -->
+<!-- Notas de diseño + cambios técnicos                              -->
+<!-- ============================================================ -->
+<div class="max-w-5xl mx-auto px-8 pb-16">
+  <div class="bg-white border border-slate-200 rounded-xl p-5 mt-6">
+    <h2 class="font-bold text-base mb-2">Estados de la muestra · transiciones</h2>
+    <p class="text-sm text-slate-700 mb-3">Una muestra siempre arranca <span class="pill pill-blue">EN DESTINO</span>. Después puede tomar uno de 3 caminos según qué pase:</p>
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 text-[12px] font-mono leading-relaxed">
+      <div>EN DESTINO (Lavandería) ──► <span class="text-emerald-700">DEVUELTA</span> (total o parcial) — la lavandería las regresa</div>
+      <div>EN DESTINO (Lavandería) ──► <span class="text-teal-700">CERRADA EN LAVANDERÍA</span> — no vuelven, quedan ahí</div>
+      <div>EN DESTINO (Diseño) ──► <span class="text-emerald-700">DEVUELTA</span> (total o parcial) — Diana las devuelve al corte</div>
+      <div>EN DESTINO (Diseño) ──► <span class="text-fuchsia-700">PASÓ A LAVANDERÍA</span> — Diana las pasa a una lavandería, no vuelven</div>
+    </div>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl p-5 mt-6">
+    <h2 class="font-bold text-base mb-2">Cambios técnicos que vienen con esto</h2>
+    <ul class="text-sm text-slate-700 space-y-1.5 list-disc pl-5">
+      <li><b>BD · tabla prod_registro_muestras</b>: agregar <code class="bg-slate-100 px-1 rounded">cantidad_total INTEGER NOT NULL</code>, <code class="bg-slate-100 px-1 rounded">destino_tipo</code> (lavanderia|diseno), <code class="bg-slate-100 px-1 rounded">persona_id</code> (en vez de solo persona_lavanderia_id), <code class="bg-slate-100 px-1 rounded">estado_muestra</code>, <code class="bg-slate-100 px-1 rounded">cantidad_devuelta</code>, <code class="bg-slate-100 px-1 rounded">fecha_paso_lavanderia</code>, <code class="bg-slate-100 px-1 rounded">persona_lavanderia_posterior_id</code>.</li>
+      <li><b>BD · catálogo</b>: insertar servicio <b>"Diseño"</b> en <code class="bg-slate-100 px-1 rounded">prod_servicios_produccion</code>. Marcar a Diana (y otras si hay) con <code class="bg-slate-100 px-1 rounded">servicios = [{servicio_id:&lt;diseño_id&gt;}]</code>.</li>
+      <li><b>Backfill</b>: muestras existentes copian <code class="bg-slate-100 px-1 rounded">SUM(colores.cantidad)</code> a <code class="bg-slate-100 px-1 rounded">cantidad_total</code>, <code class="bg-slate-100 px-1 rounded">destino_tipo='lavanderia'</code>, <code class="bg-slate-100 px-1 rounded">estado_muestra</code> deriva de <code class="bg-slate-100 px-1 rounded">fecha_retorno</code>.</li>
+      <li><b>Backend · POST</b>: <code class="bg-slate-100 px-1 rounded">colores</code> opcional (puede ser <code>[]</code>). Required: <code>destino_tipo</code>, <code>persona_id</code>, <code>cantidad_total</code>, <code>fecha_envio</code>. Bug fix actual.</li>
+      <li><b>Backend · nuevo PUT</b> <code>/muestras/{id}/pasar-a-lavanderia</code>: requiere <code>persona_lavanderia_id</code> + <code>fecha</code>. Solo válido si <code>destino_tipo='diseno'</code> y <code>estado='en_destino'</code>.</li>
+      <li><b>Backend · PUT /retorno</b>: ahora acepta <code>cantidad_devuelta</code> (parcial) y <code>observaciones_no_devuelto</code>. Si <code>cantidad_devuelta &lt; cantidad_total</code>, las "faltantes" quedan registradas.</li>
+      <li><b>Backend · GET /api/reportes-produccion/costura</b>: agregar a la respuesta de cada item <code>muestras_activas</code> (suma de prendas con muestras en estado <code>en_destino</code> del registro).</li>
+      <li><b>Frontend móvil</b>:
+        <ul class="list-disc pl-5 mt-1">
+          <li><code>NuevaMuestraLavanderia.jsx</code> → rediseñar: chips de destino, persona según destino, cantidad como input principal, colores como sección plegable.</li>
+          <li><code>MuestrasLavanderia.jsx</code> → mostrar destino+persona, badge según estado, contadores arriba (Total / Sin volver / Cerradas). 2 sheets nuevos: Marcar retorno (con parcial) y Pasar a Lavandería.</li>
+          <li><code>ReporteOperativo.jsx</code> → mostrar pill <code>+m{n}</code> cuando <code>muestras_activas &gt; 0</code>. Tap → bottom sheet con desglose por muestra.</li>
+        </ul>
+      </li>
+    </ul>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl p-5 mt-6">
+    <h2 class="font-bold text-base mb-2">Entrada desde Home (sin corte preseleccionado)</h2>
+    <p class="text-sm text-slate-700 mb-2">
+      Diana también puede crear una muestra desde el launcher Home, sin entrar al detalle de un corte. En ese caso el flujo arranca con un <b>paso 0: elegir el corte de origen</b>. Dos vías:
+    </p>
+    <ul class="text-sm text-slate-700 space-y-1.5 list-disc pl-5">
+      <li><b>Escanear QR</b> del corte (reutiliza la pantalla <code class="bg-slate-100 px-1 rounded">/m/escanear</code> que ya existe). Al leerlo te lleva directo al paso 1 con el corte ya elegido.</li>
+      <li><b>Buscar manualmente</b> por número de corte o modelo (autocomplete). Atajos con cortes recientes.</li>
+    </ul>
+    <p class="text-sm text-slate-700 mt-2">
+      Una vez elegido el corte, el flujo es el mismo que desde el detalle del registro (pantallas 1 y 2 del mockup).
+    </p>
+    <p class="text-sm text-slate-700 mt-2">
+      Además agrego una entrada nueva <b>"Muestras"</b> en el Home → pantalla con <b>lista global</b> de todas las muestras (no solo de un corte), con filtros por estado y badge de muestras demoradas (más de 5 días sin volver).
+    </p>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl p-5 mt-6">
+    <h2 class="font-bold text-base mb-2">Endpoints nuevos para la lista global</h2>
+    <ul class="text-sm text-slate-700 space-y-1.5 list-disc pl-5">
+      <li><b>GET <code class="bg-slate-100 px-1 rounded">/api/muestras</code></b> (sin registro_id) · params: <code>estado</code> (en_destino|devuelta|cerrada|todas), <code>destino_tipo</code>, <code>search</code>, <code>limit</code>, <code>offset</code>. Devuelve items con datos del corte (n_corte, modelo) embebidos + KPIs.</li>
+      <li><b>Cálculo "demorada"</b>: <code>estado=en_destino</code> + <code>(hoy - fecha_envio) &gt; 5 días</code>. Se muestra como pill amber en la lista global y en la card individual.</li>
+    </ul>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl p-5 mt-6">
+    <h2 class="font-bold text-base mb-2">Lo que sigue dejado para después</h2>
+    <ul class="text-sm text-slate-700 space-y-1.5 list-disc pl-5">
+      <li>Decisión por color (aprobado/rechazado/corregir) — flujo actual ya funciona, no se toca.</li>
+      <li>Reenvíos de muestra rechazada — flujo actual sigue.</li>
+    </ul>
+  </div>
+
+  <div class="bg-amber-50 border border-amber-200 rounded-xl p-5 mt-6">
+    <h2 class="font-bold text-base mb-2">Para confirmar antes de pasar a código</h2>
+    <ul class="text-sm text-amber-900 space-y-1.5 list-disc pl-5">
+      <li>¿El nombre <b>"Pasar a Lavandería"</b> te suena bien para la acción desde Diseño? Alternativas: "Reenviar a Lavandería", "Derivar a Lavandería".</li>
+      <li>Cuando una muestra queda <b>DEVUELTA parcial</b> (volvieron 4 de 6), las 2 faltantes ¿cuentan como pérdida y se restan del stock del corte, o solo quedan registradas como información?</li>
+      <li>El pill <b>+m6</b> en el Reporte Operativo, ¿solo cuenta muestras EN DESTINO (sin volver todavía), o también incluye las que PASARON A LAVANDERÍA (porque dejaron de estar en el corte)?</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>
