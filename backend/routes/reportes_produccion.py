@@ -2616,7 +2616,28 @@ async def reporte_costura(
                 COALESCE(he.nombre, r.modelo_manual->>'hilo_especifico_texto', '') as hilo_especifico_nombre,
                 s.nombre as servicio_nombre,
                 (SELECT COUNT(*) FROM produccion.prod_incidencia i
-                 WHERE i.registro_id = r.id AND i.estado = 'ABIERTA') as incidencias_abiertas
+                 WHERE i.registro_id = r.id AND i.estado = 'ABIERTA') as incidencias_abiertas,
+                -- Suma de prendas en muestras activas (en_destino) del registro.
+                -- Sprint 43: para mostrar pill "+m{n}" en cada card del reporte.
+                -- Tolerante a viejas: si cantidad_total es NULL, sumamos desde colores.
+                -- Si estado_muestra es NULL, lo inferimos de fecha_retorno.
+                COALESCE((
+                    SELECT SUM(
+                               COALESCE(
+                                   mu.cantidad_total,
+                                   (SELECT COALESCE(SUM(c.cantidad), 0)::INTEGER
+                                      FROM prod_registro_muestra_colores c
+                                     WHERE c.muestra_id = mu.id)
+                               )
+                           )::INTEGER
+                      FROM prod_registro_muestras mu
+                     WHERE mu.registro_id = r.id
+                       AND CASE
+                               WHEN mu.estado_muestra IS NOT NULL THEN mu.estado_muestra
+                               WHEN mu.fecha_retorno IS NOT NULL THEN 'devuelta'
+                               ELSE 'en_destino'
+                           END = 'en_destino'
+                ), 0) as muestras_activas
             FROM produccion.prod_movimientos_produccion m
             JOIN produccion.prod_registros r ON r.id = m.registro_id
             JOIN produccion.prod_personas_produccion p ON p.id = m.persona_id
@@ -2718,6 +2739,8 @@ async def reporte_costura(
                 "urgente": d['urgente'],
                 "observaciones": d['registro_observaciones'] or d['mov_observaciones'] or None,
                 "servicio_nombre": d['servicio_nombre'],
+                # Sprint 43: prendas en muestras activas (sin volver) del registro.
+                "muestras_activas": int(d.get('muestras_activas') or 0),
             }
 
             # Aplicar filtros en Python (más simple que SQL dinámico)
@@ -5443,6 +5466,7 @@ async def cortes_listado(
     estado: Optional[str] = Query(None, description="Filtra por estado exacto (Para Corte, Costura, etc.)"),
     incluir_tienda: bool = Query(True, description="Si False, excluye cortes en estado 'Tienda'"),
     solo_pendientes_conciliar: bool = Query(False, description="Si True, solo cortes en Almacén PT/Tienda con conciliación pendiente o parcial"),
+    solo_fallados_abiertos: bool = Query(False, description="Si True, solo cortes con fallados aún sin resolver (sin enviar a arreglo o arreglo en proceso)"),
     limit: int = Query(500, le=2000),
     offset: int = 0,
     _u: dict = Depends(get_current_user),
@@ -5500,6 +5524,16 @@ async def cortes_listado(
                 " AND r.estado IN ('Almacen PT','Tienda') "
                 " AND COALESCE(conc.total_esperado, 0) > 0 "
                 " AND COALESCE(conc.total_ingresado, 0) < COALESCE(conc.total_esperado, 0) "
+            )
+        # Filtro: solo cortes con fallados aún abiertos. Cuenta como "abierto"
+        # cualquier prenda que el sistema sepa que NO se resolvió todavía:
+        #   - sin_enviar > 0  (detectado, todavía no fue a arreglo)
+        #   - en_proceso > 0  (mandado a arreglo pero el arreglo aún no
+        #                      está COMPLETADO)
+        if solo_fallados_abiertos:
+            having_conciliacion += (
+                " AND (COALESCE(fall.sin_enviar, 0) > 0 "
+                "      OR COALESCE(fall.en_proceso, 0) > 0) "
             )
 
         rows = await conn.fetch(f"""
@@ -5591,12 +5625,21 @@ async def cortes_listado(
                     COALESCE(a.recuperadas, 0)
                       + COALESCE(a.a_liquidacion, 0)
                       + COALESCE(a.a_merma, 0)
-                      + COALESCE(a.a_tela, 0)                                     AS resueltos,
+                      + COALESCE(a.a_tela, 0)
+                      + COALESCE(f.tela_resuelta, 0)                              AS resueltos,
                     COALESCE(a.en_proceso, 0)                                     AS en_proceso,
-                    GREATEST(COALESCE(f.detectados, 0) - COALESCE(a.enviadas, 0), 0) AS sin_enviar
+                    -- sin_enviar = detectados de SERVICIO no mandados a arreglo.
+                    -- Los fallados de tela (causa='tela') NO van por arreglo;
+                    -- se resuelven con cantidad_tela_recuperada/_liquidada y
+                    -- no deben contarse como "faltan enviar".
+                    GREATEST(COALESCE(f.detectados_servicio, 0) - COALESCE(a.enviadas, 0), 0) AS sin_enviar
                 FROM (SELECT 1) _dummy
                 LEFT JOIN LATERAL (
-                    SELECT SUM(cantidad_detectada) AS detectados
+                    SELECT
+                        SUM(cantidad_detectada)                                                 AS detectados,
+                        SUM(cantidad_detectada) FILTER (WHERE COALESCE(causa,'servicio') = 'servicio') AS detectados_servicio,
+                        SUM(COALESCE(cantidad_tela_recuperada,0) + COALESCE(cantidad_tela_liquidada,0))
+                          FILTER (WHERE causa = 'tela')                                          AS tela_resuelta
                     FROM produccion.prod_fallados
                     WHERE registro_id = r.id
                 ) f ON TRUE

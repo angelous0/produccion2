@@ -150,6 +150,7 @@ export const ReporteCortes = () => {
   const [estado, setEstado]       = useState('');
   const [incluirTienda, setIncluirTienda] = useState(true);
   const [soloPendientesConciliar, setSoloPendientesConciliar] = useState(false);
+  const [soloFalladosAbiertos, setSoloFalladosAbiertos] = useState(false);
   const [search, setSearch]       = useState('');
 
   // Resumen de conciliación (lo devuelve el backend en cada respuesta)
@@ -221,6 +222,7 @@ export const ReporteCortes = () => {
     if (estado)    params.set('estado',     estado);
     params.set('incluir_tienda', String(incluirTienda));
     if (soloPendientesConciliar) params.set('solo_pendientes_conciliar', 'true');
+    if (soloFalladosAbiertos) params.set('solo_fallados_abiertos', 'true');
     params.set('limit', '1000');
 
     return axios.get(`${API}/reportes-produccion/cortes-listado?${params}`)
@@ -231,7 +233,7 @@ export const ReporteCortes = () => {
       })
       .catch(() => { setItems([]); setTotal(0); setResumenConc(null); })
       .finally(() => setLoading(false));
-  }, [marcaId, tipoId, entalleId, telaId, estado, incluirTienda, soloPendientesConciliar]);
+  }, [marcaId, tipoId, entalleId, telaId, estado, incluirTienda, soloPendientesConciliar, soloFalladosAbiertos]);
 
   // Refetch cada vez que cambia un filtro (excepto search que es client-side)
   useEffect(() => { fetchCortes(); }, [fetchCortes]);
@@ -426,6 +428,17 @@ export const ReporteCortes = () => {
                 <Label htmlFor="sw-conc" className="text-xs cursor-pointer flex items-center gap-1">
                   <AlertCircle className="h-3 w-3 text-amber-600" />
                   Solo pendientes de conciliar (Almacén PT/Tienda)
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={soloFalladosAbiertos}
+                  onCheckedChange={setSoloFalladosAbiertos}
+                  id="sw-fall"
+                />
+                <Label htmlFor="sw-fall" className="text-xs cursor-pointer flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3 text-amber-600" />
+                  Solo con fallados abiertos (sin enviar o en proceso)
                 </Label>
               </div>
             </div>
