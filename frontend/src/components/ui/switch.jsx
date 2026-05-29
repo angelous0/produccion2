@@ -6,9 +6,14 @@ import { cn } from "@/lib/utils"
 const Switch = React.forwardRef(({ className, ...props }, ref) => (
   <SwitchPrimitives.Root
     className={cn(
-      "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=unchecked]:bg-zinc-300 dark:data-[state=unchecked]:bg-zinc-600",
+      "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
       className
     )}
+    // Estilo inline con hex puro para evitar problemas de Tailwind tree-shaking.
+    // OFF = plomo medio (#94a3b8 = slate-400) | ON = azul primary derivado del tema.
+    style={{
+      backgroundColor: props.checked ? 'hsl(221 83% 53%)' : '#94a3b8',
+    }}
     {...props}
     ref={ref}>
     <SwitchPrimitives.Thumb

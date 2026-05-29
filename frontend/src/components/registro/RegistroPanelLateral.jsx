@@ -142,8 +142,16 @@ export const RegistroPanelLateral = ({
               <span className="registro-panel-stat-label">Prendas</span>
               {(() => {
                 const cantOriginal = tallasSeleccionadas.reduce((sum, t) => sum + (t.cantidad || 0), 0);
-                const ultimoMov = movimientosProduccion && movimientosProduccion.length > 0
-                  ? movimientosProduccion[movimientosProduccion.length - 1] : null;
+                // El backend devuelve los movimientos ORDER BY created_at DESC
+                // (más reciente primero). Antes hacíamos [length-1] (más viejo)
+                // y eso traía el primer movimiento (típicamente Corte con
+                // cantidad=0 si todavía no se cargó) y mostraba "0 tachando 607".
+                // Buscamos el ÚLTIMO movimiento que tenga cantidad_recibida > 0
+                // para reflejar correctamente la merma real.
+                const movs = movimientosProduccion || [];
+                const ultimoMov = movs.find(m =>
+                  (m.cantidad_recibida ?? m.cantidad ?? 0) > 0
+                ) || null;
                 const cantEfectiva = ultimoMov
                   ? (ultimoMov.cantidad_recibida ?? ultimoMov.cantidad ?? cantOriginal) : cantOriginal;
                 const hayMerma = cantEfectiva < cantOriginal;
