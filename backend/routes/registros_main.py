@@ -945,8 +945,40 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
                         detail="No se puede cambiar la línea de negocio: el registro ya tiene consumos o movimientos asociados."
                     )
         
-        tallas_json = json.dumps([t.model_dump() for t in input.tallas])
-        dist_json = json.dumps([d.model_dump() for d in input.distribucion_colores])
+        # Mismo guard que distribucion_colores: si tallas vienen vacías y la
+        # DB ya tenía un JSON con datos, preservar lo existente (evita que un
+        # PUT parcial que no envíe tallas borre el JSONB legacy).
+        if not input.tallas:
+            existing_tallas = await conn.fetchval(
+                "SELECT tallas FROM prod_registros WHERE id = $1",
+                registro_id,
+            )
+            if existing_tallas and existing_tallas != '[]' and existing_tallas != []:
+                tallas_json = existing_tallas if isinstance(existing_tallas, str) else json.dumps(existing_tallas)
+            else:
+                tallas_json = '[]'
+        else:
+            tallas_json = json.dumps([t.model_dump() for t in input.tallas])
+        # Bug histórico: cuando una pantalla (ej. móvil) hace PUT al registro
+        # solo para cambiar estado/urgente sin enviar `distribucion_colores`,
+        # Pydantic la setea como [] por default y el UPDATE borra la matriz.
+        # Fix: si la entrada es vacía Y la DB ya tenía colores, preservar lo
+        # existente. Vaciar la matriz a propósito desde el form sigue siendo
+        # posible si el usuario realmente la deja vacía (la UI igual envía []
+        # cuando se vacía conscientemente — pero ese caso casi nunca pasa
+        # y el costo de proteger 124+ cortes pesa más).
+        if not input.distribucion_colores:
+            existing_dist = await conn.fetchval(
+                "SELECT distribucion_colores FROM prod_registros WHERE id = $1",
+                registro_id,
+            )
+            if existing_dist and existing_dist != '[]' and existing_dist != []:
+                # Preservar matriz existente (ya viene serializada como JSONB/text desde la DB)
+                dist_json = existing_dist if isinstance(existing_dist, str) else json.dumps(existing_dist)
+            else:
+                dist_json = '[]'
+        else:
+            dist_json = json.dumps([d.model_dump() for d in input.distribucion_colores])
         fecha_ef = None
         if input.fecha_entrega_final:
             try:
@@ -959,7 +991,21 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
                 fecha_ir = date.fromisoformat(input.fecha_inicio_real)
             except Exception:
                 fecha_ir = None
-        modelo_manual_json = json.dumps(input.modelo_manual.model_dump()) if input.modelo_manual else None
+        # Mismo guard que tallas/distribucion_colores: si modelo_manual viene
+        # como None Y el registro YA tenía un modelo_manual guardado, preservar
+        # lo existente. Esto evita que un PUT parcial (ej. solo cambio de
+        # estado) borre el modelo (caso real: corte 050 YRION perdido el 29/05).
+        if input.modelo_manual is None and input.modelo_id is None:
+            existing_mm = await conn.fetchval(
+                "SELECT modelo_manual FROM prod_registros WHERE id = $1",
+                registro_id,
+            )
+            if existing_mm and existing_mm not in ('null', '{}', {}):
+                modelo_manual_json = existing_mm if isinstance(existing_mm, str) else json.dumps(existing_mm)
+            else:
+                modelo_manual_json = None
+        else:
+            modelo_manual_json = json.dumps(input.modelo_manual.model_dump()) if input.modelo_manual else None
         await conn.execute(
             """UPDATE prod_registros SET n_corte=$1, modelo_id=$2, curva=$3, estado=$4, urgente=$5, hilo_especifico_id=$6, tallas=$7, distribucion_colores=$8, pt_item_id=$9, observaciones=$10, linea_negocio_id=$11, fecha_entrega_final=$13, fecha_inicio_real=$14, modelo_manual=$15 WHERE id=$12""",
             input.n_corte, input.modelo_id, input.curva, _canonizar_estado(input.estado), input.urgente, input.hilo_especifico_id, tallas_json, dist_json, input.pt_item_id, input.observaciones, input.linea_negocio_id, registro_id, fecha_ef, fecha_ir, modelo_manual_json
@@ -997,18 +1043,22 @@ async def update_registro(registro_id: str, input: RegistroCreate, current_user:
                     registro_id,
                 )
         
-        # Sincronizar prod_registro_tallas con las cantidades del JSON
-        await conn.execute("DELETE FROM prod_registro_tallas WHERE registro_id = $1", registro_id)
-        empresa_id = 7  # FK válido para cont_empresa
-        for t in input.tallas:
-            td = t.model_dump()
-            cant = td.get('cantidad', 0)
-            if cant > 0:
-                await conn.execute(
-                    """INSERT INTO prod_registro_tallas (id, registro_id, talla_id, cantidad_real, empresa_id, created_at, updated_at)
-                       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
-                    str(uuid.uuid4()), registro_id, td['talla_id'], cant, empresa_id
-                )
+        # Sincronizar prod_registro_tallas con las cantidades del JSON.
+        # GUARD: si input.tallas viene vacío Y ya existen tallas en DB,
+        # NO borrar (un PUT parcial sin tallas no debe limpiar las cantidades
+        # físicas registradas). Solo sincronizamos cuando input trae tallas.
+        if input.tallas:
+            await conn.execute("DELETE FROM prod_registro_tallas WHERE registro_id = $1", registro_id)
+            empresa_id = 7  # FK válido para cont_empresa
+            for t in input.tallas:
+                td = t.model_dump()
+                cant = td.get('cantidad', 0)
+                if cant > 0:
+                    await conn.execute(
+                        """INSERT INTO prod_registro_tallas (id, registro_id, talla_id, cantidad_real, empresa_id, created_at, updated_at)
+                           VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
+                        str(uuid.uuid4()), registro_id, td['talla_id'], cant, empresa_id
+                    )
         
         datos_despues = {"estado": input.estado, "n_corte": input.n_corte,
                          "linea_negocio_id": input.linea_negocio_id, "urgente": input.urgente}
@@ -1041,6 +1091,72 @@ async def delete_registro(registro_id: str, _u=Depends(require_permission("regis
         await conn.execute("DELETE FROM prod_registros WHERE id = $1", registro_id)
         return {"message": "Registro y datos relacionados eliminados"}
 
+def _calcular_transiciones(etapas_visibles: list, estado_actual: str) -> dict:
+    """Calcula las transiciones posibles desde el estado actual.
+
+    Devuelve:
+      siguientes_directos: lista de etapas (objetos) que son el próximo paso normal.
+                           Usualmente 1 sola. Si la etapa inmediata es opcional,
+                           se pueden devolver más (ver siguientes_salto).
+      siguientes_salto:    etapas posteriores accesibles saltando etapas opcionales.
+      otros_adelante:      todo lo demás hacia adelante (admin).
+      otros_atras:         etapas previas (admin / re-trabajo).
+      es_final:            True si no hay nada hacia adelante.
+    """
+    # Encontrar índice del estado actual entre las etapas visibles
+    idx = next(
+        (i for i, e in enumerate(etapas_visibles) if e.get('nombre') == estado_actual),
+        None,
+    )
+
+    if idx is None:
+        # El estado actual no aparece en la ruta visible → ofrecer todo como "otros"
+        return {
+            "siguientes_directos": [],
+            "siguientes_salto": [],
+            "otros_adelante": [e for e in etapas_visibles],
+            "otros_atras": [],
+            "es_final": False,
+        }
+
+    adelante = etapas_visibles[idx + 1:]
+    atras = etapas_visibles[:idx]
+
+    if not adelante:
+        return {
+            "siguientes_directos": [],
+            "siguientes_salto": [],
+            "otros_adelante": [],
+            "otros_atras": atras,
+            "es_final": True,
+        }
+
+    # El siguiente inmediato siempre es candidato directo
+    siguientes_directos = [adelante[0]]
+    siguientes_salto = []
+
+    # Si la siguiente etapa es opcional, también ofrecer las que vienen después
+    # hasta encontrar una obligatoria (o agotar la lista).
+    # Esto cubre: Atraque opcional → ofrecer también Para Lavandería como salto.
+    for i in range(1, len(adelante)):
+        previa = adelante[i - 1]
+        if previa.get('obligatorio', True) is False:
+            siguientes_salto.append(adelante[i])
+        else:
+            break
+
+    nombres_usados = {e['nombre'] for e in siguientes_directos + siguientes_salto}
+    otros_adelante = [e for e in adelante if e['nombre'] not in nombres_usados]
+
+    return {
+        "siguientes_directos": siguientes_directos,
+        "siguientes_salto": siguientes_salto,
+        "otros_adelante": otros_adelante,
+        "otros_atras": atras,
+        "es_final": False,
+    }
+
+
 @router.get("/registros/{registro_id}/estados-disponibles")
 async def get_estados_disponibles_registro(registro_id: str, _u=Depends(require_permission("registros", "ver"))):
     pool = await get_pool()
@@ -1048,9 +1164,10 @@ async def get_estados_disponibles_registro(registro_id: str, _u=Depends(require_
         registro = await conn.fetchrow("SELECT * FROM prod_registros WHERE id = $1", registro_id)
         if not registro:
             raise HTTPException(status_code=404, detail="Registro no encontrado")
-        
+
         # Obtener ruta: modelo catalogado primero, fallback al tipo del modelo_manual.
         ruta_id = await _ruta_id_para_registro(conn, registro)
+        estado_actual = registro['estado']
 
         if ruta_id:
             ruta = await conn.fetchrow("SELECT etapas, nombre FROM prod_rutas_produccion WHERE id = $1", ruta_id)
@@ -1058,17 +1175,39 @@ async def get_estados_disponibles_registro(registro_id: str, _u=Depends(require_
                 etapas = ruta['etapas'] if isinstance(ruta['etapas'], list) else json.loads(ruta['etapas'])
                 etapas_sorted = sorted(etapas, key=lambda e: e.get('orden', 0))
                 # Solo mostrar etapas con aparece_en_estado=true (default true para compatibilidad)
-                estados = [e['nombre'] for e in etapas_sorted if e.get('nombre') and e.get('aparece_en_estado', True)]
+                etapas_visibles = [e for e in etapas_sorted if e.get('nombre') and e.get('aparece_en_estado', True)]
+                estados = [e['nombre'] for e in etapas_visibles]
+
+                # Sprint 44: calcular transiciones tipo "siguiente paso" según la ruta
+                transiciones = _calcular_transiciones(etapas_visibles, estado_actual)
+
                 return {
+                    # Campos legacy (no rompo el sheet viejo si alguien lo usa)
                     "estados": estados,
                     "usa_ruta": True,
                     "ruta_nombre": ruta['nombre'],
-                    "estado_actual": registro['estado'],
-                    "etapas_completas": etapas_sorted
+                    "estado_actual": estado_actual,
+                    "etapas_completas": etapas_sorted,
+                    # Campos nuevos v2 (Sprint 44)
+                    "siguientes_directos": transiciones["siguientes_directos"],
+                    "siguientes_salto": transiciones["siguientes_salto"],
+                    "otros_adelante": transiciones["otros_adelante"],
+                    "otros_atras": transiciones["otros_atras"],
+                    "es_final": transiciones["es_final"],
                 }
-        
+
         # Fallback: lista genérica si no hay ruta
-        return {"estados": ESTADOS_PRODUCCION, "usa_ruta": False, "estado_actual": registro['estado']}
+        return {
+            "estados": ESTADOS_PRODUCCION,
+            "usa_ruta": False,
+            "estado_actual": estado_actual,
+            # Campos nuevos vacíos para que el frontend siempre los reciba
+            "siguientes_directos": [],
+            "siguientes_salto": [],
+            "otros_adelante": [],
+            "otros_atras": [],
+            "es_final": False,
+        }
 
 
 @router.get("/registros/{registro_id}/analisis-estado")
