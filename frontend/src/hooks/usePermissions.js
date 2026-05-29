@@ -121,7 +121,6 @@ export const usePermissions = (tabla) => {
  */
 export const RUTA_A_TABLA = {
   '/': 'dashboard',
-  '/muestras': 'muestras',
   '/productos-odoo': 'productos_odoo',
   '/marcas': 'marcas',
   '/generos': 'generos',

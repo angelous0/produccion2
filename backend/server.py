@@ -39,7 +39,6 @@ from routes.distribucion_pt import router as distribucion_pt_router, init_distri
 from routes.kardex_pt import router as kardex_pt_router
 from routes.import_excel import router as import_excel_router
 from routes.salidas_libres import router as salidas_libres_router
-from routes.muestras import router as muestras_router
 from routes.muestras_lavanderia import router as muestras_lavanderia_router
 from routes.odoo_enriq import router as odoo_enriq_router
 from routes.odoo_tienda import router as odoo_tienda_router
@@ -250,7 +249,6 @@ app.include_router(notificaciones_router)
 app.include_router(distribucion_pt_router)
 app.include_router(kardex_pt_router)
 app.include_router(salidas_libres_router)
-app.include_router(muestras_router)
 app.include_router(muestras_lavanderia_router)
 app.include_router(odoo_tienda_router)
 app.include_router(odoo_enriq_router)

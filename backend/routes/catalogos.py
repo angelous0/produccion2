@@ -1753,29 +1753,8 @@ async def desactivar_modo_migracion(current_user: dict = Depends(get_current_use
                         )
                 await conn.execute("DELETE FROM prod_salidas_libres WHERE id = $1", sl["id"])
 
-            # Materiales de muestras
-            mmats = await conn.fetch(
-                """SELECT mm.id, mm.item_id, mm.cantidad, mm.detalle_fifo
-                   FROM prod_muestras_materiales mm
-                   WHERE mm.created_at >= $1 AND mm.en_migracion = TRUE""",
-                activado_at,
-            )
-            for mm in mmats:
-                await conn.execute(
-                    "UPDATE prod_inventario SET stock_actual = stock_actual + $1 WHERE id = $2",
-                    float(mm["cantidad"]), mm["item_id"],
-                )
-                detalle = mm["detalle_fifo"]
-                if isinstance(detalle, str):
-                    try: detalle = json.loads(detalle)
-                    except Exception: detalle = []
-                for capa in (detalle if isinstance(detalle, list) else []):
-                    if capa.get("ingreso_id") and capa.get("cantidad"):
-                        await conn.execute(
-                            "UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible + $1 WHERE id = $2",
-                            float(capa["cantidad"]), capa["ingreso_id"],
-                        )
-                await conn.execute("DELETE FROM prod_muestras_materiales WHERE id = $1", mm["id"])
+            # (Bloque "Materiales de muestras" eliminado — tabla prod_muestras_materiales
+            #  fue dada de baja junto con el sistema legacy de muestras de venta.)
 
             # Cerrar el período
             await conn.execute(

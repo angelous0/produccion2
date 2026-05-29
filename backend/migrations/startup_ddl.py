@@ -625,6 +625,115 @@ async def ensure_clasificacion_tables():
             "ALTER TABLE prod_registro_muestras ADD COLUMN IF NOT EXISTS persona_lavanderia_id VARCHAR"
         )
 
+        # ── Muestras v2 (Sprint 43) ────────────────────────────────────────
+        # Se amplía el modelo para soportar 2 tipos de destino (lavandería /
+        # diseño) y un estado_muestra explícito con 4 posibles valores:
+        #   en_destino          → recién enviada, en manos del destinatario
+        #   devuelta            → volvió al corte (total o parcial)
+        #   paso_a_lavanderia   → estaba en Diseño, se mandó a una lavandería
+        #   cerrada_en_lavanderia → fue directo a Lavandería y se quedó (igual a devuelta para flujo legacy)
+        #
+        # Columnas nuevas, todas NULLABLE para no romper inserts viejos.
+        # Backfill idempotente más abajo (WHERE columna IS NULL).
+        await conn.execute(
+            "ALTER TABLE prod_registro_muestras ADD COLUMN IF NOT EXISTS destino_tipo VARCHAR DEFAULT 'lavanderia'"
+        )
+        # persona_id generaliza persona_lavanderia_id: para Lavandería apunta a la lavandería,
+        # para Diseño apunta a la persona del área Diseño que recibe.
+        await conn.execute(
+            "ALTER TABLE prod_registro_muestras ADD COLUMN IF NOT EXISTS persona_id VARCHAR"
+        )
+        # Cantidad total de prendas a nivel muestra (independiente de colores).
+        # Permite crear muestras sin definir colores aún.
+        await conn.execute(
+            "ALTER TABLE prod_registro_muestras ADD COLUMN IF NOT EXISTS cantidad_total INTEGER"
+        )
+        # Estado actual de la muestra (ver enum arriba). Default cubre las recién creadas.
+        await conn.execute(
+            "ALTER TABLE prod_registro_muestras ADD COLUMN IF NOT EXISTS estado_muestra VARCHAR DEFAULT 'en_destino'"
+        )
+        # Cantidad efectivamente devuelta (puede ser parcial: 4 de 6).
+        # NULL = no se marcó retorno todavía; igual a cantidad_total = devolución completa.
+        await conn.execute(
+            "ALTER TABLE prod_registro_muestras ADD COLUMN IF NOT EXISTS cantidad_devuelta INTEGER"
+        )
+        # Si la muestra estaba en Diseño y pasó a Lavandería, registramos cuándo y a qué lavandería.
+        await conn.execute(
+            "ALTER TABLE prod_registro_muestras ADD COLUMN IF NOT EXISTS fecha_paso_lavanderia DATE"
+        )
+        await conn.execute(
+            "ALTER TABLE prod_registro_muestras ADD COLUMN IF NOT EXISTS persona_lavanderia_posterior_id VARCHAR"
+        )
+        # Solo para destino=diseno: por qué Diana mandó la prenda (medidas|evaluacion|consulta|otro).
+        await conn.execute(
+            "ALTER TABLE prod_registro_muestras ADD COLUMN IF NOT EXISTS motivo_diseno VARCHAR"
+        )
+        # Cuando hay retorno parcial, comentario explicando por qué no volvieron todas.
+        await conn.execute(
+            "ALTER TABLE prod_registro_muestras ADD COLUMN IF NOT EXISTS obs_no_devuelto TEXT"
+        )
+
+        # ── Backfill idempotente: muestras viejas (todas eran a lavandería) ──
+        # destino_tipo: si NULL, marcamos como lavandería (única opción que existía).
+        await conn.execute(
+            "UPDATE prod_registro_muestras SET destino_tipo = 'lavanderia' WHERE destino_tipo IS NULL"
+        )
+        # persona_id: copiamos persona_lavanderia_id donde quepa (para mantener compatibilidad).
+        await conn.execute(
+            "UPDATE prod_registro_muestras SET persona_id = persona_lavanderia_id WHERE persona_id IS NULL AND persona_lavanderia_id IS NOT NULL"
+        )
+        # cantidad_total: suma de los colores existentes (solo cuando NULL para no pisar valores editados).
+        await conn.execute("""
+            UPDATE prod_registro_muestras m
+               SET cantidad_total = COALESCE((
+                       SELECT SUM(cantidad)::INTEGER
+                         FROM prod_registro_muestra_colores c
+                        WHERE c.muestra_id = m.id
+                   ), 0)
+             WHERE cantidad_total IS NULL
+        """)
+        # estado_muestra: si tiene fecha_retorno → 'devuelta', si no → 'en_destino'.
+        await conn.execute("""
+            UPDATE prod_registro_muestras
+               SET estado_muestra = CASE
+                       WHEN fecha_retorno IS NOT NULL THEN 'devuelta'
+                       ELSE 'en_destino'
+                   END
+             WHERE estado_muestra IS NULL
+        """)
+        # cantidad_devuelta: para las viejas marcadas con fecha_retorno, asumimos devolución total.
+        await conn.execute("""
+            UPDATE prod_registro_muestras
+               SET cantidad_devuelta = cantidad_total
+             WHERE cantidad_devuelta IS NULL
+               AND fecha_retorno IS NOT NULL
+               AND cantidad_total IS NOT NULL
+        """)
+
+        # Índice para la lista global rápida (ordenar por estado + fecha de envío).
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_muestras_global ON prod_registro_muestras(estado_muestra, fecha_envio DESC)"
+        )
+
+        # ── Servicio "Diseño" en catálogo ──
+        # Insertamos si no existe (para que el endpoint GET /muestras/personas-diseno
+        # pueda filtrar personas que tengan este servicio en su array JSONB).
+        # No usamos ON CONFLICT porque la tabla no tiene UNIQUE en nombre.
+        await conn.execute("""
+            INSERT INTO prod_servicios_produccion (id, nombre, descripcion, orden, usa_avance_porcentaje, es_simple, created_at)
+            SELECT gen_random_uuid()::text,
+                   'Diseño',
+                   'Área interna de diseño — recibe muestras para medidas, evaluación o consulta.',
+                   COALESCE((SELECT MAX(orden) FROM prod_servicios_produccion), 0) + 1,
+                   FALSE,
+                   TRUE,
+                   NOW()
+             WHERE NOT EXISTS (
+                       SELECT 1 FROM prod_servicios_produccion
+                        WHERE LOWER(nombre) = 'diseño' OR LOWER(nombre) = 'diseno'
+                   )
+        """)
+
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS prod_registro_muestra_colores (
                 id SERIAL PRIMARY KEY,
@@ -734,55 +843,11 @@ async def ensure_salidas_libres_tables():
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_salidas_libres_fecha ON prod_salidas_libres(fecha DESC)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_salidas_libres_tipo ON prod_salidas_libres(tipo_salida)")
 
-        # ── Muestras ────────────────────────────────────────────────────────
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS prod_muestras (
-                id VARCHAR PRIMARY KEY,
-                codigo VARCHAR,
-                cliente VARCHAR,
-                fecha_envio DATE,
-                modelo_id VARCHAR,
-                modelo_nombre VARCHAR,
-                linea_negocio_id INT,
-                estado VARCHAR NOT NULL DEFAULT 'PENDIENTE',
-                observaciones TEXT,
-                costo_total NUMERIC(14,6) DEFAULT 0,
-                usuario_creador VARCHAR,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestras_estado ON prod_muestras(estado)")
-        await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestras_fecha ON prod_muestras(fecha_envio DESC)")
-
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS prod_muestras_materiales (
-                id VARCHAR PRIMARY KEY,
-                muestra_id VARCHAR NOT NULL,
-                item_id VARCHAR NOT NULL,
-                cantidad NUMERIC(14,4) NOT NULL,
-                costo_unitario NUMERIC(14,6) DEFAULT 0,
-                costo_total NUMERIC(14,6) DEFAULT 0,
-                detalle_fifo JSONB DEFAULT '[]',
-                en_migracion BOOLEAN DEFAULT FALSE,
-                observaciones TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestras_mat_muestra ON prod_muestras_materiales(muestra_id)")
-
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS prod_muestras_historial_estado (
-                id VARCHAR PRIMARY KEY,
-                muestra_id VARCHAR NOT NULL,
-                estado_anterior VARCHAR,
-                estado_nuevo VARCHAR NOT NULL,
-                comentario TEXT,
-                usuario VARCHAR,
-                fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await conn.execute("CREATE INDEX IF NOT EXISTS idx_muestras_hist_muestra ON prod_muestras_historial_estado(muestra_id)")
+        # ── Muestras (legacy) ───────────────────────────────────────────────
+        # El sistema viejo de prod_muestras / prod_muestras_materiales /
+        # prod_muestras_historial_estado fue dado de baja. El sistema vigente
+        # es prod_registro_muestras (Sprint 43, atado a un corte).
+        # Las CREATE TABLE de las 3 tablas legacy se eliminaron de este DDL.
 
 
 async def ensure_notificaciones_tables():

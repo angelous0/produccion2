@@ -78,8 +78,6 @@ const AuditoriaLogs = lazy(() => import("./pages/AuditoriaLogs").then(m => ({ de
 const ValorizacionConsolidado = lazy(() => import("./pages/ValorizacionConsolidado").then(m => ({ default: m.ValorizacionConsolidado })));
 const CalidadConsolidado = lazy(() => import("./pages/CalidadConsolidado").then(m => ({ default: m.CalidadConsolidado })));
 const SalidasLibres = lazy(() => import("./pages/SalidasLibres").then(m => ({ default: m.SalidasLibres })));
-const Muestras = lazy(() => import("./pages/Muestras").then(m => ({ default: m.Muestras })));
-const MuestraDetalle = lazy(() => import("./pages/MuestraDetalle").then(m => ({ default: m.MuestraDetalle })));
 const ValidacionRegistros = lazy(() => import("./pages/ValidacionRegistros").then(m => ({ default: m.ValidacionRegistros })));
 const SeguimientoTienda = lazy(() => import("./pages/SeguimientoTienda"));
 const ReporteCortes = lazy(() => import("./pages/ReporteCortes").then(m => ({ default: m.ReporteCortes })));
@@ -214,8 +212,6 @@ function AppRoutes() {
         <Route path="inventario/alertas-stock" element={<LazyWrap><ReporteStockBajo /></LazyWrap>} />
         <Route path="inventario/transferencias-linea" element={<LazyWrap><TransferenciasLinea /></LazyWrap>} />
         <Route path="inventario/salidas-libres" element={<LazyWrap><SalidasLibres /></LazyWrap>} />
-        <Route path="muestras" element={<LazyWrap><Muestras /></LazyWrap>} />
-        <Route path="muestras/:id" element={<LazyWrap><MuestraDetalle /></LazyWrap>} />
         <Route path="productos-odoo" element={<LazyWrap><ProductosOdoo /></LazyWrap>} />
         <Route path="maestros/servicios" element={<LazyWrap><ServiciosProduccion /></LazyWrap>} />
         <Route path="maestros/personas" element={<LazyWrap><PersonasProduccion /></LazyWrap>} />

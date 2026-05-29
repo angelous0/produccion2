@@ -121,7 +121,6 @@ const operacionesItems = [
   { to: '/mesa-acabado', icon: ClipboardCheck, label: 'Mesa de Acabado' },
   { to: '/cortes-calidad', icon: Shield, label: 'Cortes Calidad' },
   { to: '/fallados-tablero', icon: ClipboardList, label: 'Fallados Tablero' },
-  { to: '/muestras', icon: FlaskConical, label: 'Muestras' },
 ];
 
 const odooItems = [
