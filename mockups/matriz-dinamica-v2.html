@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Matriz dinámica · propuesta de mejoras</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { --brand: #0f766e; --ink: #0f172a; --muted: #64748b; }
+  body { background: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  .frame { background: white; border-radius: 14px; box-shadow: 0 10px 40px -10px rgba(0,0,0,.15); overflow: hidden; max-width: 1280px; margin: 32px auto; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .pill-red { background: #fee2e2; color: #b91c1c; }
+  .pill-amber { background: #fef3c7; color: #b45309; }
+  .pill-green { background: #dcfce7; color: #15803d; }
+  .pill-blue { background: #dbeafe; color: #1d4ed8; }
+  .pill-gray { background: #e5e7eb; color: #475569; }
+
+  /* Heatmap cell colors */
+  .heat-0 { background: #f8fafc; color: #94a3b8; }
+  .heat-1 { background: #ccfbf1; color: #115e59; }
+  .heat-2 { background: #5eead4; color: #064e3b; }
+  .heat-3 { background: #14b8a6; color: white; }
+  .heat-4 { background: #0f766e; color: white; }
+  .heat-warn { background: #fef3c7; color: #92400e; }
+  .heat-danger { background: #fecaca; color: #b91c1c; }
+</style>
+</head>
+<body>
+
+<div class="max-w-5xl mx-auto px-8 pt-12 pb-6">
+  <h1 class="text-3xl font-bold">Matriz dinámica · mejoras propuestas</h1>
+  <p class="text-slate-600 mt-2 text-lg">
+    El reporte actual <code class="bg-slate-200 px-1 rounded">MatrizProduccion.jsx</code> tiene <b>1 555 líneas</b> y mucha funcionalidad,
+    pero también <b>sobrecarga visual</b>. Te propongo 6 mejoras concretas que reducen ruido sin perder potencia.
+  </p>
+
+  <!-- Resumen pain points -->
+  <div class="grid grid-cols-2 gap-3 mt-6">
+    <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+      <div class="text-xs text-red-700 font-bold uppercase tracking-wider mb-2">😵 Problemas que vi hoy</div>
+      <ul class="text-sm space-y-1.5 list-disc pl-5 text-red-900">
+        <li>7 filtros + 3 toggles + selectores + resize → <b>avión de carga</b></li>
+        <li><b>Sin filtro de fecha</b>: no hay forma de ver "este mes"</li>
+        <li>Es <b>solo tabla</b>: ningún heatmap, ningún color visual</li>
+        <li>El detalle es modal: <b>perdés el contexto</b> del scroll</li>
+        <li>No hay vistas guardadas reusables</li>
+        <li><b>Sin comparativa</b> con período anterior o target</li>
+      </ul>
+    </div>
+    <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+      <div class="text-xs text-emerald-700 font-bold uppercase tracking-wider mb-2">✅ Lo que sí está bien</div>
+      <ul class="text-sm space-y-1.5 list-disc pl-5 text-emerald-900">
+        <li>Toggle Registros / Prendas</li>
+        <li>Vista plana ↔ jerárquica</li>
+        <li>Configuración de columnas (mostrar/ocultar/fusionar)</li>
+        <li>Persistencia en localStorage</li>
+        <li>Modal de detalle con drill-down</li>
+        <li>Click directo en celda</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- ANTES — captura aproximada                                              -->
+<!-- ====================================================================== -->
+<div class="max-w-5xl mx-auto px-8 mt-12">
+  <div class="text-[11px] text-red-700 uppercase tracking-wider font-bold mb-1">ANTES · como está hoy</div>
+  <h2 class="text-xl font-bold">Captura aproximada del estado actual</h2>
+</div>
+
+<div class="frame">
+  <div class="bg-slate-100 border-b border-slate-200 px-6 py-3 flex items-center gap-3">
+    <button class="text-slate-500">←</button>
+    <h2 class="font-bold">Matriz de Producción</h2>
+    <span class="text-xs text-slate-500">Click en una celda o fila para ver detalle completo</span>
+  </div>
+
+  <!-- Filtros densos -->
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-3">
+    <div class="flex flex-wrap gap-2 items-center text-xs">
+      <select class="border rounded px-2 py-1"><option>Ruta...</option></select>
+      <select class="border rounded px-2 py-1"><option>Marca...</option></select>
+      <select class="border rounded px-2 py-1"><option>Tipo...</option></select>
+      <select class="border rounded px-2 py-1"><option>Entalle...</option></select>
+      <select class="border rounded px-2 py-1"><option>Tela...</option></select>
+      <select class="border rounded px-2 py-1"><option>Hilo...</option></select>
+      <select class="border rounded px-2 py-1"><option>Modelo...</option></select>
+      <span class="ml-2">☑ Solo activos</span>
+      <span>☐ Solo atrasados</span>
+      <span>☐ Solo fraccionados</span>
+    </div>
+    <div class="flex gap-2 mt-2 text-xs">
+      <span class="bg-slate-200 rounded p-1">Registros|Prendas</span>
+      <span class="bg-slate-200 rounded p-1">Plana|Jerárquica</span>
+      <span class="bg-slate-200 rounded p-1">⚙ Columnas</span>
+      <span class="ml-auto pill pill-gray">12/12 col</span>
+      <span class="pill pill-gray">142 items</span>
+    </div>
+  </div>
+
+  <!-- Tabla densa de ejemplo · valores reales del sistema (capturas del usuario) -->
+  <div class="px-4 py-3 overflow-auto">
+    <div class="text-[10px] text-slate-500 mb-2"><b>ITEM</b> = combinación de Marca · Tipo · Entalle · Tela (las filas son agrupaciones por esos 4 ejes, no por nombre de modelo individual). El segundo eje es el <b>Hilo</b> general.</div>
+    <table class="w-full text-xs">
+      <thead class="bg-slate-100 text-[10px] uppercase">
+        <tr>
+          <th class="p-1.5 border text-left">Item</th>
+          <th class="p-1.5 border">Hilo</th>
+          <th class="p-1.5 border">Para C.</th>
+          <th class="p-1.5 border">Corte</th>
+          <th class="p-1.5 border">Para Cos.</th>
+          <th class="p-1.5 border">Costura</th>
+          <th class="p-1.5 border">Para Lav.<br><span class="text-[8px] normal-case">+Atraque, Para Atr.</span></th>
+          <th class="p-1.5 border">Lavandería</th>
+          <th class="p-1.5 border">Para Acab.</th>
+          <th class="p-1.5 border">Acabado</th>
+          <th class="p-1.5 border">Alm. PT<br><span class="text-[8px] normal-case">+Producto T.</span></th>
+          <th class="p-1.5 border bg-slate-200">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="p-1 border">Element Premium · Pantalón · Semipitillo · Comfort</td><td class="p-1 border text-center">Color</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">4</td><td class="p-1 border text-center">4</td><td class="p-1 border text-center">4</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center bg-slate-100 font-bold">12</td></tr>
+        <tr><td class="p-1 border">Element Premium · Pantalón · Semipitillo · Comfort</td><td class="p-1 border text-center">Negro</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">2</td><td class="p-1 border text-center">4</td><td class="p-1 border text-center">1</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center bg-slate-100 font-bold">7</td></tr>
+        <tr><td class="p-1 border">Element Premium · Pantalón · Semipitillo · Denim</td><td class="p-1 border text-center">Color</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">2</td><td class="p-1 border text-center">4</td><td class="p-1 border text-center">4</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center bg-slate-100 font-bold">10</td></tr>
+        <tr><td class="p-1 border">Element Premium · Pantalón · Semipitillo · Denim</td><td class="p-1 border text-center">Negro</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">1</td><td class="p-1 border text-center">1</td><td class="p-1 border text-center">3</td><td class="p-1 border text-center">1</td><td class="p-1 border text-center">1</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">1</td><td class="p-1 border text-center bg-slate-100 font-bold">8</td></tr>
+        <tr><td class="p-1 border">Element Premium · Pantalón · Baggy · Rigido</td><td class="p-1 border text-center">Color</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">2</td><td class="p-1 border text-center">2</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">1</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center">-</td><td class="p-1 border text-center bg-slate-100 font-bold">5</td></tr>
+        <tr><td class="p-1 border text-slate-400" colspan="12">... 51 filas más (57 items × 1-2 hilos)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bg-red-50 border-t border-red-200 px-4 py-3 text-xs text-red-900">
+    <b>Problemas visibles:</b>
+    todos los números se ven iguales (no hay un color visual para detectar dónde están los problemas) ·
+    "Tienda" y "Para Corte" tienen el mismo peso visual aunque significan cosas opuestas ·
+    sin fecha · sin ver evolución.
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- DESPUÉS — Mejora 1: agrupación de filtros + filtro fecha                -->
+<!-- ====================================================================== -->
+<div class="max-w-5xl mx-auto px-8 mt-16">
+  <div class="text-[11px] text-emerald-700 uppercase tracking-wider font-bold mb-1">DESPUÉS · 6 mejoras</div>
+  <h2 class="text-2xl font-bold">Versión propuesta</h2>
+</div>
+
+<div class="frame">
+  <!-- Header con filtros agrupados -->
+  <div class="bg-gradient-to-r from-teal-600 to-teal-700 text-white px-6 py-4 flex items-center gap-3">
+    <button class="text-white/80 hover:text-white">←</button>
+    <div class="flex-1">
+      <h2 class="font-bold text-lg">Matriz de Producción</h2>
+      <p class="text-xs text-white/80">Mayo 2026 · 142 items en 12 etapas · 38 420 prendas activas</p>
+    </div>
+    <select class="bg-white/15 text-white text-sm rounded-lg px-3 py-1.5 border-0">
+      <option>📌 Mi vista habitual</option>
+      <option>Solo lavandería</option>
+      <option>Atrasados críticos</option>
+      <option>──────</option>
+      <option>+ Guardar vista actual</option>
+    </select>
+  </div>
+
+  <!-- ── Mejora 1: filtros en barra compacta con period selector -->
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-3">
+    <div class="flex items-center gap-3 flex-wrap">
+      <!-- Mejora #1: filtro fecha NUEVO -->
+      <div class="bg-white border-2 border-teal-500 rounded-lg px-3 py-1.5 flex items-center gap-2 text-sm font-semibold relative">
+        <span class="absolute -top-2 -right-2 bg-teal-600 text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center">NEW</span>
+        📅 <span>Este mes</span>
+        <span class="text-xs text-slate-400">▾</span>
+      </div>
+
+      <!-- Filtros agrupados en un solo botón -->
+      <button class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 flex items-center gap-2 text-sm hover:border-teal-500">
+        <span>🎯 Filtros</span>
+        <span class="pill pill-blue ml-1">3</span>
+      </button>
+      <span class="text-xs text-slate-500">Marca: Element Pr.</span>
+      <span class="text-xs text-slate-500">·</span>
+      <span class="text-xs text-slate-500">Solo activos</span>
+      <span class="text-xs text-slate-500">·</span>
+      <span class="text-xs text-slate-500">Hilo: Negro</span>
+
+      <div class="flex-1"></div>
+
+      <!-- Vista + métrica más compactos -->
+      <div class="flex bg-slate-200 rounded-lg p-0.5 text-xs font-semibold">
+        <button class="px-3 py-1.5 rounded-md bg-white shadow-sm">Prendas</button>
+        <button class="px-3 py-1.5 rounded-md text-slate-500">Registros</button>
+      </div>
+
+      <button class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm hover:border-teal-500">⚙ Columnas <span class="text-slate-400">10/12</span></button>
+      <button class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm hover:border-teal-500">📥</button>
+    </div>
+  </div>
+
+  <!-- ── Mejora 2: barra de KPIs resumen ── -->
+  <div class="bg-white border-b border-slate-200 px-4 py-3">
+    <div class="grid grid-cols-5 gap-3">
+      <div class="text-center relative">
+        <div class="absolute -top-2 -right-1 bg-teal-600 text-white text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center">2</div>
+        <div class="text-xs text-slate-500 uppercase font-bold tracking-wide">En proceso</div>
+        <div class="font-mono font-extrabold text-2xl text-teal-700">22 840</div>
+        <div class="text-[10px] text-slate-500">prendas activas</div>
+      </div>
+      <div class="text-center">
+        <div class="text-xs text-slate-500 uppercase font-bold tracking-wide">Terminadas</div>
+        <div class="font-mono font-extrabold text-2xl text-emerald-700">8 420</div>
+        <div class="text-[10px] text-emerald-700 font-bold">↑ 12% vs abril</div>
+      </div>
+      <div class="text-center">
+        <div class="text-xs text-slate-500 uppercase font-bold tracking-wide">Cuello botella</div>
+        <div class="font-mono font-extrabold text-2xl text-red-700">12 800</div>
+        <div class="text-[10px] text-red-700 font-bold">en Lavandería</div>
+      </div>
+      <div class="text-center">
+        <div class="text-xs text-slate-500 uppercase font-bold tracking-wide">Atrasados</div>
+        <div class="font-mono font-extrabold text-2xl text-amber-700">14</div>
+        <div class="text-[10px] text-slate-500">items</div>
+      </div>
+      <div class="text-center">
+        <div class="text-xs text-slate-500 uppercase font-bold tracking-wide">Ciclo prom.</div>
+        <div class="font-mono font-extrabold text-2xl text-slate-900">12.4d</div>
+        <div class="text-[10px] text-emerald-700 font-bold">↓ 0.6d</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Mejora 3: heatmap en la tabla ── -->
+  <div class="px-4 py-3 overflow-auto">
+    <div class="flex items-center gap-2 mb-2 text-[10px] text-slate-500">
+      <span class="font-bold uppercase tracking-wider">Heatmap</span>
+      <span>·</span>
+      <span class="heat-0 px-2 py-0.5 rounded">0</span>
+      <span class="heat-1 px-2 py-0.5 rounded">1-3</span>
+      <span class="heat-2 px-2 py-0.5 rounded">4-7</span>
+      <span class="heat-3 px-2 py-0.5 rounded">8-15</span>
+      <span class="heat-4 px-2 py-0.5 rounded">16+</span>
+      <span class="heat-danger px-2 py-0.5 rounded">⚠ saturado</span>
+      <span>·</span>
+      <span>Color visual indica volumen → ojo detecta cuellos al instante</span>
+    </div>
+
+    <table class="w-full text-xs">
+      <thead class="bg-slate-50 text-[10px] uppercase">
+        <tr>
+          <th class="p-2 border text-left sticky left-0 bg-slate-50" style="min-width:280px">Item <span class="normal-case text-slate-400 font-normal">(marca · tipo · entalle · tela)</span></th>
+          <th class="p-2 border">Hilo</th>
+          <th class="p-2 border">Para C.</th>
+          <th class="p-2 border">Corte</th>
+          <th class="p-2 border">Para Cos.</th>
+          <th class="p-2 border">Costura</th>
+          <th class="p-2 border bg-amber-50">Para Lav.<br><span class="text-[8px] normal-case text-slate-500">+Atraque, Para Atr.</span></th>
+          <th class="p-2 border bg-red-50">Lavandería<br><span class="text-[8px] normal-case text-slate-500">⚠ saturada</span></th>
+          <th class="p-2 border">Para Acab.</th>
+          <th class="p-2 border">Acabado</th>
+          <th class="p-2 border bg-emerald-50">Alm. PT<br><span class="text-[8px] normal-case text-slate-500">+Producto T.</span></th>
+          <th class="p-2 border bg-slate-100">Total</th>
+          <th class="p-2 border bg-slate-100 text-[9px]">7d ago</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="hover:bg-slate-50">
+          <td class="p-2 border font-bold sticky left-0 bg-white text-[11px]">Element Premium · Pantalón · Semipitillo · Comfort</td>
+          <td class="p-2 border text-center text-slate-500">Color</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-2">4</td>
+          <td class="p-2 border text-center heat-2">4</td>
+          <td class="p-2 border text-center heat-2">4</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">12</td>
+          <td class="p-2 border text-center text-[10px] font-bold text-emerald-700">+3</td>
+        </tr>
+        <tr class="hover:bg-slate-50">
+          <td class="p-2 border font-bold sticky left-0 bg-white text-[11px]">Element Premium · Pantalón · Semipitillo · Comfort</td>
+          <td class="p-2 border text-center text-slate-500">Negro</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-1">2</td>
+          <td class="p-2 border text-center heat-2">4</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">7</td>
+          <td class="p-2 border text-center text-[10px] font-bold text-slate-500">=0</td>
+        </tr>
+        <tr class="hover:bg-slate-50">
+          <td class="p-2 border font-bold sticky left-0 bg-white text-[11px]">Element Premium · Pantalón · Semipitillo · Denim</td>
+          <td class="p-2 border text-center text-slate-500">Color</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-1">2</td>
+          <td class="p-2 border text-center heat-2">4</td>
+          <td class="p-2 border text-center heat-2">4</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">10</td>
+          <td class="p-2 border text-center text-[10px] font-bold text-emerald-700">+2</td>
+        </tr>
+        <tr class="hover:bg-slate-50">
+          <td class="p-2 border font-bold sticky left-0 bg-white text-[11px]">Element Premium · Pantalón · Semipitillo · Denim</td>
+          <td class="p-2 border text-center text-slate-500">Negro</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-1">3</td>
+          <td class="p-2 border text-center heat-danger">1 ⚠</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">8</td>
+          <td class="p-2 border text-center text-[10px] font-bold text-amber-700">-1</td>
+        </tr>
+        <tr class="hover:bg-slate-50">
+          <td class="p-2 border font-bold sticky left-0 bg-white text-[11px]">Element Premium · Pantalón · Baggy · Rigido</td>
+          <td class="p-2 border text-center text-slate-500">Color</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-1">2</td>
+          <td class="p-2 border text-center heat-1">2</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">5</td>
+          <td class="p-2 border text-center text-[10px] font-bold text-emerald-700">+5</td>
+        </tr>
+      </tbody>
+      <tfoot class="bg-slate-200 font-bold">
+        <tr>
+          <td class="p-2 border" colspan="2">Total · 57 items · 155 registros · 75 690 prendas</td>
+          <td class="p-2 border text-center">3</td>
+          <td class="p-2 border text-center">5</td>
+          <td class="p-2 border text-center">12</td>
+          <td class="p-2 border text-center">42</td>
+          <td class="p-2 border text-center">38</td>
+          <td class="p-2 border text-center bg-red-100">28</td>
+          <td class="p-2 border text-center">15</td>
+          <td class="p-2 border text-center">8</td>
+          <td class="p-2 border text-center bg-emerald-100">12</td>
+          <td class="p-2 border text-center">155</td>
+          <td class="p-2 border text-center"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- ── Mejora 4: panel lateral con insights automáticos ── -->
+  <div class="bg-slate-50 border-t border-slate-200 px-4 py-3">
+    <div class="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-2">💡 Insights automáticos</div>
+    <div class="grid grid-cols-3 gap-3 text-xs">
+      <div class="bg-white border border-red-200 rounded-lg p-3">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="pill pill-red">CUELLO</span>
+          <span class="font-bold">Lavandería</span>
+        </div>
+        <p class="text-slate-600">12 800 prendas (54% del WIP). VICUÑA 044 y AXELIUS BLACK acumulan ahí desde hace 5+ días.</p>
+        <a href="#" class="text-teal-600 font-bold text-[11px]">Ver en reporte operativo →</a>
+      </div>
+      <div class="bg-white border border-amber-200 rounded-lg p-3">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="pill pill-amber">REGRESIÓN</span>
+          <span class="font-bold">VICUÑA 044</span>
+        </div>
+        <p class="text-slate-600">Total bajó 5 prendas vs hace 7 días. Posible fallado o reproceso.</p>
+        <a href="#" class="text-teal-600 font-bold text-[11px]">Investigar →</a>
+      </div>
+      <div class="bg-white border border-emerald-200 rounded-lg p-3">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="pill pill-green">FLUYE BIEN</span>
+          <span class="font-bold">PEKERMAN 001</span>
+        </div>
+        <p class="text-slate-600">+12 prendas en 7 días. Mayor avance del mes. Buen ritmo Costura → PT.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- Vista AGRUPADA con heatmap (que me faltaba)                             -->
+<!-- ====================================================================== -->
+<div class="max-w-5xl mx-auto px-8 mt-16">
+  <div class="text-[11px] text-emerald-700 uppercase tracking-wider font-bold mb-1">VISTA AGRUPADA · con las mejoras aplicadas</div>
+  <h2 class="text-xl font-bold">Misma matriz, en modo jerárquico</h2>
+  <p class="text-slate-600 text-sm">Las mismas mejoras (heatmap, fecha, delta, columnas fusionadas) también aplican a la vista agrupada. Las columnas de jerarquía (Marca / Tipo / Entalle / Tela / Hilo) se mantienen con rowSpan como hoy.</p>
+</div>
+
+<div class="frame">
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-3 flex items-center gap-3">
+    <div class="flex bg-slate-200 rounded-lg p-0.5 text-xs font-semibold">
+      <button class="px-3 py-1.5 rounded-md text-slate-500">Lista plana</button>
+      <button class="px-3 py-1.5 rounded-md bg-white shadow-sm">Agrupada</button>
+    </div>
+    <div class="flex bg-slate-200 rounded-lg p-0.5 text-xs font-semibold">
+      <button class="px-3 py-1.5 rounded-md bg-white shadow-sm">Prendas</button>
+      <button class="px-3 py-1.5 rounded-md text-slate-500">Registros</button>
+    </div>
+    <span class="text-xs text-slate-500 ml-2">📅 Este mes · 9/15 col</span>
+  </div>
+
+  <div class="px-4 py-3 overflow-auto">
+    <table class="w-full text-xs">
+      <thead class="bg-slate-50 text-[10px] uppercase">
+        <tr>
+          <th class="p-2 border text-left">Marca</th>
+          <th class="p-2 border text-left">Tipo</th>
+          <th class="p-2 border text-left">Entalle</th>
+          <th class="p-2 border text-left">Tela</th>
+          <th class="p-2 border text-left">Hilo</th>
+          <th class="p-2 border">Costura</th>
+          <th class="p-2 border bg-amber-50">Para Lav.<br><span class="text-[8px] normal-case text-slate-500">+Atraque</span></th>
+          <th class="p-2 border bg-red-50">Lavandería</th>
+          <th class="p-2 border">Acabado</th>
+          <th class="p-2 border bg-emerald-50">Alm. PT</th>
+          <th class="p-2 border bg-slate-100">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Element Premium - Pantalón rowspan grande -->
+        <tr>
+          <td class="p-2 border align-top font-bold bg-white" rowspan="10">Element Premium</td>
+          <td class="p-2 border align-top font-semibold bg-white" rowspan="10">Pantalón</td>
+          <td class="p-2 border align-top bg-white" rowspan="2">Semipitillo</td>
+          <td class="p-2 border align-top bg-white" rowspan="2">Comfort</td>
+          <td class="p-2 border text-slate-500">Color</td>
+          <td class="p-2 border text-center heat-2">4</td>
+          <td class="p-2 border text-center heat-2">4</td>
+          <td class="p-2 border text-center heat-2">4</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">12</td>
+        </tr>
+        <tr>
+          <td class="p-2 border text-slate-500">Negro</td>
+          <td class="p-2 border text-center heat-1">2</td>
+          <td class="p-2 border text-center heat-2">4</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">7</td>
+        </tr>
+        <tr>
+          <td class="p-2 border align-top bg-white" rowspan="2">Semipitillo</td>
+          <td class="p-2 border align-top bg-white" rowspan="2">Denim</td>
+          <td class="p-2 border text-slate-500">Color</td>
+          <td class="p-2 border text-center heat-1">2</td>
+          <td class="p-2 border text-center heat-2">4</td>
+          <td class="p-2 border text-center heat-2">4</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">10</td>
+        </tr>
+        <tr>
+          <td class="p-2 border text-slate-500">Negro</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-1">3</td>
+          <td class="p-2 border text-center heat-danger">1 ⚠</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">8</td>
+        </tr>
+        <tr>
+          <td class="p-2 border align-top bg-white" rowspan="2">Skinny</td>
+          <td class="p-2 border align-top bg-white" rowspan="2">Denim</td>
+          <td class="p-2 border text-slate-500">Color</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-1">2</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">5</td>
+        </tr>
+        <tr>
+          <td class="p-2 border text-slate-500">Negro</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">4</td>
+        </tr>
+        <tr>
+          <td class="p-2 border align-top bg-white" rowspan="2">Baggy</td>
+          <td class="p-2 border align-top bg-white" rowspan="2">Rigido</td>
+          <td class="p-2 border text-slate-500">Color</td>
+          <td class="p-2 border text-center heat-1">2</td>
+          <td class="p-2 border text-center heat-1">2</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">5</td>
+        </tr>
+        <tr>
+          <td class="p-2 border text-slate-500">Negro</td>
+          <td class="p-2 border text-center heat-2">4</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">5</td>
+        </tr>
+        <tr>
+          <td class="p-2 border align-top bg-white" rowspan="2">Oversize</td>
+          <td class="p-2 border align-top bg-white" rowspan="2">Rigido</td>
+          <td class="p-2 border text-slate-500">Negro</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-1">2</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">5</td>
+        </tr>
+        <tr>
+          <td class="p-2 border text-slate-500">Color</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-1">1</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">4</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="text-[10px] text-slate-500 mt-2">
+      💡 La vista agrupada repite las mejoras: <b>heatmap</b>, <b>columnas fusionadas</b>, <b>filtro de fecha en la barra de arriba</b>, mismo modal de drill-down al hacer click en cualquier celda.
+    </div>
+  </div>
+</div>
+
+
+<!-- ====================================================================== -->
+<!-- Mejora #5: vistas guardadas (sidebar)                                    -->
+<!-- ====================================================================== -->
+<div class="max-w-5xl mx-auto px-8 mt-12">
+  <div class="text-[11px] text-teal-700 uppercase tracking-wider font-bold mb-1">DETALLE · MEJORA 5</div>
+  <h2 class="text-xl font-bold">Vistas guardadas</h2>
+  <p class="text-slate-600 text-sm">Para que no tengas que reconfigurar los filtros y columnas cada vez. El dropdown de la cabecera te permite guardar y volver a aplicar setups habituales.</p>
+</div>
+
+<div class="frame max-w-2xl">
+  <div class="p-6">
+    <div class="text-xs text-slate-500 uppercase font-bold mb-3">Mis vistas guardadas</div>
+    <div class="space-y-2">
+      <div class="border border-teal-500 bg-teal-50 rounded-lg p-3 flex items-center gap-3">
+        <span class="text-2xl">📌</span>
+        <div class="flex-1">
+          <div class="font-bold">Mi vista habitual</div>
+          <div class="text-xs text-slate-600">Este mes · Marca Element · Solo activos · 10/12 columnas</div>
+        </div>
+        <span class="pill pill-green">Activa</span>
+      </div>
+      <div class="border border-slate-200 rounded-lg p-3 flex items-center gap-3 hover:border-slate-400 cursor-pointer">
+        <span class="text-2xl">🌊</span>
+        <div class="flex-1">
+          <div class="font-bold">Solo lavandería</div>
+          <div class="text-xs text-slate-600">Últimos 30 días · columnas Lavandería + Para Lavandería</div>
+        </div>
+        <button class="text-xs text-slate-400">⋯</button>
+      </div>
+      <div class="border border-slate-200 rounded-lg p-3 flex items-center gap-3 hover:border-slate-400 cursor-pointer">
+        <span class="text-2xl">🚨</span>
+        <div class="flex-1">
+          <div class="font-bold">Atrasados críticos</div>
+          <div class="text-xs text-slate-600">Solo atrasados · Solo activos · Vista jerárquica</div>
+        </div>
+        <button class="text-xs text-slate-400">⋯</button>
+      </div>
+      <div class="border-2 border-dashed border-slate-300 rounded-lg p-3 flex items-center justify-center text-sm text-slate-500 cursor-pointer hover:border-teal-500 hover:text-teal-600">
+        + Guardar vista actual
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- Mejora #6: drill-down inline (no modal)                                 -->
+<!-- ====================================================================== -->
+<div class="max-w-5xl mx-auto px-8 mt-12">
+  <div class="text-[11px] text-teal-700 uppercase tracking-wider font-bold mb-1">DETALLE · MEJORA 6</div>
+  <h2 class="text-xl font-bold">Drill-down inline (sin modal)</h2>
+  <p class="text-slate-600 text-sm">Al hacer click en una celda, en vez de abrir un modal grande encima de todo, se expande una fila debajo con el detalle. Mantenés el contexto y podés comparar.</p>
+</div>
+
+<div class="frame max-w-5xl">
+  <div class="p-4">
+    <table class="w-full text-xs">
+      <thead class="bg-slate-100 text-[10px] uppercase">
+        <tr>
+          <th class="p-2 border text-left">Item</th>
+          <th class="p-2 border">Hilo</th>
+          <th class="p-2 border">Costura</th>
+          <th class="p-2 border bg-yellow-100">Lavandería</th>
+          <th class="p-2 border">Acabado</th>
+          <th class="p-2 border bg-slate-200">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="bg-yellow-50 border-2 border-yellow-400">
+          <td class="p-2 border font-bold text-[11px]">Element Premium · Pantalón · Semipitillo · Comfort</td>
+          <td class="p-2 border text-center text-slate-500">Color</td>
+          <td class="p-2 border text-center heat-2">4</td>
+          <td class="p-2 border text-center heat-2 ring-2 ring-yellow-400">4 👆</td>
+          <td class="p-2 border text-center heat-0">-</td>
+          <td class="p-2 border text-center bg-slate-100 font-bold">12</td>
+        </tr>
+        <tr>
+          <td class="p-0 border-x border-b bg-yellow-50" colspan="6">
+            <div class="p-3 border-t-4 border-yellow-400">
+              <div class="flex items-center justify-between mb-3">
+                <div>
+                  <div class="text-sm font-bold text-yellow-900">Element Premium · Pantalón · Semipitillo · Comfort · Color</div>
+                  <div class="text-[11px] text-slate-600">Lavandería · 4 registros</div>
+                </div>
+                <div class="flex gap-2">
+                  <button class="text-[11px] bg-white border border-slate-300 rounded px-2 py-1">Registros</button>
+                  <button class="text-[11px] bg-white border border-slate-300 rounded px-2 py-1">🎨 Colores</button>
+                  <button class="text-xs text-slate-500 hover:text-slate-900">✕</button>
+                </div>
+              </div>
+              <table class="w-full text-[11px]">
+                <thead class="bg-white">
+                  <tr class="text-left text-slate-500">
+                    <th class="p-1.5">Corte</th>
+                    <th class="p-1.5">Estado</th>
+                    <th class="p-1.5">Modelo</th>
+                    <th class="p-1.5 text-right">Prendas</th>
+                    <th class="p-1.5 text-right">Curva</th>
+                    <th class="p-1.5">Hilo esp.</th>
+                    <th class="p-1.5">Últ. mov</th>
+                    <th class="p-1.5 text-right">Hace</th>
+                    <th class="p-1.5 text-center">Incid.</th>
+                    <th class="p-1.5"></th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-yellow-200">
+                  <tr><td class="p-1.5 font-mono font-bold">056</td><td class="p-1.5"><span class="pill pill-blue">Lavanderia</span></td><td class="p-1.5">BONETY PLOMO</td><td class="p-1.5 text-right font-mono">618</td><td class="p-1.5 text-right text-slate-500">1-3-3-2</td><td class="p-1.5">Plomo</td><td class="p-1.5 text-[10px]">Lav. Innova Fashion</td><td class="p-1.5 text-right">9d</td><td class="p-1.5 text-center">-</td><td class="p-1.5"><a class="text-teal-600 font-bold">⊞ 🧪 Traza →</a></td></tr>
+                  <tr><td class="p-1.5 font-mono font-bold">063</td><td class="p-1.5"><span class="pill pill-blue">Lavanderia</span></td><td class="p-1.5">JARPER PLOMO</td><td class="p-1.5 text-right font-mono">626</td><td class="p-1.5 text-right text-slate-500">2-3-4-2</td><td class="p-1.5">Plomo</td><td class="p-1.5 text-[10px]">Lav. Antartida</td><td class="p-1.5 text-right text-red-700 font-bold">16d ⚠</td><td class="p-1.5 text-center">-</td><td class="p-1.5"><a class="text-teal-600 font-bold">⊞ 🧪 Traza →</a></td></tr>
+                  <tr><td class="p-1.5 font-mono font-bold">064</td><td class="p-1.5"><span class="pill pill-blue">Lavanderia</span></td><td class="p-1.5">ROTEMBER PLOMO</td><td class="p-1.5 text-right font-mono">626</td><td class="p-1.5 text-right text-slate-500">2-3-4-2</td><td class="p-1.5">Plomo</td><td class="p-1.5 text-[10px]">Lav. Antartida</td><td class="p-1.5 text-right">10d</td><td class="p-1.5 text-center">-</td><td class="p-1.5"><a class="text-teal-600 font-bold">⊞ 🧪 Traza →</a></td></tr>
+                  <tr><td class="p-1.5 font-mono font-bold">078</td><td class="p-1.5"><span class="pill pill-blue">Lavanderia</span></td><td class="p-1.5">KINSLEY BEIGE #2</td><td class="p-1.5 text-right font-mono">650</td><td class="p-1.5 text-right text-slate-500">2-3-3-2</td><td class="p-1.5">Beis</td><td class="p-1.5 text-[10px]">Lav. Emanuel SAC</td><td class="p-1.5 text-right">8d</td><td class="p-1.5 text-center"><span class="pill pill-red">2</span></td><td class="p-1.5"><a class="text-teal-600 font-bold">⊞ 🧪 Traza →</a></td></tr>
+                </tbody>
+              </table>
+              <div class="text-[10px] text-slate-500 mt-2">
+                <b>Las columnas son las reales</b> que ya tiene tu modal hoy. La novedad es que se expande inline y mantiene la fila destacada arriba en lugar de tapar la pantalla con un modal flotante.
+              </div>
+            </div>
+          </td>
+        </tr>
+        <tr><td class="p-2 border font-bold text-[11px]">Element Premium · Pantalón · Semipitillo · Comfort</td><td class="p-2 border text-center text-slate-500">Negro</td><td class="p-2 border text-center heat-1">2</td><td class="p-2 border text-center heat-1">1</td><td class="p-2 border text-center heat-0">-</td><td class="p-2 border text-center bg-slate-100 font-bold">7</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- Resumen mejoras                                                          -->
+<!-- ====================================================================== -->
+<div class="max-w-5xl mx-auto px-8 mt-16 mb-12">
+  <h2 class="text-2xl font-bold mb-4">Resumen de las 6 mejoras propuestas</h2>
+  <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-100 border-b-2 border-slate-200">
+        <tr class="text-left text-xs text-slate-500">
+          <th class="p-3">#</th>
+          <th class="p-3">Mejora</th>
+          <th class="p-3">Por qué ayuda</th>
+          <th class="p-3">Esfuerzo</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        <tr>
+          <td class="p-3 font-bold">1</td>
+          <td class="p-3"><b>📅 Filtro de fecha al frente</b> · Hoy / Semana / Mes / Custom</td>
+          <td class="p-3 text-slate-600">Hoy no hay forma de ver "qué pasó este mes". Es el filtro que más falta.</td>
+          <td class="p-3"><span class="pill pill-blue">Bajo</span></td>
+        </tr>
+        <tr>
+          <td class="p-3 font-bold">2</td>
+          <td class="p-3"><b>📊 Barra de KPIs arriba</b> · WIP, terminadas, cuello, atrasados, ciclo</td>
+          <td class="p-3 text-slate-600">Antes de mirar la tabla, ves el estado general en 5 números.</td>
+          <td class="p-3"><span class="pill pill-blue">Bajo</span></td>
+        </tr>
+        <tr>
+          <td class="p-3 font-bold">3</td>
+          <td class="p-3"><b>🎨 Heatmap en las celdas</b> · color según volumen</td>
+          <td class="p-3 text-slate-600">El ojo detecta cuellos en 1 segundo. Hoy todos los números se ven iguales.</td>
+          <td class="p-3"><span class="pill pill-blue">Bajo</span></td>
+        </tr>
+        <tr>
+          <td class="p-3 font-bold">4</td>
+          <td class="p-3"><b>💡 Insights automáticos</b> · cuello, regresión, modelo que fluye</td>
+          <td class="p-3 text-slate-600">El sistema te dice qué mirar. No tenés que descubrirlo vos.</td>
+          <td class="p-3"><span class="pill pill-amber">Medio</span></td>
+        </tr>
+        <tr>
+          <td class="p-3 font-bold">5</td>
+          <td class="p-3"><b>📌 Vistas guardadas</b> · setups reusables por nombre</td>
+          <td class="p-3 text-slate-600">Configurás 1 vez y usás siempre. Hoy localStorage guarda 1 vista global.</td>
+          <td class="p-3"><span class="pill pill-amber">Medio</span></td>
+        </tr>
+        <tr>
+          <td class="p-3 font-bold">6</td>
+          <td class="p-3"><b>🔍 Drill-down inline</b> · expandir fila vs modal</td>
+          <td class="p-3 text-slate-600">Mantenés contexto, podés comparar con otras filas a la vez.</td>
+          <td class="p-3"><span class="pill pill-amber">Medio</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bg-teal-50 border border-teal-200 rounded-xl p-5 mt-6">
+    <h3 class="font-bold mb-2">Bonus · columna "7d ago" (delta)</h3>
+    <p class="text-sm text-slate-700">
+      Al lado del Total propuse una columna pequeña con el delta vs 7 días atrás (<b>+12</b> verde, <b>-5</b> rojo). Permite ver de un vistazo qué modelos están avanzando y cuáles están estancados o retrocediendo. Reusa el dataset histórico que ya tenés.
+    </p>
+  </div>
+
+  <div class="bg-amber-50 border border-amber-200 rounded-xl p-5 mt-6">
+    <h3 class="font-bold mb-2">Para decidir antes de implementar</h3>
+    <ul class="text-sm text-slate-700 list-disc pl-5 space-y-1">
+      <li>¿Cuál de las 6 mejoras te suena más urgente? Sugerido: <b>1 → 2 → 3</b> (todas bajas, 1 semana en total).</li>
+      <li>Las 4-6 son medio esfuerzo, se hacen en 2-3 semanas más.</li>
+      <li>¿Querés que las 6 vayan a producción o vamos por fases?</li>
+    </ul>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- Modal "Color" / Ficha por item · vista completa                          -->
+  <!-- ====================================================================== -->
+  <div class="bg-white border border-slate-200 rounded-xl p-6 mt-6">
+    <div class="flex items-center gap-3 mb-3">
+      <span class="text-xs text-teal-700 font-bold uppercase tracking-wider bg-teal-100 px-2 py-1 rounded">MEJORA EXTRA</span>
+      <h3 class="font-bold text-lg">Modal "Color" · seguimiento por etapa</h3>
+    </div>
+    <p class="text-sm text-slate-700 mb-4">
+      Este es el modal que se abre al tocar el icono <code class="bg-slate-100 px-1 rounded">⊞</code> al costado de cada item (botón "Ficha colores × tallas"). Tiene 3 columnas verticales: <b>En taller</b> · <b>Lavandería/Acabado</b> · <b>Almacén PT / Tienda</b>. Ya está muy completo. Las mejoras serían pequeñas pero impactan mucho:
+    </p>
+
+    <!-- Mockup del modal con mejoras marcadas -->
+    <div class="border border-slate-200 rounded-lg overflow-hidden">
+      <div class="bg-slate-50 border-b border-slate-200 p-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="font-bold">Element Premium · Pantalón · Semipitillo · Comfort · <span class="text-slate-500">Color</span></div>
+            <div class="text-xs text-slate-500">Seguimiento de colores por etapa de producción</div>
+          </div>
+          <div class="flex items-center gap-2 relative">
+            <span class="absolute -top-3 -left-3 bg-teal-600 text-white text-[9px] font-bold rounded-full px-2 py-0.5">MEJORA #1</span>
+            <input class="border border-slate-300 rounded px-2 py-1 text-xs" placeholder="🔍 Buscar color..." />
+            <button class="text-xs bg-white border border-slate-300 rounded px-2 py-1">📥 Excel</button>
+          </div>
+        </div>
+        <!-- Mejora: KPIs resumen arriba del modal -->
+        <div class="grid grid-cols-4 gap-2 mt-3 relative">
+          <span class="absolute -top-3 -left-2 bg-teal-600 text-white text-[9px] font-bold rounded-full px-2 py-0.5">MEJORA #2 · KPIs resumen</span>
+          <div class="bg-white border border-slate-200 rounded p-2 text-center">
+            <div class="font-mono font-bold text-base">2 472</div>
+            <div class="text-[9px] text-slate-500 uppercase font-bold">En taller</div>
+          </div>
+          <div class="bg-amber-50 border border-amber-200 rounded p-2 text-center">
+            <div class="font-mono font-bold text-base text-amber-700">650</div>
+            <div class="text-[9px] text-amber-700 uppercase font-bold">Sin colores asignados ⚠</div>
+          </div>
+          <div class="bg-emerald-50 border border-emerald-200 rounded p-2 text-center">
+            <div class="font-mono font-bold text-base text-emerald-700">1 822</div>
+            <div class="text-[9px] text-emerald-700 uppercase font-bold">Con colores · 3 cortes</div>
+          </div>
+          <div class="bg-blue-50 border border-blue-200 rounded p-2 text-center">
+            <div class="font-mono font-bold text-base text-blue-700">107</div>
+            <div class="text-[9px] text-blue-700 uppercase font-bold">PT sin clasificar Odoo ⚠</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-3 divide-x divide-slate-200">
+        <!-- Columna 1: En taller -->
+        <div class="p-3">
+          <div class="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">En taller — lavandería / atraque</div>
+          <table class="w-full text-[11px]">
+            <thead class="bg-slate-100">
+              <tr><th class="p-1.5 text-left">Modelo · corte</th><th class="p-1.5">28</th><th class="p-1.5">30</th><th class="p-1.5">32</th><th class="p-1.5">34</th><th class="p-1.5 bg-slate-200">TOT</th></tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr><td class="p-1.5 font-mono">KINSLEY PLOMO · 055</td><td class="p-1.5 text-center heat-2">70</td><td class="p-1.5 text-center heat-4">206</td><td class="p-1.5 text-center heat-4">206</td><td class="p-1.5 text-center heat-3">136</td><td class="p-1.5 text-center font-bold">618</td></tr>
+              <tr><td class="p-1.5 font-mono">DONOVAN BEIGE #2 · 077</td><td class="p-1.5 text-center heat-3">130</td><td class="p-1.5 text-center heat-4">195</td><td class="p-1.5 text-center heat-4">195</td><td class="p-1.5 text-center heat-3">130</td><td class="p-1.5 text-center font-bold">650</td></tr>
+              <tr><td class="p-1.5 font-mono">JARPER BEIGE #2 · 095</td><td class="p-1.5 text-center heat-2">102</td><td class="p-1.5 text-center heat-4">199</td><td class="p-1.5 text-center heat-4">199</td><td class="p-1.5 text-center heat-2">102</td><td class="p-1.5 text-center font-bold">602</td></tr>
+              <tr><td class="p-1.5 font-mono">BONETY BEIGE #2 · 096</td><td class="p-1.5 text-center heat-2">102</td><td class="p-1.5 text-center heat-4">199</td><td class="p-1.5 text-center heat-4">199</td><td class="p-1.5 text-center heat-2">102</td><td class="p-1.5 text-center font-bold">602</td></tr>
+            </tbody>
+            <tfoot><tr class="bg-slate-200 font-bold"><td class="p-1.5">TOTAL</td><td class="p-1.5 text-center">404</td><td class="p-1.5 text-center">799</td><td class="p-1.5 text-center">799</td><td class="p-1.5 text-center">470</td><td class="p-1.5 text-center">2 472</td></tr></tfoot>
+          </table>
+
+          <!-- Muestras: ya existe -->
+          <div class="mt-3 bg-purple-50 border border-purple-200 rounded p-2">
+            <div class="text-[11px] font-bold text-purple-900 flex items-center gap-1">🧪 Muestras en proceso — 1 pendiente</div>
+            <div class="text-[10px] text-slate-600 mt-1">056 · BONETY PLOMO · 6 prendas · enviada 20/05</div>
+          </div>
+        </div>
+
+        <!-- Columna 2: Colores en lavandería/acabado -->
+        <div class="p-3">
+          <div class="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Colores en lavandería / acabado</div>
+
+          <!-- Mejora #3: filtro local -->
+          <div class="relative mb-2">
+            <span class="absolute -top-3 right-0 bg-teal-600 text-white text-[9px] font-bold rounded-full px-2 py-0.5">MEJORA #3 · solo con valores</span>
+            <div class="flex gap-1 text-[10px]">
+              <button class="bg-teal-600 text-white px-2 py-0.5 rounded font-semibold">Con valores</button>
+              <button class="bg-white border border-slate-300 px-2 py-0.5 rounded">Todos los colores</button>
+            </div>
+          </div>
+
+          <table class="w-full text-[11px]">
+            <thead class="bg-slate-100">
+              <tr><th class="p-1.5 text-left">Color</th><th class="p-1.5">28</th><th class="p-1.5">30</th><th class="p-1.5">32</th><th class="p-1.5">34</th><th class="p-1.5 bg-slate-200">TOT</th></tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr class="bg-slate-50/50 text-slate-300"><td class="p-1.5">Acero</td><td class="p-1.5 text-center">-</td><td class="p-1.5 text-center">-</td><td class="p-1.5 text-center">-</td><td class="p-1.5 text-center">-</td><td class="p-1.5 text-center">-</td></tr>
+              <tr><td class="p-1.5 flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm" style="background:#7c3aed"></span>Azul Borgoña</td><td class="p-1.5 text-center heat-1">12</td><td class="p-1.5 text-center heat-2">34</td><td class="p-1.5 text-center heat-2">34</td><td class="p-1.5 text-center heat-1">23</td><td class="p-1.5 text-center font-bold">103</td></tr>
+              <tr><td class="p-1.5 flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm" style="background:#dbeafe"></span>Azul Claro</td><td class="p-1.5 text-center">-</td><td class="p-1.5 text-center">-</td><td class="p-1.5 text-center">-</td><td class="p-1.5 text-center">-</td><td class="p-1.5 text-center">-</td></tr>
+              <tr><td class="p-1.5 text-slate-400 text-center italic" colspan="6">+ 87 colores sin valor (ocultos por filtro)</td></tr>
+            </tbody>
+          </table>
+
+          <!-- Sin colores -->
+          <div class="mt-3 bg-amber-50 border border-amber-200 rounded p-2">
+            <div class="text-[11px] font-bold text-amber-900">Sin colores en lavandería/acabado — 1 corte</div>
+            <div class="text-[10px] text-slate-600 mt-1">KINSLEY BEIGE #2 · 078 · 650 prd · <a class="text-teal-600 font-bold">Asignar →</a></div>
+          </div>
+          <div class="mt-2 bg-emerald-50 border border-emerald-200 rounded p-2">
+            <div class="text-[11px] font-bold text-emerald-900">Con colores — 3 cortes</div>
+            <div class="text-[10px] text-slate-600 mt-1">BONETY PLOMO · 056 · 618 prd · <a class="text-teal-600 font-bold">Editar →</a></div>
+          </div>
+        </div>
+
+        <!-- Columna 3: Almacén PT / Tienda -->
+        <div class="p-3">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-xs font-bold uppercase tracking-wider text-slate-600">Almacén PT / Tienda</div>
+            <span class="pill pill-amber">Sin -LQ</span>
+          </div>
+          <div class="text-[10px] text-slate-500 mb-2">PT (registros) + stock real de tienda desde Odoo</div>
+
+          <table class="w-full text-[11px]">
+            <thead class="bg-slate-100">
+              <tr><th class="p-1.5 text-left">Color</th><th class="p-1.5">28</th><th class="p-1.5">30</th><th class="p-1.5">32</th><th class="p-1.5">34</th><th class="p-1.5 bg-slate-200">TOT</th></tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr><td class="p-1.5">⭐ Acero</td><td class="p-1.5 text-center">-</td><td class="p-1.5 text-center">-</td><td class="p-1.5 text-center">-</td><td class="p-1.5 text-center">-</td><td class="p-1.5 text-center">-</td></tr>
+              <tr class="bg-yellow-50"><td class="p-1.5">⭐ Acero Verdoso</td><td class="p-1.5 text-center">-</td><td class="p-1.5 text-center heat-1">1</td><td class="p-1.5 text-center heat-1">1</td><td class="p-1.5 text-center heat-1">3</td><td class="p-1.5 text-center font-bold">5</td></tr>
+              <tr><td class="p-1.5">⭐ Azul</td><td class="p-1.5 text-center heat-3">8</td><td class="p-1.5 text-center heat-3">15</td><td class="p-1.5 text-center heat-4">18</td><td class="p-1.5 text-center heat-4">16</td><td class="p-1.5 text-center font-bold">57</td></tr>
+              <tr><td class="p-1.5">⭐ Azul Borgoña</td><td class="p-1.5 text-center heat-3">8</td><td class="p-1.5 text-center heat-3">13</td><td class="p-1.5 text-center heat-1">1</td><td class="p-1.5 text-center heat-2">6</td><td class="p-1.5 text-center font-bold">28</td></tr>
+            </tbody>
+          </table>
+
+          <div class="mt-3 bg-amber-50 border border-amber-200 rounded p-2">
+            <div class="text-[11px] font-bold text-amber-900 flex items-center gap-1">⚠ PT sin clasificar en Odoo — 30 modelos · 107 colores pendientes</div>
+            <table class="w-full text-[10px] mt-2">
+              <thead><tr class="text-left text-slate-500"><th class="py-0.5">Modelo</th><th class="text-center">Pend.</th><th class="text-right">Stock</th></tr></thead>
+              <tbody>
+                <tr><td class="py-0.5">MICHEL</td><td class="text-center">5</td><td class="text-right text-blue-700 font-bold">37</td></tr>
+                <tr><td class="py-0.5">BASTON</td><td class="text-center">5</td><td class="text-right text-blue-700 font-bold">36</td></tr>
+                <tr><td class="py-0.5">STARUN</td><td class="text-center">7</td><td class="text-right text-blue-700 font-bold">29</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lista de mejoras al modal -->
+    <div class="mt-4 grid grid-cols-3 gap-3 text-xs">
+      <div class="bg-teal-50 border border-teal-200 rounded p-3">
+        <div class="font-bold text-teal-900 mb-1">#1 · Buscador interno</div>
+        <p class="text-slate-700">Con 107 colores pendientes + tabla de Almacén, el scroll es largo. Un input de búsqueda local filtra al toque.</p>
+      </div>
+      <div class="bg-teal-50 border border-teal-200 rounded p-3">
+        <div class="font-bold text-teal-900 mb-1">#2 · 4 KPIs resumen arriba</div>
+        <p class="text-slate-700">En taller / Sin colores / Con colores / PT sin clasificar. Antes de scrollear sabés el estado general.</p>
+      </div>
+      <div class="bg-teal-50 border border-teal-200 rounded p-3">
+        <div class="font-bold text-teal-900 mb-1">#3 · Filtro "solo con valores"</div>
+        <p class="text-slate-700">Por defecto oculta los 80+ colores sin valor. Toggle para ver toda la lista cuando hace falta.</p>
+      </div>
+      <div class="bg-teal-50 border border-teal-200 rounded p-3">
+        <div class="font-bold text-teal-900 mb-1">#4 · Heatmap también acá</div>
+        <p class="text-slate-700">Las celdas con número se colorean según volumen, igual que en la matriz padre. Coherencia visual.</p>
+      </div>
+      <div class="bg-teal-50 border border-teal-200 rounded p-3">
+        <div class="font-bold text-teal-900 mb-1">#5 · Color hex visible</div>
+        <p class="text-slate-700">Un cuadrito de color al lado del nombre. Reusa <code class="bg-slate-100 px-1 rounded">codigo_hex</code> que ya tenés en la BD de colores.</p>
+      </div>
+      <div class="bg-teal-50 border border-teal-200 rounded p-3">
+        <div class="font-bold text-teal-900 mb-1">#6 · Exportar Excel</div>
+        <p class="text-slate-700">Botón visible en el header del modal. Útil para mandar la info al cliente / reuniones.</p>
+      </div>
+    </div>
+
+    <div class="bg-slate-50 border border-slate-200 rounded p-3 mt-4 text-xs text-slate-600">
+      <b>Lo que se mantiene tal cual:</b> las 3 secciones (En taller / Lavandería / Almacén), las acciones "Asignar" / "Editar" / "+ Lavandería", el listado "Muestras en proceso", "PT sin clasificar Odoo", el favorito ⭐, la integración con stock Odoo, los 4 anchos de talla. Solo se afina visualmente — la lógica de fondo no cambia.
+    </div>
+  </div>
+
+  <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-5 mt-6">
+    <h3 class="font-bold mb-2">✅ Lo que NO toco (ya está bueno)</h3>
+    <p class="text-sm text-slate-700 mb-2">Tu sistema ya tiene varias cosas potentes que se mantienen tal cual:</p>
+    <ul class="text-sm text-slate-700 list-disc pl-5 space-y-1.5">
+      <li><b>Modal "Asignar colores"</b> con tallas, proporciones, topes y prorrateo automático — sigue igual.</li>
+      <li><b>Modal "Color" grande</b> (seguimiento por etapa) con secciones En taller / Lavandería / Almacén PT, lista de "PT sin clasificar en Odoo", "Muestras en proceso", botones "Editar / Asignar / + Lavandería" — se mantiene. Es muy completo.</li>
+      <li><b>Filtros</b> Ruta/Marca/Tipo/Entalle/Tela/Hilo/Modelo — se mantienen pero <b>colapsados en un solo botón</b> "Filtros (3)" para liberar espacio visual.</li>
+      <li><b>Toggles Solo activos / Solo atrasados / Solo fraccionados</b> — pasan dentro del botón de filtros.</li>
+      <li><b>Configuración de columnas</b> (mostrar/ocultar/fusionar/reordenar/resize) — se mantiene.</li>
+      <li><b>Toggle Registros / Prendas</b> y <b>Vista plana / Agrupada</b> — se mantienen.</li>
+      <li><b>Persistencia en localStorage</b> — se mejora a "vistas guardadas" (mejora 5).</li>
+      <li><b>Botón "Ficha"</b> (icono de tabla en la columna Hilo) que abre la matriz talla × color — se mantiene.</li>
+      <li><b>Click en celda → drill-down</b> — se mantiene la lógica pero se cambia el modal por una expansión inline (mejora 6).</li>
+      <li><b>Indicador de columnas fusionadas</b> en el badge "+Atraque, Para Atr." — se mantiene.</li>
+    </ul>
+    <p class="text-sm text-slate-700 mt-3">
+      O sea: <b>nada se rompe ni se reemplaza</b>. Las 6 mejoras se suman encima de lo que ya tenés.
+    </p>
+  </div>
+</div>
+
+</body>
+</html>

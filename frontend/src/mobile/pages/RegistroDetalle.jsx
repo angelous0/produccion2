@@ -138,10 +138,8 @@ export const MobileRegistroDetalle = () => {
               <div style={{ fontWeight: 600, fontSize: 16, lineHeight: 1.2 }}>
                 {registro.modelo_nombre || registro.modelo_manual?.nombre_modelo || '—'}
               </div>
-              <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                {registro.marca_nombre || registro.modelo_manual?.marca_texto || ''}
-                {registro.tipo_nombre ? ` · ${registro.tipo_nombre}` : ''}
-              </div>
+              {/* Sprint 44b: ficha técnica como chips (marca/tipo/entalle/tela/hilo/hilo específico) */}
+              <DetallesModelo registro={registro} />
             </div>
             <div>
               {puedeCambiarEstado && !inactiva ? (
@@ -1506,6 +1504,60 @@ const EstadoChipBtn = ({ etapa, habilitado, onClick, tag, tagBg, tagFg }) => (
     </span>
   </button>
 );
+
+/**
+ * Sprint 44b: chips compactos con la ficha técnica del modelo del corte.
+ * Marca y Tipo son siempre visibles (aunque estén vacíos, salen con "—" en gris)
+ * para que el usuario sepa que ese dato falta en el modelo.
+ * El resto (Entalle, Tela, Hilo, Hilo específico) se muestra solo si tiene valor.
+ */
+const DetallesModelo = ({ registro }) => {
+  const mm = registro?.modelo_manual || {};
+
+  // Marca y Tipo: siempre visibles
+  const marca = registro.marca_nombre || mm.marca_texto || null;
+  const tipo  = registro.tipo_nombre  || mm.tipo_texto  || null;
+
+  // El resto: solo si tienen valor
+  const opcionales = [
+    { label: 'Entalle',   value: registro.entalle_nombre || mm.entalle_texto },
+    { label: 'Tela',      value: registro.tela_nombre    || mm.tela_texto },
+    { label: 'Hilo',      value: registro.hilo_nombre    || mm.hilo_texto },
+    { label: 'Hilo esp.', value: registro.hilo_especifico_nombre || mm.hilo_especifico_texto },
+  ].filter(it => it.value);
+
+  const renderChip = (label, value, missing = false) => (
+    <span
+      key={label}
+      style={{
+        display: 'inline-flex', alignItems: 'baseline', gap: 4,
+        padding: '3px 8px', borderRadius: 999,
+        background: missing ? '#f8fafc' : '#f1f5f9',
+        border: `1px solid ${missing ? '#f1f5f9' : '#e2e8f0'}`,
+        fontSize: 11, color: missing ? '#94a3b8' : '#0f172a',
+        ...(missing ? { borderStyle: 'dashed' } : {}),
+      }}
+    >
+      <span style={{
+        fontSize: 9, color: missing ? '#cbd5e1' : '#64748b',
+        textTransform: 'uppercase', fontWeight: 700, letterSpacing: '.04em',
+      }}>
+        {label}
+      </span>
+      <span style={{ fontWeight: 600 }}>
+        {value || '—'}
+      </span>
+    </span>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+      {renderChip('Marca', marca, !marca)}
+      {renderChip('Tipo',  tipo,  !tipo)}
+      {opcionales.map(it => renderChip(it.label, it.value))}
+    </div>
+  );
+};
 
 /**
  * Devuelve el título de la acción según si el estado destino es "espera"

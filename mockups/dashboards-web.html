@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboards de control · Mockup web</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { --brand: #0f766e; --ink: #0f172a; --muted: #64748b; }
+  body { background: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  .section-divider { margin: 64px 0 28px; }
+  .dash-frame { background: white; border-radius: 16px; box-shadow: 0 10px 40px -10px rgba(0,0,0,.15); overflow: hidden; max-width: 1280px; margin: 0 auto; }
+  .dash-header { background: var(--brand); color: white; padding: 18px 24px; display: flex; align-items: center; gap: 14px; }
+  .kpi-card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px; }
+  .kpi-value { font-family: ui-monospace, monospace; font-weight: 800; font-size: 28px; line-height: 1; }
+  .kpi-label { font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; letter-spacing: .04em; margin-top: 6px; }
+  .kpi-delta { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; display: inline-flex; align-items: center; gap: 2px; }
+  .delta-up { background: #dcfce7; color: #15803d; }
+  .delta-down { background: #fee2e2; color: #b91c1c; }
+  .delta-flat { background: #f1f5f9; color: #475569; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .pill-red { background: #fee2e2; color: #b91c1c; }
+  .pill-amber { background: #fef3c7; color: #b45309; }
+  .pill-green { background: #dcfce7; color: #15803d; }
+  .pill-blue { background: #dbeafe; color: #1d4ed8; }
+  .pill-gray { background: #e5e7eb; color: #475569; }
+  .pill-purple { background: #f3e8ff; color: #7c3aed; }
+  .card { background: white; border: 1px solid #e5e7eb; border-radius: 12px; }
+  .label-section { font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: .04em; margin-bottom: 12px; }
+
+  /* Sparkline simulada con barras */
+  .spark { display: flex; align-items: flex-end; gap: 2px; height: 36px; }
+  .spark > div { flex: 1; background: var(--brand); border-radius: 2px 2px 0 0; min-height: 4px; opacity: 0.7; }
+  .spark > div.peak { opacity: 1; background: #0d5f5a; }
+
+  /* Bar chart horizontal */
+  .hbar { height: 8px; background: #f1f5f9; border-radius: 999px; overflow: hidden; }
+  .hbar > div { height: 100%; background: var(--brand); border-radius: 999px; }
+
+  /* Donut simulada con SVG */
+  .legend-dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+</style>
+</head>
+<body>
+
+<div class="max-w-5xl mx-auto px-8 pt-12 pb-6">
+  <h1 class="text-3xl font-bold">Dashboards de control · propuesta</h1>
+  <p class="text-slate-600 mt-2 text-lg">
+    Tu sistema ya tiene <b>25+ reportes individuales</b>. Lo que falta es una capa de
+    <b>dashboards consolidados por tema</b> que junten KPIs + gráficos + alertas en una sola vista.
+    Te propongo 5 dashboards prioritarios (web, después saltamos los KPIs clave a móvil).
+  </p>
+  <div class="mt-6 grid grid-cols-2 md:grid-cols-6 gap-3">
+    <a href="#dash-1" class="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-teal-500 transition">
+      <div class="text-2xl">📊</div>
+      <div class="text-xs font-bold mt-1">Ejecutivo</div>
+      <div class="text-[10px] text-slate-500">Vista dueño</div>
+    </a>
+    <a href="#dash-2" class="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-teal-500 transition">
+      <div class="text-2xl">⚙️</div>
+      <div class="text-xs font-bold mt-1">Operativo</div>
+      <div class="text-[10px] text-slate-500">Diana / día a día</div>
+    </a>
+    <a href="#dash-6" class="bg-white border-2 border-teal-500 rounded-xl p-3 text-center hover:border-teal-700 transition relative">
+      <span class="absolute -top-2 -right-2 bg-teal-600 text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center">NEW</span>
+      <div class="text-2xl">⚡</div>
+      <div class="text-xs font-bold mt-1">Throughput</div>
+      <div class="text-[10px] text-slate-500">Cortes/prendas por rango</div>
+    </a>
+    <a href="#dash-3" class="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-teal-500 transition">
+      <div class="text-2xl">👥</div>
+      <div class="text-xs font-bold mt-1">Talleres</div>
+      <div class="text-[10px] text-slate-500">Proveedores</div>
+    </a>
+    <a href="#dash-4" class="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-teal-500 transition">
+      <div class="text-2xl">👕</div>
+      <div class="text-xs font-bold mt-1">Modelos</div>
+      <div class="text-[10px] text-slate-500">Productos</div>
+    </a>
+    <a href="#dash-5" class="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-teal-500 transition">
+      <div class="text-2xl">💰</div>
+      <div class="text-xs font-bold mt-1">Financiero</div>
+      <div class="text-[10px] text-slate-500">Costos / pagos</div>
+    </a>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- 1 · DASHBOARD EJECUTIVO                                                  -->
+<!-- ====================================================================== -->
+<div class="section-divider px-8" id="dash-1">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-[11px] text-slate-500 uppercase tracking-wider font-bold mb-1">Dashboard 1 / 5</div>
+    <h2 class="text-2xl font-bold">📊 Ejecutivo · vista del dueño</h2>
+    <p class="text-slate-600 mt-1">Estado general del negocio en una sola pantalla. Tendencias mes a mes, alertas críticas, salud financiera resumida.</p>
+  </div>
+</div>
+
+<div class="dash-frame">
+  <div class="dash-header">
+    <div class="flex-1">
+      <div class="text-xs opacity-85">Empresa Ambission · Mayo 2026</div>
+      <div class="font-bold text-xl">Dashboard Ejecutivo</div>
+    </div>
+    <select class="bg-white/15 text-white text-sm rounded-lg px-3 py-1.5 border-0">
+      <option>Este mes</option>
+      <option>Últimos 30 días</option>
+      <option>Trimestre</option>
+    </select>
+  </div>
+
+  <div class="p-6 space-y-6">
+    <!-- Fila 1: 4 KPIs grandes -->
+    <div class="grid grid-cols-4 gap-4">
+      <div class="kpi-card">
+        <div class="kpi-value text-slate-900">216</div>
+        <div class="kpi-label">Cortes activos</div>
+        <div class="mt-2"><span class="kpi-delta delta-up">▲ 12 vs abril</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value text-slate-900">38 420</div>
+        <div class="kpi-label">Prendas en proceso</div>
+        <div class="mt-2"><span class="kpi-delta delta-up">▲ 8%</span></div>
+      </div>
+      <div class="kpi-card bg-red-50 border-red-200">
+        <div class="kpi-value text-red-700">14</div>
+        <div class="kpi-label" style="color:#b91c1c">Cortes vencidos</div>
+        <div class="mt-2"><span class="kpi-delta delta-down">▲ 4 vs abril</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value text-slate-900">S/ 84 320</div>
+        <div class="kpi-label">Costo mes (estimado)</div>
+        <div class="mt-2"><span class="kpi-delta delta-flat">— sin cambio</span></div>
+      </div>
+    </div>
+
+    <!-- Fila 2: Tendencia mensual + flujo por etapa -->
+    <div class="grid grid-cols-3 gap-4">
+      <div class="card p-4 col-span-2">
+        <div class="flex items-center justify-between mb-3">
+          <div class="label-section">Prendas terminadas por mes (últimos 6)</div>
+          <div class="text-xs text-slate-500">Datos: <code class="bg-slate-100 px-1 rounded">/api/reportes-produccion/dashboard</code></div>
+        </div>
+        <div class="flex items-end gap-3 h-32">
+          <!-- Barras simuladas -->
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-teal-100 rounded-t" style="height:55%"></div>
+            <div class="text-[10px] text-slate-500">Dic</div>
+            <div class="text-[11px] font-mono font-bold">18.2k</div>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-teal-100 rounded-t" style="height:62%"></div>
+            <div class="text-[10px] text-slate-500">Ene</div>
+            <div class="text-[11px] font-mono font-bold">21.8k</div>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-teal-100 rounded-t" style="height:48%"></div>
+            <div class="text-[10px] text-slate-500">Feb</div>
+            <div class="text-[11px] font-mono font-bold">16.4k</div>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-teal-200 rounded-t" style="height:70%"></div>
+            <div class="text-[10px] text-slate-500">Mar</div>
+            <div class="text-[11px] font-mono font-bold">24.1k</div>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-teal-300 rounded-t" style="height:78%"></div>
+            <div class="text-[10px] text-slate-500">Abr</div>
+            <div class="text-[11px] font-mono font-bold">28.3k</div>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <div class="w-full bg-teal-600 rounded-t" style="height:88%"></div>
+            <div class="text-[10px] font-bold text-teal-700">May</div>
+            <div class="text-[11px] font-mono font-bold text-teal-700">32.5k</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Flujo por etapa -->
+      <div class="card p-4">
+        <div class="label-section">Flujo por etapa · hoy</div>
+        <div class="space-y-2.5">
+          <div>
+            <div class="flex justify-between text-xs mb-1"><span>Costura</span><span class="font-mono font-bold">8 420</span></div>
+            <div class="hbar"><div style="width:78%"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1"><span>Atraque</span><span class="font-mono font-bold">3 210</span></div>
+            <div class="hbar"><div style="width:30%; background:#0d5f5a"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1"><span>Lavandería</span><span class="font-mono font-bold">12 800</span></div>
+            <div class="hbar"><div style="width:95%; background:#0d5f5a"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1"><span>Acabado</span><span class="font-mono font-bold">6 540</span></div>
+            <div class="hbar"><div style="width:55%"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1"><span>Producto Term.</span><span class="font-mono font-bold">7 450</span></div>
+            <div class="hbar"><div style="width:62%; background:#15803d"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fila 3: alertas críticas + indicadores secundarios -->
+    <div class="grid grid-cols-3 gap-4">
+      <div class="card p-4 col-span-2">
+        <div class="label-section flex items-center gap-2">
+          <span>⚠️ Alertas críticas</span>
+          <span class="pill pill-red">6</span>
+        </div>
+        <div class="space-y-2 text-sm">
+          <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50">
+            <span class="pill pill-red">VENCIDO</span>
+            <span class="flex-1">Corte C-2451 (PEKERMAN 001) · 4 días pasado plazo · en Lavandería</span>
+            <a href="#" class="text-teal-600 text-xs font-bold">VER</a>
+          </div>
+          <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50">
+            <span class="pill pill-red">PARALIZADO</span>
+            <span class="flex-1">3 cortes con incidencia abierta hace + de 7 días</span>
+            <a href="#" class="text-teal-600 text-xs font-bold">VER</a>
+          </div>
+          <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50">
+            <span class="pill pill-amber">STOCK</span>
+            <span class="flex-1">Hilo Recubierto plomo: 2.3kg restantes (cubre 1 día)</span>
+            <a href="#" class="text-teal-600 text-xs font-bold">VER</a>
+          </div>
+          <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50">
+            <span class="pill pill-amber">MUESTRA</span>
+            <span class="flex-1">2 muestras con Diana hace +5 días sin volver</span>
+            <a href="#" class="text-teal-600 text-xs font-bold">VER</a>
+          </div>
+          <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50">
+            <span class="pill pill-purple">CALIDAD</span>
+            <span class="flex-1">Lavandería Aurora: merma 8.2% en mayo (vs 3.5% promedio)</span>
+            <a href="#" class="text-teal-600 text-xs font-bold">VER</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-4">
+        <div class="label-section">Salud del mes</div>
+        <div class="space-y-3">
+          <div>
+            <div class="flex justify-between text-xs mb-1"><span>Entregas a tiempo</span><span class="font-bold text-emerald-700">84%</span></div>
+            <div class="hbar"><div style="width:84%; background:#15803d"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1"><span>Merma promedio</span><span class="font-bold text-amber-700">4.2%</span></div>
+            <div class="hbar"><div style="width:42%; background:#b45309"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1"><span>Aprob. muestras</span><span class="font-bold text-emerald-700">76%</span></div>
+            <div class="hbar"><div style="width:76%; background:#15803d"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1"><span>Incidencias / 100 cortes</span><span class="font-bold text-amber-700">12</span></div>
+            <div class="hbar"><div style="width:12%; background:#b45309"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pie de página: endpoints -->
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600">
+      <b>Endpoints que alimentan este dashboard:</b>
+      <code class="bg-white px-1 rounded mx-0.5">/api/reportes-produccion/dashboard</code> ·
+      <code class="bg-white px-1 rounded mx-0.5">/wip-etapa</code> ·
+      <code class="bg-white px-1 rounded mx-0.5">/alertas-produccion</code> ·
+      <code class="bg-white px-1 rounded mx-0.5">/cumplimiento-ruta</code> ·
+      <code class="bg-white px-1 rounded mx-0.5">/costo-lote</code> agregado.
+      <br>Casi todo ya existe en backend, solo hay que armar el agregador mensual.
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- 2 · DASHBOARD OPERATIVO                                                  -->
+<!-- ====================================================================== -->
+<div class="section-divider px-8" id="dash-2">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-[11px] text-slate-500 uppercase tracking-wider font-bold mb-1">Dashboard 2 / 5</div>
+    <h2 class="text-2xl font-bold">⚙️ Operativo · Diana día a día</h2>
+    <p class="text-slate-600 mt-1">Lo que Diana necesita ver al llegar a la oficina. Qué urge, dónde se está trabajando, dónde se traba.</p>
+  </div>
+</div>
+
+<div class="dash-frame">
+  <div class="dash-header">
+    <div class="flex-1">
+      <div class="text-xs opacity-85">Hoy · Viernes 30 de mayo</div>
+      <div class="font-bold text-xl">Dashboard Operativo</div>
+    </div>
+    <button class="bg-white/15 text-white px-3 py-1.5 rounded-lg text-sm font-semibold">🔄 Refrescar</button>
+  </div>
+
+  <div class="p-6 space-y-6">
+    <!-- Fila 1: qué necesita atención HOY -->
+    <div class="bg-red-50 border border-red-200 rounded-xl p-4">
+      <div class="flex items-center gap-3 mb-3">
+        <div class="text-2xl">🚨</div>
+        <div>
+          <div class="font-bold">Necesita atención hoy · 14 ítems</div>
+          <div class="text-xs text-red-700">Vencidos, paralizados, muestras demoradas, fallados sin asignar</div>
+        </div>
+      </div>
+      <div class="grid grid-cols-4 gap-3">
+        <div class="bg-white rounded-lg p-3">
+          <div class="kpi-value text-red-700">3</div>
+          <div class="kpi-label">Vencidos</div>
+        </div>
+        <div class="bg-white rounded-lg p-3">
+          <div class="kpi-value text-red-700">5</div>
+          <div class="kpi-label">Paralizados</div>
+        </div>
+        <div class="bg-white rounded-lg p-3">
+          <div class="kpi-value text-amber-700">4</div>
+          <div class="kpi-label">Muestras +5d</div>
+        </div>
+        <div class="bg-white rounded-lg p-3">
+          <div class="kpi-value text-amber-700">2</div>
+          <div class="kpi-label">Fallados pend.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fila 2: bottleneck + lista de cortes críticos -->
+    <div class="grid grid-cols-2 gap-4">
+      <div class="card p-4">
+        <div class="label-section">🐌 Cuellos de botella</div>
+        <div class="space-y-2.5 text-sm">
+          <div class="flex items-center justify-between p-2 bg-red-50 rounded-lg">
+            <div>
+              <div class="font-bold">Lavandería Aurora</div>
+              <div class="text-xs text-slate-600">12 cortes esperando · 4.2d promedio</div>
+            </div>
+            <span class="pill pill-red">SATURADA</span>
+          </div>
+          <div class="flex items-center justify-between p-2 bg-amber-50 rounded-lg">
+            <div>
+              <div class="font-bold">Atraque · José Ramirez</div>
+              <div class="text-xs text-slate-600">8 cortes esperando · 2.1d promedio</div>
+            </div>
+            <span class="pill pill-amber">DEMORA</span>
+          </div>
+          <div class="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+            <div>
+              <div class="font-bold">Acabado · ALMA SAC</div>
+              <div class="text-xs text-slate-600">5 cortes · 1.3d promedio</div>
+            </div>
+            <span class="pill pill-green">OK</span>
+          </div>
+        </div>
+        <div class="text-[10px] text-slate-500 mt-3"><code class="bg-slate-100 px-1 rounded">/agenda-movimientos</code> + cálculo de cola por servicio</div>
+      </div>
+
+      <div class="card p-4">
+        <div class="label-section">📦 Producción hoy</div>
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          <div class="bg-emerald-50 rounded-lg p-3 text-center">
+            <div class="font-mono font-bold text-2xl text-emerald-700">1 240</div>
+            <div class="text-[10px] text-emerald-700 uppercase font-bold">Cerradas hoy</div>
+          </div>
+          <div class="bg-blue-50 rounded-lg p-3 text-center">
+            <div class="font-mono font-bold text-2xl text-blue-700">3 850</div>
+            <div class="text-[10px] text-blue-700 uppercase font-bold">Iniciadas hoy</div>
+          </div>
+        </div>
+        <div class="text-xs text-slate-600 space-y-1">
+          <div class="flex justify-between"><span>Diana creó <b>4 muestras</b></span><span>·</span></div>
+          <div class="flex justify-between"><span>Recepcionaste <b>2 envíos MP</b></span><span>·</span></div>
+          <div class="flex justify-between"><span>Se cerraron <b>3 movimientos</b></span><span>·</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fila 3: incidencias en vivo -->
+    <div class="card p-4">
+      <div class="flex items-center justify-between mb-3">
+        <div class="label-section mb-0">Incidencias abiertas · timeline</div>
+        <div class="text-xs"><a href="#" class="text-teal-600 font-bold">Ver todas (10) →</a></div>
+      </div>
+      <table class="w-full text-sm">
+        <thead class="border-b border-slate-200">
+          <tr class="text-left text-xs text-slate-500">
+            <th class="pb-2 pr-2">Corte</th>
+            <th class="pb-2 pr-2">Motivo</th>
+            <th class="pb-2 pr-2">Servicio</th>
+            <th class="pb-2 pr-2">Persona</th>
+            <th class="pb-2 pr-2">Antigüedad</th>
+            <th class="pb-2 pr-2 text-center">Paraliza</th>
+            <th class="pb-2 pr-2">Acción</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-mono font-bold">C-2451</td>
+            <td class="py-2 pr-2">Tela manchada</td>
+            <td class="py-2 pr-2">Lavandería</td>
+            <td class="py-2 pr-2">Lav. Aurora</td>
+            <td class="py-2 pr-2 text-red-700 font-bold">7d</td>
+            <td class="py-2 pr-2 text-center">⛔</td>
+            <td class="py-2 pr-2"><button class="text-teal-600 text-xs font-bold">Resolver</button></td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-mono font-bold">C-2399</td>
+            <td class="py-2 pr-2">Costura abierta</td>
+            <td class="py-2 pr-2">Costura</td>
+            <td class="py-2 pr-2">M. Quispe</td>
+            <td class="py-2 pr-2 text-amber-700 font-bold">3d</td>
+            <td class="py-2 pr-2 text-center">⛔</td>
+            <td class="py-2 pr-2"><button class="text-teal-600 text-xs font-bold">Resolver</button></td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-mono font-bold">C-2410</td>
+            <td class="py-2 pr-2">Color fuera de tono</td>
+            <td class="py-2 pr-2">Lavandería</td>
+            <td class="py-2 pr-2">Lav. Aurora</td>
+            <td class="py-2 pr-2 text-slate-700">1d</td>
+            <td class="py-2 pr-2 text-center">—</td>
+            <td class="py-2 pr-2"><button class="text-teal-600 text-xs font-bold">Resolver</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600">
+      <b>Endpoints:</b> <code class="bg-white px-1 rounded">/api/incidencias</code> ·
+      <code class="bg-white px-1 rounded">/atrasados</code> ·
+      <code class="bg-white px-1 rounded">/wip-etapa</code> ·
+      <code class="bg-white px-1 rounded">/api/muestras?estado=demoradas</code> ·
+      <code class="bg-white px-1 rounded">/alertas-produccion</code>. Todo ya existe.
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- 6 · DASHBOARD THROUGHPUT / PRODUCTIVIDAD POR PERÍODO  (NUEVO)            -->
+<!-- ====================================================================== -->
+<div class="section-divider px-8" id="dash-6">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-[11px] text-slate-500 uppercase tracking-wider font-bold mb-1">Dashboard 6 / 6 · NUEVO</div>
+    <h2 class="text-2xl font-bold">⚡ Throughput · cortes y prendas terminados por etapa</h2>
+    <p class="text-slate-600 mt-1">
+      Cuánto terminó cada servicio en un rango de fechas (esta semana, semana pasada, mes, custom).
+      Sirve para responder: <i>"¿cuánto se produjo esta semana?"</i> y comparar contra otras semanas.
+    </p>
+  </div>
+</div>
+
+<div class="dash-frame">
+  <div class="dash-header">
+    <div class="flex-1">
+      <div class="text-xs opacity-85">Semana 22 · 27 may – 2 jun 2026</div>
+      <div class="font-bold text-xl">Productividad por etapa</div>
+    </div>
+    <div class="flex gap-2">
+      <select class="bg-white/15 text-white text-sm rounded-lg px-3 py-1.5 border-0">
+        <option>Esta semana</option>
+        <option>Semana pasada</option>
+        <option>Últimos 7 días</option>
+        <option>Este mes</option>
+        <option>Mes pasado</option>
+        <option>Custom...</option>
+      </select>
+      <button class="bg-white/15 text-white text-sm rounded-lg px-3 py-1.5">📥 Excel</button>
+    </div>
+  </div>
+
+  <div class="p-6 space-y-6">
+    <!-- KPIs del período -->
+    <div class="grid grid-cols-4 gap-4">
+      <div class="kpi-card bg-emerald-50 border-emerald-200">
+        <div class="kpi-value text-emerald-700">42</div>
+        <div class="kpi-label" style="color:#15803d">Cortes cerrados</div>
+        <div class="mt-2"><span class="kpi-delta delta-up">▲ 8 vs semana pasada</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value">12 840</div>
+        <div class="kpi-label">Prendas terminadas (PT)</div>
+        <div class="mt-2"><span class="kpi-delta delta-up">▲ 12%</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value">2 568</div>
+        <div class="kpi-label">Prendas / día (promedio)</div>
+        <div class="mt-2"><span class="kpi-delta delta-up">▲ 4%</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value">11.8 días</div>
+        <div class="kpi-label">Ciclo prom. (corte→PT)</div>
+        <div class="mt-2"><span class="kpi-delta delta-up">▼ 0.6 días</span></div>
+      </div>
+    </div>
+
+    <!-- Tabla pivote · prendas terminadas por servicio × día -->
+    <div class="card p-4">
+      <div class="flex items-center justify-between mb-3">
+        <div class="label-section mb-0">Prendas terminadas · por servicio × día</div>
+        <div class="flex gap-1 text-xs">
+          <button class="bg-teal-600 text-white px-3 py-1 rounded font-semibold">Prendas</button>
+          <button class="bg-white border border-slate-300 text-slate-600 px-3 py-1 rounded font-semibold">Cortes</button>
+        </div>
+      </div>
+      <table class="w-full text-sm">
+        <thead class="border-b-2 border-slate-200">
+          <tr class="text-left text-xs text-slate-500">
+            <th class="pb-2 pr-2">Servicio</th>
+            <th class="pb-2 pr-2 text-right">Lun 27</th>
+            <th class="pb-2 pr-2 text-right">Mar 28</th>
+            <th class="pb-2 pr-2 text-right">Mié 29</th>
+            <th class="pb-2 pr-2 text-right">Jue 30</th>
+            <th class="pb-2 pr-2 text-right bg-teal-50">Vie 31 <span class="text-[9px] font-bold text-teal-700">HOY</span></th>
+            <th class="pb-2 pr-2 text-right text-slate-400">Sáb 1</th>
+            <th class="pb-2 pr-2 text-right text-slate-400">Dom 2</th>
+            <th class="pb-2 pr-2 text-right bg-slate-100 font-bold">Total</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-bold">Corte</td>
+            <td class="py-2 pr-2 text-right font-mono">820</td>
+            <td class="py-2 pr-2 text-right font-mono">640</td>
+            <td class="py-2 pr-2 text-right font-mono">920</td>
+            <td class="py-2 pr-2 text-right font-mono">580</td>
+            <td class="py-2 pr-2 text-right font-mono bg-teal-50">410</td>
+            <td class="py-2 pr-2 text-right font-mono text-slate-400">—</td>
+            <td class="py-2 pr-2 text-right font-mono text-slate-400">—</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold bg-slate-100">3 370</td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-bold">Costura</td>
+            <td class="py-2 pr-2 text-right font-mono">540</td>
+            <td class="py-2 pr-2 text-right font-mono">720</td>
+            <td class="py-2 pr-2 text-right font-mono">680</td>
+            <td class="py-2 pr-2 text-right font-mono">810</td>
+            <td class="py-2 pr-2 text-right font-mono bg-teal-50">650</td>
+            <td class="py-2 pr-2 text-right font-mono text-slate-400">—</td>
+            <td class="py-2 pr-2 text-right font-mono text-slate-400">—</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold bg-slate-100">3 400</td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-bold">Atraque</td>
+            <td class="py-2 pr-2 text-right font-mono">220</td>
+            <td class="py-2 pr-2 text-right font-mono">180</td>
+            <td class="py-2 pr-2 text-right font-mono">340</td>
+            <td class="py-2 pr-2 text-right font-mono">280</td>
+            <td class="py-2 pr-2 text-right font-mono bg-teal-50">200</td>
+            <td class="py-2 pr-2 text-right font-mono text-slate-400">—</td>
+            <td class="py-2 pr-2 text-right font-mono text-slate-400">—</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold bg-slate-100">1 220</td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-bold">Lavandería</td>
+            <td class="py-2 pr-2 text-right font-mono">380</td>
+            <td class="py-2 pr-2 text-right font-mono">450</td>
+            <td class="py-2 pr-2 text-right font-mono">280</td>
+            <td class="py-2 pr-2 text-right font-mono">510</td>
+            <td class="py-2 pr-2 text-right font-mono bg-teal-50">380</td>
+            <td class="py-2 pr-2 text-right font-mono text-slate-400">—</td>
+            <td class="py-2 pr-2 text-right font-mono text-slate-400">—</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold bg-slate-100">2 000</td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-bold">Acabado</td>
+            <td class="py-2 pr-2 text-right font-mono">410</td>
+            <td class="py-2 pr-2 text-right font-mono">560</td>
+            <td class="py-2 pr-2 text-right font-mono">490</td>
+            <td class="py-2 pr-2 text-right font-mono">620</td>
+            <td class="py-2 pr-2 text-right font-mono bg-teal-50">370</td>
+            <td class="py-2 pr-2 text-right font-mono text-slate-400">—</td>
+            <td class="py-2 pr-2 text-right font-mono text-slate-400">—</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold bg-slate-100">2 450</td>
+          </tr>
+          <tr class="hover:bg-slate-50 bg-emerald-50">
+            <td class="py-2 pr-2 font-bold text-emerald-700">Producto Terminado</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold text-emerald-700">320</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold text-emerald-700">480</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold text-emerald-700">410</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold text-emerald-700">540</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold text-emerald-700 bg-emerald-100">290</td>
+            <td class="py-2 pr-2 text-right font-mono text-slate-400">—</td>
+            <td class="py-2 pr-2 text-right font-mono text-slate-400">—</td>
+            <td class="py-2 pr-2 text-right font-mono font-extrabold text-emerald-700 bg-emerald-100">2 040</td>
+          </tr>
+        </tbody>
+        <tfoot class="border-t-2 border-slate-200">
+          <tr class="bg-slate-50">
+            <td class="py-2 pr-2 font-bold">Total prendas terminadas</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">2 690</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">3 030</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">3 120</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">3 340</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold bg-teal-50">2 300</td>
+            <td class="py-2 pr-2 text-right text-slate-400">—</td>
+            <td class="py-2 pr-2 text-right text-slate-400">—</td>
+            <td class="py-2 pr-2 text-right font-mono font-extrabold text-base bg-slate-200">14 480</td>
+          </tr>
+        </tfoot>
+      </table>
+      <div class="text-[10px] text-slate-500 mt-3">
+        💡 Cada celda = suma de <code class="bg-slate-100 px-1 rounded">cantidad_recibida</code> de movimientos con <code class="bg-slate-100 px-1 rounded">fecha_fin</code> en ese día y ese servicio.
+        Producto Terminado = cortes que pasaron a estado "Almacén PT" o "Tienda".
+      </div>
+    </div>
+
+    <!-- Fila: cortes terminados + barras comparativas -->
+    <div class="grid grid-cols-2 gap-4">
+      <div class="card p-4">
+        <div class="label-section">🎯 Cortes cerrados por servicio · semana</div>
+        <table class="w-full text-sm">
+          <thead class="border-b border-slate-200">
+            <tr class="text-left text-xs text-slate-500">
+              <th class="pb-2 pr-2">Servicio</th>
+              <th class="pb-2 pr-2 text-right">Cortes</th>
+              <th class="pb-2 pr-2 text-right">Prendas</th>
+              <th class="pb-2 pr-2 text-right">Prom. corte</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr><td class="py-1.5 pr-2 font-bold">Corte</td><td class="py-1.5 pr-2 text-right font-mono">12</td><td class="py-1.5 pr-2 text-right font-mono">3 370</td><td class="py-1.5 pr-2 text-right font-mono text-slate-500">281</td></tr>
+            <tr><td class="py-1.5 pr-2 font-bold">Costura</td><td class="py-1.5 pr-2 text-right font-mono">11</td><td class="py-1.5 pr-2 text-right font-mono">3 400</td><td class="py-1.5 pr-2 text-right font-mono text-slate-500">309</td></tr>
+            <tr><td class="py-1.5 pr-2 font-bold">Atraque</td><td class="py-1.5 pr-2 text-right font-mono">5</td><td class="py-1.5 pr-2 text-right font-mono">1 220</td><td class="py-1.5 pr-2 text-right font-mono text-slate-500">244</td></tr>
+            <tr><td class="py-1.5 pr-2 font-bold">Lavandería</td><td class="py-1.5 pr-2 text-right font-mono">9</td><td class="py-1.5 pr-2 text-right font-mono">2 000</td><td class="py-1.5 pr-2 text-right font-mono text-slate-500">222</td></tr>
+            <tr><td class="py-1.5 pr-2 font-bold">Acabado</td><td class="py-1.5 pr-2 text-right font-mono">10</td><td class="py-1.5 pr-2 text-right font-mono">2 450</td><td class="py-1.5 pr-2 text-right font-mono text-slate-500">245</td></tr>
+            <tr class="bg-emerald-50"><td class="py-1.5 pr-2 font-bold text-emerald-700">PT (cerrados)</td><td class="py-1.5 pr-2 text-right font-mono font-bold text-emerald-700">8</td><td class="py-1.5 pr-2 text-right font-mono font-bold text-emerald-700">2 040</td><td class="py-1.5 pr-2 text-right font-mono text-emerald-700">255</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card p-4">
+        <div class="label-section">📊 Comparativo · esta semana vs anterior</div>
+        <div class="space-y-3">
+          <div>
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="font-bold">Corte</span>
+              <span class="font-mono"><span class="text-slate-400">2 980</span> → <b>3 370</b> <span class="kpi-delta delta-up ml-1">+13%</span></span>
+            </div>
+            <div class="flex gap-1">
+              <div class="hbar flex-1"><div style="width:68%; background:#94a3b8"></div></div>
+              <div class="hbar flex-1"><div style="width:78%"></div></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="font-bold">Costura</span>
+              <span class="font-mono"><span class="text-slate-400">3 100</span> → <b>3 400</b> <span class="kpi-delta delta-up ml-1">+10%</span></span>
+            </div>
+            <div class="flex gap-1">
+              <div class="hbar flex-1"><div style="width:72%; background:#94a3b8"></div></div>
+              <div class="hbar flex-1"><div style="width:79%"></div></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="font-bold">Atraque</span>
+              <span class="font-mono"><span class="text-slate-400">1 480</span> → <b>1 220</b> <span class="kpi-delta delta-down ml-1">-18%</span></span>
+            </div>
+            <div class="flex gap-1">
+              <div class="hbar flex-1"><div style="width:34%; background:#94a3b8"></div></div>
+              <div class="hbar flex-1"><div style="width:28%; background:#b45309"></div></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="font-bold">Lavandería</span>
+              <span class="font-mono"><span class="text-slate-400">1 700</span> → <b>2 000</b> <span class="kpi-delta delta-up ml-1">+18%</span></span>
+            </div>
+            <div class="flex gap-1">
+              <div class="hbar flex-1"><div style="width:39%; background:#94a3b8"></div></div>
+              <div class="hbar flex-1"><div style="width:46%"></div></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="font-bold">Acabado</span>
+              <span class="font-mono"><span class="text-slate-400">2 280</span> → <b>2 450</b> <span class="kpi-delta delta-up ml-1">+7%</span></span>
+            </div>
+            <div class="flex gap-1">
+              <div class="hbar flex-1"><div style="width:53%; background:#94a3b8"></div></div>
+              <div class="hbar flex-1"><div style="width:57%"></div></div>
+            </div>
+          </div>
+          <div class="border-t border-slate-200 pt-3">
+            <div class="flex justify-between text-xs mb-1.5">
+              <span class="font-bold text-emerald-700">PT (cerrados)</span>
+              <span class="font-mono"><span class="text-slate-400">1 720</span> → <b class="text-emerald-700">2 040</b> <span class="kpi-delta delta-up ml-1">+19%</span></span>
+            </div>
+            <div class="flex gap-1">
+              <div class="hbar flex-1"><div style="width:40%; background:#94a3b8"></div></div>
+              <div class="hbar flex-1"><div style="width:47%; background:#15803d"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tendencia semanal -->
+    <div class="card p-4">
+      <div class="label-section">📈 PT cerradas · últimas 8 semanas</div>
+      <div class="flex items-end gap-3 h-40">
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-teal-100 rounded-t" style="height:48%"></div>
+          <div class="text-[10px] text-slate-500">S15</div>
+          <div class="text-[10px] font-mono">1.6k</div>
+        </div>
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-teal-100 rounded-t" style="height:55%"></div>
+          <div class="text-[10px] text-slate-500">S16</div>
+          <div class="text-[10px] font-mono">1.9k</div>
+        </div>
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-teal-200 rounded-t" style="height:42%"></div>
+          <div class="text-[10px] text-slate-500">S17</div>
+          <div class="text-[10px] font-mono">1.4k</div>
+        </div>
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-teal-200 rounded-t" style="height:62%"></div>
+          <div class="text-[10px] text-slate-500">S18</div>
+          <div class="text-[10px] font-mono">2.1k</div>
+        </div>
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-teal-300 rounded-t" style="height:50%"></div>
+          <div class="text-[10px] text-slate-500">S19</div>
+          <div class="text-[10px] font-mono">1.7k</div>
+        </div>
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-teal-400 rounded-t" style="height:55%"></div>
+          <div class="text-[10px] text-slate-500">S20</div>
+          <div class="text-[10px] font-mono">1.85k</div>
+        </div>
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-teal-500 rounded-t" style="height:52%"></div>
+          <div class="text-[10px] text-slate-500">S21</div>
+          <div class="text-[10px] font-mono">1.7k</div>
+        </div>
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-teal-700 rounded-t" style="height:65%"></div>
+          <div class="text-[10px] font-bold text-teal-700">S22</div>
+          <div class="text-[10px] font-mono font-bold text-teal-700">2.04k</div>
+        </div>
+      </div>
+      <div class="text-[10px] text-slate-500 mt-3">
+        💡 La barra más oscura = la semana actual. Promedio últimas 8 semanas: <b>1 781 PT/semana</b>. Esta semana = <b>2 040 (+15% sobre promedio)</b>.
+      </div>
+    </div>
+
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600">
+      <b>Endpoint nuevo necesario:</b>
+      <code class="bg-white px-1 rounded">GET /api/reportes-produccion/throughput?desde=&hasta=&groupby=servicio,dia</code><br>
+      <b>Lógica:</b> agrupa <code class="bg-white px-1 rounded">prod_movimientos_produccion</code> por <code class="bg-white px-1 rounded">servicio_id</code> + <code class="bg-white px-1 rounded">DATE(fecha_fin)</code> filtrando por rango. Cuenta <code class="bg-white px-1 rounded">SUM(cantidad_recibida)</code> y <code class="bg-white px-1 rounded">COUNT(DISTINCT registro_id)</code>.
+      Para PT: contar registros que pasaron a estado <code class="bg-white px-1 rounded">Almacen PT</code> o <code class="bg-white px-1 rounded">Tienda</code> dentro del rango.
+    </div>
+  </div>
+</div>
+
+
+<!-- ====================================================================== -->
+<!-- 3 · DASHBOARD TALLERES                                                   -->
+<!-- ====================================================================== -->
+<div class="section-divider px-8" id="dash-3">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-[11px] text-slate-500 uppercase tracking-wider font-bold mb-1">Dashboard 3 / 5</div>
+    <h2 class="text-2xl font-bold">👥 Talleres y proveedores</h2>
+    <p class="text-slate-600 mt-1">Carga de trabajo, calidad y costos por taller/lavandería. Para decidir a quién enviar y con quién negociar.</p>
+  </div>
+</div>
+
+<div class="dash-frame">
+  <div class="dash-header">
+    <div class="flex-1">
+      <div class="text-xs opacity-85">Período: últimos 30 días</div>
+      <div class="font-bold text-xl">Talleres y Proveedores</div>
+    </div>
+    <select class="bg-white/15 text-white text-sm rounded-lg px-3 py-1.5 border-0">
+      <option>Todos los servicios</option>
+      <option>Costura</option>
+      <option>Lavandería</option>
+      <option>Acabado</option>
+    </select>
+  </div>
+
+  <div class="p-6 space-y-6">
+    <!-- KPIs -->
+    <div class="grid grid-cols-4 gap-4">
+      <div class="kpi-card">
+        <div class="kpi-value text-slate-900">23</div>
+        <div class="kpi-label">Talleres activos</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value text-slate-900">142</div>
+        <div class="kpi-label">Movimientos del mes</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value text-slate-900">S/ 67 200</div>
+        <div class="kpi-label">A pagar</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value text-amber-700">4.2%</div>
+        <div class="kpi-label">Merma promedio</div>
+      </div>
+    </div>
+
+    <!-- Ranking de talleres -->
+    <div class="card p-4">
+      <div class="label-section">Ranking por carga · top 10</div>
+      <table class="w-full text-sm">
+        <thead class="border-b border-slate-200">
+          <tr class="text-left text-xs text-slate-500">
+            <th class="pb-2 pr-2">#</th>
+            <th class="pb-2 pr-2">Persona / Taller</th>
+            <th class="pb-2 pr-2">Servicio</th>
+            <th class="pb-2 pr-2 text-right">Cortes activos</th>
+            <th class="pb-2 pr-2 text-right">Prendas</th>
+            <th class="pb-2 pr-2 text-right">Tiempo prom.</th>
+            <th class="pb-2 pr-2 text-right">Merma</th>
+            <th class="pb-2 pr-2 text-right">Incid. / 100</th>
+            <th class="pb-2 pr-2 text-right">A pagar</th>
+            <th class="pb-2 pr-2 text-center">Estado</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-mono">1</td>
+            <td class="py-2 pr-2 font-bold">Lav. Aurora</td>
+            <td class="py-2 pr-2 text-xs"><span class="pill pill-blue">Lavandería</span></td>
+            <td class="py-2 pr-2 text-right font-mono">12</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">4 820</td>
+            <td class="py-2 pr-2 text-right text-red-700">4.2d</td>
+            <td class="py-2 pr-2 text-right text-red-700 font-bold">8.2%</td>
+            <td class="py-2 pr-2 text-right text-red-700">22</td>
+            <td class="py-2 pr-2 text-right font-mono">S/ 18 200</td>
+            <td class="py-2 pr-2 text-center"><span class="pill pill-red">SATURADO</span></td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-mono">2</td>
+            <td class="py-2 pr-2 font-bold">José Ramírez</td>
+            <td class="py-2 pr-2 text-xs"><span class="pill pill-purple">Atraque</span></td>
+            <td class="py-2 pr-2 text-right font-mono">8</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">3 210</td>
+            <td class="py-2 pr-2 text-right">2.1d</td>
+            <td class="py-2 pr-2 text-right">3.1%</td>
+            <td class="py-2 pr-2 text-right">8</td>
+            <td class="py-2 pr-2 text-right font-mono">S/ 9 400</td>
+            <td class="py-2 pr-2 text-center"><span class="pill pill-amber">DEMORA</span></td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-mono">3</td>
+            <td class="py-2 pr-2 font-bold">María Quispe</td>
+            <td class="py-2 pr-2 text-xs"><span class="pill pill-amber">Costura</span></td>
+            <td class="py-2 pr-2 text-right font-mono">6</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">2 880</td>
+            <td class="py-2 pr-2 text-right">3.5d</td>
+            <td class="py-2 pr-2 text-right">2.8%</td>
+            <td class="py-2 pr-2 text-right">11</td>
+            <td class="py-2 pr-2 text-right font-mono">S/ 8 640</td>
+            <td class="py-2 pr-2 text-center"><span class="pill pill-green">OK</span></td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-mono">4</td>
+            <td class="py-2 pr-2 font-bold">Luis Castro</td>
+            <td class="py-2 pr-2 text-xs"><span class="pill pill-amber">Costura</span></td>
+            <td class="py-2 pr-2 text-right font-mono">5</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">2 100</td>
+            <td class="py-2 pr-2 text-right">2.8d</td>
+            <td class="py-2 pr-2 text-right">1.9%</td>
+            <td class="py-2 pr-2 text-right">3</td>
+            <td class="py-2 pr-2 text-right font-mono">S/ 6 300</td>
+            <td class="py-2 pr-2 text-center"><span class="pill pill-green">OK</span></td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-mono">5</td>
+            <td class="py-2 pr-2 font-bold">ALMA SAC</td>
+            <td class="py-2 pr-2 text-xs"><span class="pill pill-blue">Acabado</span></td>
+            <td class="py-2 pr-2 text-right font-mono">5</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">1 950</td>
+            <td class="py-2 pr-2 text-right">1.3d</td>
+            <td class="py-2 pr-2 text-right">2.5%</td>
+            <td class="py-2 pr-2 text-right">4</td>
+            <td class="py-2 pr-2 text-right font-mono">S/ 5 850</td>
+            <td class="py-2 pr-2 text-center"><span class="pill pill-green">OK</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Calidad: merma e incidencias -->
+    <div class="grid grid-cols-2 gap-4">
+      <div class="card p-4">
+        <div class="label-section">📉 Merma del mes · por taller</div>
+        <div class="space-y-2">
+          <div>
+            <div class="flex justify-between text-xs mb-1"><span class="font-bold">Lav. Aurora</span><span class="text-red-700 font-bold">8.2%</span></div>
+            <div class="hbar"><div style="width:82%; background:#b91c1c"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1"><span>Sechura Color</span><span class="text-amber-700 font-bold">5.4%</span></div>
+            <div class="hbar"><div style="width:54%; background:#b45309"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1"><span>Promedio general</span><span class="font-bold">4.2%</span></div>
+            <div class="hbar"><div style="width:42%"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1"><span>José Ramírez</span><span class="text-emerald-700 font-bold">3.1%</span></div>
+            <div class="hbar"><div style="width:31%; background:#15803d"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs mb-1"><span>Luis Castro</span><span class="text-emerald-700 font-bold">1.9%</span></div>
+            <div class="hbar"><div style="width:19%; background:#15803d"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-4">
+        <div class="label-section">⚠️ Incidencias por taller · top 5</div>
+        <div class="space-y-2 text-sm">
+          <div class="flex items-center justify-between p-2 bg-slate-50 rounded">
+            <div>
+              <div class="font-bold">Lav. Aurora</div>
+              <div class="text-xs text-slate-500">Tela manchada (4), Color fuera tono (3), Encogimiento (2)</div>
+            </div>
+            <span class="pill pill-red">9</span>
+          </div>
+          <div class="flex items-center justify-between p-2 bg-slate-50 rounded">
+            <div>
+              <div class="font-bold">María Quispe</div>
+              <div class="text-xs text-slate-500">Costura abierta (3), Tallas mal (1)</div>
+            </div>
+            <span class="pill pill-amber">4</span>
+          </div>
+          <div class="flex items-center justify-between p-2 bg-slate-50 rounded">
+            <div>
+              <div class="font-bold">José Ramírez</div>
+              <div class="text-xs text-slate-500">Atraque flojo (2), Hilo cambiado (1)</div>
+            </div>
+            <span class="pill pill-amber">3</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600">
+      <b>Endpoints:</b> <code class="bg-white px-1 rounded">/balance-terceros</code> ·
+      <code class="bg-white px-1 rounded">/rendimiento-servicios</code> ·
+      <code class="bg-white px-1 rounded">/incidencias?groupby=persona</code> ·
+      <code class="bg-white px-1 rounded">/movimientos-costos</code>.
+      Hay que agregar agregación por persona en backend (un endpoint nuevo simple).
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- 4 · DASHBOARD MODELOS                                                    -->
+<!-- ====================================================================== -->
+<div class="section-divider px-8" id="dash-4">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-[11px] text-slate-500 uppercase tracking-wider font-bold mb-1">Dashboard 4 / 5</div>
+    <h2 class="text-2xl font-bold">👕 Modelos / productos</h2>
+    <p class="text-slate-600 mt-1">Qué modelos se producen más, cuánto cuestan, cuánto tardan, dónde hay problemas recurrentes.</p>
+  </div>
+</div>
+
+<div class="dash-frame">
+  <div class="dash-header">
+    <div class="flex-1">
+      <div class="text-xs opacity-85">Período: últimos 90 días</div>
+      <div class="font-bold text-xl">Modelos / Productos</div>
+    </div>
+    <input type="text" placeholder="Buscar modelo..." class="bg-white/15 text-white placeholder-white/60 rounded-lg px-3 py-1.5 text-sm border-0 w-56">
+  </div>
+
+  <div class="p-6 space-y-6">
+    <!-- KPIs -->
+    <div class="grid grid-cols-4 gap-4">
+      <div class="kpi-card">
+        <div class="kpi-value">48</div>
+        <div class="kpi-label">Modelos en producción</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value">12.4 días</div>
+        <div class="kpi-label">Ciclo promedio</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value">S/ 18.40</div>
+        <div class="kpi-label">Costo prom. por prenda</div>
+      </div>
+      <div class="kpi-card bg-red-50 border-red-200">
+        <div class="kpi-value text-red-700">6</div>
+        <div class="kpi-label" style="color:#b91c1c">Con incidencia recurrente</div>
+      </div>
+    </div>
+
+    <!-- Top modelos -->
+    <div class="card p-4">
+      <div class="label-section">Top 10 modelos por volumen</div>
+      <table class="w-full text-sm">
+        <thead class="border-b border-slate-200">
+          <tr class="text-left text-xs text-slate-500">
+            <th class="pb-2 pr-2">Modelo</th>
+            <th class="pb-2 pr-2">Marca · Tipo</th>
+            <th class="pb-2 pr-2 text-right">Cortes</th>
+            <th class="pb-2 pr-2 text-right">Prendas</th>
+            <th class="pb-2 pr-2 text-right">Ciclo prom.</th>
+            <th class="pb-2 pr-2 text-right">Costo / prd</th>
+            <th class="pb-2 pr-2 text-right">Merma</th>
+            <th class="pb-2 pr-2 text-right">Incidencias</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-bold">PEKERMAN 001</td>
+            <td class="py-2 pr-2 text-xs text-slate-500">Element Pr. · Polo M/C</td>
+            <td class="py-2 pr-2 text-right font-mono">8</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">2 400</td>
+            <td class="py-2 pr-2 text-right">11.2d</td>
+            <td class="py-2 pr-2 text-right font-mono">S/ 16.80</td>
+            <td class="py-2 pr-2 text-right">3.2%</td>
+            <td class="py-2 pr-2 text-right">2</td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-bold">VICUÑA 044</td>
+            <td class="py-2 pr-2 text-xs text-slate-500">Vicuña · Casaca</td>
+            <td class="py-2 pr-2 text-right font-mono">5</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">1 100</td>
+            <td class="py-2 pr-2 text-right">15.8d</td>
+            <td class="py-2 pr-2 text-right font-mono">S/ 28.40</td>
+            <td class="py-2 pr-2 text-right text-red-700 font-bold">7.2%</td>
+            <td class="py-2 pr-2 text-right text-red-700 font-bold">5</td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-bold">CLOVER BLACK</td>
+            <td class="py-2 pr-2 text-xs text-slate-500">Element Pr. · Pantalón</td>
+            <td class="py-2 pr-2 text-right font-mono">4</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">1 080</td>
+            <td class="py-2 pr-2 text-right">13.5d</td>
+            <td class="py-2 pr-2 text-right font-mono">S/ 22.10</td>
+            <td class="py-2 pr-2 text-right">4.1%</td>
+            <td class="py-2 pr-2 text-right">1</td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-bold">AXELIUS BLACK</td>
+            <td class="py-2 pr-2 text-xs text-slate-500">Element Pr. · ⚠ sin tipo</td>
+            <td class="py-2 pr-2 text-right font-mono">3</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">1 632</td>
+            <td class="py-2 pr-2 text-right">10.8d</td>
+            <td class="py-2 pr-2 text-right font-mono">S/ 19.20</td>
+            <td class="py-2 pr-2 text-right">3.8%</td>
+            <td class="py-2 pr-2 text-right">3</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Distribución por marca + alertas modelo -->
+    <div class="grid grid-cols-2 gap-4">
+      <div class="card p-4">
+        <div class="label-section">Distribución por marca · prendas mes</div>
+        <div class="flex items-center gap-6">
+          <!-- Donut simulado -->
+          <svg viewBox="0 0 42 42" class="w-32 h-32">
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#e5e7eb" stroke-width="6"/>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#0f766e" stroke-width="6" stroke-dasharray="48 100" stroke-dashoffset="0" transform="rotate(-90 21 21)"/>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#0ea5e9" stroke-width="6" stroke-dasharray="28 100" stroke-dashoffset="-48" transform="rotate(-90 21 21)"/>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#a855f7" stroke-width="6" stroke-dasharray="14 100" stroke-dashoffset="-76" transform="rotate(-90 21 21)"/>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="#f59e0b" stroke-width="6" stroke-dasharray="10 100" stroke-dashoffset="-90" transform="rotate(-90 21 21)"/>
+          </svg>
+          <div class="flex-1 space-y-2 text-sm">
+            <div class="flex items-center gap-2"><span class="legend-dot" style="background:#0f766e"></span>Element Premium · 48% · 15.6k</div>
+            <div class="flex items-center gap-2"><span class="legend-dot" style="background:#0ea5e9"></span>Vicuña · 28% · 9.1k</div>
+            <div class="flex items-center gap-2"><span class="legend-dot" style="background:#a855f7"></span>Pekerman · 14% · 4.5k</div>
+            <div class="flex items-center gap-2"><span class="legend-dot" style="background:#f59e0b"></span>Otras · 10% · 3.3k</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-4">
+        <div class="label-section">🔁 Modelos con incidencias recurrentes</div>
+        <div class="space-y-2 text-sm">
+          <div class="flex items-center justify-between p-2 bg-red-50 rounded">
+            <div>
+              <div class="font-bold">VICUÑA 044</div>
+              <div class="text-xs text-slate-600">Mismo motivo en 4 de 5 cortes: <i>"tela encoge en lavado"</i></div>
+            </div>
+            <span class="pill pill-red">5</span>
+          </div>
+          <div class="flex items-center justify-between p-2 bg-amber-50 rounded">
+            <div>
+              <div class="font-bold">AXELIUS BLACK</div>
+              <div class="text-xs text-slate-600">Mismo motivo en 2 de 3 cortes: <i>"cierre flojo"</i></div>
+            </div>
+            <span class="pill pill-amber">3</span>
+          </div>
+          <div class="flex items-center justify-between p-2 bg-amber-50 rounded">
+            <div>
+              <div class="font-bold">PEKERMAN 008</div>
+              <div class="text-xs text-slate-600">2 cortes con incidencia en costura</div>
+            </div>
+            <span class="pill pill-amber">2</span>
+          </div>
+        </div>
+        <div class="text-[10px] text-slate-500 mt-3">Útil para detectar problemas <b>de diseño/patrón</b>, no solo de proveedor.</div>
+      </div>
+    </div>
+
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600">
+      <b>Endpoints:</b> <code class="bg-white px-1 rounded">/dashboard?groupby=modelo</code> ·
+      <code class="bg-white px-1 rounded">/costo-lote agrupado</code> ·
+      <code class="bg-white px-1 rounded">/incidencias?groupby=modelo,motivo</code>.
+      Backend nuevo agregador por modelo.
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- 5 · DASHBOARD FINANCIERO                                                 -->
+<!-- ====================================================================== -->
+<div class="section-divider px-8" id="dash-5">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-[11px] text-slate-500 uppercase tracking-wider font-bold mb-1">Dashboard 5 / 5</div>
+    <h2 class="text-2xl font-bold">💰 Financiero · costos y pagos</h2>
+    <p class="text-slate-600 mt-1">Cuánto cuesta producir, a quién pagar, cuánto cobrar por fallados, evolución vs meses anteriores.</p>
+  </div>
+</div>
+
+<div class="dash-frame">
+  <div class="dash-header">
+    <div class="flex-1">
+      <div class="text-xs opacity-85">Mayo 2026 · cierre estimado</div>
+      <div class="font-bold text-xl">Financiero</div>
+    </div>
+    <button class="bg-white/15 text-white px-3 py-1.5 rounded-lg text-sm font-semibold">📥 Exportar Excel</button>
+  </div>
+
+  <div class="p-6 space-y-6">
+    <!-- KPIs financieros -->
+    <div class="grid grid-cols-4 gap-4">
+      <div class="kpi-card">
+        <div class="kpi-value">S/ 84 320</div>
+        <div class="kpi-label">Costo total mes</div>
+        <div class="mt-2"><span class="kpi-delta delta-up">▲ 6% vs abril</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value">S/ 67 200</div>
+        <div class="kpi-label">A pagar a talleres</div>
+        <div class="mt-2"><span class="kpi-delta delta-flat">12 pendientes</span></div>
+      </div>
+      <div class="kpi-card bg-emerald-50 border-emerald-200">
+        <div class="kpi-value text-emerald-700">S/ 8 420</div>
+        <div class="kpi-label" style="color:#15803d">Cobro por fallados</div>
+        <div class="mt-2"><span class="kpi-delta delta-up">5 notas listas</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value">S/ 18.40</div>
+        <div class="kpi-label">Costo prom. por prenda</div>
+        <div class="mt-2"><span class="kpi-delta delta-down">▲ S/ 0.80</span></div>
+      </div>
+    </div>
+
+    <!-- Distribución de costos -->
+    <div class="grid grid-cols-3 gap-4">
+      <div class="card p-4 col-span-2">
+        <div class="label-section">Costo por servicio · mes</div>
+        <div class="space-y-2.5">
+          <div>
+            <div class="flex justify-between text-sm mb-1"><span class="font-bold">Costura</span><span class="font-mono font-bold">S/ 28 400 (34%)</span></div>
+            <div class="hbar h-3"><div style="width:34%; background:#0f766e"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-sm mb-1"><span class="font-bold">Lavandería</span><span class="font-mono font-bold">S/ 21 800 (26%)</span></div>
+            <div class="hbar h-3"><div style="width:26%; background:#0d5f5a"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-sm mb-1"><span class="font-bold">Acabado</span><span class="font-mono font-bold">S/ 15 200 (18%)</span></div>
+            <div class="hbar h-3"><div style="width:18%; background:#0ea5e9"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-sm mb-1"><span class="font-bold">MP consumida</span><span class="font-mono font-bold">S/ 12 800 (15%)</span></div>
+            <div class="hbar h-3"><div style="width:15%; background:#a855f7"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-sm mb-1"><span class="font-bold">Atraque + otros</span><span class="font-mono font-bold">S/ 6 120 (7%)</span></div>
+            <div class="hbar h-3"><div style="width:7%; background:#f59e0b"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-4">
+        <div class="label-section">⏰ Cobros pendientes</div>
+        <div class="space-y-2 text-sm">
+          <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">
+            <div class="flex justify-between items-baseline mb-1">
+              <span class="font-bold">5 notas listas</span>
+              <span class="font-mono font-bold text-emerald-700">S/ 8 420</span>
+            </div>
+            <div class="text-xs text-slate-600">Lav. Aurora (3), Soanlu (2)</div>
+            <button class="mt-2 w-full bg-emerald-600 text-white rounded py-1.5 text-xs font-bold">Generar notas</button>
+          </div>
+          <div class="bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+            <div class="flex justify-between items-baseline mb-1">
+              <span class="font-bold">7 fallados sin nota</span>
+              <span class="font-mono font-bold text-amber-700">~ S/ 2 100</span>
+            </div>
+            <div class="text-xs text-slate-600">Pendiente marcar/asignar</div>
+            <button class="mt-2 w-full bg-amber-600 text-white rounded py-1.5 text-xs font-bold">Ver fallados</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabla de pagos pendientes -->
+    <div class="card p-4">
+      <div class="label-section">A pagar a talleres · por persona · este mes</div>
+      <table class="w-full text-sm">
+        <thead class="border-b border-slate-200">
+          <tr class="text-left text-xs text-slate-500">
+            <th class="pb-2 pr-2">Persona / Taller</th>
+            <th class="pb-2 pr-2">Servicio</th>
+            <th class="pb-2 pr-2 text-right">Movimientos</th>
+            <th class="pb-2 pr-2 text-right">Prendas</th>
+            <th class="pb-2 pr-2 text-right">Tarifa prom.</th>
+            <th class="pb-2 pr-2 text-right">Total a pagar</th>
+            <th class="pb-2 pr-2 text-center">Estado</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-bold">Lav. Aurora</td>
+            <td class="py-2 pr-2 text-xs"><span class="pill pill-blue">Lavandería</span></td>
+            <td class="py-2 pr-2 text-right">12</td>
+            <td class="py-2 pr-2 text-right font-mono">4 820</td>
+            <td class="py-2 pr-2 text-right font-mono">S/ 3.78</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">S/ 18 200</td>
+            <td class="py-2 pr-2 text-center"><span class="pill pill-amber">PENDIENTE</span></td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-bold">José Ramírez</td>
+            <td class="py-2 pr-2 text-xs"><span class="pill pill-purple">Atraque</span></td>
+            <td class="py-2 pr-2 text-right">8</td>
+            <td class="py-2 pr-2 text-right font-mono">3 210</td>
+            <td class="py-2 pr-2 text-right font-mono">S/ 2.93</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">S/ 9 400</td>
+            <td class="py-2 pr-2 text-center"><span class="pill pill-amber">PENDIENTE</span></td>
+          </tr>
+          <tr class="hover:bg-slate-50">
+            <td class="py-2 pr-2 font-bold">María Quispe</td>
+            <td class="py-2 pr-2 text-xs"><span class="pill pill-amber">Costura</span></td>
+            <td class="py-2 pr-2 text-right">6</td>
+            <td class="py-2 pr-2 text-right font-mono">2 880</td>
+            <td class="py-2 pr-2 text-right font-mono">S/ 3.00</td>
+            <td class="py-2 pr-2 text-right font-mono font-bold">S/ 8 640</td>
+            <td class="py-2 pr-2 text-center"><span class="pill pill-green">PAGADO</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="mt-3 text-xs text-slate-500 flex justify-between">
+        <span><b>Nota:</b> el sistema actualmente no tiene módulo de pagos formal. Esta vista usa <code class="bg-slate-100 px-1 rounded">factura_numero</code> de los movimientos como proxy de "ya facturado".</span>
+      </div>
+    </div>
+
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600">
+      <b>Endpoints:</b> <code class="bg-white px-1 rounded">/movimientos-costos</code> ·
+      <code class="bg-white px-1 rounded">/costo-lote</code> ·
+      <code class="bg-white px-1 rounded">/balance-terceros</code> ·
+      <code class="bg-white px-1 rounded">/api/cobro</code>. Para tracking de "pagado/pendiente" hay que agregar campo o módulo pago. Por ahora se infiere de factura_numero.
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- RESUMEN + PLAN                                                            -->
+<!-- ====================================================================== -->
+<div class="section-divider px-8">
+  <div class="max-w-5xl mx-auto">
+    <h2 class="text-2xl font-bold">📋 Resumen y plan</h2>
+  </div>
+</div>
+
+<div class="max-w-5xl mx-auto px-8 pb-16 space-y-6">
+
+  <div class="bg-white border border-slate-200 rounded-xl p-6">
+    <h3 class="font-bold text-lg mb-3">Tabla comparativa</h3>
+    <table class="w-full text-sm">
+      <thead class="border-b-2 border-slate-200">
+        <tr class="text-left text-xs text-slate-500">
+          <th class="pb-2 pr-2">Dashboard</th>
+          <th class="pb-2 pr-2">Audiencia</th>
+          <th class="pb-2 pr-2">Frecuencia uso</th>
+          <th class="pb-2 pr-2">Datos listos en BD</th>
+          <th class="pb-2 pr-2">Esfuerzo</th>
+          <th class="pb-2 pr-2">Prioridad</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        <tr>
+          <td class="py-3 pr-2 font-bold">📊 Ejecutivo</td>
+          <td class="py-3 pr-2">Dueño</td>
+          <td class="py-3 pr-2">Semanal</td>
+          <td class="py-3 pr-2"><span class="pill pill-green">95%</span></td>
+          <td class="py-3 pr-2"><span class="pill pill-blue">Bajo</span></td>
+          <td class="py-3 pr-2"><span class="pill pill-red">🔥 ALTA</span></td>
+        </tr>
+        <tr>
+          <td class="py-3 pr-2 font-bold">⚙️ Operativo</td>
+          <td class="py-3 pr-2">Diana / supervisor</td>
+          <td class="py-3 pr-2">Diario</td>
+          <td class="py-3 pr-2"><span class="pill pill-green">90%</span></td>
+          <td class="py-3 pr-2"><span class="pill pill-blue">Bajo</span></td>
+          <td class="py-3 pr-2"><span class="pill pill-red">🔥 ALTA</span></td>
+        </tr>
+        <tr class="bg-teal-50">
+          <td class="py-3 pr-2 font-bold">⚡ Throughput · NUEVO</td>
+          <td class="py-3 pr-2">Todos</td>
+          <td class="py-3 pr-2">Semanal-mensual</td>
+          <td class="py-3 pr-2"><span class="pill pill-green">100%</span></td>
+          <td class="py-3 pr-2"><span class="pill pill-blue">Bajo</span></td>
+          <td class="py-3 pr-2"><span class="pill pill-red">🔥 ALTA</span></td>
+        </tr>
+        <tr>
+          <td class="py-3 pr-2 font-bold">👥 Talleres</td>
+          <td class="py-3 pr-2">Compras / gerencia</td>
+          <td class="py-3 pr-2">Semanal-mensual</td>
+          <td class="py-3 pr-2"><span class="pill pill-amber">75%</span></td>
+          <td class="py-3 pr-2"><span class="pill pill-amber">Medio</span></td>
+          <td class="py-3 pr-2"><span class="pill pill-amber">Media</span></td>
+        </tr>
+        <tr>
+          <td class="py-3 pr-2 font-bold">👕 Modelos</td>
+          <td class="py-3 pr-2">Diseño / planificación</td>
+          <td class="py-3 pr-2">Mensual</td>
+          <td class="py-3 pr-2"><span class="pill pill-amber">70%</span></td>
+          <td class="py-3 pr-2"><span class="pill pill-amber">Medio</span></td>
+          <td class="py-3 pr-2"><span class="pill pill-gray">Baja</span></td>
+        </tr>
+        <tr>
+          <td class="py-3 pr-2 font-bold">💰 Financiero</td>
+          <td class="py-3 pr-2">Dueño / contabilidad</td>
+          <td class="py-3 pr-2">Mensual</td>
+          <td class="py-3 pr-2"><span class="pill pill-amber">80%</span></td>
+          <td class="py-3 pr-2"><span class="pill pill-amber">Medio</span></td>
+          <td class="py-3 pr-2"><span class="pill pill-amber">Media</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bg-teal-50 border border-teal-200 rounded-xl p-6">
+    <h3 class="font-bold text-lg mb-3">📱 KPIs que viajan al móvil (vista resumida)</h3>
+    <p class="text-sm text-slate-700 mb-3">
+      Una vez aprobados los dashboards web, llevamos al móvil <b>solo los KPIs y alertas accionables</b>, no las tablas grandes.
+      En el Home móvil aparecería una nueva sección "📊 Tu día" con:
+    </p>
+    <ul class="text-sm text-slate-700 list-disc pl-5 space-y-1">
+      <li><b>Card Hoy</b>: Vencidos / Paralizados / Muestras +5d / Fallados pendientes (del Dashboard Operativo)</li>
+      <li><b>Card Bottleneck</b>: qué taller está saturado (1-2 líneas)</li>
+      <li><b>Card Mes</b>: prendas terminadas vs mes anterior + entrega a tiempo % (del Ejecutivo)</li>
+      <li><b>Card Costos</b>: cuánto debes pagar y cuánto puedes cobrar (del Financiero)</li>
+    </ul>
+    <p class="text-sm text-slate-700 mt-3">
+      Cada card tiene un botón "Ver detalle" que en mobile abre la pantalla con los datos resumidos y un botón "Abrir en web" para el dashboard completo.
+    </p>
+  </div>
+
+  <div class="bg-amber-50 border border-amber-200 rounded-xl p-6">
+    <h3 class="font-bold text-lg mb-3">⏭️ Plan de implementación sugerido</h3>
+    <ol class="text-sm text-slate-700 list-decimal pl-5 space-y-2">
+      <li><b>Sprint 45 · Dashboard Throughput</b> ⚡ (4 días). El que vos pediste recién. Endpoint nuevo único <code class="bg-slate-100 px-1 rounded">/throughput?desde=&hasta=</code> + 1 pantalla web. <b>Mi pick para arrancar</b> porque responde "¿cuánto se hizo esta semana?" para todos los roles.</li>
+      <li><b>Sprint 46 · Dashboard Operativo</b> (1 semana). Diana lo abre cada mañana. Cuellos de botella, incidencias en vivo, producción del día. Datos ya existen.</li>
+      <li><b>Sprint 47 · Dashboard Ejecutivo</b> (1 semana). KPIs grandes, tendencia 6 meses, flujo por etapa, alertas críticas. 95% data ya existe.</li>
+      <li><b>Sprint 48 · KPIs móviles</b> (3 días). Card "Tu día" en el Home móvil con resumen de los 3 anteriores. Endpoint agregador único.</li>
+      <li><b>Sprint 49 · Dashboard Talleres</b> (1 semana). Requiere un endpoint agregador nuevo por persona. Ranking, calidad, pagos.</li>
+      <li><b>Sprint 50 · Dashboard Financiero</b> (1.5 semanas). El que más cambios pide en backend (campo "pagado" en movimientos, módulo de pagos formal).</li>
+      <li><b>Sprint 51 · Dashboard Modelos</b> (1 semana). El menos urgente. Útil para revisiones trimestrales.</li>
+    </ol>
+    <p class="text-sm text-slate-700 mt-3">
+      <b>Recomendación honesta:</b> empezar por <b>Throughput</b> (rápido, alto impacto, respondes a tu pregunta directa), después <b>Operativo</b> y <b>Ejecutivo</b> en paralelo. El resto puede esperar 1-2 meses.
+    </p>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl p-6">
+    <h3 class="font-bold text-lg mb-3">Para decidir antes de codear</h3>
+    <ul class="text-sm text-slate-700 list-disc pl-5 space-y-2">
+      <li><b>¿Por dónde empezamos?</b> Mi voto: Operativo + Ejecutivo en paralelo, después móvil.</li>
+      <li><b>¿Hay una vista que falta?</b> Algunos que no incluí: <i>Dashboard de stock/MP</i>, <i>Dashboard de cumplimiento (clientes)</i>, <i>Dashboard de líneas de negocio</i>. Decime si alguno de esos te resuena más.</li>
+      <li><b>¿Los KPIs son los correctos?</b> Si hay alguno que no aporta o falta otro, ahora es el momento de cambiarlo (antes de codear).</li>
+      <li><b>¿Versión web única o por rol?</b> ¿Todos ven todo o cada rol ve solo lo suyo?</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>

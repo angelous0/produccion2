@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lista de Registros · Mejoras propuestas</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { --brand: #0f766e; --ink: #0f172a; --muted: #64748b; }
+  body { background: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  .frame { background: white; border-radius: 14px; box-shadow: 0 10px 40px -10px rgba(0,0,0,.15); overflow: hidden; max-width: 1280px; margin: 32px auto; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .pill-red { background: #fee2e2; color: #b91c1c; }
+  .pill-amber { background: #fef3c7; color: #b45309; }
+  .pill-green { background: #dcfce7; color: #15803d; }
+  .pill-blue { background: #dbeafe; color: #1d4ed8; }
+  .pill-gray { background: #e5e7eb; color: #475569; }
+  .pill-purple { background: #f3e8ff; color: #7c3aed; }
+  .pill-zinc { background: #18181b; color: white; }
+  .new-tag { background: #0f766e; color: white; font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 4px; letter-spacing: .04em; }
+</style>
+</head>
+<body>
+
+<div class="max-w-5xl mx-auto px-8 pt-12 pb-6">
+  <h1 class="text-3xl font-bold">Lista de Registros (web) · mejoras propuestas</h1>
+  <p class="text-slate-600 mt-2 text-lg">
+    Hoy <code class="bg-slate-200 px-1 rounded">Registros.jsx</code> tiene <b>1 976 líneas</b>, <b>17 columnas</b>, <b>10 filtros</b> al mismo nivel,
+    sin KPIs, sin vistas guardadas, sin acciones masivas. Te propongo <b>8 mejoras</b> ordenadas por esfuerzo.
+  </p>
+
+  <!-- Resumen rápido -->
+  <div class="grid grid-cols-2 gap-3 mt-6">
+    <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+      <div class="text-xs text-red-700 font-bold uppercase tracking-wider mb-2">😵 Pain points actuales</div>
+      <ul class="text-sm space-y-1.5 list-disc pl-5 text-red-900">
+        <li>17 columnas (con muchas <code class="bg-white px-1 rounded text-[10px]">hidden xl</code>) → no sabés qué ves según el viewport</li>
+        <li>10 filtros (marca/tipo/entalle/tela/modelo/línea/urgente/estado…) sin agrupar</li>
+        <li>Sin <b>KPIs arriba</b>: cuántos urgentes, paralizados, vencidos</li>
+        <li>Sin <b>vistas guardadas</b>: cada usuario configura desde cero</li>
+        <li>Sin <b>ordenamiento por columna</b> visible</li>
+        <li>Sin <b>acciones masivas</b> (cambiar línea, marcar urgentes en bulk)</li>
+        <li>Sin <b>filtro de fecha</b> de entrega</li>
+        <li>Búsqueda es solo por n_corte + modelo, no por observaciones</li>
+      </ul>
+    </div>
+    <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+      <div class="text-xs text-emerald-700 font-bold uppercase tracking-wider mb-2">✅ Lo que ya está bien</div>
+      <ul class="text-sm space-y-1.5 list-disc pl-5 text-emerald-900">
+        <li>Búsqueda con debounce</li>
+        <li>Multi-select de marcas/tipos/entalles/telas</li>
+        <li>Filtro de estado por inclusión/exclusión</li>
+        <li>Filtro "operativo" (paralizada/riesgo/normal)</li>
+        <li>Toggle urgente</li>
+        <li>Paginación 50/página</li>
+        <li>Vista detalle modal (RegistroDetalleFase2)</li>
+        <li>Acciones por fila (editar, colores, incidencia, eliminar)</li>
+        <li>Botón Export</li>
+        <li>Sticky columns en algunas vistas</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- ANTES (boceto rápido)                                                    -->
+<!-- ====================================================================== -->
+<div class="max-w-5xl mx-auto px-8 mt-12">
+  <div class="text-[11px] text-red-700 uppercase tracking-wider font-bold mb-1">ANTES · resumen</div>
+  <h2 class="text-xl font-bold">Cómo está hoy</h2>
+</div>
+
+<div class="frame">
+  <div class="bg-slate-100 border-b border-slate-200 px-6 py-3">
+    <h3 class="font-bold">Registros · 216 totales</h3>
+  </div>
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-3">
+    <div class="flex flex-wrap gap-2 items-center text-xs">
+      <input class="border rounded px-2 py-1 w-48" placeholder="🔍 Buscar..." />
+      <select class="border rounded px-2 py-1"><option>Estados (10)</option></select>
+      <select class="border rounded px-2 py-1"><option>Modelo</option></select>
+      <select class="border rounded px-2 py-1"><option>Línea</option></select>
+      <button class="border rounded px-2 py-1 bg-white">Marca (0)</button>
+      <button class="border rounded px-2 py-1 bg-white">Tipo (0)</button>
+      <button class="border rounded px-2 py-1 bg-white">Entalle (0)</button>
+      <button class="border rounded px-2 py-1 bg-white">Tela (0)</button>
+      <span class="ml-2">☐ Urgente</span>
+      <select class="border rounded px-2 py-1"><option>Operativo</option></select>
+      <button class="ml-2 bg-teal-600 text-white px-3 py-1 rounded text-xs">+ Nuevo</button>
+    </div>
+  </div>
+
+  <div class="px-2 py-2 overflow-auto">
+    <table class="w-full text-[11px]">
+      <thead class="bg-slate-100 text-[10px] uppercase">
+        <tr>
+          <th class="p-1.5 border">N° Corte</th>
+          <th class="p-1.5 border">Modelo</th>
+          <th class="p-1.5 border">Actividad</th>
+          <th class="p-1.5 border">Línea</th>
+          <th class="p-1.5 border">Marca</th>
+          <th class="p-1.5 border">Tipo</th>
+          <th class="p-1.5 border">Entalle</th>
+          <th class="p-1.5 border">Tela</th>
+          <th class="p-1.5 border">Hilo</th>
+          <th class="p-1.5 border">H. Esp.</th>
+          <th class="p-1.5 border">Curva</th>
+          <th class="p-1.5 border">Total</th>
+          <th class="p-1.5 border">Estado</th>
+          <th class="p-1.5 border">F. Final</th>
+          <th class="p-1.5 border">Op.</th>
+          <th class="p-1.5 border">Salud</th>
+          <th class="p-1.5 border">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="p-1.5 border font-mono font-bold">098</td><td class="p-1.5 border">CLOVER BLACK</td><td class="p-1.5 border text-slate-400">-</td><td class="p-1.5 border">Premium</td><td class="p-1.5 border">Element</td><td class="p-1.5 border">Pantalón</td><td class="p-1.5 border">Baggy</td><td class="p-1.5 border">Rígido</td><td class="p-1.5 border">Negro</td><td class="p-1.5 border">Negro</td><td class="p-1.5 border">2-3-3-2</td><td class="p-1.5 border text-right">282</td><td class="p-1.5 border"><span class="pill pill-amber">Para Lav.</span></td><td class="p-1.5 border">10/06</td><td class="p-1.5 border text-center">✓</td><td class="p-1.5 border text-center">⚡</td><td class="p-1.5 border text-slate-400">⋯</td></tr>
+        <tr><td class="p-1.5 border font-mono font-bold">091</td><td class="p-1.5 border">AXELIUS BLACK #2</td><td class="p-1.5 border text-slate-400">-</td><td class="p-1.5 border">Premium</td><td class="p-1.5 border">Element</td><td class="p-1.5 border">-</td><td class="p-1.5 border">Baggy</td><td class="p-1.5 border">Rígido</td><td class="p-1.5 border">Negro</td><td class="p-1.5 border">Negro</td><td class="p-1.5 border">1-3-3-2-1</td><td class="p-1.5 border text-right">544</td><td class="p-1.5 border"><span class="pill pill-blue">Costura</span></td><td class="p-1.5 border">15/06</td><td class="p-1.5 border text-center">✓</td><td class="p-1.5 border text-center">⚡</td><td class="p-1.5 border text-slate-400">⋯</td></tr>
+        <tr><td class="p-1.5 border text-slate-400 italic" colspan="17">... 214 filas más, scroll horizontal en muchas pantallas</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bg-red-50 border-t border-red-200 px-4 py-3 text-xs text-red-900">
+    <b>Problemas visibles:</b> sin KPIs · 17 columnas → tabla densa · filtros sin agrupar · no se sabe cuántos están vencidos sin contar · no hay forma rápida de aplicar acciones a varios registros a la vez.
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- DESPUÉS · versión propuesta                                              -->
+<!-- ====================================================================== -->
+<div class="max-w-5xl mx-auto px-8 mt-16">
+  <div class="text-[11px] text-emerald-700 uppercase tracking-wider font-bold mb-1">DESPUÉS · 8 mejoras</div>
+  <h2 class="text-2xl font-bold">Versión propuesta</h2>
+</div>
+
+<div class="frame">
+  <!-- Header -->
+  <div class="bg-gradient-to-r from-teal-600 to-teal-700 text-white px-6 py-4 flex items-center gap-3">
+    <div class="flex-1">
+      <h2 class="font-bold text-lg">Registros · 216 totales</h2>
+      <p class="text-xs text-white/80">Producción activa · mayo 2026 · línea Premium</p>
+    </div>
+    <select class="bg-white/15 text-white text-sm rounded-lg px-3 py-1.5 border-0">
+      <option>📌 Mi vista habitual</option>
+      <option>🚨 Vencidos / críticos</option>
+      <option>👁 Solo activos</option>
+      <option>──────</option>
+      <option>+ Guardar vista actual</option>
+    </select>
+    <button class="bg-white text-teal-700 px-4 py-1.5 rounded-lg text-sm font-bold">+ Nuevo registro</button>
+  </div>
+
+  <!-- ── Mejora 1: KPIs arriba ── -->
+  <div class="bg-white border-b border-slate-200 px-6 py-4 relative">
+    <div class="absolute -top-3 left-6"><span class="new-tag">MEJORA 1 · KPIs</span></div>
+    <div class="grid grid-cols-6 gap-3">
+      <div class="border border-slate-200 rounded-lg p-3 text-center cursor-pointer hover:border-teal-500" title="Click para filtrar">
+        <div class="font-mono font-extrabold text-2xl">216</div>
+        <div class="text-[10px] text-slate-500 uppercase font-bold mt-1">Activos</div>
+      </div>
+      <div class="border border-red-200 bg-red-50 rounded-lg p-3 text-center cursor-pointer hover:border-red-500">
+        <div class="font-mono font-extrabold text-2xl text-red-700">14</div>
+        <div class="text-[10px] text-red-700 uppercase font-bold mt-1">Vencidos</div>
+      </div>
+      <div class="border border-amber-200 bg-amber-50 rounded-lg p-3 text-center cursor-pointer hover:border-amber-500">
+        <div class="font-mono font-extrabold text-2xl text-amber-700">23</div>
+        <div class="text-[10px] text-amber-700 uppercase font-bold mt-1">Entrega ≤7d</div>
+      </div>
+      <div class="border border-red-200 rounded-lg p-3 text-center cursor-pointer hover:border-red-500">
+        <div class="font-mono font-extrabold text-2xl text-red-700">5</div>
+        <div class="text-[10px] text-red-700 uppercase font-bold mt-1">Paralizados ⛔</div>
+      </div>
+      <div class="border border-purple-200 rounded-lg p-3 text-center cursor-pointer hover:border-purple-500">
+        <div class="font-mono font-extrabold text-2xl text-purple-700">12</div>
+        <div class="text-[10px] text-purple-700 uppercase font-bold mt-1">Urgentes</div>
+      </div>
+      <div class="border border-slate-200 rounded-lg p-3 text-center cursor-pointer hover:border-teal-500">
+        <div class="font-mono font-extrabold text-2xl">38 420</div>
+        <div class="text-[10px] text-slate-500 uppercase font-bold mt-1">Prendas WIP</div>
+      </div>
+    </div>
+    <div class="text-[10px] text-slate-500 mt-2">💡 Cada KPI es clickeable → aplica un filtro directo (ej: tocar "Vencidos" filtra la tabla a 14 registros).</div>
+  </div>
+
+  <!-- ── Mejora 2: barra de filtros compacta ── -->
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-3 relative">
+    <div class="absolute -top-3 left-4"><span class="new-tag">MEJORA 2 · Filtros agrupados</span></div>
+    <div class="flex items-center gap-3 flex-wrap pt-1">
+      <!-- Filtro fecha NUEVO -->
+      <div class="bg-white border-2 border-teal-500 rounded-lg px-3 py-1.5 flex items-center gap-2 text-sm font-semibold relative">
+        <span class="absolute -top-2 -right-2 bg-teal-600 text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center">NEW</span>
+        📅 <span>Este mes</span>
+        <span class="text-xs text-slate-400">▾</span>
+      </div>
+
+      <!-- Search -->
+      <div class="relative">
+        <input class="border border-slate-300 rounded-lg pl-9 pr-3 py-1.5 text-sm w-72" placeholder="Buscar n°corte, modelo u observaciones..." />
+        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+      </div>
+
+      <!-- Botón filtros agrupados -->
+      <button class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 flex items-center gap-2 text-sm hover:border-teal-500 relative">
+        <span>🎯 Filtros</span>
+        <span class="pill pill-blue ml-1">3</span>
+      </button>
+      <span class="text-xs text-slate-500">Marca: Element · Tipo: Pantalón · Solo activos</span>
+
+      <div class="flex-1"></div>
+
+      <span class="text-xs text-slate-500"><b>14</b> de 216 mostrados</span>
+      <button class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm hover:border-teal-500">⚙ Columnas <span class="text-slate-400">10/17</span></button>
+      <button class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm hover:border-teal-500">📥 Export</button>
+    </div>
+  </div>
+
+  <!-- ── Mejora 3: acciones masivas (bulk) ── -->
+  <div class="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-3 hidden" id="bulk-bar">
+    <span class="text-sm font-bold">3 seleccionados</span>
+    <button class="bg-white border border-slate-300 rounded px-3 py-1 text-xs font-semibold">Marcar urgente</button>
+    <button class="bg-white border border-slate-300 rounded px-3 py-1 text-xs font-semibold">Asignar línea</button>
+    <button class="bg-white border border-slate-300 rounded px-3 py-1 text-xs font-semibold">Cambiar estado</button>
+    <button class="bg-white border border-red-300 text-red-700 rounded px-3 py-1 text-xs font-semibold">Eliminar</button>
+  </div>
+
+  <!-- Banner explicación de la barra bulk -->
+  <div class="bg-blue-50 border-b border-blue-200 px-4 py-2 text-xs text-blue-900 relative">
+    <span class="new-tag absolute -top-3 left-4">MEJORA 3 · Acciones masivas</span>
+    <div class="pt-1"><b>💡 Bulk actions:</b> al seleccionar filas con checkbox aparece una barra ámbar con: Marcar urgente · Asignar línea · Cambiar estado · Eliminar. Ahorra abrir registro por registro.</div>
+  </div>
+
+  <!-- ── Tabla con mejoras · Vista detallada con clasificaciones ── -->
+  <div class="px-2 py-2 overflow-auto">
+    <div class="text-[10px] text-slate-500 mb-2 px-2">
+      💡 <b>Marca, Tipo, Entalle, Tela, Hilo, Hilo Esp., Curva, Total</b> son columnas explícitas como hoy.
+      Para que entren mejor, las hacemos compactas (texto chico) y se pueden ocultar individualmente desde el selector ⚙ Columnas.
+    </div>
+    <table class="w-full text-[11px]">
+      <thead class="bg-slate-50 text-[10px] uppercase border-b-2 border-slate-200">
+        <tr>
+          <th class="p-1.5 border w-8 relative"><input type="checkbox" /><span class="new-tag absolute -top-3 left-1">M3</span></th>
+          <th class="p-1.5 border text-left cursor-pointer hover:bg-slate-100 relative">
+            <span class="new-tag absolute -top-3 left-1">M4 · sort</span>
+            N° Corte ↕
+          </th>
+          <th class="p-1.5 border text-left">Modelo</th>
+          <th class="p-1.5 border">Marca</th>
+          <th class="p-1.5 border">Tipo</th>
+          <th class="p-1.5 border">Entalle</th>
+          <th class="p-1.5 border">Tela</th>
+          <th class="p-1.5 border">Hilo</th>
+          <th class="p-1.5 border">Hilo Esp.</th>
+          <th class="p-1.5 border">Curva</th>
+          <th class="p-1.5 border cursor-pointer hover:bg-slate-100 text-right">Total ↕</th>
+          <th class="p-1.5 border">Estado</th>
+          <th class="p-1.5 border cursor-pointer hover:bg-slate-100">F. Entrega ↕</th>
+          <th class="p-1.5 border">Salud</th>
+          <th class="p-1.5 border relative">
+            <span class="new-tag absolute -top-3 right-1">M5 · vinculaciones</span>
+            Vinculaciones
+          </th>
+          <th class="p-1.5 border">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="hover:bg-slate-50">
+          <td class="p-1.5 border text-center"><input type="checkbox" /></td>
+          <td class="p-1.5 border font-mono font-bold">098</td>
+          <td class="p-1.5 border">
+            <div class="font-semibold whitespace-nowrap">CLOVER BLACK</div>
+            <div class="text-[9px] text-slate-500">Element Premium</div>
+          </td>
+          <td class="p-1.5 border whitespace-nowrap">Element Pr.</td>
+          <td class="p-1.5 border">Pantalón</td>
+          <td class="p-1.5 border">Baggy</td>
+          <td class="p-1.5 border">Rígido</td>
+          <td class="p-1.5 border">Negro</td>
+          <td class="p-1.5 border">Negro</td>
+          <td class="p-1.5 border text-center font-mono whitespace-nowrap">2-3-3-2</td>
+          <td class="p-1.5 border text-right font-mono font-bold">282</td>
+          <td class="p-1.5 border whitespace-nowrap"><span class="pill pill-amber">Para Lav.</span></td>
+          <td class="p-1.5 border whitespace-nowrap">
+            <div>10/06/26</div>
+            <div class="text-amber-700 text-[9px] font-bold">en 7d</div>
+          </td>
+          <td class="p-1.5 border text-center">
+            <span class="pill pill-green text-[9px]">Normal</span>
+          </td>
+          <td class="p-1.5 border">
+            <div class="flex gap-0.5 flex-wrap">
+              <span class="bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-[9px]" title="3 movimientos">📋 3</span>
+              <span class="bg-red-100 border border-red-200 text-red-700 rounded px-1.5 py-0.5 text-[9px]" title="1 incidencia abierta">⚠ 1</span>
+              <span class="bg-purple-100 border border-purple-200 text-purple-700 rounded px-1.5 py-0.5 text-[9px]" title="2 muestras">🧪 2</span>
+              <span class="bg-emerald-100 border border-emerald-200 text-emerald-700 rounded px-1.5 py-0.5 text-[9px]" title="Colores aprobados">🎨</span>
+            </div>
+          </td>
+          <td class="p-1.5 border">
+            <div class="flex gap-0.5">
+              <button class="text-slate-500 hover:text-teal-600 p-0.5" title="Abrir">👁</button>
+              <button class="text-slate-500 hover:text-teal-600 p-0.5" title="Editar">✎</button>
+              <button class="text-slate-500 hover:text-teal-600 p-0.5" title="Más">⋯</button>
+            </div>
+          </td>
+        </tr>
+        <tr class="hover:bg-slate-50 bg-red-50/30">
+          <td class="p-1.5 border text-center"><input type="checkbox" checked /></td>
+          <td class="p-1.5 border font-mono font-bold">091</td>
+          <td class="p-1.5 border">
+            <div class="font-semibold whitespace-nowrap flex items-center gap-1">AXELIUS BLACK #2 <span class="pill pill-purple text-[8px]">URG</span></div>
+            <div class="text-[9px] text-slate-500">Element Premium</div>
+          </td>
+          <td class="p-1.5 border whitespace-nowrap">Element Pr.</td>
+          <td class="p-1.5 border bg-amber-50 text-amber-700" title="Falta tipo en el modelo">⚠ —</td>
+          <td class="p-1.5 border">Baggy</td>
+          <td class="p-1.5 border">Rígido</td>
+          <td class="p-1.5 border">Negro</td>
+          <td class="p-1.5 border">Negro</td>
+          <td class="p-1.5 border text-center font-mono whitespace-nowrap">1-3-3-2-1</td>
+          <td class="p-1.5 border text-right font-mono font-bold">544</td>
+          <td class="p-1.5 border whitespace-nowrap"><span class="pill pill-blue">Costura</span></td>
+          <td class="p-1.5 border whitespace-nowrap">
+            <div class="text-red-700 font-bold">02/06/26</div>
+            <div class="text-red-700 text-[9px] font-bold">vencido 3d</div>
+          </td>
+          <td class="p-1.5 border text-center">
+            <span class="pill pill-red text-[9px]">Riesgo</span>
+          </td>
+          <td class="p-1.5 border">
+            <div class="flex gap-0.5 flex-wrap">
+              <span class="bg-slate-100 rounded px-1.5 py-0.5 text-[9px]">📋 5</span>
+              <span class="bg-red-100 text-red-700 rounded px-1.5 py-0.5 text-[9px]">⚠ 2</span>
+              <span class="bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 text-[9px]">🧪 1</span>
+              <span class="bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 text-[9px]" title="Colores sin aprobar">🎨 ?</span>
+            </div>
+          </td>
+          <td class="p-1.5 border">
+            <div class="flex gap-0.5">
+              <button class="text-slate-500 hover:text-teal-600 p-0.5">👁</button>
+              <button class="text-slate-500 hover:text-teal-600 p-0.5">✎</button>
+              <button class="text-slate-500 hover:text-teal-600 p-0.5">⋯</button>
+            </div>
+          </td>
+        </tr>
+        <tr class="hover:bg-slate-50">
+          <td class="p-1.5 border text-center"><input type="checkbox" /></td>
+          <td class="p-1.5 border font-mono font-bold">095</td>
+          <td class="p-1.5 border">
+            <div class="font-semibold whitespace-nowrap">JARPER BEIGE #2</div>
+            <div class="text-[9px] text-slate-500">Element Premium</div>
+          </td>
+          <td class="p-1.5 border whitespace-nowrap">Element Pr.</td>
+          <td class="p-1.5 border">Pantalón</td>
+          <td class="p-1.5 border">Semipitillo</td>
+          <td class="p-1.5 border">Comfort</td>
+          <td class="p-1.5 border">Beis</td>
+          <td class="p-1.5 border text-slate-400">—</td>
+          <td class="p-1.5 border text-center font-mono whitespace-nowrap">2-4-4-2</td>
+          <td class="p-1.5 border text-right font-mono font-bold">602</td>
+          <td class="p-1.5 border whitespace-nowrap"><span class="pill pill-amber">Para Lav.</span></td>
+          <td class="p-1.5 border whitespace-nowrap">
+            <div>20/06/26</div>
+            <div class="text-slate-500 text-[9px]">en 17d</div>
+          </td>
+          <td class="p-1.5 border text-center">
+            <span class="pill pill-green text-[9px]">Normal</span>
+          </td>
+          <td class="p-1.5 border">
+            <div class="flex gap-0.5 flex-wrap">
+              <span class="bg-slate-100 rounded px-1.5 py-0.5 text-[9px]">📋 2</span>
+              <span class="bg-emerald-100 text-emerald-700 rounded px-1.5 py-0.5 text-[9px]">🎨</span>
+            </div>
+          </td>
+          <td class="p-1.5 border">
+            <div class="flex gap-0.5">
+              <button class="text-slate-500 hover:text-teal-600 p-0.5">👁</button>
+              <button class="text-slate-500 hover:text-teal-600 p-0.5">✎</button>
+              <button class="text-slate-500 hover:text-teal-600 p-0.5">⋯</button>
+            </div>
+          </td>
+        </tr>
+        <tr class="hover:bg-slate-50 bg-zinc-100">
+          <td class="p-1.5 border text-center"><input type="checkbox" /></td>
+          <td class="p-1.5 border font-mono font-bold">073</td>
+          <td class="p-1.5 border">
+            <div class="font-semibold whitespace-nowrap">DONOVAN BLACK</div>
+            <div class="text-[9px] text-slate-500">Element Premium</div>
+          </td>
+          <td class="p-1.5 border whitespace-nowrap">Element Pr.</td>
+          <td class="p-1.5 border">Pantalón</td>
+          <td class="p-1.5 border">Skinny</td>
+          <td class="p-1.5 border">Denim</td>
+          <td class="p-1.5 border">Negro</td>
+          <td class="p-1.5 border">Negro</td>
+          <td class="p-1.5 border text-center font-mono whitespace-nowrap">1-3-3-2</td>
+          <td class="p-1.5 border text-right font-mono font-bold">820</td>
+          <td class="p-1.5 border whitespace-nowrap"><span class="pill pill-red">Para Cost.</span></td>
+          <td class="p-1.5 border whitespace-nowrap">
+            <div class="text-red-700 font-bold">05/06/26</div>
+            <div class="text-red-700 text-[9px] font-bold">vencido 4d</div>
+          </td>
+          <td class="p-1.5 border text-center">
+            <span class="pill pill-red text-[9px]">⛔ Paraliz.</span>
+          </td>
+          <td class="p-1.5 border">
+            <div class="flex gap-0.5 flex-wrap">
+              <span class="bg-red-100 text-red-700 rounded px-1.5 py-0.5 text-[9px]" title="Paraliza · Falta material">⛔ FM</span>
+              <span class="bg-slate-100 rounded px-1.5 py-0.5 text-[9px]">📋 1</span>
+            </div>
+          </td>
+          <td class="p-1.5 border">
+            <div class="flex gap-0.5">
+              <button class="text-slate-500 hover:text-teal-600 p-0.5">👁</button>
+              <button class="text-slate-500 hover:text-teal-600 p-0.5">✎</button>
+              <button class="text-slate-500 hover:text-teal-600 p-0.5">⋯</button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+      <tfoot class="bg-slate-100 font-bold">
+        <tr>
+          <td class="p-1.5 border" colspan="10">Total visible · 14 registros</td>
+          <td class="p-1.5 border text-right font-mono">8 320</td>
+          <td class="p-1.5 border" colspan="5"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- Footer paginación + resumen -->
+  <div class="bg-slate-50 border-t border-slate-200 px-4 py-2 flex items-center justify-between text-xs">
+    <span class="text-slate-600">Mostrando <b>1-50</b> de <b>14 filtrados</b> (216 totales)</span>
+    <div class="flex items-center gap-2">
+      <button class="bg-white border border-slate-300 rounded px-2 py-1">← Anterior</button>
+      <span>Página 1</span>
+      <button class="bg-white border border-slate-300 rounded px-2 py-1">Siguiente →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- Resumen de 8 mejoras                                                     -->
+<!-- ====================================================================== -->
+<div class="max-w-5xl mx-auto px-8 mt-16">
+  <h2 class="text-2xl font-bold mb-4">Resumen de las 8 mejoras</h2>
+  <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-100 border-b-2 border-slate-200">
+        <tr class="text-left text-xs text-slate-500">
+          <th class="p-3">#</th>
+          <th class="p-3">Mejora</th>
+          <th class="p-3">Por qué ayuda</th>
+          <th class="p-3">Esfuerzo</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        <tr>
+          <td class="p-3 font-bold">1</td>
+          <td class="p-3"><b>📊 Barra de KPIs arriba</b> · Activos · Vencidos · Entrega ≤7d · Paralizados · Urgentes · WIP. Cada uno es clickeable como filtro.</td>
+          <td class="p-3 text-slate-600">Hoy hay que contar manualmente cuántos están vencidos o urgentes. KPIs lo muestran de un vistazo y filtran al toque.</td>
+          <td class="p-3"><span class="pill pill-blue">Bajo</span></td>
+        </tr>
+        <tr>
+          <td class="p-3 font-bold">2</td>
+          <td class="p-3"><b>🎯 Filtros agrupados</b> · 1 botón "Filtros (3)" + filtro de fecha al frente + search amplio (n°, modelo, observaciones)</td>
+          <td class="p-3 text-slate-600">10 filtros sueltos saturan la pantalla. Agrupados en sheet quedan ordenados y filtros activos visibles.</td>
+          <td class="p-3"><span class="pill pill-blue">Bajo</span></td>
+        </tr>
+        <tr>
+          <td class="p-3 font-bold">3</td>
+          <td class="p-3"><b>✅ Acciones masivas</b> · checkbox por fila + barra ámbar con: Marcar urgente · Asignar línea · Cambiar estado · Eliminar</td>
+          <td class="p-3 text-slate-600">Hoy hay que entrar a cada registro para cambiar línea o marcar urgente. Bulk ahorra horas/semana.</td>
+          <td class="p-3"><span class="pill pill-amber">Medio</span></td>
+        </tr>
+        <tr>
+          <td class="p-3 font-bold">4</td>
+          <td class="p-3"><b>↕ Ordenamiento por columna</b> · click en header ordena (N° corte, total, fecha entrega, estado)</td>
+          <td class="p-3 text-slate-600">Hoy no hay forma de ver los más viejos arriba o los de mayor cantidad. Falta básico.</td>
+          <td class="p-3"><span class="pill pill-blue">Bajo</span></td>
+        </tr>
+        <tr>
+          <td class="p-3 font-bold">5</td>
+          <td class="p-3"><b>🔗 Columna "Vinculaciones"</b> · mini badges (movs · incidencias · muestras · colores · fallados) con tooltip y count</td>
+          <td class="p-3 text-slate-600">Hoy hay que abrir cada registro para saber si tiene incidencias o muestras. Badges resumen todo de un vistazo.</td>
+          <td class="p-3"><span class="pill pill-amber">Medio</span></td>
+        </tr>
+        <tr>
+          <td class="p-3 font-bold">6</td>
+          <td class="p-3"><b>📌 Vistas guardadas</b> · "Mi vista habitual" · "Vencidos / críticos" · "Solo activos". Cada usuario guarda su setup.</td>
+          <td class="p-3 text-slate-600">Hoy localStorage guarda 1 vista global. Vistas con nombre permiten cambiar entre setups habituales.</td>
+          <td class="p-3"><span class="pill pill-amber">Medio</span></td>
+        </tr>
+        <tr>
+          <td class="p-3 font-bold">7</td>
+          <td class="p-3"><b>⚙ Selector de columnas</b> · mostrar/ocultar 16 col · reordenar drag-drop · persistir en BD por usuario. <b>Las columnas de clasificación (Marca/Tipo/Entalle/Tela/Hilo/Hilo Esp./Curva/Total) quedan visibles por defecto</b> porque son dato clave.</td>
+          <td class="p-3 text-slate-600">17 columnas con muchas ocultas según viewport. Que cada usuario elija las suyas pero respetando que las clasificaciones son importantes.</td>
+          <td class="p-3"><span class="pill pill-amber">Medio</span></td>
+        </tr>
+        <tr>
+          <td class="p-3 font-bold">8</td>
+          <td class="p-3"><b>🎨 Fila destacada según urgencia</b> · paralizados fondo zinc · vencidos rojo claro · urgentes pill morado · normales sin destacar</td>
+          <td class="p-3 text-slate-600">Hoy todas las filas se ven iguales. Color de fondo permite escanear la lista y detectar lo crítico.</td>
+          <td class="p-3"><span class="pill pill-blue">Bajo</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bg-teal-50 border border-teal-200 rounded-xl p-5 mt-6">
+    <h3 class="font-bold text-base mb-2">🎯 Fase 1 sugerida (1 semana de trabajo)</h3>
+    <p class="text-sm text-slate-700 mb-2">
+      Empezar por las <b>4 mejoras de bajo esfuerzo</b> (1, 2, 4, 8). Cambian la sensación de la pantalla sin tocar modelo de datos:
+    </p>
+    <ul class="text-sm text-slate-700 list-disc pl-5 space-y-1">
+      <li><b>Mejora 1</b>: barra de KPIs arriba clickeable</li>
+      <li><b>Mejora 2</b>: filtros agrupados + búsqueda amplia + filtro fecha</li>
+      <li><b>Mejora 4</b>: ordenar por columnas</li>
+      <li><b>Mejora 8</b>: filas destacadas según urgencia</li>
+    </ul>
+  </div>
+
+  <div class="bg-amber-50 border border-amber-200 rounded-xl p-5 mt-6">
+    <h3 class="font-bold text-base mb-2">Fase 2 (2-3 semanas)</h3>
+    <ul class="text-sm text-slate-700 list-disc pl-5 space-y-1">
+      <li><b>Mejora 3</b>: acciones masivas (selección + barra ámbar)</li>
+      <li><b>Mejora 5</b>: columna "Vinculaciones" con badges</li>
+      <li><b>Mejora 6</b>: vistas guardadas por usuario</li>
+      <li><b>Mejora 7</b>: selector de columnas con drag-drop</li>
+    </ul>
+  </div>
+
+  <!-- Nota sobre las clasificaciones que el usuario pidió mantener -->
+  <div class="bg-blue-50 border border-blue-200 rounded-xl p-5 mt-6">
+    <h3 class="font-bold text-base mb-2">📐 Sobre las clasificaciones (Marca · Tipo · Entalle · Tela · Hilo · Hilo Esp. · Curva · Total)</h3>
+    <p class="text-sm text-slate-700 mb-2">
+      Son datos clave y se quedan como <b>columnas separadas explícitas</b>, igual que hoy. La diferencia: las hago más compactas (fuente 11px, padding 6px, abreviaturas tipo "Element Pr.") para que las 16 columnas entren mejor sin perder visibilidad.
+    </p>
+    <ul class="text-sm text-slate-700 list-disc pl-5 space-y-1.5">
+      <li>Cada columna se puede ordenar al click en su header (mejora 4).</li>
+      <li>Si una clasificación falta en un modelo, se ve <span class="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">⚠ —</span> en amarillo para detectar modelos mal cargados (caso AXELIUS BLACK que vimos).</li>
+      <li>Hilo Específico se muestra solo si tiene valor (caso JARPER BEIGE con "—" gris).</li>
+      <li>Curva en monospace para que se vea alineada visualmente al comparar registros.</li>
+      <li>Total con tipografía bold y alineado a la derecha (es lo que más miran).</li>
+      <li>Footer con suma del total visible (8 320 prendas en el ejemplo).</li>
+      <li>Cada usuario puede ocultar las que no use desde ⚙ Columnas, pero el default las muestra todas.</li>
+    </ul>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-xl p-5 mt-6 mb-12">
+    <h3 class="font-bold text-base mb-2">Preguntas antes de implementar</h3>
+    <ul class="text-sm text-slate-700 list-disc pl-5 space-y-1">
+      <li><b>¿Te suenan estos 6 KPIs?</b> Activos · Vencidos · Entrega ≤7d · Paralizados · Urgentes · Prendas WIP. Si falta alguno (por ej. "Sin colores aprobados" o "Sin movimiento") decime y lo agrego.</li>
+      <li><b>¿Qué acciones masivas necesitás?</b> Yo puse: urgente, línea, estado, eliminar. ¿Hay otras que querés (cambiar fecha entrega masivamente, asignar etiqueta)?</li>
+      <li><b>¿Cómo de "vinculaciones"?</b> Yo puse 5 badges (movs, incidencias, muestras, fallados, colores aprobados). ¿Cuáles te importa ver de un vistazo? ¿Mostrar números o solo el icono?</li>
+      <li><b>¿La columna "Salud" qué representa hoy?</b> En el código aparece pero no me quedó claro qué mide. ¿Es score derivado?</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>

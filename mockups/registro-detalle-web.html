@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Detalle del Registro · Mockup completo (web)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { --brand: #0f766e; --ink: #0f172a; --muted: #64748b; }
+  body { background: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  .frame { background: white; border-radius: 14px; box-shadow: 0 10px 40px -10px rgba(0,0,0,.15); overflow: hidden; max-width: 1400px; margin: 32px auto; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .pill-red { background: #fee2e2; color: #b91c1c; }
+  .pill-amber { background: #fef3c7; color: #b45309; }
+  .pill-green { background: #dcfce7; color: #15803d; }
+  .pill-blue { background: #dbeafe; color: #1d4ed8; }
+  .pill-gray { background: #e5e7eb; color: #475569; }
+  .pill-purple { background: #f3e8ff; color: #7c3aed; }
+  .pill-teal { background: #ccfbf1; color: #115e59; }
+  .new-tag { background: #0f766e; color: white; font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 4px; letter-spacing: .04em; }
+  .label-xs { font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: .04em; }
+  .data-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 3px 8px; border-radius: 999px; background: #f1f5f9; border: 1px solid #e2e8f0; font-size: 11px; }
+  .data-chip .l { font-size: 9px; color: #64748b; text-transform: uppercase; font-weight: 700; }
+  .data-chip .v { font-weight: 600; }
+  .tab-active { background: var(--brand); color: white; border-color: var(--brand); }
+  .tab-base { background: white; border: 1px solid #e2e8f0; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .tab-base:hover { border-color: var(--brand); }
+</style>
+</head>
+<body>
+
+<div class="max-w-5xl mx-auto px-8 pt-12 pb-6">
+  <h1 class="text-3xl font-bold">Detalle del Registro · panorama completo</h1>
+  <p class="text-slate-600 mt-2 text-lg">
+    Hoy <code class="bg-slate-200 px-1 rounded">RegistroDetalleFase2.jsx</code> tiene <b>2 425 líneas</b> con solo <b>4 tabs visibles</b> (Tallas · Materiales · Costos · Cierre)
+    pero gestiona <b>20+ vinculaciones</b>. Te propongo reorganizar todo para que cada vinculación tenga su lugar claro,
+    sin perder lo que ya funciona.
+  </p>
+
+  <div class="grid grid-cols-2 gap-3 mt-6">
+    <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+      <div class="text-xs text-red-700 font-bold uppercase tracking-wider mb-2">😵 Hoy</div>
+      <ul class="text-sm space-y-1.5 list-disc pl-5 text-red-900">
+        <li>Solo 4 tabs visibles · resto disperso en dialogs/modals</li>
+        <li>Movimientos · Incidencias · Muestras · Arreglos viven en cards/paneles laterales</li>
+        <li>Conversación oculta en panel lateral colapsable</li>
+        <li>Audit log NO visible en UI web</li>
+        <li>Avance historial NO visible en web (solo móvil)</li>
+        <li>Wizard de cierre no existe — son 4 modals encadenados</li>
+        <li>Cabecera de datos repite info entre header/card/panel</li>
+        <li>Despacho PT oculto en tab Materiales</li>
+      </ul>
+    </div>
+    <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+      <div class="text-xs text-emerald-700 font-bold uppercase tracking-wider mb-2">✅ Lo que ya funciona</div>
+      <ul class="text-sm space-y-1.5 list-disc pl-5 text-emerald-900">
+        <li>Header con navegación anterior/siguiente</li>
+        <li>Cambio de estado con validación de ruta</li>
+        <li>Cascada Marca→Tipo→Entalle→Tela→Hilo</li>
+        <li>Tabs Tallas / Materiales / Costos / Cierre</li>
+        <li>BOM completo + reservas + consumo</li>
+        <li>Distribución a tienda Odoo</li>
+        <li>10+ diálogos especializados (colores, movimientos, incidencias)</li>
+        <li>Aprobación de colores con permisos</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- HEADER reorganizado                                                      -->
+<!-- ====================================================================== -->
+<div class="max-w-5xl mx-auto px-8 mt-12">
+  <div class="text-[11px] text-emerald-700 uppercase tracking-wider font-bold mb-1">PROPUESTA</div>
+  <h2 class="text-2xl font-bold">Estructura propuesta del detalle</h2>
+  <p class="text-slate-600 text-sm mt-1">3 zonas: header con datos clave + 10 tabs reorganizadas + sidebar derecho persistente.</p>
+</div>
+
+<!-- VISTA GLOBAL del detalle propuesto -->
+<div class="frame">
+  <!-- Header del registro -->
+  <div class="bg-gradient-to-r from-teal-600 to-teal-700 text-white px-6 py-4">
+    <div class="flex items-center gap-3">
+      <button class="text-white/80 hover:text-white">←</button>
+      <span class="text-xs text-white/80 flex items-center gap-1">
+        <a href="#" class="hover:text-white underline">Registros</a> · <span>Detalle</span>
+      </span>
+      <div class="flex-1"></div>
+      <button class="bg-white/15 hover:bg-white/25 px-2 py-1 rounded text-sm">← Anterior</button>
+      <button class="bg-white/15 hover:bg-white/25 px-2 py-1 rounded text-sm">Siguiente →</button>
+    </div>
+
+    <div class="flex items-center gap-4 mt-2">
+      <div class="text-3xl font-bold font-mono">C-098</div>
+      <div>
+        <div class="font-bold text-xl">CLOVER BLACK</div>
+        <div class="text-xs text-white/80">Element Premium · 282 prendas · Curva 2-3-3-2</div>
+      </div>
+      <div class="flex-1"></div>
+      <span class="pill" style="background: rgba(254,243,199,.9); color:#92400e">Para Lavandería</span>
+      <span class="pill" style="background: rgba(243,232,255,.9); color:#7c3aed">URGENTE</span>
+      <button class="bg-white text-teal-700 px-3 py-1.5 rounded-lg text-sm font-bold">⊞ Cambiar estado</button>
+      <button class="bg-white/15 hover:bg-white/25 px-2 py-1.5 rounded-lg text-sm">⋯</button>
+    </div>
+  </div>
+
+  <!-- Sección de datos clave (hero) -->
+  <div class="bg-white border-b border-slate-200 px-6 py-4 relative">
+    <div class="absolute -top-3 left-6"><span class="new-tag">HERO · datos clave en chips</span></div>
+    <div class="flex flex-wrap gap-2">
+      <span class="data-chip"><span class="l">Marca</span><span class="v">Element Pr.</span></span>
+      <span class="data-chip"><span class="l">Tipo</span><span class="v">Pantalón</span></span>
+      <span class="data-chip"><span class="l">Entalle</span><span class="v">Baggy</span></span>
+      <span class="data-chip"><span class="l">Tela</span><span class="v">Rígido</span></span>
+      <span class="data-chip"><span class="l">Hilo</span><span class="v">Negro</span></span>
+      <span class="data-chip"><span class="l">Hilo esp.</span><span class="v">Negro</span></span>
+      <span class="data-chip"><span class="l">Curva</span><span class="v font-mono">2-3-3-2</span></span>
+      <span class="data-chip"><span class="l">Línea</span><span class="v">Premium</span></span>
+      <span class="data-chip"><span class="l">Entrega</span><span class="v">10/06/26</span><span class="text-amber-700 text-[10px] font-bold ml-1">en 7d</span></span>
+      <span class="data-chip"><span class="l">Creado</span><span class="v">15/05/26</span></span>
+    </div>
+    <div class="text-[10px] text-slate-500 mt-2">💡 Lo crítico (Marca/Tipo/Entalle/Tela/Hilo/Hilo esp./Curva/Línea/Entrega) en chips compactos en lugar de mezclado con la card del modelo.</div>
+  </div>
+
+  <!-- Tabs reorganizadas -->
+  <div class="bg-slate-50 border-b border-slate-200 px-6 py-3 relative">
+    <div class="absolute -top-3 left-6"><span class="new-tag">10 TABS REORGANIZADAS</span></div>
+    <div class="flex gap-2 flex-wrap mt-1">
+      <button class="tab-base tab-active">📐 Tallas y matriz</button>
+      <button class="tab-base">📦 Materiales / MP <span class="pill pill-blue ml-1">12</span></button>
+      <button class="tab-base">⚙ Movimientos <span class="pill pill-gray ml-1">3</span></button>
+      <button class="tab-base">⚠ Incidencias <span class="pill pill-red ml-1">1</span></button>
+      <button class="tab-base">🧪 Muestras <span class="pill pill-purple ml-1">2</span></button>
+      <button class="tab-base">🔧 Arreglos <span class="pill pill-amber ml-1">5</span></button>
+      <button class="tab-base">💰 Costos</button>
+      <button class="tab-base">📤 Despacho PT</button>
+      <button class="tab-base">✓ Cierre</button>
+      <button class="tab-base">📜 Historial</button>
+    </div>
+  </div>
+
+  <!-- Contenido principal: split izquierda (tab activo) + derecha (sidebar) -->
+  <div class="grid grid-cols-[1fr_360px]">
+    <div class="p-6 border-r border-slate-200">
+      <div class="text-xs text-slate-400 uppercase font-bold mb-2">Tab activo · ejemplo: 📐 Tallas y matriz</div>
+      <div class="bg-slate-50 rounded-lg p-4 text-sm text-slate-600">
+        Aquí va el contenido del tab que el usuario seleccione. Más abajo te muestro mockup de cada tab uno por uno.
+      </div>
+    </div>
+
+    <!-- Sidebar derecho persistente -->
+    <div class="bg-slate-50 relative">
+      <div class="absolute -top-3 right-6"><span class="new-tag">SIDEBAR PERSISTENTE</span></div>
+      <div class="p-4 space-y-4 mt-2">
+        <!-- Resumen vinculaciones -->
+        <div>
+          <div class="label-xs mb-2">📊 Resumen del registro</div>
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div class="bg-white border border-slate-200 rounded p-2">
+              <div class="font-mono font-bold text-base">3</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">Movs</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded p-2">
+              <div class="font-mono font-bold text-base text-red-700">1</div>
+              <div class="text-[9px] text-red-700 uppercase font-bold">Incid.</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded p-2">
+              <div class="font-mono font-bold text-base text-purple-700">2</div>
+              <div class="text-[9px] text-purple-700 uppercase font-bold">Muestras</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded p-2">
+              <div class="font-mono font-bold text-base text-amber-700">5</div>
+              <div class="text-[9px] text-amber-700 uppercase font-bold">Arreglos</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded p-2">
+              <div class="font-mono font-bold text-base text-emerald-700">✓</div>
+              <div class="text-[9px] text-emerald-700 uppercase font-bold">Colores</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded p-2">
+              <div class="font-mono font-bold text-base">35%</div>
+              <div class="text-[9px] text-slate-500 uppercase font-bold">Avance</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Acciones rápidas -->
+        <div>
+          <div class="label-xs mb-2">⚡ Acciones rápidas</div>
+          <div class="space-y-1.5">
+            <button class="w-full bg-white border border-slate-200 rounded p-2 text-left text-xs font-semibold hover:border-teal-500 flex items-center gap-2">+ Movimiento</button>
+            <button class="w-full bg-white border border-slate-200 rounded p-2 text-left text-xs font-semibold hover:border-teal-500 flex items-center gap-2">+ Incidencia</button>
+            <button class="w-full bg-white border border-slate-200 rounded p-2 text-left text-xs font-semibold hover:border-teal-500 flex items-center gap-2">+ Muestra</button>
+            <button class="w-full bg-white border border-slate-200 rounded p-2 text-left text-xs font-semibold hover:border-teal-500 flex items-center gap-2">+ Fallado</button>
+            <button class="w-full bg-white border border-slate-200 rounded p-2 text-left text-xs font-semibold hover:border-teal-500 flex items-center gap-2">📲 Generar QR</button>
+            <button class="w-full bg-white border border-slate-200 rounded p-2 text-left text-xs font-semibold hover:border-teal-500 flex items-center gap-2">📋 Copiar de otro registro</button>
+            <button class="w-full bg-white border border-slate-200 rounded p-2 text-left text-xs font-semibold hover:border-teal-500 flex items-center gap-2">✂ Dividir lote</button>
+          </div>
+        </div>
+
+        <!-- Conversación (chat) -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <div class="label-xs">💬 Conversación</div>
+            <span class="pill pill-blue text-[9px]">3 nuevos</span>
+          </div>
+          <div class="bg-white border border-slate-200 rounded p-2 space-y-2 max-h-44 overflow-y-auto">
+            <div class="text-[11px]">
+              <div class="flex justify-between"><b>Diana G.</b><span class="text-slate-400 text-[9px]">hace 2h</span></div>
+              <div class="text-slate-600">"Mandé 6 prendas a muestra"</div>
+            </div>
+            <div class="text-[11px]">
+              <div class="flex justify-between"><b>José R.</b><span class="text-slate-400 text-[9px]">ayer</span></div>
+              <div class="text-slate-600">"@diana cuando vuelven las muestras?"</div>
+            </div>
+            <div class="text-[11px]">
+              <div class="flex justify-between"><b>Eduard C.</b><span class="text-slate-400 text-[9px]">22/05</span></div>
+              <div class="text-slate-600">"Estado a Costura, todo OK"</div>
+            </div>
+          </div>
+          <input class="w-full mt-2 border border-slate-200 rounded px-2 py-1.5 text-xs" placeholder="Escribir mensaje... @ para mencionar" />
+        </div>
+
+        <!-- Notificaciones recientes -->
+        <div>
+          <div class="label-xs mb-2">🔔 Eventos recientes</div>
+          <div class="space-y-1.5 text-[11px]">
+            <div class="bg-white border border-slate-200 rounded p-2">
+              <div class="text-slate-700">Estado cambió a <b>Para Lavandería</b></div>
+              <div class="text-slate-400 text-[9px]">por Eduard · hace 4h</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded p-2">
+              <div class="text-slate-700">Nueva muestra <b>+ Diana García</b></div>
+              <div class="text-slate-400 text-[9px]">hace 6h</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded p-2">
+              <div class="text-slate-700">Movimiento de Costura <b>cerrado</b></div>
+              <div class="text-slate-400 text-[9px]">ayer</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- Mockup de cada TAB                                                       -->
+<!-- ====================================================================== -->
+<div class="max-w-5xl mx-auto px-8 mt-16">
+  <h2 class="text-2xl font-bold mb-1">Contenido de cada tab</h2>
+  <p class="text-slate-600 text-sm">Voy con el detalle de cada uno. Si alguno no te gusta, lo afinamos.</p>
+</div>
+
+<!-- TAB 1: TALLAS Y MATRIZ -->
+<div class="max-w-5xl mx-auto px-8 mt-8">
+  <h3 class="text-lg font-bold mb-2"><span class="bg-teal-600 text-white px-2 py-1 rounded mr-2">TAB 1</span> 📐 Tallas y matriz</h3>
+</div>
+<div class="frame">
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 flex gap-2">
+    <button class="tab-base tab-active">📐 Tallas y matriz</button>
+    <button class="tab-base">📦 Materiales</button>
+    <button class="tab-base">⚙ Movimientos</button>
+    <span class="text-slate-400">…</span>
+  </div>
+  <div class="p-6 grid grid-cols-2 gap-6">
+    <div>
+      <div class="label-xs mb-2">Curva de tallas</div>
+      <table class="w-full text-sm">
+        <thead class="bg-slate-100 text-xs">
+          <tr><th class="p-2 text-left">Talla</th><th class="p-2 text-right">Cantidad</th><th class="p-2 text-right">%</th></tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr><td class="p-2 font-mono">28</td><td class="p-2 text-right font-mono font-bold">28</td><td class="p-2 text-right text-slate-500">10%</td></tr>
+          <tr><td class="p-2 font-mono">30</td><td class="p-2 text-right font-mono font-bold">85</td><td class="p-2 text-right text-slate-500">30%</td></tr>
+          <tr><td class="p-2 font-mono">32</td><td class="p-2 text-right font-mono font-bold">85</td><td class="p-2 text-right text-slate-500">30%</td></tr>
+          <tr><td class="p-2 font-mono">34</td><td class="p-2 text-right font-mono font-bold">84</td><td class="p-2 text-right text-slate-500">30%</td></tr>
+        </tbody>
+        <tfoot class="bg-slate-100"><tr><td class="p-2 font-bold">Total</td><td class="p-2 text-right font-mono font-bold">282</td><td class="p-2"></td></tr></tfoot>
+      </table>
+      <div class="mt-3 flex gap-2">
+        <button class="text-xs bg-white border border-slate-300 rounded px-3 py-1.5 hover:border-teal-500">✎ Editar tallas</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <div class="label-xs">Matriz talla × color</div>
+        <span class="pill pill-green">Aprobada por Eduard · 22/05</span>
+      </div>
+      <table class="w-full text-xs">
+        <thead class="bg-slate-100">
+          <tr>
+            <th class="p-1.5 text-left">Color</th>
+            <th class="p-1.5">28</th>
+            <th class="p-1.5">30</th>
+            <th class="p-1.5">32</th>
+            <th class="p-1.5">34</th>
+            <th class="p-1.5 bg-slate-200">Tot</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr><td class="p-1.5 flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm" style="background:#000"></span>Negro</td><td class="p-1.5 text-center">10</td><td class="p-1.5 text-center">30</td><td class="p-1.5 text-center">30</td><td class="p-1.5 text-center">30</td><td class="p-1.5 text-center font-bold">100</td></tr>
+          <tr><td class="p-1.5 flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm" style="background:#a8d5e5"></span>Azul Claro</td><td class="p-1.5 text-center">9</td><td class="p-1.5 text-center">27</td><td class="p-1.5 text-center">27</td><td class="p-1.5 text-center">27</td><td class="p-1.5 text-center font-bold">90</td></tr>
+          <tr><td class="p-1.5 flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm" style="background:#e5dccc"></span>Crudo</td><td class="p-1.5 text-center">9</td><td class="p-1.5 text-center">28</td><td class="p-1.5 text-center">28</td><td class="p-1.5 text-center">27</td><td class="p-1.5 text-center font-bold">92</td></tr>
+        </tbody>
+        <tfoot class="bg-slate-100"><tr><td class="p-1.5 font-bold">Total</td><td class="p-1.5 text-center">28</td><td class="p-1.5 text-center">85</td><td class="p-1.5 text-center">85</td><td class="p-1.5 text-center">84</td><td class="p-1.5 text-center font-bold">282</td></tr></tfoot>
+      </table>
+      <div class="mt-3 flex gap-2">
+        <button class="text-xs bg-white border border-slate-300 rounded px-3 py-1.5 hover:border-teal-500">✎ Editar matriz</button>
+        <button class="text-xs bg-white border border-red-300 text-red-700 rounded px-3 py-1.5">↺ Desaprobar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: MATERIALES / MP -->
+<div class="max-w-5xl mx-auto px-8 mt-12">
+  <h3 class="text-lg font-bold mb-2"><span class="bg-teal-600 text-white px-2 py-1 rounded mr-2">TAB 2</span> 📦 Materiales / MP</h3>
+</div>
+<div class="frame">
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 flex gap-2">
+    <button class="tab-base">📐 Tallas y matriz</button>
+    <button class="tab-base tab-active">📦 Materiales <span class="pill pill-blue ml-1">12</span></button>
+    <span class="text-slate-400">…</span>
+  </div>
+  <div class="p-6">
+    <!-- Sub-tabs: Requerido / Reservado / Consumido / Salidas / Recepciones -->
+    <div class="flex gap-1 mb-4 bg-slate-100 rounded-lg p-1 w-fit text-xs font-semibold">
+      <button class="px-3 py-1.5 bg-white shadow-sm rounded">Requerido (BOM)</button>
+      <button class="px-3 py-1.5 text-slate-600 rounded hover:bg-white/60">Reservado</button>
+      <button class="px-3 py-1.5 text-slate-600 rounded hover:bg-white/60">Consumido</button>
+      <button class="px-3 py-1.5 text-slate-600 rounded hover:bg-white/60">Salidas libres</button>
+      <button class="px-3 py-1.5 text-slate-600 rounded hover:bg-white/60">Recepciones</button>
+    </div>
+
+    <table class="w-full text-xs">
+      <thead class="bg-slate-100 text-[10px] uppercase">
+        <tr>
+          <th class="p-2 text-left">Material</th>
+          <th class="p-2 text-left">Componente</th>
+          <th class="p-2 text-right">Requerido</th>
+          <th class="p-2 text-right">Reservado</th>
+          <th class="p-2 text-right">Consumido</th>
+          <th class="p-2 text-right">Disponible</th>
+          <th class="p-2 text-center">Estado</th>
+          <th class="p-2"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        <tr><td class="p-2 font-semibold">Tela French Terry Negro</td><td class="p-2 text-slate-500">Cuerpo</td><td class="p-2 text-right font-mono">128 kg</td><td class="p-2 text-right font-mono">128 kg</td><td class="p-2 text-right font-mono">95 kg</td><td class="p-2 text-right font-mono">33 kg</td><td class="p-2 text-center"><span class="pill pill-green">OK</span></td><td class="p-2"><button class="text-teal-600 text-xs font-bold">⊕ Descargar</button></td></tr>
+        <tr><td class="p-2 font-semibold">Hilo Negro 80m</td><td class="p-2 text-slate-500">General</td><td class="p-2 text-right font-mono">3.2 kg</td><td class="p-2 text-right font-mono">3.2 kg</td><td class="p-2 text-right font-mono">2.1 kg</td><td class="p-2 text-right font-mono">1.1 kg</td><td class="p-2 text-center"><span class="pill pill-green">OK</span></td><td class="p-2"><button class="text-teal-600 text-xs font-bold">⊕ Descargar</button></td></tr>
+        <tr><td class="p-2 font-semibold">Cierre Talón #5 Negro</td><td class="p-2 text-slate-500">Cierre</td><td class="p-2 text-right font-mono">282 u</td><td class="p-2 text-right font-mono">200 u</td><td class="p-2 text-right font-mono">200 u</td><td class="p-2 text-right font-mono text-red-700">-18 u ⚠</td><td class="p-2 text-center"><span class="pill pill-red">Falta</span></td><td class="p-2"><button class="text-teal-600 text-xs font-bold">⊕ Descargar</button></td></tr>
+      </tbody>
+    </table>
+
+    <div class="grid grid-cols-2 gap-4 mt-6">
+      <!-- Reservas activas -->
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <div class="label-xs mb-2 text-blue-700">🔒 Reservas activas · 3</div>
+        <div class="text-xs space-y-1.5">
+          <div class="flex justify-between"><span>R-0231 · French Terry Negro</span><span class="font-mono">128 kg</span></div>
+          <div class="flex justify-between"><span>R-0232 · Hilo Negro</span><span class="font-mono">3.2 kg</span></div>
+          <div class="flex justify-between"><span>R-0233 · Cierre #5</span><span class="font-mono">200 u</span></div>
+        </div>
+      </div>
+      <!-- Despacho PT (no en tab Despacho, sino aviso) -->
+      <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+        <div class="label-xs mb-2 text-emerald-700">📤 Despacho PT</div>
+        <div class="text-xs">
+          <div class="flex justify-between mb-1"><span>Enviadas a tienda</span><span class="font-mono font-bold">0 / 282</span></div>
+          <div>Tab "Despacho PT" para detalle por sucursal.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 3: MOVIMIENTOS -->
+<div class="max-w-5xl mx-auto px-8 mt-12">
+  <h3 class="text-lg font-bold mb-2"><span class="bg-teal-600 text-white px-2 py-1 rounded mr-2">TAB 3</span> ⚙ Movimientos de producción</h3>
+</div>
+<div class="frame">
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 flex gap-2">
+    <button class="tab-base">📐 Tallas</button>
+    <button class="tab-base">📦 Materiales</button>
+    <button class="tab-base tab-active">⚙ Movimientos <span class="pill pill-gray ml-1">3</span></button>
+    <span class="text-slate-400">…</span>
+  </div>
+  <div class="p-6">
+    <div class="flex items-center justify-between mb-3">
+      <div class="text-sm text-slate-600">3 movimientos · 1 abierto · 2 cerrados</div>
+      <button class="bg-teal-600 text-white px-3 py-1.5 rounded text-xs font-bold">+ Nuevo movimiento</button>
+    </div>
+
+    <!-- Timeline horizontal -->
+    <div class="bg-slate-50 rounded-lg p-4 mb-4">
+      <div class="label-xs mb-3">Línea de tiempo · ruta</div>
+      <div class="flex items-center gap-2">
+        <div class="flex-1 flex flex-col items-center"><div class="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center">✓</div><div class="text-[10px] font-bold text-emerald-700 mt-1">Corte</div></div>
+        <div class="flex-1 h-0.5 bg-emerald-600"></div>
+        <div class="flex-1 flex flex-col items-center"><div class="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center">✓</div><div class="text-[10px] font-bold text-emerald-700 mt-1">Costura</div></div>
+        <div class="flex-1 h-0.5 bg-emerald-600"></div>
+        <div class="flex-1 flex flex-col items-center"><div class="w-5 h-5 rounded-full bg-teal-600 ring-4 ring-teal-200"></div><div class="text-[10px] font-bold text-teal-700 mt-1">Para Lavandería</div></div>
+        <div class="flex-1 h-0.5 bg-slate-300"></div>
+        <div class="flex-1 flex flex-col items-center"><div class="w-5 h-5 rounded-full bg-slate-300"></div><div class="text-[10px] text-slate-500 mt-1">Lavandería</div></div>
+        <div class="flex-1 h-0.5 bg-slate-300"></div>
+        <div class="flex-1 flex flex-col items-center"><div class="w-5 h-5 rounded-full bg-slate-300"></div><div class="text-[10px] text-slate-500 mt-1">Acabado</div></div>
+        <div class="flex-1 h-0.5 bg-slate-300"></div>
+        <div class="flex-1 flex flex-col items-center"><div class="w-5 h-5 rounded-full bg-slate-300"></div><div class="text-[10px] text-slate-500 mt-1">PT</div></div>
+      </div>
+    </div>
+
+    <table class="w-full text-xs">
+      <thead class="bg-slate-100 text-[10px] uppercase">
+        <tr>
+          <th class="p-2 text-left">#</th>
+          <th class="p-2 text-left">Servicio</th>
+          <th class="p-2 text-left">Persona / Taller</th>
+          <th class="p-2 text-right">Enviadas</th>
+          <th class="p-2 text-right">Recibidas</th>
+          <th class="p-2 text-right">Avance</th>
+          <th class="p-2 text-right">Tarifa</th>
+          <th class="p-2 text-right">Costo</th>
+          <th class="p-2">Fechas</th>
+          <th class="p-2">Estado</th>
+          <th class="p-2"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        <tr><td class="p-2">1</td><td class="p-2 font-semibold">Corte</td><td class="p-2">Interno · José R.</td><td class="p-2 text-right font-mono">282</td><td class="p-2 text-right font-mono">282</td><td class="p-2 text-right">100%</td><td class="p-2 text-right font-mono">S/ 0.50</td><td class="p-2 text-right font-mono">S/ 141</td><td class="p-2 text-[10px]">18/05 → 19/05</td><td class="p-2"><span class="pill pill-green">Cerrado</span></td><td class="p-2"><button class="text-teal-600 text-xs">Ver</button></td></tr>
+        <tr><td class="p-2">2</td><td class="p-2 font-semibold">Costura</td><td class="p-2">María Quispe</td><td class="p-2 text-right font-mono">282</td><td class="p-2 text-right font-mono">282</td><td class="p-2 text-right">100%</td><td class="p-2 text-right font-mono">S/ 3.50</td><td class="p-2 text-right font-mono">S/ 987</td><td class="p-2 text-[10px]">19/05 → 25/05</td><td class="p-2"><span class="pill pill-green">Cerrado</span></td><td class="p-2"><button class="text-teal-600 text-xs">Ver</button></td></tr>
+        <tr class="bg-amber-50/30"><td class="p-2">3</td><td class="p-2 font-semibold">Lavandería</td><td class="p-2">Lav. Aurora</td><td class="p-2 text-right font-mono">282</td><td class="p-2 text-right text-slate-400">—</td><td class="p-2 text-right font-bold text-amber-700">35%</td><td class="p-2 text-right font-mono">S/ 4.20</td><td class="p-2 text-right font-mono text-slate-500">~ S/ 1 184</td><td class="p-2 text-[10px]">28/05 → en curso</td><td class="p-2"><span class="pill pill-amber">Abierto</span></td><td class="p-2"><button class="text-teal-600 text-xs">Ver</button></td></tr>
+      </tbody>
+      <tfoot class="bg-slate-100">
+        <tr><td class="p-2 font-bold" colspan="7">Total acumulado</td><td class="p-2 text-right font-mono font-bold">S/ 2 312</td><td colspan="3"></td></tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<!-- TAB 4: INCIDENCIAS -->
+<div class="max-w-5xl mx-auto px-8 mt-12">
+  <h3 class="text-lg font-bold mb-2"><span class="bg-teal-600 text-white px-2 py-1 rounded mr-2">TAB 4</span> ⚠ Incidencias</h3>
+</div>
+<div class="frame">
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 flex gap-2">
+    <span class="text-slate-400">…</span>
+    <button class="tab-base tab-active">⚠ Incidencias <span class="pill pill-red ml-1">1</span></button>
+    <span class="text-slate-400">…</span>
+  </div>
+  <div class="p-6">
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex gap-2 text-xs">
+        <button class="px-3 py-1.5 bg-red-600 text-white rounded font-semibold">Abiertas (1)</button>
+        <button class="px-3 py-1.5 bg-white border border-slate-300 rounded">Resueltas (3)</button>
+      </div>
+      <button class="bg-red-600 text-white px-3 py-1.5 rounded text-xs font-bold">+ Reportar incidencia</button>
+    </div>
+
+    <div class="border-l-4 border-red-500 bg-red-50/40 border border-slate-200 rounded-r-lg p-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="pill pill-red">⛔ PARALIZA</span>
+            <span class="pill pill-amber">CALIDAD</span>
+            <span class="text-xs text-slate-500">hace 5 días</span>
+          </div>
+          <div class="font-bold text-base mt-1">Tela manchada en lote · Lavandería</div>
+          <div class="text-xs text-slate-600 mt-1">Reportado por <b>Diana García</b> · 22/05/26</div>
+          <div class="text-sm text-slate-700 mt-2 italic">"Lote de 12 prendas vino con manchas amarillas. Lavandería Aurora dice que fue contaminación, esperando que repongan tinte..."</div>
+        </div>
+        <div class="flex gap-1">
+          <button class="bg-emerald-600 text-white px-3 py-1.5 rounded text-xs font-bold">✓ Resolver</button>
+          <button class="bg-white border border-slate-300 px-2 py-1.5 rounded text-xs">⋯</button>
+        </div>
+      </div>
+
+      <!-- Timeline avances -->
+      <div class="mt-4 pl-4 border-l-2 border-slate-200 space-y-2 text-xs">
+        <div>
+          <b>22/05 14:32</b> · Diana G.
+          <div class="text-slate-600">"Reporté a Lavandería Aurora, esperando respuesta"</div>
+        </div>
+        <div>
+          <b>24/05 09:15</b> · José R.
+          <div class="text-slate-600">"Aurora confirma reposición de tinte, mañana retomamos"</div>
+        </div>
+        <div>
+          <b>27/05 11:00</b> · Diana G.
+          <div class="text-slate-600">"Sigue sin solución, presionando..."</div>
+        </div>
+        <div class="bg-slate-100 rounded p-2">
+          <input class="w-full bg-transparent text-xs" placeholder="+ Agregar avance..." />
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-4 text-xs text-slate-500">
+      💡 Filtros por tipo (Falta Material · Calidad · Retraso · Cambio prioridad), por persona, por estado. Timeline de avances dentro de cada incidencia.
+    </div>
+  </div>
+</div>
+
+<!-- TAB 5: MUESTRAS -->
+<div class="max-w-5xl mx-auto px-8 mt-12">
+  <h3 class="text-lg font-bold mb-2"><span class="bg-teal-600 text-white px-2 py-1 rounded mr-2">TAB 5</span> 🧪 Muestras (Lavandería + Diseño)</h3>
+</div>
+<div class="frame">
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 flex gap-2">
+    <span class="text-slate-400">…</span>
+    <button class="tab-base tab-active">🧪 Muestras <span class="pill pill-purple ml-1">2</span></button>
+    <span class="text-slate-400">…</span>
+  </div>
+  <div class="p-6">
+    <div class="flex items-center justify-between mb-3">
+      <div class="grid grid-cols-3 gap-2">
+        <div class="bg-blue-50 border border-blue-200 rounded p-2 text-center min-w-[100px]">
+          <div class="font-mono font-bold">1</div>
+          <div class="text-[9px] text-blue-700 uppercase font-bold">En destino</div>
+        </div>
+        <div class="bg-emerald-50 border border-emerald-200 rounded p-2 text-center min-w-[100px]">
+          <div class="font-mono font-bold">1</div>
+          <div class="text-[9px] text-emerald-700 uppercase font-bold">Devuelta</div>
+        </div>
+        <div class="bg-slate-50 border border-slate-200 rounded p-2 text-center min-w-[100px]">
+          <div class="font-mono font-bold">9</div>
+          <div class="text-[9px] text-slate-500 uppercase font-bold">Total prendas</div>
+        </div>
+      </div>
+      <button class="bg-purple-600 text-white px-3 py-1.5 rounded text-xs font-bold">+ Nueva muestra</button>
+    </div>
+
+    <div class="space-y-2">
+      <!-- Muestra en destino -->
+      <div class="border-l-4 border-blue-500 bg-white border border-slate-200 rounded-r p-3 flex items-center gap-3">
+        <div class="flex-1">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-sm">Lav. Aurora</span>
+            <span class="pill pill-teal text-[9px]">LAVANDERÍA</span>
+            <span class="pill pill-blue">EN DESTINO</span>
+          </div>
+          <div class="text-xs text-slate-500 mt-1">Enviada 28/05 · 6 prendas · esperando devolución</div>
+        </div>
+        <button class="bg-emerald-600 text-white px-2 py-1 rounded text-xs font-semibold">Marcar retorno</button>
+      </div>
+
+      <!-- Muestra devuelta parcial -->
+      <div class="border-l-4 border-emerald-500 bg-white border border-slate-200 rounded-r p-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-sm">Diana García</span>
+              <span class="pill pill-purple text-[9px]">DISEÑO</span>
+              <span class="pill pill-green">DEVUELTA</span>
+            </div>
+            <div class="text-xs text-slate-500 mt-1">Enviada 24/05 · <b>2 / 3 vueltas</b> · <span class="pill pill-amber">1 no devuelta</span></div>
+            <div class="text-xs text-slate-600 mt-1 italic">"Se quedó 1 de muestra de referencia"</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 6: ARREGLOS -->
+<div class="max-w-5xl mx-auto px-8 mt-12">
+  <h3 class="text-lg font-bold mb-2"><span class="bg-teal-600 text-white px-2 py-1 rounded mr-2">TAB 6</span> 🔧 Arreglos / Fallados</h3>
+</div>
+<div class="frame">
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 flex gap-2">
+    <span class="text-slate-400">…</span>
+    <button class="tab-base tab-active">🔧 Arreglos <span class="pill pill-amber ml-1">5</span></button>
+    <span class="text-slate-400">…</span>
+  </div>
+  <div class="p-6">
+    <div class="grid grid-cols-4 gap-2 mb-4">
+      <div class="bg-red-50 border border-red-200 rounded p-3 text-center">
+        <div class="font-mono font-bold text-xl text-red-700">5</div>
+        <div class="text-[9px] text-red-700 uppercase font-bold">Fallados</div>
+      </div>
+      <div class="bg-amber-50 border border-amber-200 rounded p-3 text-center">
+        <div class="font-mono font-bold text-xl text-amber-700">3</div>
+        <div class="text-[9px] text-amber-700 uppercase font-bold">En arreglo</div>
+      </div>
+      <div class="bg-emerald-50 border border-emerald-200 rounded p-3 text-center">
+        <div class="font-mono font-bold text-xl text-emerald-700">2</div>
+        <div class="text-[9px] text-emerald-700 uppercase font-bold">Arreglados</div>
+      </div>
+      <div class="bg-blue-50 border border-blue-200 rounded p-3 text-center">
+        <div class="font-mono font-bold text-xl text-blue-700">S/ 420</div>
+        <div class="text-[9px] text-blue-700 uppercase font-bold">A cobrar</div>
+      </div>
+    </div>
+
+    <table class="w-full text-xs">
+      <thead class="bg-slate-100 text-[10px] uppercase">
+        <tr>
+          <th class="p-2 text-left">N°</th>
+          <th class="p-2 text-left">Motivo</th>
+          <th class="p-2 text-left">Asignado a</th>
+          <th class="p-2 text-right">Cantidad</th>
+          <th class="p-2 text-right">Costo a cobrar</th>
+          <th class="p-2 text-center">Plazo</th>
+          <th class="p-2">Estado</th>
+          <th class="p-2"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        <tr><td class="p-2 font-mono">A-001</td><td class="p-2">Cierre mal puesto</td><td class="p-2">María Quispe</td><td class="p-2 text-right">2</td><td class="p-2 text-right font-mono">S/ 80</td><td class="p-2 text-center text-amber-700 font-bold">en 2d</td><td class="p-2"><span class="pill pill-amber">En arreglo</span></td><td class="p-2"><button class="text-teal-600 text-xs">Ver</button></td></tr>
+        <tr><td class="p-2 font-mono">A-002</td><td class="p-2">Costura abierta</td><td class="p-2">María Quispe</td><td class="p-2 text-right">3</td><td class="p-2 text-right font-mono">S/ 120</td><td class="p-2 text-center">hoy</td><td class="p-2"><span class="pill pill-red">Vencido</span></td><td class="p-2"><button class="text-teal-600 text-xs">Ver</button></td></tr>
+      </tbody>
+    </table>
+
+    <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
+      <div class="text-xs flex items-center gap-2"><b class="text-blue-700">💰 Cobro pendiente:</b> 5 fallados · S/ 420 · responsable mayor: María Quispe</div>
+      <button class="mt-2 bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-bold">Generar nota de cobro</button>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 7: COSTOS -->
+<div class="max-w-5xl mx-auto px-8 mt-12">
+  <h3 class="text-lg font-bold mb-2"><span class="bg-teal-600 text-white px-2 py-1 rounded mr-2">TAB 7</span> 💰 Costos</h3>
+</div>
+<div class="frame">
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 flex gap-2">
+    <span class="text-slate-400">…</span>
+    <button class="tab-base tab-active">💰 Costos</button>
+    <span class="text-slate-400">…</span>
+  </div>
+  <div class="p-6">
+    <div class="grid grid-cols-4 gap-3 mb-4">
+      <div class="bg-slate-50 rounded p-3 text-center">
+        <div class="text-[9px] text-slate-500 uppercase font-bold">MP consumida</div>
+        <div class="font-mono font-bold text-lg mt-1">S/ 1 280</div>
+      </div>
+      <div class="bg-slate-50 rounded p-3 text-center">
+        <div class="text-[9px] text-slate-500 uppercase font-bold">Servicios</div>
+        <div class="font-mono font-bold text-lg mt-1">S/ 2 312</div>
+      </div>
+      <div class="bg-slate-50 rounded p-3 text-center">
+        <div class="text-[9px] text-slate-500 uppercase font-bold">Costos manuales</div>
+        <div class="font-mono font-bold text-lg mt-1">S/ 180</div>
+      </div>
+      <div class="bg-teal-50 border border-teal-200 rounded p-3 text-center">
+        <div class="text-[9px] text-teal-700 uppercase font-bold">Total estimado</div>
+        <div class="font-mono font-extrabold text-xl text-teal-700 mt-1">S/ 3 772</div>
+        <div class="text-[10px] text-slate-500">S/ 13.38 / prenda</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <div class="label-xs mb-2">Servicios (de movimientos)</div>
+        <table class="w-full text-xs">
+          <thead class="bg-slate-100 text-[10px]"><tr><th class="p-1.5 text-left">Servicio</th><th class="p-1.5 text-right">Costo</th></tr></thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr><td class="p-1.5">Corte</td><td class="p-1.5 text-right font-mono">S/ 141</td></tr>
+            <tr><td class="p-1.5">Costura</td><td class="p-1.5 text-right font-mono">S/ 987</td></tr>
+            <tr><td class="p-1.5">Lavandería</td><td class="p-1.5 text-right font-mono text-slate-500">~ S/ 1 184</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <div class="label-xs">Costos manuales</div>
+          <button class="text-xs text-teal-600 font-bold">+ Agregar</button>
+        </div>
+        <table class="w-full text-xs">
+          <thead class="bg-slate-100 text-[10px]"><tr><th class="p-1.5 text-left">Descripción</th><th class="p-1.5 text-right">Monto</th></tr></thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr><td class="p-1.5">Patronaje extra</td><td class="p-1.5 text-right font-mono">S/ 80</td></tr>
+            <tr><td class="p-1.5">Tinte adicional</td><td class="p-1.5 text-right font-mono">S/ 100</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 8: DESPACHO PT -->
+<div class="max-w-5xl mx-auto px-8 mt-12">
+  <h3 class="text-lg font-bold mb-2"><span class="bg-teal-600 text-white px-2 py-1 rounded mr-2">TAB 8</span> 📤 Despacho PT (Odoo)</h3>
+</div>
+<div class="frame">
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 flex gap-2">
+    <span class="text-slate-400">…</span>
+    <button class="tab-base tab-active">📤 Despacho PT</button>
+    <span class="text-slate-400">…</span>
+  </div>
+  <div class="p-6">
+    <div class="bg-amber-50 border border-amber-200 rounded p-3 mb-4 text-sm flex items-center gap-2">
+      <span class="text-amber-700">⚠</span>
+      <span class="flex-1"><b>Aún no se ha despachado nada</b> · El registro tiene que llegar a "Almacén PT" antes de distribuir.</span>
+    </div>
+
+    <div class="label-xs mb-2">Distribución por sucursal (Odoo)</div>
+    <table class="w-full text-xs">
+      <thead class="bg-slate-100 text-[10px] uppercase">
+        <tr>
+          <th class="p-2 text-left">Sucursal</th>
+          <th class="p-2 text-right">Cantidad</th>
+          <th class="p-2 text-right">% del total</th>
+          <th class="p-2 text-center">Estado</th>
+          <th class="p-2"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        <tr><td class="p-2">Tienda Lima · Larcomar</td><td class="p-2 text-right font-mono">100</td><td class="p-2 text-right">35%</td><td class="p-2 text-center"><span class="pill pill-gray">Pendiente</span></td><td class="p-2"><button class="text-xs text-teal-600">Editar</button></td></tr>
+        <tr><td class="p-2">Tienda Lima · Plaza Norte</td><td class="p-2 text-right font-mono">80</td><td class="p-2 text-right">28%</td><td class="p-2 text-center"><span class="pill pill-gray">Pendiente</span></td><td class="p-2"><button class="text-xs text-teal-600">Editar</button></td></tr>
+        <tr><td class="p-2">Tienda Arequipa</td><td class="p-2 text-right font-mono">60</td><td class="p-2 text-right">21%</td><td class="p-2 text-center"><span class="pill pill-gray">Pendiente</span></td><td class="p-2"><button class="text-xs text-teal-600">Editar</button></td></tr>
+        <tr><td class="p-2">Almacén central</td><td class="p-2 text-right font-mono">42</td><td class="p-2 text-right">16%</td><td class="p-2 text-center"><span class="pill pill-gray">Pendiente</span></td><td class="p-2"><button class="text-xs text-teal-600">Editar</button></td></tr>
+      </tbody>
+      <tfoot class="bg-slate-100"><tr><td class="p-2 font-bold">Total</td><td class="p-2 text-right font-mono font-bold">282</td><td class="p-2 text-right font-bold">100%</td><td colspan="2"></td></tr></tfoot>
+    </table>
+    <div class="mt-3 flex gap-2">
+      <button class="bg-teal-600 text-white px-3 py-1.5 rounded text-xs font-bold">Sincronizar con Odoo</button>
+      <button class="bg-white border border-slate-300 px-3 py-1.5 rounded text-xs">📥 Export a Excel</button>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 9: CIERRE -->
+<div class="max-w-5xl mx-auto px-8 mt-12">
+  <h3 class="text-lg font-bold mb-2"><span class="bg-teal-600 text-white px-2 py-1 rounded mr-2">TAB 9</span> ✓ Cierre del registro <span class="text-xs text-emerald-700">· con wizard guiado</span></h3>
+</div>
+<div class="frame">
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 flex gap-2">
+    <span class="text-slate-400">…</span>
+    <button class="tab-base tab-active">✓ Cierre</button>
+    <span class="text-slate-400">…</span>
+  </div>
+  <div class="p-6">
+    <!-- Wizard de pasos -->
+    <div class="flex items-center gap-1 mb-6">
+      <div class="flex-1 flex flex-col items-center"><div class="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold">1</div><div class="text-[10px] font-bold text-emerald-700 mt-1">Preview</div></div>
+      <div class="flex-1 h-0.5 bg-emerald-600"></div>
+      <div class="flex-1 flex flex-col items-center"><div class="w-7 h-7 rounded-full bg-teal-600 text-white flex items-center justify-center text-xs font-bold ring-4 ring-teal-200">2</div><div class="text-[10px] font-bold text-teal-700 mt-1">Verificar costos</div></div>
+      <div class="flex-1 h-0.5 bg-slate-300"></div>
+      <div class="flex-1 flex flex-col items-center"><div class="w-7 h-7 rounded-full bg-slate-300 text-white flex items-center justify-center text-xs font-bold">3</div><div class="text-[10px] text-slate-500 mt-1">Despacho PT</div></div>
+      <div class="flex-1 h-0.5 bg-slate-300"></div>
+      <div class="flex-1 flex flex-col items-center"><div class="w-7 h-7 rounded-full bg-slate-300 text-white flex items-center justify-center text-xs font-bold">4</div><div class="text-[10px] text-slate-500 mt-1">Cobro fallados</div></div>
+      <div class="flex-1 h-0.5 bg-slate-300"></div>
+      <div class="flex-1 flex flex-col items-center"><div class="w-7 h-7 rounded-full bg-slate-300 text-white flex items-center justify-center text-xs font-bold">5</div><div class="text-[10px] text-slate-500 mt-1">CERRAR</div></div>
+    </div>
+
+    <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+      <div class="label-xs mb-2 text-emerald-700">Paso 2 · Verificar costos antes de cerrar</div>
+      <div class="grid grid-cols-3 gap-3 text-sm">
+        <div>
+          <div class="text-xs text-slate-500">Costo total</div>
+          <div class="font-mono font-bold text-lg">S/ 3 772</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-500">Costo / prenda</div>
+          <div class="font-mono font-bold text-lg">S/ 13.38</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-500">Merma</div>
+          <div class="font-mono font-bold text-lg">3 prendas</div>
+        </div>
+      </div>
+      <div class="text-xs text-slate-600 mt-3">
+        💡 Todos los movimientos están cerrados · Tarifas verificadas · 5 fallados con costo asignado a María Quispe · BOM cuadra
+      </div>
+    </div>
+
+    <div class="mt-4 flex justify-between">
+      <button class="bg-white border border-slate-300 px-4 py-2 rounded text-sm">← Atrás</button>
+      <button class="bg-teal-600 text-white px-4 py-2 rounded text-sm font-bold">Siguiente: Despacho PT →</button>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 10: HISTORIAL -->
+<div class="max-w-5xl mx-auto px-8 mt-12">
+  <h3 class="text-lg font-bold mb-2"><span class="bg-teal-600 text-white px-2 py-1 rounded mr-2">TAB 10</span> 📜 Historial <span class="text-xs text-emerald-700">· NUEVO en web</span></h3>
+  <p class="text-slate-600 text-sm">El audit log + avance histórico que hoy solo se ve en móvil. Acá los unifico en una línea de tiempo legible.</p>
+</div>
+<div class="frame">
+  <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 flex gap-2">
+    <span class="text-slate-400">…</span>
+    <button class="tab-base tab-active">📜 Historial</button>
+  </div>
+  <div class="p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex gap-2 text-xs">
+        <button class="px-3 py-1.5 bg-teal-600 text-white rounded font-semibold">Todo</button>
+        <button class="px-3 py-1.5 bg-white border border-slate-300 rounded">Cambios estado</button>
+        <button class="px-3 py-1.5 bg-white border border-slate-300 rounded">Edición datos</button>
+        <button class="px-3 py-1.5 bg-white border border-slate-300 rounded">Avances</button>
+        <button class="px-3 py-1.5 bg-white border border-slate-300 rounded">Movimientos</button>
+      </div>
+      <select class="border border-slate-300 rounded px-2 py-1 text-xs"><option>Últimos 30 días</option></select>
+    </div>
+
+    <div class="space-y-3 text-sm">
+      <div class="border-l-2 border-teal-500 pl-4 relative">
+        <div class="absolute -left-2 top-0 w-4 h-4 bg-teal-500 rounded-full"></div>
+        <div class="flex items-center gap-2"><b>Diana García</b> <span class="text-xs text-slate-500">hace 4h</span></div>
+        <div class="text-slate-700">Cambió estado · <span class="pill pill-blue">Costura</span> → <span class="pill pill-amber">Para Lavandería</span></div>
+      </div>
+
+      <div class="border-l-2 border-purple-500 pl-4 relative">
+        <div class="absolute -left-2 top-0 w-4 h-4 bg-purple-500 rounded-full"></div>
+        <div class="flex items-center gap-2"><b>Diana García</b> <span class="text-xs text-slate-500">hace 6h</span></div>
+        <div class="text-slate-700">Creó muestra · 6 prendas a Lav. Aurora</div>
+      </div>
+
+      <div class="border-l-2 border-blue-500 pl-4 relative">
+        <div class="absolute -left-2 top-0 w-4 h-4 bg-blue-500 rounded-full"></div>
+        <div class="flex items-center gap-2"><b>María Quispe</b> <span class="text-xs text-slate-500">ayer 18:42</span></div>
+        <div class="text-slate-700">Reportó avance Costura · 100%</div>
+        <div class="text-xs text-slate-500 mt-1">Pasó de 85% a 100%</div>
+      </div>
+
+      <div class="border-l-2 border-red-500 pl-4 relative">
+        <div class="absolute -left-2 top-0 w-4 h-4 bg-red-500 rounded-full"></div>
+        <div class="flex items-center gap-2"><b>Diana García</b> <span class="text-xs text-slate-500">22/05 14:32</span></div>
+        <div class="text-slate-700">Reportó incidencia · <i>"Tela manchada en lote"</i></div>
+        <div class="text-xs text-slate-500 mt-1">PARALIZA · 12 prendas afectadas</div>
+      </div>
+
+      <div class="border-l-2 border-slate-300 pl-4 relative">
+        <div class="absolute -left-2 top-0 w-4 h-4 bg-slate-300 rounded-full"></div>
+        <div class="flex items-center gap-2"><b>Eduard Cardenas</b> <span class="text-xs text-slate-500">18/05</span></div>
+        <div class="text-slate-700">Aprobó matriz de colores · Negro / Azul Claro / Crudo</div>
+      </div>
+
+      <div class="border-l-2 border-emerald-500 pl-4 relative">
+        <div class="absolute -left-2 top-0 w-4 h-4 bg-emerald-500 rounded-full"></div>
+        <div class="flex items-center gap-2"><b>Eduard Cardenas</b> <span class="text-xs text-slate-500">15/05 10:24</span></div>
+        <div class="text-slate-700">Creó el registro</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== -->
+<!-- Resumen + preguntas                                                      -->
+<!-- ====================================================================== -->
+<div class="max-w-5xl mx-auto px-8 mt-16 mb-12">
+  <h2 class="text-2xl font-bold mb-4">Resumen y plan</h2>
+
+  <div class="bg-white border border-slate-200 rounded-xl p-5 mb-4">
+    <h3 class="font-bold mb-3">Lo que se gana con esto</h3>
+    <ul class="text-sm text-slate-700 list-disc pl-5 space-y-1.5">
+      <li><b>Todo vinculado tiene tab propia</b>: ya no hay que buscar incidencias en un panel lateral y arreglos en un dialog raro.</li>
+      <li><b>Cada tab muestra contador</b>: ⚠ Incidencias <span class="pill pill-red">1</span> → vos sabés de un vistazo si hay algo abierto.</li>
+      <li><b>Hero card con chips</b>: las clasificaciones (Marca/Tipo/Entalle/Tela/Hilo/Hilo Esp./Curva/Línea/Entrega/Creado) siempre visibles arriba.</li>
+      <li><b>Sidebar persistente</b>: resumen + acciones rápidas + chat + eventos. No tenés que cambiar de tab para mandar mensaje.</li>
+      <li><b>Timeline horizontal en Movimientos</b>: ves dónde está el registro en la ruta sin tener que leer una tabla.</li>
+      <li><b>Wizard de cierre</b>: en lugar de 4 modals separados, 5 pasos guiados con verificaciones automáticas.</li>
+      <li><b>Tab Historial (nuevo en web)</b>: el audit log + avance histórico unificados. Hoy no se ve.</li>
+      <li><b>Despacho PT como tab propia</b>: hoy está escondido en Materiales. Aplica solo cuando llega a Almacén PT.</li>
+      <li><b>Reorganización de Materiales en sub-tabs</b>: Requerido / Reservado / Consumido / Salidas libres / Recepciones.</li>
+    </ul>
+  </div>
+
+  <div class="bg-amber-50 border border-amber-200 rounded-xl p-5">
+    <h3 class="font-bold mb-3">Preguntas antes de implementar</h3>
+    <ul class="text-sm text-slate-700 list-disc pl-5 space-y-1.5">
+      <li><b>¿Las 10 tabs te suenan o juntamos algunas?</b> Por ejemplo, Costos podría quedar como sub-tab de Movimientos. Arreglos podría unirse a Incidencias. Decime.</li>
+      <li><b>Sidebar derecho persistente</b>: ¿te parece bien que esté siempre visible o lo hacemos colapsable?</li>
+      <li><b>Tab Historial</b>: ¿quién debería verlo? ¿solo admin o todos? Mi voto: todos pero solo admin puede borrar registros del log.</li>
+      <li><b>Wizard de cierre</b>: ¿los 5 pasos te suenan (preview / costos / despacho / cobro / cerrar) o falta algo?</li>
+      <li><b>Permisos por tab</b>: ¿algún rol debería ver tabs limitadas? Por ejemplo, "Costos" y "Cierre" solo para admin / financiero.</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>
