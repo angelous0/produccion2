@@ -146,44 +146,9 @@ export const MobileHome = () => {
 
   return (
     <div>
-      {/* Header verde con saludo */}
-      <div className="m-header" style={{ paddingTop: 16, paddingBottom: 14 }}>
-        <div style={{
-          width: 36, height: 36, borderRadius: '50%',
-          background: 'rgba(255,255,255,0.15)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontWeight: 700, fontSize: 13,
-        }}>
-          {(user?.nombre_completo || user?.username || '?').split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase()}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, opacity: 0.85 }}>Hola,</div>
-          <div style={{ fontWeight: 600, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {user?.nombre_completo || user?.username}
-          </div>
-        </div>
-        <Link
-          to="/m/notificaciones"
-          className="m-h-icon"
-          aria-label="Notificaciones"
-          style={{ position: 'relative', textDecoration: 'none', color: 'inherit' }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1"/></svg>
-          {stats.notif_no_leidas > 0 && (
-            <span style={{
-              position: 'absolute', top: -2, right: -2,
-              minWidth: 18, height: 18, padding: '0 5px',
-              background: '#ef4444', color: 'white',
-              border: '2px solid var(--m-brand)', borderRadius: 999,
-              fontSize: 10, fontWeight: 700,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              {stats.notif_no_leidas > 9 ? '9+' : stats.notif_no_leidas}
-            </span>
-          )}
-        </Link>
-      </div>
-
+      {/* Nota: el header verde con saludo + bell + avatar lo provee
+          MobileLayout (común a todas las pantallas). Antes había uno aquí
+          también, lo que producía un header duplicado. */}
       <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {/* Saludo + fecha */}
         <div>

@@ -16,11 +16,17 @@
   color: var(--m-ink);
   background: var(--m-bg);
 
-  /* App shell: ocupa exactamente la pantalla, sin scroll en el body */
+  /* App shell: ocupa exactamente la pantalla, sin scroll en el body.
+   * IMPORTANTE: en Chrome Android `100vh` incluye la barra de URL y la barra
+   * de gestos del sistema → la tab bar queda fuera de pantalla. Usamos
+   * `100dvh` (dynamic viewport height) que respeta la barra dinámica.
+   * Fallback a 100vh para navegadores viejos. */
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
   overflow: hidden;
 }
 
@@ -127,16 +133,33 @@ body:has(.m-app) {
   min-height: 0;            /* clave para que overflow funcione dentro de flex */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 16px;
+  /* Espacio para que el último contenido no quede tapado por la tab bar
+   * fixed. Se calcula con la altura de la tab bar (64px) + safe-area-inset
+   * (home indicator iPhone / gesture bar Android). */
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 16px);
 }
 
-/* ─── Tab bar (fijo abajo, no scrollea) ─── */
+/* ─── Tab bar (FIJO al bottom del viewport — robusto frente a viewport
+ *     dinámico de Chrome Android / Safari iOS) ─── */
 .m-tabbar {
-  flex-shrink: 0;
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
   display: grid; grid-template-columns: repeat(4, 1fr);
   background: white; border-top: 1px solid var(--m-border);
-  height: 64px;
   z-index: 20;
+  /* Safe area para Android con barra de gestos y iPhones con home indicator.
+   * Sin esto la tab bar puede solaparse con los controles del sistema. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  height: calc(64px + env(safe-area-inset-bottom, 0px));
+}
+/* En desktop la tab bar queda centrada dentro del shell de 420px */
+@media (min-width: 768px) {
+  .m-tabbar {
+    left: 50%;
+    right: auto;
+    width: 420px;
+    transform: translateX(-50%);
+  }
 }
 .m-tabbar > a {
   display: flex; flex-direction: column; align-items: center; justify-content: center;

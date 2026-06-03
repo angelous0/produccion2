@@ -35,6 +35,7 @@ export const MobileMovimientoDetalle = () => {
   const [showCerrar, setShowCerrar] = useState(false);
   const [sugerenciaCierre, setSugerenciaCierre] = useState(null); // Sprint 44b
   const [showAvance, setShowAvance] = useState(false);
+  const [showEliminar, setShowEliminar] = useState(false);
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -259,6 +260,17 @@ export const MobileMovimientoDetalle = () => {
                 height: '100%', background: 'var(--m-brand)', transition: 'width .3s',
               }} />
             </div>
+            {/* Botón "Reportar avance" pegado al card de avance — separado
+                visualmente del bloque de acciones de "Cerrar/Eliminar" para
+                evitar clicks accidentales (Opción B). */}
+            <button
+              className="m-btn m-btn-outline"
+              style={{ borderColor: 'var(--m-brand)', color: 'var(--m-brand)', marginTop: 10, width: '100%' }}
+              onClick={() => setShowAvance(true)}
+            >
+              <TrendingUp size={18} />
+              Reportar avance
+            </button>
           </div>
         )}
 
@@ -274,43 +286,32 @@ export const MobileMovimientoDetalle = () => {
 
         {/* Acciones */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-          {/* Reportar avance (solo si el servicio usa avance %) */}
-          {usaAvance && enProgreso && (
-            <button
-              className="m-btn m-btn-outline"
-              style={{ borderColor: 'var(--m-brand)', color: 'var(--m-brand)' }}
-              onClick={() => setShowAvance(true)}
-            >
-              <TrendingUp size={18} />
-              Reportar avance
-            </button>
-          )}
+          {/* Cerrar (solo si está en curso). Si el servicio usa avance %,
+              solo se habilita cuando avance == 100% — evita cerrar con
+              avance desactualizado o por click accidental cerca de
+              "Reportar avance" (Opción A combinada con B). */}
+          {enProgreso && (() => {
+            const pct = Number(mov.avance_porcentaje) || 0;
+            const bloqueado = usaAvance && pct < 100;
+            return (
+              <button
+                className="m-btn m-btn-primary"
+                onClick={() => { if (!bloqueado) setShowCerrar(true); }}
+                disabled={bloqueado}
+                title={bloqueado ? `Reportá 100% antes de cerrar (avance actual: ${pct}%)` : ''}
+                style={bloqueado ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+              >
+                <CheckCircle2 size={18} />
+                {bloqueado ? `Cerrar movimiento (falta ${100 - pct}%)` : 'Cerrar movimiento'}
+              </button>
+            );
+          })()}
 
-          {/* Cerrar (solo si está en curso) */}
-          {enProgreso && (
-            <button
-              className="m-btn m-btn-primary"
-              onClick={() => setShowCerrar(true)}
-            >
-              <CheckCircle2 size={18} />
-              Cerrar movimiento
-            </button>
-          )}
-
-          {/* Eliminar */}
+          {/* Eliminar (abre sheet con confirmación "escribir ELIMINAR") */}
           <button
             className="m-btn m-btn-outline"
             style={{ borderColor: '#fca5a5', color: '#b91c1c' }}
-            onClick={async () => {
-              if (!window.confirm('¿Eliminar este movimiento? La acción no se puede deshacer.')) return;
-              try {
-                await axios.delete(`${API}/movimientos-produccion/${movId}`);
-                navigate(-1);
-              } catch (e) {
-                const detail = e?.response?.data?.detail || 'Error al eliminar';
-                alert(typeof detail === 'string' ? detail : 'Error al eliminar');
-              }
-            }}
+            onClick={() => setShowEliminar(true)}
           >
             <Trash2 size={16} />
             Eliminar movimiento
@@ -353,6 +354,14 @@ export const MobileMovimientoDetalle = () => {
             setSugerenciaCierre(null);
             await refreshMov();
           }}
+        />
+      )}
+
+      {showEliminar && (
+        <EliminarMovSheet
+          mov={mov}
+          onClose={() => setShowEliminar(false)}
+          onEliminado={() => navigate(-1)}
         />
       )}
 
@@ -618,6 +627,124 @@ const CerrarMovSheet = ({ mov, onClose, onCerrado }) => {
             {enviando
               ? <><Loader2 className="m-spin" size={18} /> Cerrando...</>
               : <><Check size={18} /> Confirmar cierre</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ─────── Bottom sheet: confirmar eliminación (escribir ELIMINAR) ─────── */
+const EliminarMovSheet = ({ mov, onClose, onEliminado }) => {
+  const [texto, setTexto] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState('');
+
+  const PALABRA = 'ELIMINAR';
+  const coincide = texto.trim().toUpperCase() === PALABRA;
+
+  const confirmar = async () => {
+    if (!coincide) return;
+    setEnviando(true);
+    setError('');
+    try {
+      await axios.delete(`${API}/movimientos-produccion/${mov.id}`);
+      onEliminado();
+    } catch (e) {
+      const detail = e?.response?.data?.detail || 'Error al eliminar';
+      setError(typeof detail === 'string' ? detail : 'Error al eliminar');
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+        zIndex: 100, display: 'flex', alignItems: 'flex-end',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'white', width: '100%',
+          borderTopLeftRadius: 20, borderTopRightRadius: 20,
+          padding: '8px 16px 20px', maxHeight: '90vh', overflowY: 'auto',
+        }}
+      >
+        <div style={{
+          width: 40, height: 4, background: '#cbd5e1', borderRadius: 2,
+          margin: '0 auto 12px',
+        }} />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <Trash2 size={20} style={{ color: '#dc2626' }} />
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#dc2626' }}>
+            Eliminar movimiento
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+          {mov.servicio_nombre} · {mov.persona_nombre || 'sin persona'}
+        </div>
+
+        {/* Banner advertencia */}
+        <div style={{
+          background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8,
+          padding: 12, marginBottom: 14, fontSize: 13, color: '#7f1d1d',
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>⚠️ Acción irreversible</div>
+          Esto borrará el movimiento permanentemente, incluyendo:
+          <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
+            <li>El registro de cantidades enviada/recibida</li>
+            <li>El historial de avances reportados</li>
+            <li>Cualquier costo calculado asociado</li>
+          </ul>
+        </div>
+
+        {/* Input para escribir ELIMINAR */}
+        <div style={{ marginBottom: 14 }}>
+          <span className="m-label-xs">
+            Para confirmar, escribí <strong style={{ color: '#dc2626' }}>{PALABRA}</strong> abajo:
+          </span>
+          <input
+            type="text"
+            className="m-input"
+            placeholder={PALABRA}
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            autoFocus
+            style={{
+              marginTop: 6,
+              borderColor: coincide ? '#22c55e' : (texto ? '#fca5a5' : undefined),
+              fontFamily: 'ui-monospace, monospace',
+              letterSpacing: 1,
+            }}
+          />
+        </div>
+
+        {error && (
+          <div style={{ color: '#b91c1c', fontSize: 12, marginBottom: 10 }}>{error}</div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="m-btn m-btn-outline" style={{ flex: 1 }} onClick={onClose}>
+            Cancelar
+          </button>
+          <button
+            className="m-btn"
+            style={{
+              flex: 2,
+              background: coincide ? '#dc2626' : '#fca5a5',
+              color: 'white',
+              cursor: coincide && !enviando ? 'pointer' : 'not-allowed',
+            }}
+            disabled={!coincide || enviando}
+            onClick={confirmar}
+          >
+            {enviando
+              ? <><Loader2 className="m-spin" size={18} /> Eliminando...</>
+              : <><Trash2 size={18} /> Eliminar definitivo</>}
           </button>
         </div>
       </div>
