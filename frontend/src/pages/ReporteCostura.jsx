@@ -13,6 +13,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
+import { AsignarColoresModal } from '../components/AsignarColoresModal';
 import { formatDate } from '../lib/dateUtils';
 import IncidenciaAvances from '../components/registro/IncidenciaAvances';
 import {
@@ -29,6 +30,67 @@ const RIESGO_CONFIG = {
   critico:  { label: 'Crítico',  color: 'bg-red-100 text-red-800 border-red-200', dot: 'bg-red-500', rowClass: 'bg-red-50/50' },
   vencido:  { label: 'Vencido',  color: 'bg-zinc-800 text-white border-zinc-700', dot: 'bg-zinc-800', rowClass: 'bg-red-50/70' },
 };
+
+// Pill chiquito que aparece SOLO cuando el filtro de servicio es Lavandería.
+// Para Lavandería el color es crítico (cada tono de lavado = un color); si
+// el corte no tiene colores asignados el lavandero no sabe qué hacer.
+//   - completo (verde):  todas las tallas tienen colores sumando == cantidad_total
+//   - parcial  (ámbar):  hay colores pero no completan todas las tallas
+//   - sin_colores (rojo): ninguna talla tiene colores asignados
+// Si recibe onClick, se vuelve clickeable y abre la matriz Tallas×Colores.
+// stopPropagation para no disparar otros handlers de la fila.
+const ColoresBadge = ({ item, servicio, onClick }) => {
+  const s = (servicio || '').toLowerCase();
+  // Tolerante a tildes (DB ya está normalizada sin tilde, pero por las dudas)
+  if (!s.includes('lavanderia') && !s.includes('lavandería')) return null;
+  const status = item.colores_status;
+  const count = item.colores_count || 0;
+  const isClickable = typeof onClick === 'function';
+  const handleClick = isClickable
+    ? (e) => { e.stopPropagation(); onClick(item); }
+    : undefined;
+  const base = 'ml-1 inline-flex items-center gap-0.5 px-1.5 py-0 rounded text-[9px] font-bold border transition-shadow';
+  const clickable = isClickable ? ' cursor-pointer hover:shadow-sm hover:brightness-95' : '';
+
+  if (status === 'completo') {
+    return (
+      <span
+        onClick={handleClick}
+        className={`${base} bg-emerald-50 text-emerald-700 border-emerald-300${clickable}`}
+        title={isClickable
+          ? `${count} color${count === 1 ? '' : 'es'} — click para ver matriz Tallas×Colores`
+          : `${count} color${count === 1 ? '' : 'es'} — distribución 100% en todas las tallas`}
+      >
+        🎨 {count}
+      </span>
+    );
+  }
+  if (status === 'parcial') {
+    return (
+      <span
+        onClick={handleClick}
+        className={`${base} bg-amber-50 text-amber-800 border-amber-300${clickable}`}
+        title={isClickable
+          ? 'Colores parciales — click para ver detalle de tallas faltantes'
+          : 'Colores asignados parcialmente — alguna talla no llega al 100%'}
+      >
+        🎨 {count} parc.
+      </span>
+    );
+  }
+  return (
+    <span
+      onClick={handleClick}
+      className={`${base} bg-red-50 text-red-700 border-red-300${clickable}`}
+      title={isClickable
+        ? 'Sin colores asignados — click para ver detalle del corte'
+        : 'Este corte no tiene colores asignados — el lavandero no sabrá qué tono aplicar a cada talla'}
+    >
+      ⚠ Sin color
+    </span>
+  );
+};
+
 
 const KpiCard = ({ label, value, icon: Icon, accent }) => (
   <div className={`rounded-lg border p-3 ${accent || 'bg-card'}`}>
@@ -343,6 +405,11 @@ export const ReporteCostura = () => {
   const [filtroBusqueda, setFiltroBusqueda] = useState('');
   const [filtroServicio, setFiltroServicio] = useState('Costura');
   const [servicios, setServicios] = useState([]);
+
+  // Modal editor de colores (AsignarColoresModal). Guardamos solo el
+  // registro_id porque el modal fetch su propia data desde el backend.
+  // Mismo patrón que MatrizProduccion / FichaItemModal.
+  const [matrizColorReg, setMatrizColorReg] = useState(null);
 
   // Incidencia rápida
   const [incDialog, setIncDialog] = useState(null);
@@ -1054,6 +1121,7 @@ export const ReporteCostura = () => {
                       <td className="p-2 font-mono font-semibold whitespace-nowrap">
                         {item.n_corte}
                         {item.urgente && <span className="ml-1 text-[9px] text-red-600 font-bold">URG</span>}
+                        <ColoresBadge item={item} servicio={filtroServicio} onClick={(it) => setMatrizColorReg(it.registro_id)} />
                       </td>
                       <td className="p-2 whitespace-nowrap max-w-[120px] truncate" title={item.modelo_nombre}>{item.modelo_nombre || '-'}</td>
                       <td className="p-2 whitespace-nowrap">{item.tipo_nombre || '-'}</td>
@@ -1260,6 +1328,7 @@ export const ReporteCostura = () => {
                               <td className="p-2 font-mono font-semibold whitespace-nowrap">
                                 {item.n_corte}
                                 {item.urgente && <span className="ml-1 text-[9px] text-red-600 font-bold">URG</span>}
+                                <ColoresBadge item={item} servicio={filtroServicio} onClick={(it) => setMatrizColorReg(it.registro_id)} />
                               </td>
                               {filtroServicio === '__todos__' && <td className="p-2 whitespace-nowrap text-xs">{item.servicio_nombre}</td>}
                               <td className="p-2 whitespace-nowrap max-w-[120px] truncate" title={item.modelo_nombre}>{item.modelo_nombre || '-'}</td>
@@ -1545,6 +1614,17 @@ export const ReporteCostura = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Editor de colores del corte (reusa el mismo modal de la Matriz Dinámica
+          y la Ficha de Ítem). Se abre al clickear el badge 🎨 N cuando el
+          filtro de servicio es Lavandería. onSaved refresca los badges para
+          reflejar el cambio inmediato sin recargar la página. */}
+      <AsignarColoresModal
+        open={!!matrizColorReg}
+        registroId={matrizColorReg}
+        onClose={() => setMatrizColorReg(null)}
+        onSaved={() => fetchData()}
+      />
     </div>
   );
 };

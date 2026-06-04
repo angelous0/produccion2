@@ -4,10 +4,11 @@ import axios from 'axios';
 import {
   ArrowLeft, Loader2, Save, Plus, X, AlertTriangle,
   Lock, Info, FlaskConical, ChevronUp, ChevronDown, Search, Calculator,
-  Copy, Check,
+  Copy, Check, ArrowLeftRight,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { puede, ACCIONES } from '../utils/permisos';
+import { formatColorName } from '../../lib/utils';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -44,6 +45,11 @@ export const MobileEditarMatrizColores = () => {
   const [filas, setFilas] = useState([]);
 
   const [picker, setPicker] = useState(false);
+  // Swap: índice de la fila cuyo color se está cambiando. null = no swap.
+  // Reusa el mismo ColorPickerSheet que "Agregar color" pero con onPick distinto:
+  // en vez de agregar fila nueva, reemplaza el color de la fila en swapIdx
+  // manteniendo peso + cantidades por talla.
+  const [swapIdx, setSwapIdx] = useState(null);
   const [aplicarOpen, setAplicarOpen] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [aprobando, setAprobando] = useState(false);
@@ -185,6 +191,21 @@ export const MobileEditarMatrizColores = () => {
       cantidades: {},
     }]);
     setPicker(false);
+  };
+  // Swap: cambia el color de la fila `idx` por uno nuevo del catálogo,
+  // manteniendo intactos peso y cantidades por talla. El picker ya filtra
+  // los colores ya usados (yaUsados) → no se puede swap a uno duplicado.
+  const swapColorFila = (color) => {
+    if (swapIdx === null) return;
+    if (filas.some(f => f.color_id === color.id)) {
+      setSwapIdx(null);
+      return; // Defensa extra: el picker ya lo filtra, pero por las dudas
+    }
+    setFilas(prev => prev.map((f, i) => i === swapIdx
+      ? { ...f, color_id: color.id, color_nombre: color.nombre, codigo_hex: color.codigo_hex }
+      : f
+    ));
+    setSwapIdx(null);
   };
 
   /** Prorratea cada talla entre las filas según pesos (Hamilton). */
@@ -554,9 +575,25 @@ export const MobileEditarMatrizColores = () => {
                               fontWeight: 600,
                               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                               maxWidth: 120,
-                            }} title={f.color_nombre}>
-                              {f.color_nombre}
+                            }} title={formatColorName(f.color_nombre)}>
+                              {formatColorName(f.color_nombre)}
                             </span>
+                            {!bloqueado && (
+                              <button
+                                onClick={() => setSwapIdx(idx)}
+                                style={{
+                                  background: 'var(--m-brand-soft)', border: 0,
+                                  borderRadius: 6, padding: 4, cursor: 'pointer',
+                                  color: 'var(--m-brand)', display: 'flex',
+                                  alignItems: 'center', justifyContent: 'center',
+                                  marginLeft: 4,
+                                }}
+                                title="Cambiar este color por otro"
+                                aria-label="Cambiar color"
+                              >
+                                <ArrowLeftRight size={12} />
+                              </button>
+                            )}
                             {!bloqueado && (
                               <div style={{ display: 'flex', flexDirection: 'column', marginLeft: 'auto' }}>
                                 <button
@@ -799,13 +836,28 @@ export const MobileEditarMatrizColores = () => {
         )}
       </div>
 
-      {/* Picker de colores */}
+      {/* Picker de colores — modo AGREGAR fila nueva */}
       {picker && (
         <ColorPickerSheet
           paleta={paleta}
           yaUsados={filas.map(f => f.color_id).filter(Boolean)}
           onPick={agregarColor}
           onClose={() => setPicker(false)}
+        />
+      )}
+
+      {/* Picker de colores — modo SWAP (cambiar color de fila existente).
+          Reusa el mismo sheet; el título cambia para no confundir al usuario. */}
+      {swapIdx !== null && (
+        <ColorPickerSheet
+          paleta={paleta}
+          // Excluye los ya usados pero permite mantener el actual visible no es
+          // necesario (no aporta nada elegirse a sí mismo); lo filtramos también.
+          yaUsados={filas.map(f => f.color_id).filter(Boolean)}
+          onPick={swapColorFila}
+          onClose={() => setSwapIdx(null)}
+          titulo={`Cambiar color de "${formatColorName(filas[swapIdx]?.color_nombre || '')}"`}
+          ctaLabel="Cambiar"
         />
       )}
 
@@ -831,7 +883,9 @@ export const MobileEditarMatrizColores = () => {
 };
 
 /* ──────── Picker de colores ──────── */
-const ColorPickerSheet = ({ paleta, yaUsados, onPick, onClose }) => {
+// Props opcionales `titulo` y `ctaLabel` para reusar el mismo sheet en
+// "Agregar color" y "Cambiar color de fila X" sin duplicar el componente.
+const ColorPickerSheet = ({ paleta, yaUsados, onPick, onClose, titulo = 'Agregar color', ctaLabel }) => {
   const [q, setQ] = useState('');
   const disponibles = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -846,7 +900,7 @@ const ColorPickerSheet = ({ paleta, yaUsados, onPick, onClose }) => {
   return (
     <SheetShell onClose={onClose}>
       <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 10 }}>
-        Agregar color
+        {titulo}
       </div>
       <div style={{ position: 'relative', marginBottom: 10 }}>
         <Search size={14} style={{
@@ -891,9 +945,11 @@ const ColorPickerSheet = ({ paleta, yaUsados, onPick, onClose }) => {
                 }} />
               )}
               <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {c.nombre}
+                {formatColorName(c.nombre)}
               </span>
-              <Plus size={16} style={{ color: 'var(--m-brand)' }} />
+              {ctaLabel === 'Cambiar'
+                ? <ArrowLeftRight size={16} style={{ color: 'var(--m-brand)' }} />
+                : <Plus size={16} style={{ color: 'var(--m-brand)' }} />}
             </button>
           ))
         )}

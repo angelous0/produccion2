@@ -2614,6 +2614,7 @@ async def reporte_costura(
                 COALESCE(ent.nombre, r.modelo_manual->>'entalle_texto') as entalle_nombre,
                 COALESCE(tela.nombre, r.modelo_manual->>'tela_texto') as tela_nombre,
                 COALESCE(he.nombre, r.modelo_manual->>'hilo_especifico_texto', '') as hilo_especifico_nombre,
+                r.distribucion_colores,
                 s.nombre as servicio_nombre,
                 (SELECT COUNT(*) FROM produccion.prod_incidencia i
                  WHERE i.registro_id = r.id AND i.estado = 'ABIERTA') as incidencias_abiertas,
@@ -2711,6 +2712,41 @@ async def reporte_costura(
                 elif score >= 1:
                     nivel_riesgo = 'atencion'
 
+            # ─── Indicador de colores asignados (útil para Lavandería) ───
+            # Mismo criterio "100% distribuido" que usa la matriz dinámica
+            # (ver líneas 1842-1848): 'completo' = todas las tallas con
+            # cantidad_total>0 tienen colores asignados sumando == total.
+            dist_raw = parse_jsonb(d.get('distribucion_colores'))
+            talla_totales_c: dict = {}
+            asignado_por_talla_c: dict = {}
+            colores_unicos: set = set()
+            for entry in (dist_raw or []):
+                tn = entry.get('talla_nombre') or str(entry.get('talla_id', ''))
+                ct = safe_int(entry.get('cantidad_total', 0))
+                if tn:
+                    talla_totales_c[tn] = talla_totales_c.get(tn, 0) + ct
+                for c in (entry.get('colores') or []):
+                    cn = (c.get('color_nombre') or '').strip().upper()
+                    qty = safe_int(c.get('cantidad', 0))
+                    if not cn or qty == 0:
+                        continue
+                    colores_unicos.add(cn)
+                    if tn:
+                        asignado_por_talla_c[tn] = asignado_por_talla_c.get(tn, 0) + qty
+
+            has_colors_c = bool(colores_unicos)
+            tallas_con_total_c = [(tn, tot) for tn, tot in talla_totales_c.items() if tot > 0]
+            colores_completos_c = (
+                has_colors_c and bool(tallas_con_total_c)
+                and all(asignado_por_talla_c.get(tn, 0) == tot for tn, tot in tallas_con_total_c)
+            )
+            if not has_colors_c:
+                colores_status = 'sin_colores'
+            elif colores_completos_c:
+                colores_status = 'completo'
+            else:
+                colores_status = 'parcial'
+
             item = {
                 "movimiento_id": d['movimiento_id'],
                 "registro_id": d['registro_id'],
@@ -2741,6 +2777,11 @@ async def reporte_costura(
                 "servicio_nombre": d['servicio_nombre'],
                 # Sprint 43: prendas en muestras activas (sin volver) del registro.
                 "muestras_activas": int(d.get('muestras_activas') or 0),
+                # Indicador para Lavandería: 'completo' | 'parcial' | 'sin_colores'.
+                # 'completo' = todas las tallas con cantidad>0 tienen colores
+                # asignados sumando == cantidad_total (distribución 100%).
+                "colores_status": colores_status,
+                "colores_count": len(colores_unicos),
             }
 
             # Aplicar filtros en Python (más simple que SQL dinámico)
@@ -3299,9 +3340,17 @@ async def validacion_registros(
                 #   4) Equivalencias del negocio: "Hantag Relaxed" sirve para
                 #      entalles "Regular" y "Semi Extra".
                 if entalle not in ("flare", "mom"):
+                    # Equivalencias del negocio: hangtags que el operario
+                    # carga aunque el entalle del modelo se llame distinto.
+                    #   - "regular" / "semi extra" admiten "Hangtag Relaxed"
+                    #   - "pitillo" / "semi pitillo" admiten "Hangtag Slim"
+                    #     o "Hangtag Skinny" (jerga textil PE: pitillo ≈ slim ≈
+                    #     skinny; el operario suele usar el que tenga en stock).
                     HANGTAG_EQUIVALENTES = {
                         "regular": ["relaxed"],
                         "semi extra": ["relaxed"],
+                        "pitillo": ["slim", "skinny"],
+                        "semi pitillo": ["slim", "skinny"],
                     }
                     candidatos_entalle = []
                     if entalle:

@@ -5,6 +5,14 @@
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#000000" />
         <meta name="description" content="ERP Producción Textil — Ambission Industries" />
+        <!--
+            Anti-stale-cache: el index.html NUNCA debe cachearse, así el navegador
+            siempre lo re-pide y descubre el nuevo bundle hasheado tras cada deploy.
+            (Los .js/.css sí pueden cachearse porque CRA les pone hash en el nombre.)
+        -->
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        <meta http-equiv="Pragma" content="no-cache" />
+        <meta http-equiv="Expires" content="0" />
         <title>Sistema de Producción</title>
     </head>
     <body>

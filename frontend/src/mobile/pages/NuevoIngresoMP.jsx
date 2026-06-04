@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
   ArrowLeft, Loader2, Save, Search, AlertTriangle, Package,
-  ChevronDown, X, Info, Lock,
+  ChevronDown, X, Info, Lock, CheckCircle2, Users,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { puede, ACCIONES } from '../utils/permisos';
@@ -28,6 +28,11 @@ export const MobileNuevoIngresoMP = () => {
   // Catálogos
   const [items, setItems] = useState([]);
   const [lineas, setLineas] = useState([]);
+  // Proveedores desde finanzas2.cont_tercero (es_proveedor=true, empresa=7).
+  // Si el usuario elige uno del picker queda vinculado y el nombre se
+  // guarda EXACTAMENTE como en finanzas → evita duplicados por typo
+  // (ej. "ADONAI" vs "Adonai SAC"). Si tipea libre, se guarda el texto.
+  const [proveedores, setProveedores] = useState([]);
   const [loadingCat, setLoadingCat] = useState(true);
 
   // Form state
@@ -36,7 +41,14 @@ export const MobileNuevoIngresoMP = () => {
   const [pickerItem, setPickerItem] = useState(false);
   const [cantidad, setCantidad] = useState('');
   const [costoUnit, setCostoUnit] = useState('');
+  // Proveedor: SOLO seleccionable del picker (modo estricto). Quien
+  // registra ingresos NO puede crear proveedores nuevos — si necesita
+  // uno que no está, lo carga primero el admin en finanzas.
+  // Esto evita duplicados (typos, mayúsculas distintas) que rompen
+  // el cruce con facturación.
   const [proveedor, setProveedor] = useState('');
+  const [proveedorId, setProveedorId] = useState(null);
+  const [pickerProveedor, setPickerProveedor] = useState(false);
   const [nDoc, setNDoc] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [lineaNegocioId, setLineaNegocioId] = useState(null);
@@ -51,14 +63,16 @@ export const MobileNuevoIngresoMP = () => {
   useEffect(() => {
     (async () => {
       try {
-        const [invRes, linRes] = await Promise.all([
+        const [invRes, linRes, provRes] = await Promise.all([
           axios.get(`${API}/inventario?all=true`).catch(() => ({ data: [] })),
           axios.get(`${API}/lineas-negocio`).catch(() => ({ data: [] })),
+          axios.get(`${API}/proveedores?empresa_id=7`).catch(() => ({ data: [] })),
         ]);
         const lista = Array.isArray(invRes.data) ? invRes.data
           : (Array.isArray(invRes.data?.items) ? invRes.data.items : []);
         setItems(lista);
         setLineas(Array.isArray(linRes.data) ? linRes.data : []);
+        setProveedores(Array.isArray(provRes.data) ? provRes.data : []);
       } finally {
         setLoadingCat(false);
       }
@@ -300,16 +314,64 @@ export const MobileNuevoIngresoMP = () => {
           )}
         </div>
 
-        {/* Proveedor */}
+        {/* Proveedor — SOLO desde catálogo de finanzas (no permite texto libre) */}
         <div>
           <Label sub="opcional">Proveedor</Label>
-          <input
-            value={proveedor}
-            onChange={(e) => setProveedor(e.target.value)}
-            placeholder="Nombre del proveedor"
-            className="m-input"
-            style={{ fontSize: 14 }}
-          />
+          {proveedorId ? (
+            // Seleccionado: card verde con check + botón X para cambiar
+            <div style={{
+              padding: '10px 12px',
+              background: '#ecfdf5', border: '1px solid #a7f3d0',
+              borderRadius: 10, minHeight: 48,
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <CheckCircle2 size={16} style={{ color: '#059669', flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontWeight: 600, fontSize: 14, color: '#064e3b',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {proveedor}
+                </div>
+                <div style={{ fontSize: 10, color: '#047857', marginTop: 1 }}>
+                  Del catálogo de finanzas
+                </div>
+              </div>
+              <button
+                onClick={() => { setProveedor(''); setProveedorId(null); }}
+                style={{
+                  background: 'white', border: 0, borderRadius: '50%',
+                  width: 26, height: 26, cursor: 'pointer', color: '#64748b',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+                aria-label="Cambiar proveedor"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            // Vacío: botón único que abre el picker (mismo patrón que item / línea)
+            <button
+              type="button"
+              onClick={() => setPickerProveedor(true)}
+              style={{
+                width: '100%', padding: '10px 12px',
+                background: 'white', border: '1px solid #d1d5db',
+                borderRadius: 10, minHeight: 48,
+                display: 'flex', alignItems: 'center', gap: 8,
+                cursor: 'pointer', fontSize: 14, textAlign: 'left',
+              }}
+            >
+              <Users size={16} style={{ color: 'var(--m-brand)', flexShrink: 0 }} />
+              <span style={{ flex: 1, color: '#94a3b8' }}>
+                Elegir proveedor de la lista...
+              </span>
+              <ChevronDown size={14} style={{ color: '#cbd5e1', flexShrink: 0 }} />
+            </button>
+          )}
+          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, lineHeight: 1.4 }}>
+            Si el proveedor no aparece, pedile al admin que lo cree en finanzas primero.
+          </div>
         </div>
 
         {/* N° documento */}
@@ -471,6 +533,45 @@ export const MobileNuevoIngresoMP = () => {
           matchFn={(l, q) => (l.nombre || '').toLowerCase().includes(q)}
           onPick={(l) => { setLineaNegocioId(l.id); setPickerLinea(false); }}
           onClose={() => setPickerLinea(false)}
+        />
+      )}
+
+      {/* Picker de proveedor — busca en finanzas2.cont_tercero */}
+      {pickerProveedor && (
+        <PickerSheet
+          titulo="Elegir proveedor"
+          items={proveedores}
+          renderItem={(p) => (
+            <div style={{ minWidth: 0 }}>
+              <div style={{
+                fontSize: 14, fontWeight: 600, color: '#0f172a',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {p.nombre}
+              </div>
+              {(p.tipo_documento || p.numero_documento || p.nombre_comercial) && (
+                <div style={{
+                  fontSize: 11, color: '#94a3b8', marginTop: 1,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {[
+                    p.tipo_documento && p.numero_documento ? `${p.tipo_documento} ${p.numero_documento}` : null,
+                    p.nombre_comercial,
+                  ].filter(Boolean).join(' · ')}
+                </div>
+              )}
+            </div>
+          )}
+          matchFn={(p, q) => {
+            const h = `${p.nombre || ''} ${p.nombre_comercial || ''} ${p.numero_documento || ''}`.toLowerCase();
+            return h.includes(q);
+          }}
+          onPick={(p) => {
+            setProveedor(p.nombre);
+            setProveedorId(p.id);
+            setPickerProveedor(false);
+          }}
+          onClose={() => setPickerProveedor(false)}
         />
       )}
     </div>
