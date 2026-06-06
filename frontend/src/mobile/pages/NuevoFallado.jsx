@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -503,7 +504,7 @@ const PersonaPicker = ({ personas, servicioId, onElegir, onClose }) => {
     !q.trim() || (p.nombre || '').toLowerCase().includes(q.toLowerCase())
   );
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -516,7 +517,7 @@ const PersonaPicker = ({ personas, servicioId, onElegir, onClose }) => {
         style={{
           background: 'white', width: '100%',
           borderTopLeftRadius: 20, borderTopRightRadius: 20,
-          padding: '8px 16px 20px', maxHeight: '85vh', overflowY: 'auto',
+          padding: '8px 16px 20px', paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))', maxHeight: '85vh', overflowY: 'auto',
         }}
       >
         <div style={{ width: 40, height: 4, background: '#cbd5e1', borderRadius: 2, margin: '0 auto 12px' }} />
@@ -586,7 +587,8 @@ const PersonaPicker = ({ personas, servicioId, onElegir, onClose }) => {
           Cancelar
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

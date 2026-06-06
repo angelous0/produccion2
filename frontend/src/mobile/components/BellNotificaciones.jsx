@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -115,7 +116,7 @@ export const BellNotificaciones = () => {
 };
 
 /* ──────── Bottom sheet con últimas notificaciones ──────── */
-const SheetNotificaciones = ({ items, loading, total, onClose, onTap, onMarcarTodas }) => (
+const SheetNotificaciones = ({ items, loading, total, onClose, onTap, onMarcarTodas }) => createPortal(
   <div
     onClick={onClose}
     style={{
@@ -128,7 +129,9 @@ const SheetNotificaciones = ({ items, loading, total, onClose, onTap, onMarcarTo
       style={{
         background: 'white', width: '100%',
         borderTopLeftRadius: 20, borderTopRightRadius: 20,
-        padding: '12px 0 20px', maxHeight: '85vh',
+        padding: '12px 0 20px',
+        paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
+        maxHeight: '85vh',
         display: 'flex', flexDirection: 'column',
       }}
     >
@@ -200,7 +203,8 @@ const SheetNotificaciones = ({ items, loading, total, onClose, onTap, onMarcarTo
         </Link>
       </div>
     </div>
-  </div>
+  </div>,
+  document.body
 );
 
 /* ──────── Fila de notificación (usada en sheet y en pantalla completa) ──────── */

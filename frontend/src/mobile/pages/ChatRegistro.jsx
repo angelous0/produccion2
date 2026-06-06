@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -673,7 +674,7 @@ const AccionesSheet = ({
   msg, esReply, onClose,
   onResponder, onCambiarEstado, onToggleFijar, onEliminar,
 }) => {
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -687,6 +688,7 @@ const AccionesSheet = ({
           background: 'white', width: '100%',
           borderTopLeftRadius: 20, borderTopRightRadius: 20,
           padding: '12px 16px 24px',
+          paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))',
         }}
       >
         <div style={{
@@ -766,7 +768,8 @@ const AccionesSheet = ({
           Cancelar
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

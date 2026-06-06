@@ -37,6 +37,8 @@ from routes.auditoria import router as auditoria_router, init_audit_tables
 from routes.conversacion import router as conversacion_router
 from routes.distribucion_pt import router as distribucion_pt_router, init_distribucion_pt_tables
 from routes.kardex_pt import router as kardex_pt_router
+from routes.reportes_mix import router as reportes_mix_router
+from routes.cortes_pendientes_colores import router as cortes_pendientes_colores_router
 from routes.import_excel import router as import_excel_router
 from routes.salidas_libres import router as salidas_libres_router
 from routes.muestras_lavanderia import router as muestras_lavanderia_router
@@ -248,6 +250,8 @@ app.include_router(conversacion_router)
 app.include_router(notificaciones_router)
 app.include_router(distribucion_pt_router)
 app.include_router(kardex_pt_router)
+app.include_router(reportes_mix_router)
+app.include_router(cortes_pendientes_colores_router)
 app.include_router(salidas_libres_router)
 app.include_router(muestras_lavanderia_router)
 app.include_router(odoo_tienda_router)

@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -860,7 +861,7 @@ const PickerSheet = ({ titulo, items, permitirNuevo, tipoNombre = 'opción', fal
   }, [items, q]);
 
   if (escribiendoNuevo) {
-    return (
+    return createPortal(
       <div
         onClick={onClose}
         style={{
@@ -874,6 +875,7 @@ const PickerSheet = ({ titulo, items, permitirNuevo, tipoNombre = 'opción', fal
             background: 'white', width: '100%',
             borderTopLeftRadius: 20, borderTopRightRadius: 20,
             padding: '12px 16px 24px',
+            paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))',
           }}
         >
           <div style={{ width: 40, height: 4, background: '#cbd5e1', borderRadius: 2, margin: '0 auto 12px' }} />
@@ -916,11 +918,12 @@ const PickerSheet = ({ titulo, items, permitirNuevo, tipoNombre = 'opción', fal
             </button>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -934,6 +937,7 @@ const PickerSheet = ({ titulo, items, permitirNuevo, tipoNombre = 'opción', fal
           background: 'white', width: '100%',
           borderTopLeftRadius: 20, borderTopRightRadius: 20,
           padding: '12px 16px 20px', maxHeight: '75vh',
+          paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
           display: 'flex', flexDirection: 'column',
         }}
       >
@@ -1008,7 +1012,8 @@ const PickerSheet = ({ titulo, items, permitirNuevo, tipoNombre = 'opción', fal
           Cerrar
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

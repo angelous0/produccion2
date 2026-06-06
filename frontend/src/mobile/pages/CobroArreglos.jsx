@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -520,7 +521,7 @@ export const MobileCobroArreglos = () => {
       )}
 
       {/* Bottom sheet: confirmar generación de nota */}
-      {sheetGenerar && (
+      {sheetGenerar && createPortal(
         <div
           onClick={() => setSheetGenerar(false)}
           style={{
@@ -533,7 +534,9 @@ export const MobileCobroArreglos = () => {
             style={{
               background: 'white', width: '100%',
               borderTopLeftRadius: 20, borderTopRightRadius: 20,
-              padding: '12px 16px 24px', maxHeight: '90vh',
+              padding: '12px 16px 24px',
+              paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))',
+              maxHeight: '90vh',
               display: 'flex', flexDirection: 'column',
             }}
           >
@@ -602,7 +605,8 @@ export const MobileCobroArreglos = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

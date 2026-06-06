@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { Search, QrCode, Loader2, ArrowLeft, Plus, SlidersHorizontal, X } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -585,7 +586,7 @@ const FiltrosSheet = ({ filtros, marcas, tipos, entalles, onClose, onApply, onLi
     </button>
   );
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -773,7 +774,9 @@ const FiltrosSheet = ({ filtros, marcas, tipos, entalles, onClose, onApply, onLi
 
         {/* Footer fijo */}
         <div style={{
-          padding: 14, borderTop: '1px solid #f1f5f9', flexShrink: 0,
+          padding: 14,
+          paddingBottom: 'calc(14px + env(safe-area-inset-bottom, 0px))',
+          borderTop: '1px solid #f1f5f9', flexShrink: 0,
           display: 'flex', gap: 10,
         }}>
           <button
@@ -792,7 +795,8 @@ const FiltrosSheet = ({ filtros, marcas, tipos, entalles, onClose, onApply, onLi
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

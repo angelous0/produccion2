@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -403,7 +404,7 @@ const ItemPicker = ({ items, lineas, onPick, onClose }) => {
     });
   }, [items, q, lineas]);
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -416,7 +417,9 @@ const ItemPicker = ({ items, lineas, onPick, onClose }) => {
         style={{
           background: 'white', width: '100%',
           borderTopLeftRadius: 20, borderTopRightRadius: 20,
-          padding: '12px 16px 20px', maxHeight: '85vh',
+          padding: '12px 16px 20px',
+          paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
+          maxHeight: '85vh',
           display: 'flex', flexDirection: 'column',
         }}
       >
@@ -498,7 +501,8 @@ const ItemPicker = ({ items, lineas, onPick, onClose }) => {
           style={{ marginTop: 10, minHeight: 44 }}
         >Cerrar</button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

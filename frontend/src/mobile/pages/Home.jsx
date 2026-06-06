@@ -4,7 +4,7 @@ import axios from 'axios';
 import {
   AlertOctagon, ChevronRight, Loader2, AlertTriangle, Clock, Layers,
   QrCode, Package, ArrowUpRight, Plus, DollarSign, Sliders, FlaskConical,
-  Send, BookmarkCheck, History, Box, PauseCircle, BarChart3,
+  Send, BookmarkCheck, History, Box, PauseCircle, BarChart3, Palette,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { puede, ACCIONES } from '../utils/permisos';
@@ -463,6 +463,13 @@ function buildSecciones(user, stats) {
     meta: 'Cortes por servicio y persona',
     to: '/m/reporte-operativo',
   });
+  // Cortes sin colores — pendientes de matriz desde Lavandería en adelante
+  produccion.push({
+    label: 'Cortes sin colores', icon: <Palette size={18} />,
+    bg: '#ccfbf1', fg: '#0f766e',
+    meta: 'Asignar matriz (Lavandería en adelante)',
+    to: '/m/cortes-sin-colores',
+  });
   // Envíos de muestra (Lavandería + Diseño)
   const muestrasSinVolver = stats.muestras_sin_volver || 0;
   const muestrasDemoradas = stats.muestras_demoradas || 0;
@@ -530,7 +537,7 @@ function buildSecciones(user, stats) {
       meta: stats.fallados_vencidos > 0
         ? `${stats.fallados_vencidos} vencidos · ${stats.fallados_por_vencer} por vencer`
         : 'Tablero de calidad',
-      to: '/m/registros', // TODO: pantalla específica de tablero móvil si la creamos
+      to: '/m/fallados',
       badge: stats.fallados_vencidos > 0 ? stats.fallados_vencidos : null,
     });
   }

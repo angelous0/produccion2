@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -560,7 +561,7 @@ const CrearReservaSheet = ({ registroId, pendientes, onClose, onCreated }) => {
     }
   };
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -618,7 +619,9 @@ const CrearReservaSheet = ({ registroId, pendientes, onClose, onCreated }) => {
 
         {/* Footer fijo */}
         <div style={{
-          padding: '12px 20px 20px', borderTop: '1px solid #f1f5f9',
+          padding: '12px 20px 20px',
+          paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
+          borderTop: '1px solid #f1f5f9',
           background: 'white',
         }}>
           {error && (
@@ -660,7 +663,8 @@ const CrearReservaSheet = ({ registroId, pendientes, onClose, onCreated }) => {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

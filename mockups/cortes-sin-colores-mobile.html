@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cortes sin matriz de colores · Mockup móvil</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --brand: #0f766e;
+    --brand-dark: #0d5f5a;
+    --brand-soft: #f0fdfa;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --bg: #f3f4f6;
+  }
+  body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); }
+  .phones-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 32px; padding: 32px; max-width: 1800px; margin: 0 auto; }
+  .phone-frame { width: 380px; border: 12px solid #1f2937; border-radius: 38px; overflow: hidden; background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4); margin: 0 auto; }
+  .phone-notch { height: 28px; background: #1f2937; display: flex; justify-content: center; align-items: center; color: white; font-size: 11px; font-weight: 600; }
+  .phone-body { height: 760px; overflow-y: auto; background: #f9fafb; position: relative; }
+  .header-mobile { background: var(--brand); color: white; padding: 14px 16px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 10; }
+  .screen-title { font-size: 11px; color: #64748b; text-align: center; margin-top: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; border: 1px solid #e5e7eb; background: white; white-space: nowrap; }
+  .chip.active { background: var(--brand); color: white; border-color: var(--brand); }
+  .pill { display:inline-flex; align-items:center; gap:4px; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; }
+  .pill-red { background: #fee2e2; color: #b91c1c; }
+  .pill-amber { background: #fef3c7; color: #b45309; }
+  .pill-green { background: #dcfce7; color: #15803d; }
+  .pill-blue { background: #dbeafe; color: #1d4ed8; }
+  .pill-gray { background: #e5e7eb; color: #475569; }
+  .pill-purple { background: #f3e8ff; color: #7c3aed; }
+  .pill-teal { background: #ccfbf1; color: #115e59; }
+  .card-corte { background: white; border-radius: 14px; padding: 12px; margin: 0 12px 10px; box-shadow: 0 1px 3px rgba(0,0,0,.05); cursor: pointer; transition: all .15s; }
+  .card-corte:active { transform: scale(.98); }
+  .matriz td, .matriz th { padding: 5px 6px; border: 1px solid #e2e8f0; text-align: center; font-size: 11px; }
+  .matriz th { background: #f1f5f9; font-weight: 700; color: #475569; }
+  .matriz td.color-cell { text-align: left; background: #f8fafc; font-weight: 600; font-size: 11px; padding-left: 8px; }
+  .matriz input { width: 38px; padding: 2px; border: 1px solid #cbd5e1; border-radius: 4px; text-align: center; font-size: 11px; }
+  .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 0 12px 10px; }
+  .kpi-mini { background: white; border-radius: 10px; padding: 8px 6px; text-align: center; }
+  .kpi-mini .val { font-size: 18px; font-weight: 800; line-height: 1; }
+  .kpi-mini .lbl { font-size: 9px; color: #64748b; text-transform: uppercase; font-weight: 700; margin-top: 3px; letter-spacing: .04em; }
+  .fab { position: absolute; bottom: 20px; right: 16px; width: 52px; height: 52px; border-radius: 50%; background: var(--brand); color: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 20px rgba(15,118,110,.4); font-size: 22px; }
+  .bottom-sheet { position: absolute; bottom: 0; left: 0; right: 0; background: white; border-radius: 16px 16px 0 0; padding: 16px; box-shadow: 0 -10px 30px rgba(0,0,0,.15); }
+  .swatch { width: 16px; height: 16px; border-radius: 3px; display: inline-block; vertical-align: middle; margin-right: 4px; border: 1px solid rgba(0,0,0,.1); }
+  .progress-bar { height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; }
+  .progress-bar > div { height: 100%; background: var(--brand); transition: width .3s; }
+</style>
+</head>
+<body>
+
+<div class="px-8 pt-8 pb-2 max-w-5xl mx-auto">
+  <h1 class="text-2xl font-bold">🎨 Cortes sin matriz de colores · Mobile</h1>
+  <p class="text-slate-600 mt-2">
+    Reporte para Diana: ver todos los cortes desde <b>Lavandería en adelante</b> que aún no tienen colores asignados,
+    y poder asignárselos directamente desde el móvil. Para los que están en Lavandería, muestra <b>en qué lavandería están</b>
+    (último movimiento abierto).
+  </p>
+  <div class="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900">
+    <b>📋 Decisiones tomadas:</b>
+    Cortes incluidos = estado <code class="bg-white px-1 rounded">Lavanderia · Para Acabado · Acabado · Almacen PT · Tienda</code> ·
+    Filtro principal = "sin matriz" o "matriz incompleta" ·
+    Cuando estado=Lavanderia, mostrar nombre de lavandería del último movimiento abierto.
+  </div>
+</div>
+
+<div class="phones-grid">
+
+  <!-- ====================================================================== -->
+  <!-- PANTALLA 1 · Lista principal con filtros                                 -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">1 · Lista · cortes pendientes de colores</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body relative">
+
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Producción · Colores</div>
+            <div class="font-semibold text-[15px]">Pendientes asignar · 12</div>
+          </div>
+          <button class="opacity-85">🔍</button>
+        </div>
+
+        <!-- KPIs arriba -->
+        <div class="kpi-grid mt-3">
+          <div class="kpi-mini">
+            <div class="val text-slate-800">12</div>
+            <div class="lbl">Total</div>
+          </div>
+          <div class="kpi-mini">
+            <div class="val text-blue-700">7</div>
+            <div class="lbl">Lavanderia</div>
+          </div>
+          <div class="kpi-mini">
+            <div class="val text-teal-700">5</div>
+            <div class="lbl">Acabado+</div>
+          </div>
+        </div>
+
+        <!-- Chips de filtro por estado -->
+        <div class="px-3 pb-2 flex gap-1.5 overflow-x-auto" style="scrollbar-width: none">
+          <button class="chip active">Todos (12)</button>
+          <button class="chip">🧼 Lavandería (7)</button>
+          <button class="chip">⚙ Para Acabado (3)</button>
+          <button class="chip">✓ Acabado (1)</button>
+          <button class="chip">📦 PT (1)</button>
+        </div>
+
+        <!-- Filtro secundario: estado de matriz -->
+        <div class="px-3 pb-3 flex gap-1.5">
+          <button class="chip active" style="font-size:10px">❌ Sin matriz (8)</button>
+          <button class="chip" style="font-size:10px">◐ Parcial (4)</button>
+        </div>
+
+        <!-- Lista de cortes -->
+        <div class="px-2">
+
+          <!-- Corte 1: En Lavandería · sin matriz -->
+          <div class="card-corte" style="border-left: 4px solid #1d4ed8; padding-left: 12px">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-baseline gap-1.5">
+                  <span class="font-mono font-bold text-base">098</span>
+                  <span class="font-semibold text-sm text-slate-700 truncate">· CLOVER BLACK</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Element Premium · Pantalón · 282 pzs</div>
+              </div>
+              <span class="pill pill-red">❌ Sin matriz</span>
+            </div>
+
+            <div class="mt-2 flex items-center gap-2 flex-wrap">
+              <span class="pill pill-blue">🧼 Lavandería</span>
+              <span class="text-[11px] text-slate-600">en <b>Lav. Aurora</b></span>
+              <span class="text-[10px] text-slate-400">· hace 3d</span>
+            </div>
+          </div>
+
+          <!-- Corte 2: En Lavandería · matriz parcial -->
+          <div class="card-corte" style="border-left: 4px solid #1d4ed8; padding-left: 12px">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-baseline gap-1.5">
+                  <span class="font-mono font-bold text-base">095</span>
+                  <span class="font-semibold text-sm text-slate-700 truncate">· NOVA INDIGO</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Element Premium · Pantalón Slim · 300 pzs</div>
+              </div>
+              <span class="pill pill-amber">◐ 1 de 2</span>
+            </div>
+
+            <div class="mt-2 flex items-center gap-2 flex-wrap">
+              <span class="pill pill-blue">🧼 Lavandería</span>
+              <span class="text-[11px] text-slate-600">en <b>Sechura Color</b></span>
+              <span class="text-[10px] text-slate-400">· hace 5d</span>
+            </div>
+
+            <!-- Mini matriz preview -->
+            <div class="mt-2 text-[10px] text-slate-500 flex items-center gap-1.5">
+              <span class="swatch" style="background:#000"></span>
+              <span class="text-slate-700">Negro 200</span>
+              <span class="mx-1">·</span>
+              <span class="swatch" style="background:#1e3a8a"></span>
+              <span class="text-slate-700">Azul 82</span>
+              <span class="text-amber-700 ml-1">(falta 18)</span>
+            </div>
+          </div>
+
+          <!-- Corte 3: En Para Acabado · sin matriz -->
+          <div class="card-corte" style="border-left: 4px solid #0d9488; padding-left: 12px">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-baseline gap-1.5">
+                  <span class="font-mono font-bold text-base">094</span>
+                  <span class="font-semibold text-sm text-slate-700 truncate">· ARGOS GRAY</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Element Premium · Pantalón Slim · 240 pzs</div>
+              </div>
+              <span class="pill pill-red">❌ Sin matriz</span>
+            </div>
+
+            <div class="mt-2 flex items-center gap-2 flex-wrap">
+              <span class="pill pill-teal">⚙ Para Acabado</span>
+              <span class="text-[10px] text-slate-400">· desde hace 1d</span>
+            </div>
+          </div>
+
+          <!-- Corte 4: En Acabado · sin matriz · URGENTE -->
+          <div class="card-corte" style="border-left: 4px solid #0d9488; padding-left: 12px; background: #fff7ed">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-baseline gap-1.5">
+                  <span class="pill pill-red" style="font-size:8px;padding:1px 4px">URG</span>
+                  <span class="font-mono font-bold text-base">091</span>
+                  <span class="font-semibold text-sm text-slate-700 truncate">· KENT BLUE</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Axelius · Camisa · 150 pzs</div>
+              </div>
+              <span class="pill pill-red">❌ Sin matriz</span>
+            </div>
+
+            <div class="mt-2 flex items-center gap-2 flex-wrap">
+              <span class="pill pill-teal">✓ Acabado</span>
+              <span class="text-[10px] text-amber-700">⚠ Entrega vence 12/06</span>
+            </div>
+          </div>
+
+          <!-- Corte 5: En Almacén PT -->
+          <div class="card-corte" style="border-left: 4px solid #15803d; padding-left: 12px">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-baseline gap-1.5">
+                  <span class="font-mono font-bold text-base">088</span>
+                  <span class="font-semibold text-sm text-slate-700 truncate">· PEKERMAN 008</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Pekerman · Polo M/C · 180 pzs</div>
+              </div>
+              <span class="pill pill-amber">◐ 2 de 3</span>
+            </div>
+
+            <div class="mt-2 flex items-center gap-2 flex-wrap">
+              <span class="pill pill-green">📦 Almacén PT</span>
+              <span class="text-[10px] text-slate-400">· cerrado 30/05</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- FAB -->
+        <button class="fab">🎨</button>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- PANTALLA 2 · Detalle/preview de un corte                                 -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">2 · Detalle del corte · vista previa</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body relative">
+
+        <div class="header-mobile">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Corte 098</div>
+            <div class="font-semibold text-[15px]">CLOVER BLACK</div>
+          </div>
+        </div>
+
+        <!-- Info del corte -->
+        <div class="p-3">
+          <div class="bg-white rounded-xl p-3 shadow-sm">
+            <div class="flex items-baseline gap-2">
+              <span class="font-mono font-bold text-2xl">098</span>
+              <span class="font-bold text-base">CLOVER BLACK</span>
+            </div>
+            <div class="text-xs text-slate-600 mt-1">282 prendas · Element Premium · Pantalón Semipitillo · Denim Comfort</div>
+
+            <div class="flex items-center gap-2 mt-3">
+              <span class="pill pill-blue">🧼 Lavandería</span>
+              <span class="text-xs text-slate-600">en <b>Lav. Aurora</b></span>
+            </div>
+
+            <!-- Curva del modelo -->
+            <div class="mt-3 pt-3 border-t border-slate-100">
+              <div class="text-[10px] uppercase font-bold text-slate-500 tracking-wide mb-1">Curva del modelo</div>
+              <div class="text-sm font-mono font-bold">2-3-3-2</div>
+              <div class="text-[10px] text-slate-500">S=56 · M=84 · L=84 · XL=58 · Total 282</div>
+            </div>
+
+            <!-- Estado matriz -->
+            <div class="mt-3 pt-3 border-t border-slate-100">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] uppercase font-bold text-slate-500 tracking-wide">Estado matriz colores</span>
+                <span class="pill pill-red">❌ Sin asignar</span>
+              </div>
+              <div class="text-xs text-slate-600 mt-2">
+                Este corte aún no tiene matriz de colores. Para que pueda continuar a Acabado/PT, asigna colores
+                a las 282 prendas.
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Botón principal -->
+          <button class="w-full mt-3 bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+            🎨 Asignar matriz de colores
+          </button>
+          <button class="w-full mt-2 border border-slate-200 bg-white text-slate-700 font-semibold py-2.5 rounded-xl text-sm">
+            Ver detalle completo del corte
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- PANTALLA 3 · Asignar matriz (paleta + matriz)                           -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">3 · Asignar matriz · colores × tallas</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body relative">
+
+        <div class="header-mobile" style="background:#0d9488">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">098 · CLOVER BLACK</div>
+            <div class="font-semibold text-[15px]">Asignar colores</div>
+          </div>
+          <button class="bg-white/15 px-2.5 py-1 rounded text-xs font-semibold">🧪 Muestras 0</button>
+        </div>
+
+        <!-- Total asignado con barra de progreso (estilo EditarMatrizColores existente) -->
+        <div class="p-3">
+          <div class="bg-white rounded-xl p-3 shadow-sm">
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-slate-700 font-semibold">Total asignado</span>
+              <span class="font-bold"><span class="text-teal-700">282</span> / 282 pzs</span>
+            </div>
+            <div class="mt-2 progress-bar"><div style="width: 100%; background: #10b981"></div></div>
+          </div>
+
+          <!-- Info de paleta -->
+          <div class="mt-2 bg-teal-50 border border-teal-200 rounded-lg p-2.5 flex items-start gap-1.5">
+            <span class="text-teal-600">ℹ</span>
+            <div class="text-xs text-slate-700">
+              Paleta de <b>42 colores</b> · regla <b>Pantalon Denim · Semipitillo</b>
+            </div>
+          </div>
+
+          <!-- Distribución -->
+          <div class="mt-3">
+            <div class="flex items-center justify-between mb-2 px-1">
+              <div class="text-[10px] uppercase font-bold text-slate-500 tracking-wide">Distribución</div>
+              <span class="text-[10px] text-slate-400">desliza horizontal →</span>
+            </div>
+
+            <div class="bg-white rounded-xl overflow-x-auto" style="white-space: nowrap">
+              <table class="matriz w-full" style="min-width: 100%">
+                <thead>
+                  <tr>
+                    <th class="text-left" style="position: sticky; left: 0; background: #f1f5f9; z-index:1">COLOR</th>
+                    <th>PROP.<br><span class="text-[9px] font-normal text-slate-400">PESO</span></th>
+                    <th>S<br><span class="text-[9px] font-normal text-slate-400">TOPE 56</span></th>
+                    <th>M<br><span class="text-[9px] font-normal text-slate-400">TOPE 84</span></th>
+                    <th>L<br><span class="text-[9px] font-normal text-slate-400">TOPE 84</span></th>
+                    <th>XL<br><span class="text-[9px] font-normal text-slate-400">TOPE 58</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="color-cell" style="position: sticky; left: 0; background: #f8fafc; z-index:1">
+                      <span class="swatch" style="background:#000"></span><b>Negro</b>
+                      <span class="text-slate-400 ml-0.5">⇅</span>
+                    </td>
+                    <td><input type="number" value="3" style="background:#f0fdfa" /></td>
+                    <td><input type="number" value="40" style="background:#f0fdfa" /></td>
+                    <td><input type="number" value="60" style="background:#f0fdfa" /></td>
+                    <td><input type="number" value="60" style="background:#f0fdfa" /></td>
+                    <td><input type="number" value="40" style="background:#f0fdfa" /></td>
+                  </tr>
+                  <tr>
+                    <td class="color-cell" style="position: sticky; left: 0; background: #f8fafc; z-index:1">
+                      <span class="swatch" style="background:#1e3a8a"></span><b>Azul indigo</b>
+                      <span class="text-slate-400 ml-0.5">⇅</span>
+                    </td>
+                    <td><input type="number" value="1" style="background:#f0fdfa" /></td>
+                    <td><input type="number" value="16" style="background:#f0fdfa" /></td>
+                    <td><input type="number" value="24" style="background:#f0fdfa" /></td>
+                    <td><input type="number" value="24" style="background:#f0fdfa" /></td>
+                    <td><input type="number" value="18" style="background:#f0fdfa" /></td>
+                  </tr>
+                  <tr style="background:#f8fafc">
+                    <td class="color-cell" style="position: sticky; left: 0; background: #f1f5f9; z-index:1">
+                      <span class="text-slate-600 font-semibold">Usado / Total</span>
+                    </td>
+                    <td class="text-slate-400">—</td>
+                    <td><b class="text-teal-700">56/56</b></td>
+                    <td><b class="text-teal-700">84/84</b></td>
+                    <td><b class="text-teal-700">84/84</b></td>
+                    <td><b class="text-teal-700">58/58</b></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Agregar color -->
+          <button class="w-full mt-3 bg-white border border-slate-200 text-slate-700 font-semibold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+            + Agregar color
+          </button>
+
+          <!-- Prorratear según proporciones -->
+          <button class="w-full mt-2 bg-teal-50 border border-teal-200 text-teal-700 font-semibold py-3 rounded-xl text-sm flex items-center justify-center gap-2">
+            📊 Prorratear según proporciones
+          </button>
+
+          <!-- Validación -->
+          <div class="mt-3 p-2 rounded-md bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-center gap-1.5">
+            <span>✓</span>
+            <span><b>Listo para guardar</b> · todas las tallas cuadran</span>
+          </div>
+        </div>
+
+        <!-- Footer fijo de acciones -->
+        <div style="position: sticky; bottom: 0; background: white; padding: 10px 12px; border-top: 1px solid #e2e8f0; display: grid; grid-template-columns: 1fr 2fr; gap: 8px">
+          <button class="border-2 border-teal-600 text-teal-700 font-bold py-2.5 rounded-xl text-sm flex items-center justify-center gap-1">
+            ✓ Aprobar
+          </button>
+          <button class="bg-teal-600 text-white font-bold py-2.5 rounded-xl text-sm flex items-center justify-center gap-1">
+            💾 Guardar
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- PANTALLA 4 · Búsqueda + filtros avanzados                               -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">4 · Filtros avanzados · sheet</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body relative">
+
+        <!-- Vista de fondo difuminada -->
+        <div class="opacity-30">
+          <div class="header-mobile">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+            <div class="flex-1 min-w-0">
+              <div class="text-[11px] opacity-85">Producción · Colores</div>
+              <div class="font-semibold text-[15px]">Pendientes asignar · 12</div>
+            </div>
+          </div>
+          <div class="kpi-grid mt-3">
+            <div class="kpi-mini"><div class="val">12</div><div class="lbl">Total</div></div>
+            <div class="kpi-mini"><div class="val text-blue-700">7</div><div class="lbl">Lavanderia</div></div>
+            <div class="kpi-mini"><div class="val text-teal-700">5</div><div class="lbl">Acabado+</div></div>
+          </div>
+        </div>
+
+        <!-- Bottom sheet -->
+        <div class="bottom-sheet" style="bottom: 0; left: 0; right: 0">
+          <div class="w-12 h-1 bg-slate-300 rounded-full mx-auto mb-3"></div>
+
+          <h3 class="font-bold text-base mb-3">Filtros</h3>
+
+          <div class="mb-4">
+            <div class="text-[10px] uppercase font-bold text-slate-500 tracking-wide mb-2">Estado del corte</div>
+            <div class="flex gap-1.5 flex-wrap">
+              <button class="chip active">🧼 Lavandería</button>
+              <button class="chip">⚙ Para Acabado</button>
+              <button class="chip">✓ Acabado</button>
+              <button class="chip">📦 Almacén PT</button>
+              <button class="chip">🏪 Tienda</button>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <div class="text-[10px] uppercase font-bold text-slate-500 tracking-wide mb-2">Estado de matriz</div>
+            <div class="flex gap-1.5 flex-wrap">
+              <button class="chip active">❌ Sin matriz</button>
+              <button class="chip">◐ Parcial</button>
+              <button class="chip">✓ Aprobada</button>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <div class="flex items-center justify-between mb-2">
+              <div class="text-[10px] uppercase font-bold text-slate-500 tracking-wide">Lavandería</div>
+              <button class="text-[10px] text-teal-600 font-semibold">Limpiar (2)</button>
+            </div>
+            <div class="flex gap-1.5 flex-wrap">
+              <button class="chip active">🧼 Lav. Aurora (4)</button>
+              <button class="chip active">🧼 Sechura Color (2)</button>
+              <button class="chip">🧼 Aux Lavandería (1)</button>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <div class="flex items-center justify-between mb-2">
+              <div class="text-[10px] uppercase font-bold text-slate-500 tracking-wide">Marca</div>
+              <button class="text-[10px] text-teal-600 font-semibold">Limpiar</button>
+            </div>
+            <div class="flex gap-1.5 flex-wrap">
+              <button class="chip active">Element Premium (6)</button>
+              <button class="chip">Vicuña (3)</button>
+              <button class="chip">Axelius (2)</button>
+              <button class="chip">Pekerman (1)</button>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked />
+              <span>Solo urgentes</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm mt-1.5">
+              <input type="checkbox" />
+              <span>Solo con entrega vencida</span>
+            </label>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button class="border border-slate-200 bg-white text-slate-700 font-semibold py-2.5 rounded-xl text-sm">
+              Limpiar
+            </button>
+            <button class="bg-teal-600 text-white font-bold py-2.5 rounded-xl text-sm">
+              Aplicar (7)
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- PANTALLA 5 · Entry point desde Home                                      -->
+  <!-- ====================================================================== -->
+  <div>
+    <div class="screen-title">5 · Card en Home (entry point)</div>
+    <div class="phone-frame mt-2">
+      <div class="phone-notch">9:41 ▪ ▪▪▪ ▪</div>
+      <div class="phone-body relative">
+
+        <div class="header-mobile">
+          <div class="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center font-bold text-sm">EC</div>
+          <div class="flex-1 min-w-0">
+            <div class="text-[11px] opacity-85">Hola Eduard</div>
+            <div class="font-semibold text-[15px]">Producción</div>
+          </div>
+          <button>🔔</button>
+        </div>
+
+        <!-- Cards de tareas pendientes -->
+        <div class="p-3 space-y-3">
+
+          <!-- Card destacada del nuevo reporte -->
+          <div class="bg-white rounded-xl p-3 shadow-sm" style="border-left: 4px solid #be123c">
+            <div class="flex items-start gap-3">
+              <div class="text-2xl">🎨</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between">
+                  <div class="font-bold text-sm">Cortes sin colores</div>
+                  <span class="pill pill-red">12</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">
+                  En Lavandería o más adelante · falta asignar matriz
+                </div>
+                <div class="mt-2 flex items-center gap-2 text-[10px] text-slate-600">
+                  <span>7 en Lavandería</span>
+                  <span>·</span>
+                  <span>5 en Acabado+</span>
+                </div>
+              </div>
+              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </div>
+          </div>
+
+          <!-- Otras cards (existentes) -->
+          <div class="bg-white rounded-xl p-3 shadow-sm">
+            <div class="flex items-start gap-3">
+              <div class="text-2xl">🧪</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between">
+                  <div class="font-bold text-sm">Muestras pendientes</div>
+                  <span class="pill pill-amber">4</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">Esperando decisión de color</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl p-3 shadow-sm">
+            <div class="flex items-start gap-3">
+              <div class="text-2xl">🛡</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between">
+                  <div class="font-bold text-sm">Incidencias abiertas</div>
+                  <span class="pill pill-red">3</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">1 paraliza producción</div>
+              </div>
+              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============== NOTAS DEL DISEÑO ============== -->
+<div class="max-w-5xl mx-auto px-8 pb-12">
+  <div class="bg-white rounded-xl p-5 border border-slate-200">
+    <h3 class="font-bold mb-3">📝 Notas del diseño</h3>
+    <div class="text-sm text-slate-700 space-y-3">
+      <div>
+        <b>Endpoint propuesto (backend, NUEVO):</b>
+        <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">GET /api/cortes/pendientes-colores</code>
+      </div>
+      <div>
+        <b>Filtro SQL:</b>
+        <ul class="list-disc list-inside text-xs ml-2 mt-1">
+          <li>estado IN ('Lavanderia', 'Para Acabado', 'Acabado', 'Almacen PT', 'Tienda')</li>
+          <li>colores_aprobados=FALSE OR distribucion_colores IS NULL OR jsonb_array_length(distribucion_colores)=0</li>
+          <li>estado_op IN ('ABIERTA', 'EN_PROCESO')</li>
+        </ul>
+      </div>
+      <div>
+        <b>Para los que están en Lavanderia:</b>
+        Hacer LEFT JOIN con <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">prod_movimientos_produccion</code>
+        del servicio Lavandería + persona del taller, donde <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">fecha_inicio IS NOT NULL AND fecha_fin IS NULL</code>.
+      </div>
+      <div>
+        <b>Reutilización:</b>
+        La pantalla 3 (asignar matriz) usa el mismo flow que ya tienen en
+        <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">mobile/pages/EditarMatrizColores.jsx</code>.
+        Solo cambia el entry point desde este nuevo reporte.
+      </div>
+      <div>
+        <b>Estados visuales:</b>
+        Borde lateral coloreado por estado: azul (Lavandería), teal (Acabado), verde (PT), gris (Tienda).
+        Fondo levemente naranja si urgente o entrega vencida.
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

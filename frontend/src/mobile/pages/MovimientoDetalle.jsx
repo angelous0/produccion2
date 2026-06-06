@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -471,7 +472,7 @@ const CerrarMovSheet = ({ mov, onClose, onCerrado }) => {
     }
   };
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -484,7 +485,9 @@ const CerrarMovSheet = ({ mov, onClose, onCerrado }) => {
         style={{
           background: 'white', width: '100%',
           borderTopLeftRadius: 20, borderTopRightRadius: 20,
-          padding: '8px 16px 20px', maxHeight: '90vh', overflowY: 'auto',
+          padding: '8px 16px 20px',
+          paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
+          maxHeight: '90vh', overflowY: 'auto',
         }}
       >
         <div style={{
@@ -630,7 +633,8 @@ const CerrarMovSheet = ({ mov, onClose, onCerrado }) => {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
@@ -657,7 +661,7 @@ const EliminarMovSheet = ({ mov, onClose, onEliminado }) => {
     }
   };
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -670,7 +674,9 @@ const EliminarMovSheet = ({ mov, onClose, onEliminado }) => {
         style={{
           background: 'white', width: '100%',
           borderTopLeftRadius: 20, borderTopRightRadius: 20,
-          padding: '8px 16px 20px', maxHeight: '90vh', overflowY: 'auto',
+          padding: '8px 16px 20px',
+          paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
+          maxHeight: '90vh', overflowY: 'auto',
         }}
       >
         <div style={{
@@ -748,7 +754,8 @@ const EliminarMovSheet = ({ mov, onClose, onEliminado }) => {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
@@ -775,7 +782,7 @@ const AvanceMovSheet = ({ mov, onClose, onGuardado }) => {
     }
   };
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -788,7 +795,9 @@ const AvanceMovSheet = ({ mov, onClose, onGuardado }) => {
         style={{
           background: 'white', width: '100%',
           borderTopLeftRadius: 20, borderTopRightRadius: 20,
-          padding: '8px 16px 20px', maxHeight: '85vh', overflowY: 'auto',
+          padding: '8px 16px 20px',
+          paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
+          maxHeight: '85vh', overflowY: 'auto',
         }}
       >
         <div style={{ width: 40, height: 4, background: '#cbd5e1', borderRadius: 2, margin: '0 auto 12px' }} />
@@ -873,7 +882,8 @@ const AvanceMovSheet = ({ mov, onClose, onGuardado }) => {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
@@ -1055,7 +1065,7 @@ const SugerirCambioEstadoSheet = ({ registroId, estadoActual, estadoSugerido, on
     }
   };
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -1069,6 +1079,7 @@ const SugerirCambioEstadoSheet = ({ registroId, estadoActual, estadoSugerido, on
           background: 'white', width: '100%',
           borderTopLeftRadius: 20, borderTopRightRadius: 20,
           padding: '12px 20px 20px',
+          paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
         }}
       >
         <div style={{
@@ -1127,7 +1138,8 @@ const SugerirCambioEstadoSheet = ({ registroId, estadoActual, estadoSugerido, on
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

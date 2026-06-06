@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -586,7 +587,7 @@ const PickerCatalogo = ({ catalogo, yaUsadas, onPick, onClose }) => {
 
   const totalDisponibles = grupos.letras.length + grupos.numeros.length + grupos.otras.length;
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -600,6 +601,7 @@ const PickerCatalogo = ({ catalogo, yaUsadas, onPick, onClose }) => {
           background: 'white', width: '100%',
           borderTopLeftRadius: 20, borderTopRightRadius: 20,
           padding: '12px 16px 20px', maxHeight: '75vh',
+          paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
           display: 'flex', flexDirection: 'column',
         }}
       >
@@ -654,7 +656,8 @@ const PickerCatalogo = ({ catalogo, yaUsadas, onPick, onClose }) => {
           Cerrar
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -765,7 +766,7 @@ const ProrrogaSheet = ({ arreglo, onClose, onGuardado }) => {
 };
 
 /* ═════════════════════ Helpers ═════════════════════ */
-const SheetShell = ({ children, onClose }) => (
+const SheetShell = ({ children, onClose }) => createPortal(
   <div
     onClick={onClose}
     style={{
@@ -778,13 +779,16 @@ const SheetShell = ({ children, onClose }) => (
       style={{
         background: 'white', width: '100%',
         borderTopLeftRadius: 20, borderTopRightRadius: 20,
-        padding: '12px 20px 24px', maxHeight: '95vh', overflowY: 'auto',
+        padding: '12px 20px 24px',
+        paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))',
+        maxHeight: '95vh', overflowY: 'auto',
       }}
     >
       <div style={{ width: 40, height: 4, background: '#cbd5e1', borderRadius: 2, margin: '0 auto 16px' }} />
       {children}
     </div>
-  </div>
+  </div>,
+  document.body
 );
 
 const StepperRow = ({ label, labelColor, border, value, onChange, sub }) => (

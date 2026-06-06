@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -813,7 +814,7 @@ const FiltrosSheet = ({ filtros, setFiltros, totalCortes, onClose }) => {
     { k: 'normal',   l: 'Normal' },
   ];
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)',
       display: 'flex', alignItems: 'flex-end', zIndex: 100,
@@ -829,7 +830,7 @@ const FiltrosSheet = ({ filtros, setFiltros, totalCortes, onClose }) => {
         <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 4px' }}>
           <div style={{ width: 40, height: 4, borderRadius: 999, background: '#cbd5e1' }} />
         </div>
-        <div style={{ padding: 16 }}>
+        <div style={{ padding: 16, paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div style={{ fontWeight: 700, fontSize: 16 }}>Filtros</div>
             <button
@@ -917,7 +918,8 @@ const FiltrosSheet = ({ filtros, setFiltros, totalCortes, onClose }) => {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

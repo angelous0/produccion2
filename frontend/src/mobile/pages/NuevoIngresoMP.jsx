@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -622,7 +623,7 @@ const PickerSheet = ({ titulo, items, renderItem, matchFn, onPick, onClose }) =>
     return items.filter(it => matchFn(it, s));
   }, [items, q, matchFn]);
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -636,6 +637,7 @@ const PickerSheet = ({ titulo, items, renderItem, matchFn, onPick, onClose }) =>
           background: 'white', width: '100%',
           borderTopLeftRadius: 20, borderTopRightRadius: 20,
           padding: '12px 16px 20px', maxHeight: '85vh',
+          paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
           display: 'flex', flexDirection: 'column',
         }}
       >
@@ -683,7 +685,8 @@ const PickerSheet = ({ titulo, items, renderItem, matchFn, onPick, onClose }) =>
           style={{ marginTop: 10, minHeight: 44 }}
         >Cerrar</button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
