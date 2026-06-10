@@ -8,7 +8,12 @@ import uuid
 import bcrypt
 import asyncpg
 
-DB_URL = "postgresql://admin:admin@72.60.241.216:9595/datos"
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / '.env')
+DB_URL = os.environ['DATABASE_URL']  # falla explicito si no esta configurado
 SCHEMA = "produccion"
 
 def hash_pw(password: str) -> str:
@@ -48,7 +53,7 @@ USERS = [
             **solo_ver("registros", "movimientos_produccion"),
             "_operativos": {
                 "servicios_permitidos": [],
-                "estados_permitidos": ["Costura", "Para Atraque", "Atraque", "Para Lavandería"],
+                "estados_permitidos": ["Costura", "Para Atraque", "Atraque", "Para Lavanderia"],
                 "acciones_produccion": {
                     "crear_movimientos": False,
                     "editar_movimientos": False,
@@ -79,7 +84,7 @@ USERS = [
             **solo_ver("registros", "movimientos_produccion"),
             "_operativos": {
                 "servicios_permitidos": [],
-                "estados_permitidos": ["Costura", "Para Atraque", "Atraque", "Para Lavandería"],
+                "estados_permitidos": ["Costura", "Para Atraque", "Atraque", "Para Lavanderia"],
                 "acciones_produccion": {
                     "crear_movimientos": False,
                     "editar_movimientos": False,
@@ -226,7 +231,7 @@ USERS = [
             **crud("guias_remision"),
             "_operativos": {
                 "servicios_permitidos": [],
-                "estados_permitidos": ["Lavandería", "Para Acabado", "Acabado", "Producto Terminado"],
+                "estados_permitidos": ["Lavanderia", "Para Acabado", "Acabado", "Almacen PT"],
                 "acciones_produccion": {
                     "crear_movimientos": False,
                     "editar_movimientos": False,
@@ -257,7 +262,7 @@ USERS = [
             **solo_ver("registros", "movimientos_produccion"),
             "_operativos": {
                 "servicios_permitidos": [],
-                "estados_permitidos": ["Almacén PT"],
+                "estados_permitidos": ["Almacen PT"],
                 "acciones_produccion": {
                     "crear_movimientos": False,
                     "editar_movimientos": False,

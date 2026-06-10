@@ -310,7 +310,7 @@ async def seed_produccion(conn):
         (SRV_COSTURA, "Costura", "Confección completa de prendas", 3.00, 2, False),
         (SRV_ESTAMPADO, "Estampado", "Estampado serigráfico o digital", 1.50, 3, False),
         (SRV_BORDADO, "Bordado", "Bordado computarizado de logos", 2.00, 4, False),
-        (SRV_LAVANDERIA, "Lavandería", "Lavado enzimático y suavizado", 1.00, 5, False),
+        (SRV_LAVANDERIA, "Lavanderia", "Lavado enzimático y suavizado", 1.00, 5, False),
         (SRV_ACABADO, "Acabado", "Planchado, doblado, embolsado, etiquetado", 0.80, 6, False),
     ]
     for id_, nombre, desc, tarifa, orden, avance in servicios:
@@ -369,8 +369,8 @@ async def seed_produccion(conn):
          "obligatorio": True, "aparece_en_estado": "Costura", "es_cierre": False},
         {"nombre": "Bordado", "servicio_id": SRV_BORDADO, "orden": 3,
          "obligatorio": True, "aparece_en_estado": "Bordado", "es_cierre": False},
-        {"nombre": "Lavandería", "servicio_id": SRV_LAVANDERIA, "orden": 4,
-         "obligatorio": True, "aparece_en_estado": "Lavandería", "es_cierre": False},
+        {"nombre": "Lavanderia", "servicio_id": SRV_LAVANDERIA, "orden": 4,
+         "obligatorio": True, "aparece_en_estado": "Lavanderia", "es_cierre": False},
         {"nombre": "Acabado", "servicio_id": SRV_ACABADO, "orden": 5,
          "obligatorio": True, "aparece_en_estado": "Acabado", "es_cierre": True},
     ]

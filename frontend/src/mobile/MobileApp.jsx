@@ -41,7 +41,6 @@ import { MobileNuevaMuestraLavanderia } from './pages/NuevaMuestraLavanderia';
 import { MobileCostosRegistro } from './pages/CostosRegistro';
 import { MobileQRCorte } from './pages/QRCorte';
 import { MobileHistorial } from './pages/Historial';
-import { MobilePlaceholder } from './pages/Placeholder';
 import { MobileMiPerfil } from './pages/MiPerfil';
 import { MobileLogin } from './pages/Login';
 import { Loader2 } from 'lucide-react';

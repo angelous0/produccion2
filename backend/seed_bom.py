@@ -9,7 +9,12 @@ import json
 from datetime import date, timedelta, datetime
 import random
 
-DB_URL = "postgres://admin:admin@72.60.241.216:9595/datos?sslmode=disable"
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / '.env')
+DB_URL = os.environ['DATABASE_URL']  # falla explicito si no esta configurado
 
 SERVICIOS = {
     "corte": "a42eb55f-cdd9-499a-9ff8-e6cfcd153cec",

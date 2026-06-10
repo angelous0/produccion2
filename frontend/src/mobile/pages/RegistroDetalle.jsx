@@ -10,6 +10,7 @@ import {
   ArrowRight, SkipForward,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -29,6 +30,11 @@ export const MobileRegistroDetalle = () => {
   const puedeCambiarEstado =
     user?.rol === 'admin' ||
     user?.permisos?._operativos?.acciones_produccion?.cambiar_estados === true;
+
+  // Cerrar/Anular OP son acciones destructivas — solo roles con el permiso
+  // explícito las ven en el menú "⋮" (antes se mostraban a cualquier usuario).
+  const puedeCerrarOP = puede(user, ACCIONES.CERRAR_OP);
+  const puedeAnularOP = puede(user, ACCIONES.ANULAR_OP);
 
   const fetchRegistro = async () => {
     try {
@@ -265,6 +271,8 @@ export const MobileRegistroDetalle = () => {
           }}
           onAnular={() => { setMenuAbierto(false); setAccion('anular'); }}
           inactiva={inactiva}
+          puedeCerrar={puedeCerrarOP}
+          puedeAnular={puedeAnularOP}
         />
       )}
 
@@ -358,7 +366,7 @@ const SectionRow = ({ icon, bg, iconColor, title, meta, last = false, to }) => {
 };
 
 /* ═════════════════════ Bottom sheet: Más opciones ═════════════════════ */
-const MenuOpcionesSheet = ({ registro, onClose, onCerrar, onAnular, inactiva }) => {
+const MenuOpcionesSheet = ({ registro, onClose, onCerrar, onAnular, inactiva, puedeCerrar, puedeAnular }) => {
   const [copiado, setCopiado] = useState(false);
 
   const copiarCorte = async () => {
@@ -393,22 +401,26 @@ const MenuOpcionesSheet = ({ registro, onClose, onCerrar, onAnular, inactiva }) 
         onClick={copiarCorte}
       />
 
-      {!inactiva && (
+      {!inactiva && (puedeCerrar || puedeAnular) && (
         <>
           <div className="m-label-xs" style={{ marginTop: 10, padding: '0 4px' }}>Acciones</div>
-          <ActionRow
-            icon={<Lock size={18} style={{ color: '#475569' }} />}
-            label="Cerrar OP"
-            sub="Marca como CERRADA y libera reservas"
-            onClick={onCerrar}
-          />
-          <ActionRow
-            icon={<Ban size={18} style={{ color: '#b91c1c' }} />}
-            label="Anular OP"
-            sub="Marca como ANULADA · no reversible"
-            onClick={onAnular}
-            danger
-          />
+          {puedeCerrar && (
+            <ActionRow
+              icon={<Lock size={18} style={{ color: '#475569' }} />}
+              label="Cerrar OP"
+              sub="Marca como CERRADA y libera reservas"
+              onClick={onCerrar}
+            />
+          )}
+          {puedeAnular && (
+            <ActionRow
+              icon={<Ban size={18} style={{ color: '#b91c1c' }} />}
+              label="Anular OP"
+              sub="Marca como ANULADA · no reversible"
+              onClick={onAnular}
+              danger
+            />
+          )}
         </>
       )}
 

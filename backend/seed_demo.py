@@ -2,7 +2,12 @@
 import asyncio, asyncpg, uuid, json, random
 from datetime import date, timedelta, datetime
 
-DB_URL = "postgres://admin:admin@72.60.241.216:9595/datos?sslmode=disable"
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / '.env')
+DB_URL = os.environ['DATABASE_URL']  # falla explicito si no esta configurado
 
 MARCAS = {"element": "6a7332a5-87b5-4827-8f6e-8025117fc71a", "qepo": "c70dac45-edde-444f-acb6-720715c38ddf"}
 TIPOS = {"pantalon": "d4ad8861-435f-4418-8002-3a7e95a57736", "polo": "5796e77c-939e-498b-8e2d-3ea7eb6fbfed", "casaca": "652e82f2-469b-49c6-b06f-01b368611417"}
@@ -33,7 +38,7 @@ COLORES = {"celeste_claro": "cfb2947f-6958-409f-ac80-5b6a4588ce18", "madera": "2
 COSTUREROS = ["ana", "carlos", "jorge", "luis", "maria", "pepe", "rosa", "jean"]
 
 ESTADOS_PANTALON = ["Para Corte", "Corte", "Para Costura", "Costura", "Bordado", "Para Atraque", "Atraque", "Para Lavanderia", "Lavanderia", "Para Acabado", "Acabado", "Producto Terminado", "Tienda"]
-ESTADOS_POLO = ["Para Corte", "Corte", "Para Estampado", "Estampado", "Para Costura", "Costura", "Para Aacabado", "Acabado", "Producto Terminado", "Tienda"]
+ESTADOS_POLO = ["Para Corte", "Corte", "Para Estampado", "Estampado", "Para Costura", "Costura", "Para Acabado", "Acabado", "Producto Terminado", "Tienda"]
 
 MOV_PANTALON = {"Corte": ("corte", "roger"), "Costura": ("costura", None), "Bordado": ("bordado", "procesos"), "Atraque": ("atraque", None), "Lavanderia": ("lavanderia", "antartida"), "Acabado": ("acabado", "acabado_int")}
 MOV_POLO = {"Corte": ("corte", "roger"), "Estampado": ("estampado", None), "Costura": ("costura", None), "Acabado": ("acabado", "acabado_int")}
@@ -136,7 +141,7 @@ async def main():
             ("009", 3, "Producto Terminado", False, -25, {"28":50,"30":80,"32":80,"34":50}, None),
             ("010", 5, "Estampado",          False, -6,  {"S":50,"M":80,"L":80,"XL":40}, 18),
             ("011", 6, "Costura",            True,  -9,  {"S":60,"M":100,"L":100,"XL":60}, 10),
-            ("012", 5, "Para Aacabado",      False, -14, {"S":40,"M":60,"L":60,"XL":30}, 5),
+            ("012", 5, "Para Acabado",      False, -14, {"S":40,"M":60,"L":60,"XL":30}, 5),
             ("013", 7, "Para Lavanderia",    False, -11, {"28":30,"30":50,"32":50,"34":30,"36":20}, 10),
         ]
 

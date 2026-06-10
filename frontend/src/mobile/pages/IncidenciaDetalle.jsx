@@ -6,6 +6,7 @@ import {
   Clock, User, Package,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -41,6 +42,8 @@ export const MobileIncidenciaDetalle = () => {
   const [error, setError] = useState('');
 
   const esAdmin = user?.rol === 'admin';
+  // Resolver levanta paralizaciones — mismo permiso que en IncidenciasRegistro
+  const puedeResolver = puede(user, ACCIONES.RESOLVER_INCIDENCIA);
   const autor = user?.nombre_completo || user?.username || 'Usuario';
 
   const cargar = async () => {
@@ -302,8 +305,8 @@ export const MobileIncidenciaDetalle = () => {
           </div>
         )}
 
-        {/* Botón Resolver (si abierta) */}
-        {!resuelta && (
+        {/* Botón Resolver (si abierta + permiso) */}
+        {!resuelta && puedeResolver && (
           <button
             onClick={resolver}
             disabled={resolviendo}

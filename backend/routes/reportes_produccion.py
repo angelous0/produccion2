@@ -3333,11 +3333,11 @@ async def validacion_registros(
                 # Reglas de match (en orden):
                 #   1) Genérico: el item se llama "entalle" o "perfect".
                 #   2) Nombre del entalle del modelo (ej: entalle "Skinny"
-                #      matchea "Hantag Skinny Fit").
+                #      matchea "Hangtag Skinny Fit").
                 #   3) Entalles compuestos: la PRIMERA palabra del entalle
-                #      cuenta como base (ej: "Oversize Cargo" → "Hantag Oversize"
-                #      o "Jogger Cargo" → "Hantag Jogger").
-                #   4) Equivalencias del negocio: "Hantag Relaxed" sirve para
+                #      cuenta como base (ej: "Oversize Cargo" → "Hangtag Oversize"
+                #      o "Jogger Cargo" → "Hangtag Jogger").
+                #   4) Equivalencias del negocio: "Hangtag Relaxed" sirve para
                 #      entalles "Regular" y "Semi Extra".
                 if entalle not in ("flare", "mom"):
                     # Equivalencias del negocio: hangtags que el operario

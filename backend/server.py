@@ -22,9 +22,6 @@ from routes.stats_reportes import router as stats_reportes_router
 from routes.costos import router as costos_router
 from routes.cierre import router as cierre_legacy_router
 from routes.rollos import router as rollos_router
-from routes.ordenes import router as ordenes_router
-from routes.consumo import router as consumo_router
-from routes.servicios import router as servicios_router
 from routes.reportes import router as reportes_router
 from routes.integracion_finanzas import router as integracion_finanzas_router
 from routes.bom import router as bom_router
@@ -230,9 +227,6 @@ app.include_router(registros_main_router)
 app.include_router(registros_materiales_router)
 app.include_router(registros_operaciones_router)
 app.include_router(rollos_router)
-app.include_router(ordenes_router)
-app.include_router(consumo_router)
-app.include_router(servicios_router)
 app.include_router(movimientos_router)
 app.include_router(stats_reportes_router)
 app.include_router(productividad_router)

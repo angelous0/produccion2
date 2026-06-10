@@ -24,7 +24,12 @@ import uuid
 import bcrypt
 import asyncpg
 
-DB_URL = "postgresql://admin:admin@72.60.241.216:9595/datos"
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / '.env')
+DB_URL = os.environ['DATABASE_URL']  # falla explicito si no esta configurado
 SCHEMA = "produccion"
 
 

@@ -17,7 +17,6 @@ import { MuestrasLavanderiaSection } from '../components/MuestrasLavanderiaSecti
 import { ClipboardList, Play, ShieldAlert, Package, Activity, Clock, AlertTriangle as AlertTriangleIcon, ArrowRight, MessageCircle, Cog, QrCode as QrCodeIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { SalidaRollosDialog } from '../components/SalidaRollosDialog';
-import { TrazabilidadPanel } from '../components/TrazabilidadPanel';
 import { ArreglosPanel } from '../components/ArreglosPanel';
 import MaterialesTab from '../components/MaterialesTab';
 import CopiarDesdeRegistroDialog from '../components/registro/CopiarDesdeRegistroDialog';

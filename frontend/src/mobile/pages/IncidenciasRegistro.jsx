@@ -7,6 +7,7 @@ import {
   Check, CheckCircle2, MessageSquare, AlertCircle, X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { puede, ACCIONES } from '../utils/permisos';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -166,6 +167,7 @@ export const MobileIncidenciasRegistro = () => {
               inc={i}
               onResolver={() => setResolver(i)}
               onAvance={() => setAgregarAvance(i)}
+              puedeResolver={puede(user, ACCIONES.RESOLVER_INCIDENCIA)}
             />
           ))
         )}
@@ -197,7 +199,7 @@ export const MobileIncidenciasRegistro = () => {
 };
 
 /* ──────── Card de una incidencia ──────── */
-const IncidenciaCard = ({ inc, onResolver, onAvance }) => {
+const IncidenciaCard = ({ inc, onResolver, onAvance, puedeResolver }) => {
   const activa = inc.estado === 'ABIERTA';
   const paraliza = !!inc.paraliza;
   const cfg = activa
@@ -301,16 +303,19 @@ const IncidenciaCard = ({ inc, onResolver, onAvance }) => {
           >
             <MessageSquare size={14} /> + Avance
           </button>
-          <button
-            className="m-btn"
-            style={{
-              flex: 1, minHeight: 42, fontSize: 13,
-              background: '#dcfce7', color: '#15803d', fontWeight: 700,
-            }}
-            onClick={onResolver}
-          >
-            <Check size={14} /> Resolver
-          </button>
+          {/* Resolver levanta paralizaciones — requiere permiso explícito */}
+          {puedeResolver && (
+            <button
+              className="m-btn"
+              style={{
+                flex: 1, minHeight: 42, fontSize: 13,
+                background: '#dcfce7', color: '#15803d', fontWeight: 700,
+              }}
+              onClick={onResolver}
+            >
+              <Check size={14} /> Resolver
+            </button>
+          )}
         </div>
       )}
     </div>

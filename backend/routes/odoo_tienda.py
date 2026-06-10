@@ -42,15 +42,6 @@ TIENDAS_CTE = """
 """
 
 
-# ─── Modelos ─────────────────────────────────────────────────────────
-class VincularProductoInput(BaseModel):
-    odoo_product_id: int            # variant_id (product_product.odoo_id) — para barcode
-    template_id: Optional[int] = None  # product_template.odoo_id — el cruce real usa este
-    company_key: str = "GLOBAL"     # 'Ambission' / 'ProyectoModa' / 'GLOBAL'
-    nombre: Optional[str] = None
-    codigo: Optional[str] = None    # barcode o "TPL-{id}"
-
-
 # ─── Búsqueda de productos ───────────────────────────────────────────
 @router.get("/productos/buscar")
 async def buscar_productos(
@@ -147,94 +138,9 @@ async def buscar_productos(
     ]
 
 
-# ─── Vincular producto a corte ───────────────────────────────────────
-@router.post("/registros/{registro_id}/vincular-producto")
-async def vincular_producto(
-    registro_id: str,
-    input: VincularProductoInput,
-    current_user: dict = Depends(get_current_user),
-):
-    """Asigna un producto Odoo a un corte. Reemplaza si ya tenía uno."""
-    if not input.odoo_product_id:
-        raise HTTPException(400, "odoo_product_id es obligatorio")
-    if input.company_key not in ("Ambission", "ProyectoModa", "GLOBAL"):
-        raise HTTPException(400, "company_key inválido")
-
-    user_name = (
-        current_user.get("nombre_completo")
-        or current_user.get("nombre")
-        or current_user.get("username")
-        or "sistema"
-    )
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        # Verificar que el registro y el producto existen
-        reg = await conn.fetchrow(
-            "SELECT id FROM prod_registros WHERE id = $1", registro_id
-        )
-        if not reg:
-            raise HTTPException(404, "Registro no encontrado")
-        prod = await conn.fetchrow(
-            """SELECT pp.odoo_id, pp.product_tmpl_id, pt.name
-               FROM odoo.product_product pp
-               JOIN odoo.product_template pt ON pt.odoo_id = pp.product_tmpl_id
-               WHERE pp.odoo_id = $1 AND pp.active = TRUE
-               LIMIT 1""",
-            input.odoo_product_id,
-        )
-        if not prod:
-            raise HTTPException(404, "Producto Odoo no encontrado o inactivo")
-
-        template_id = input.template_id or prod["product_tmpl_id"]
-        nombre = (input.nombre or prod["name"] or "").strip() or None
-        codigo = (input.codigo or "").strip() or None
-
-        await conn.execute(
-            """UPDATE prod_registros
-               SET odoo_product_id = $1,
-                   odoo_template_id = $2,
-                   odoo_product_company_key = $3,
-                   odoo_product_nombre = $4,
-                   odoo_product_codigo = $5,
-                   odoo_product_asignado_at = $6,
-                   odoo_product_asignado_por = $7
-               WHERE id = $8""",
-            input.odoo_product_id, template_id, input.company_key, nombre, codigo, now, user_name, registro_id,
-        )
-    return {
-        "ok": True,
-        "odoo_product_id": input.odoo_product_id,
-        "company_key": input.company_key,
-        "nombre": nombre,
-        "codigo": codigo,
-    }
-
-
-@router.delete("/registros/{registro_id}/vincular-producto")
-async def desvincular_producto(
-    registro_id: str,
-    current_user: dict = Depends(get_current_user),
-):
-    """Limpia el vínculo a un producto Odoo."""
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        res = await conn.execute(
-            """UPDATE prod_registros
-               SET odoo_product_id = NULL,
-                   odoo_template_id = NULL,
-                   odoo_product_company_key = NULL,
-                   odoo_product_nombre = NULL,
-                   odoo_product_codigo = NULL,
-                   odoo_product_asignado_at = NULL,
-                   odoo_product_asignado_por = NULL
-               WHERE id = $1""",
-            registro_id,
-        )
-        if res.endswith("0"):
-            raise HTTPException(404, "Registro no encontrado")
-    return {"ok": True}
+# NOTA: los endpoints legacy POST/DELETE /registros/{id}/vincular-producto
+# se eliminaron en 2026-06 — fueron reemplazados por /registros/{id}/distribucion-pt
+# (ver distribucion_pt.py), que es lo que usa VincularOdooDialog en el frontend.
 
 
 # ─── Info de tienda para un registro ─────────────────────────────────

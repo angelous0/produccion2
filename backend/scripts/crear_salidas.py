@@ -8,7 +8,12 @@ import uuid
 import json
 from datetime import datetime, timedelta
 
-DB_URL = 'postgres://admin:admin@72.60.241.216:9595/datos?sslmode=disable&options=-csearch_path%3Dproduccion'
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / '.env')
+DB_URL = os.environ['DATABASE_URL']  # falla explicito si no esta configurado
 
 
 def get_material_type(item_name):

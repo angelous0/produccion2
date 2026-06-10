@@ -595,6 +595,9 @@ async def ejecutar_cierre(registro_id: str, data: CierreRegistroInput, current_u
             snapshot = {
                 "registro_id": registro_id,
                 "n_corte": reg["n_corte"],
+                # Estado del registro ANTES de cerrar — se usa al reabrir el
+                # cierre para devolverlo a su estado real (no a uno inventado).
+                "estado_previo": reg["estado"],
                 "qty_planeada": safe_float(reg.get("cantidad_total")),
                 "qty_terminada_real": qty_terminada,
                 "merma_qty": merma_qty,
@@ -854,10 +857,22 @@ async def reabrir_cierre(registro_id: str, data: ReaperturaInput, current_user: 
                 WHERE registro_id = $1
             """, registro_id, usuario, ahora, data.motivo.strip())
 
-            # Devolver estado del registro al anterior (Producto Terminado como default razonable)
+            # Devolver el registro al estado que tenía ANTES del cierre.
+            # El snapshot guarda `estado_previo` desde 2026-06; para cierres
+            # anteriores (sin esa key) caemos a 'Almacen PT', que es el estado
+            # canónico donde ocurre el cierre. OJO: 'Producto Terminado' NO
+            # existe en ESTADOS_PRODUCCION — el valor viejo dejaba al registro
+            # invisible para filtros y matriz.
+            snap = cierre.get("snapshot_json")
+            if isinstance(snap, str):
+                try:
+                    snap = json.loads(snap)
+                except (ValueError, TypeError):
+                    snap = {}
+            estado_restaurar = (snap or {}).get("estado_previo") or "Almacen PT"
             await conn.execute("""
-                UPDATE prod_registros SET estado = 'Producto Terminado', estado_op = 'EN_PROCESO' WHERE id = $1
-            """, registro_id)
+                UPDATE prod_registros SET estado = $2, estado_op = 'EN_PROCESO' WHERE id = $1
+            """, registro_id, estado_restaurar)
 
             # Auditoria (dentro de transaccion - atomico)
             reg_row = await conn.fetchrow("SELECT linea_negocio_id FROM prod_registros WHERE id = $1", registro_id)
