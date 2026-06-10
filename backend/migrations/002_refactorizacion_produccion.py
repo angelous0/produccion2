@@ -115,15 +115,15 @@ async def migrate_inventario_empresa(conn):
     if not col_exists:
         await conn.execute("""
             ALTER TABLE produccion.prod_inventario 
-            ADD COLUMN empresa_id INTEGER DEFAULT 6
+            ADD COLUMN empresa_id INTEGER DEFAULT 7
         """)
         print("  ✓ Columna empresa_id agregada")
     else:
         print("  - Columna empresa_id ya existe")
     
     # Backfill
-    await conn.execute("UPDATE produccion.prod_inventario SET empresa_id = 6 WHERE empresa_id IS NULL")
-    print("  ✓ Backfill a empresa_id=6")
+    await conn.execute("UPDATE produccion.prod_inventario SET empresa_id = 7 WHERE empresa_id IS NULL")
+    print("  ✓ Backfill a empresa_id=7")
 
 
 async def migrate_rollos(conn):
@@ -138,7 +138,7 @@ async def migrate_rollos(conn):
         ('lote', 'VARCHAR(100)'),
         ('color_id', 'VARCHAR'),
         ('estado', 'VARCHAR(20) DEFAULT \'ACTIVO\''),
-        ('empresa_id', 'INTEGER DEFAULT 6')
+        ('empresa_id', 'INTEGER DEFAULT 7')
     ]
     
     for col_name, col_type in new_cols:
@@ -177,7 +177,7 @@ async def migrate_rollos(conn):
                 WHEN COALESCE(metraje_disponible, 0) <= 0 THEN 'AGOTADO'
                 ELSE 'ACTIVO'
             END,
-            empresa_id = COALESCE(empresa_id, 6)
+            empresa_id = COALESCE(empresa_id, 7)
     """)
     
     # Calculate costo_total_inicial
@@ -196,7 +196,7 @@ async def migrate_registros(conn):
     print("\n=== FASE 1D: CAMPOS EN PROD_REGISTROS ===")
     
     new_cols = [
-        ('empresa_id', 'INTEGER DEFAULT 6'),
+        ('empresa_id', 'INTEGER DEFAULT 7'),
         ('pt_item_id', 'VARCHAR'),
         ('estado_op', 'VARCHAR(20) DEFAULT \'EN_PROCESO\''),
         ('etapa_actual_id', 'VARCHAR'),
@@ -222,7 +222,7 @@ async def migrate_registros(conn):
             print(f"  - Columna {col_name} ya existe")
     
     # Backfill empresa_id
-    await conn.execute("UPDATE produccion.prod_registros SET empresa_id = 6 WHERE empresa_id IS NULL")
+    await conn.execute("UPDATE produccion.prod_registros SET empresa_id = 7 WHERE empresa_id IS NULL")
     
     # Migrate estado to estado_op
     await conn.execute("""
@@ -253,7 +253,7 @@ async def create_orden_etapa(conn):
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS produccion.prod_orden_etapa (
             id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-            empresa_id INTEGER NOT NULL DEFAULT 6,
+            empresa_id INTEGER NOT NULL DEFAULT 7,
             codigo VARCHAR(50) NOT NULL,
             nombre VARCHAR(100) NOT NULL,
             descripcion TEXT,
@@ -283,7 +283,7 @@ async def create_orden_etapa(conn):
     
     for codigo, nombre, orden in etapas_default:
         exists = await conn.fetchval("""
-            SELECT EXISTS(SELECT 1 FROM produccion.prod_orden_etapa WHERE empresa_id = 6 AND codigo = $1)
+            SELECT EXISTS(SELECT 1 FROM produccion.prod_orden_etapa WHERE empresa_id = 7 AND codigo = $1)
         """, codigo)
         if not exists:
             await conn.execute("""
@@ -299,7 +299,7 @@ async def create_orden_etapa(conn):
         UPDATE produccion.prod_registros r
         SET etapa_actual_id = (
             SELECT e.id FROM produccion.prod_orden_etapa e
-            WHERE e.empresa_id = 6
+            WHERE e.empresa_id = 7
             AND e.codigo = CASE 
                 WHEN r.estado ILIKE '%corte%' THEN 'CORTE'
                 WHEN r.estado ILIKE '%costura%' THEN 'COSTURA'
@@ -322,7 +322,7 @@ async def create_consumo_mp(conn):
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS produccion.prod_consumo_mp (
             id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-            empresa_id INTEGER NOT NULL DEFAULT 6,
+            empresa_id INTEGER NOT NULL DEFAULT 7,
             orden_id VARCHAR NOT NULL,
             item_id VARCHAR NOT NULL,
             rollo_id VARCHAR,
@@ -396,7 +396,7 @@ async def create_servicio_orden(conn):
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS produccion.prod_servicio_orden (
             id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-            empresa_id INTEGER NOT NULL DEFAULT 6,
+            empresa_id INTEGER NOT NULL DEFAULT 7,
             orden_id VARCHAR NOT NULL,
             servicio_id VARCHAR,
             persona_id VARCHAR,
@@ -489,7 +489,7 @@ async def create_servicio_orden(conn):
                 (empresa_id, orden_id, proveedor_texto, descripcion,
                  costo_total, fecha_inicio, estado, legacy_costo_id)
             SELECT 
-                COALESCE(c.empresa_id, 6),
+                COALESCE(c.empresa_id, 7),
                 c.registro_id,
                 c.proveedor_texto,
                 c.descripcion,
@@ -519,7 +519,7 @@ async def create_wip_movimiento(conn):
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS produccion.prod_wip_movimiento (
             id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-            empresa_id INTEGER NOT NULL DEFAULT 6,
+            empresa_id INTEGER NOT NULL DEFAULT 7,
             orden_id VARCHAR NOT NULL,
             origen_tipo VARCHAR(20) NOT NULL,
             origen_id VARCHAR NOT NULL,
@@ -592,7 +592,7 @@ async def create_ingreso_pt(conn):
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS produccion.prod_ingreso_pt (
             id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-            empresa_id INTEGER NOT NULL DEFAULT 6,
+            empresa_id INTEGER NOT NULL DEFAULT 7,
             cierre_id VARCHAR,
             orden_id VARCHAR NOT NULL,
             item_pt_id VARCHAR NOT NULL,
@@ -627,7 +627,7 @@ async def create_ingreso_pt(conn):
                 (empresa_id, cierre_id, orden_id, item_pt_id, cantidad, 
                  costo_unitario, costo_total, fecha, ingreso_inventario_id)
             SELECT 
-                COALESCE(c.empresa_id, 6),
+                COALESCE(c.empresa_id, 7),
                 c.id,
                 c.registro_id,
                 r.pt_item_id,
@@ -676,7 +676,7 @@ async def create_views(conn):
             registro_id VARCHAR NOT NULL,
             talla_id VARCHAR NOT NULL,
             cantidad_real INT NOT NULL DEFAULT 0,
-            empresa_id INTEGER DEFAULT 6,
+            empresa_id INTEGER DEFAULT 7,
             created_at TIMESTAMP DEFAULT NOW(),
             updated_at TIMESTAMP DEFAULT NOW()
         )

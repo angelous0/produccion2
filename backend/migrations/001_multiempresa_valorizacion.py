@@ -1,7 +1,7 @@
 """
 Migración: Multiempresa + Tablas de Valorización + PT
 - Agrega empresa_id a todas las tablas de producción
-- Backfill a empresa_id=6 (Ambission Industries SAC)
+- Backfill a empresa_id=7 (Ambission Industries)
 - Crea tablas: prod_registro_costos_servicio, prod_registro_cierre
 - Agrega pt_item_id a prod_registros
 - Agrega campos de trazabilidad financiera a ingresos
@@ -13,7 +13,7 @@ import os
 DATABASE_URL = os.environ.get('MUESTRA_DATABASE_URL')
 if not DATABASE_URL:
     raise RuntimeError("Variable MUESTRA_DATABASE_URL no configurada")
-DEFAULT_EMPRESA_ID = 6
+DEFAULT_EMPRESA_ID = 7  # Ambission Industries (la empresa 6 nunca existió en cont_empresa)
 
 async def migrate():
     conn = await asyncpg.connect(DATABASE_URL)
@@ -64,8 +64,8 @@ async def migrate():
                     except Exception:
                         pass
             
-            # Fix prod_inventario: already has empresa_id but need backfill to 6 and FK
-            print("  FIX prod_inventario empresa_id (1 -> 6)")
+            # Fix prod_inventario: already has empresa_id but need backfill to 7 and FK
+            print("  FIX prod_inventario empresa_id (1 -> 7)")
             await conn.execute(f"UPDATE produccion.prod_inventario SET empresa_id = {DEFAULT_EMPRESA_ID} WHERE empresa_id IS NULL OR empresa_id != {DEFAULT_EMPRESA_ID}")
             try:
                 await conn.execute(f"ALTER TABLE produccion.prod_inventario ALTER COLUMN empresa_id SET NOT NULL")

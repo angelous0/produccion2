@@ -318,6 +318,10 @@ async def create_incidencia(input: IncidenciaCreate, _u=Depends(get_current_user
                    VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$7)""",
                 paralizacion_id, input.registro_id, input.movimiento_id, fecha_hora, motivo_nombre, input.comentario, now
             )
+            # NOTA: la columna estado_operativo es solo un espejo denormalizado
+            # para inspección por SQL. La fuente de verdad es prod_paralizacion
+            # (activa=TRUE) — GET /registros la recalcula en vivo y pisa este
+            # valor en la respuesta (ver registros_main.py).
             await conn.execute(
                 "UPDATE prod_registros SET estado_operativo = 'PARALIZADA' WHERE id = $1",
                 input.registro_id
