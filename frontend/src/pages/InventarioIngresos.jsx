@@ -61,6 +61,7 @@ export const InventarioIngresos = () => {
   const [modoMigracion, setModoMigracion] = useState(false);
   // Combobox states
   const [itemPopoverOpen, setItemPopoverOpen] = useState(false);
+  const [showOtrasLineas, setShowOtrasLineas] = useState(false);
   const [proveedorPopoverOpen, setProveedorPopoverOpen] = useState(false);
   const [ultimoCosto, setUltimoCosto] = useState(null);
 
@@ -70,6 +71,18 @@ export const InventarioIngresos = () => {
     if (!filtroLinea) return base;
     return base.filter(i =>
       !i.linea_negocio_id || String(i.linea_negocio_id) === filtroLinea
+    );
+  }, [items, filtroLinea]);
+
+  // Items de OTRAS líneas. No se ocultan del todo: se muestran bajo demanda
+  // para evitar que un item parezca "inexistente" solo por tener otra línea
+  // asignada (p. ej. buscar una tela Drill con el filtro puesto en Denim).
+  const itemsOtrasLineas = useMemo(() => {
+    if (!filtroLinea) return [];
+    return items.filter(i =>
+      i.categoria !== 'PT' &&
+      i.linea_negocio_id &&
+      String(i.linea_negocio_id) !== filtroLinea
     );
   }, [items, filtroLinea]);
 
@@ -625,6 +638,43 @@ export const InventarioIngresos = () => {
                               );
                             })}
                           </CommandGroup>
+                          {itemsOtrasLineas.length > 0 && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setShowOtrasLineas(v => !v)}
+                                className="w-full text-left px-3 py-1.5 text-[11px] text-muted-foreground hover:bg-accent/40 border-t flex items-center gap-1.5"
+                                data-testid="btn-otras-lineas"
+                              >
+                                <ChevronsUpDown className="h-3 w-3" />
+                                {showOtrasLineas ? 'Ocultar' : 'Mostrar'} otras líneas ({itemsOtrasLineas.length})
+                              </button>
+                              {showOtrasLineas && (
+                                <CommandGroup heading="Otras líneas">
+                                  {itemsOtrasLineas.map((item) => {
+                                    const ln = lineasNegocio.find(l => l.id === item.linea_negocio_id);
+                                    return (
+                                      <CommandItem
+                                        key={item.id}
+                                        value={`${item.codigo} ${item.nombre} ${ln?.nombre || ''}`}
+                                        onSelect={() => handleItemChange(item.id)}
+                                        data-testid={`item-otra-linea-${item.id}`}
+                                        className="flex items-center gap-2 opacity-70"
+                                      >
+                                        <Check className={cn("h-4 w-4 shrink-0", formData.item_id === item.id ? "opacity-100" : "opacity-0")} />
+                                        <span className="font-mono text-xs text-muted-foreground shrink-0">{item.codigo}</span>
+                                        <span className="truncate">{item.nombre}</span>
+                                        {ln && <span className="ml-auto text-[11px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">{ln.nombre}</span>}
+                                        {item.control_por_rollos && (
+                                          <Badge variant="outline" className="text-[10px] shrink-0">Rollos</Badge>
+                                        )}
+                                      </CommandItem>
+                                    );
+                                  })}
+                                </CommandGroup>
+                              )}
+                            </>
+                          )}
                         </CommandList>
                       </Command>
                     </PopoverContent>

@@ -732,11 +732,15 @@ export const InventarioSalidas = () => {
                   value={formData.item_id}
                   onChange={handleItemChange}
                   lineaFiltro={(() => {
-                    // Si la salida está vinculada a un registro con línea de negocio,
-                    // restringir el listado a items de esa misma línea.
-                    if (!formData.registro_id) return null;
-                    const reg = registros.find(r => r.id === formData.registro_id);
-                    return reg?.linea_negocio_id || null;
+                    // 1) Si la salida está vinculada a un registro con línea de
+                    //    negocio, esa línea manda (es la más específica).
+                    if (formData.registro_id) {
+                      const reg = registros.find(r => r.id === formData.registro_id);
+                      if (reg?.linea_negocio_id) return reg.linea_negocio_id;
+                    }
+                    // 2) Si no hay registro vinculado, respetar el filtro de línea
+                    //    activo en la pantalla.
+                    return filtroLinea || null;
                   })()}
                   lineasNegocio={lineasNegocio}
                 />
