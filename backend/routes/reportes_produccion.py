@@ -3359,9 +3359,17 @@ async def validacion_registros(
                         if len(palabras) > 1 and palabras[0]:
                             candidatos_entalle.append(palabras[0])
                         candidatos_entalle.extend(HANGTAG_EQUIVALENTES.get(entalle, []))
+                    #   5) Borlón: QEPO (línea 28) dejó de usar hangtag de
+                    #      entalle y lo marca con un borlón satinado. Los items
+                    #      se llaman "BORLON ENT <ENTALLE>" (AVI-230..233), así
+                    #      que cualquier item con "borlon" cuenta como marcador
+                    #      de entalle válido. La validación se mantiene: si el
+                    #      corte no cargó NI hangtag NI borlón, sigue alertando.
                     if not (
                         has_mp(rid, "entalle")
                         or has_mp(rid, "perfect")
+                        or has_mp(rid, "borlon")
+                        or has_mp(rid, "borlón")
                         or any(has_mp(rid, c) for c in candidatos_entalle)
                     ):
                         faltantes.append("Hangtag Entalle")
