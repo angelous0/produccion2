@@ -76,6 +76,7 @@ import {
   FlaskConical,
   Receipt,
   Store,
+  Camera,
   UserCircle2,
   CircleDot,
   StickerIcon,
@@ -157,6 +158,7 @@ const reportesItems = [
   { to: '/reportes/rendimiento-servicios', icon: TrendingUp, label: 'Rendimiento Servicios' },
   { to: '/reportes/despachos-tienda', icon: Store, label: 'Despachos a Tienda' },
   { to: '/reportes/seguimiento-tienda', icon: Store, label: 'Seguimiento Tienda' },
+  { to: '/reportes/publicacion-cortes', icon: Camera, label: 'Publicación de Cortes' },
   { to: '/reportes/muestras-lavanderia', icon: FlaskConical, label: 'Muestras Lavandería' },
   { to: '/reportes/movimientos-costos', icon: Receipt, label: 'Movimientos & Costos' },
 ];

@@ -33,6 +33,7 @@ from routes.transferencias_linea import router as transferencias_linea_router, i
 from routes.auditoria import router as auditoria_router, init_audit_tables
 from routes.conversacion import router as conversacion_router
 from routes.distribucion_pt import router as distribucion_pt_router, init_distribucion_pt_tables
+from routes.publicacion_cortes import router as publicacion_cortes_router, init_publicacion_tables
 from routes.kardex_pt import router as kardex_pt_router
 from routes.reportes_mix import router as reportes_mix_router
 from routes.cortes_pendientes_colores import router as cortes_pendientes_colores_router
@@ -111,6 +112,7 @@ async def startup():
     await init_transferencias_tables()
     await init_audit_tables()
     await init_distribucion_pt_tables()
+    await init_publicacion_tables()
     await ensure_salidas_libres_tables()
     await ensure_clasificacion_tables()
     await ensure_notificaciones_tables()
@@ -243,6 +245,7 @@ app.include_router(auditoria_router)
 app.include_router(conversacion_router)
 app.include_router(notificaciones_router)
 app.include_router(distribucion_pt_router)
+app.include_router(publicacion_cortes_router)
 app.include_router(kardex_pt_router)
 app.include_router(reportes_mix_router)
 app.include_router(cortes_pendientes_colores_router)
