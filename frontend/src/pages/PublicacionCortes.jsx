@@ -11,7 +11,8 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
 import {
-  Camera, Globe, Search, Loader2, RefreshCw, Undo2, CheckCircle2, Image,
+  Camera, Globe, Search, Loader2, RefreshCw, Undo2, CheckCircle2, Image, Check,
+  ArrowUp, ArrowDown, ChevronsUpDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -19,6 +20,31 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const hdrs = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
 const ESTADOS = ['Para Acabado', 'Acabado', 'Producto Terminado', 'Almacen PT', 'Tienda'];
+
+// Orden real del flujo de producción (no alfabético): un corte en
+// "Para Acabado" va antes que uno en "Tienda".
+const ORDEN_ESTADO = {
+  'Para Acabado': 0, 'Acabado': 1, 'Producto Terminado': 2, 'Almacen PT': 3, 'Tienda': 4,
+};
+
+// Encabezado de columna clickeable: asc → desc → asc...
+const ThOrden = ({ campo, orden, setOrden, children, align = 'left' }) => {
+  const activo = orden.campo === campo;
+  const alineacion = align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : '';
+  return (
+    <button
+      type="button"
+      onClick={() => setOrden(o => ({ campo, dir: o.campo === campo && o.dir === 'asc' ? 'desc' : 'asc' }))}
+      className={`flex items-center gap-1 hover:text-foreground transition-colors ${alineacion} ${activo ? 'text-foreground font-semibold' : ''}`}
+      title="Ordenar"
+    >
+      {children}
+      {activo
+        ? (orden.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
+        : <ChevronsUpDown className="h-3 w-3 opacity-30" />}
+    </button>
+  );
+};
 
 const estadoColor = (e) => ({
   'Para Acabado': 'bg-amber-100 text-amber-800 border-amber-200',
@@ -36,6 +62,25 @@ const fmtFecha = (iso) => {
     });
   } catch { return null; }
 };
+
+// Botón de marcado: gris con ícono cuando falta, verde con check cuando está hecho.
+// Reemplaza al checkbox chico (16px, borde azul) que se leía como un cuadrado macizo.
+const MarcaToggle = ({ activo, onClick, disabled, Icon, label }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    title={activo ? `${label} hecho — click para desmarcar` : `Marcar ${label}`}
+    aria-pressed={activo}
+    className={`inline-flex items-center justify-center h-8 w-8 rounded-lg border transition-all
+      ${activo
+        ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm hover:bg-emerald-600'
+        : 'bg-background border-input text-muted-foreground/40 hover:border-emerald-400 hover:text-emerald-500 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20'}
+      disabled:opacity-40 disabled:cursor-not-allowed`}
+  >
+    {activo ? <Check className="h-4 w-4" strokeWidth={3} /> : <Icon className="h-4 w-4" />}
+  </button>
+);
 
 // Marca visual de quién/cuándo marcó una casilla
 const Firma = ({ por, at }) => {
@@ -55,6 +100,7 @@ export const PublicacionCortes = () => {
   const [busq, setBusq] = useState('');
   const [fEstado, setFEstado] = useState('todos');
   const [fMarca, setFMarca] = useState('todas');
+  const [orden, setOrden] = useState({ campo: 'estado', dir: 'asc' });
   const [seleccion, setSeleccion] = useState(new Set());
   const [guardando, setGuardando] = useState(new Set());
   // Filas que acaban de completarse: se muestran tachadas unos segundos
@@ -95,8 +141,34 @@ export const PublicacionCortes = () => {
         (i.n_corte || '').toLowerCase().includes(q) ||
         (i.modelo || '').toLowerCase().includes(q));
     }
+
+    if (orden.campo) {
+      const signo = orden.dir === 'asc' ? 1 : -1;
+      arr = [...arr].sort((a, b) => {
+        let va, vb;
+        if (orden.campo === 'estado') {
+          // por flujo de producción, no alfabético
+          va = ORDEN_ESTADO[a.estado] ?? 99;
+          vb = ORDEN_ESTADO[b.estado] ?? 99;
+        } else if (orden.campo === 'prendas') {
+          va = a.prendas; vb = b.prendas;
+        } else if (orden.campo === 'n_corte') {
+          // numérico cuando se puede ("028" < "169"), si no alfabético
+          const na = parseInt(a.n_corte, 10), nb = parseInt(b.n_corte, 10);
+          va = isNaN(na) ? Infinity : na; vb = isNaN(nb) ? Infinity : nb;
+          if (va === vb) { va = a.n_corte || ''; vb = b.n_corte || ''; }
+        } else {
+          va = (a[orden.campo] || '').toLowerCase();
+          vb = (b[orden.campo] || '').toLowerCase();
+        }
+        if (va < vb) return -1 * signo;
+        if (va > vb) return 1 * signo;
+        // desempate estable por n° de corte
+        return (a.n_corte || '').localeCompare(b.n_corte || '');
+      });
+    }
     return arr;
-  }, [items, fEstado, fMarca, busq]);
+  }, [items, fEstado, fMarca, busq, orden]);
 
   const quitarDiferido = (registroId) => {
     const t = setTimeout(() => {
@@ -280,10 +352,13 @@ export const PublicacionCortes = () => {
       ) : (
         <div className="rounded-lg border bg-card overflow-hidden">
           <div className="grid grid-cols-[36px_90px_minmax(160px,1.4fr)_minmax(120px,1fr)_130px_80px_130px_130px] gap-3 items-center px-3 py-2 border-b bg-muted/30 text-[10px] uppercase tracking-wider font-medium text-muted-foreground">
-            <Checkbox checked={todosSel}
+            <Checkbox className="border-muted-foreground/30 bg-transparent data-[state=checked]:bg-transparent data-[state=checked]:border-emerald-500 data-[state=checked]:text-emerald-600" checked={todosSel}
               onCheckedChange={(c) => setSeleccion(c ? new Set(visibles.map(i => i.registro_id)) : new Set())} />
-            <span>N° Corte</span><span>Modelo</span><span>Marca</span><span>Estado</span>
-            <span className="text-right">Prendas</span>
+            <ThOrden campo="n_corte" orden={orden} setOrden={setOrden}>N° Corte</ThOrden>
+            <ThOrden campo="modelo" orden={orden} setOrden={setOrden}>Modelo</ThOrden>
+            <ThOrden campo="marca" orden={orden} setOrden={setOrden}>Marca</ThOrden>
+            <ThOrden campo="estado" orden={orden} setOrden={setOrden}>Estado</ThOrden>
+            <ThOrden campo="prendas" orden={orden} setOrden={setOrden} align="right">Prendas</ThOrden>
             <span className="text-center">Fotografía</span>
             <span className="text-center">Página Web</span>
           </div>
@@ -295,7 +370,8 @@ export const PublicacionCortes = () => {
                 <div key={i.registro_id}
                   className={`grid grid-cols-[36px_90px_minmax(160px,1.4fr)_minmax(120px,1fr)_130px_80px_130px_130px] gap-3 items-center px-3 py-2 text-sm transition-all ${
                     seSale ? 'bg-emerald-50 dark:bg-emerald-950/20 opacity-50 line-through' : 'hover:bg-muted/30'}`}>
-                  <Checkbox checked={seleccion.has(i.registro_id)} onCheckedChange={() => toggleSel(i.registro_id)} />
+                  <Checkbox className="border-muted-foreground/30 bg-transparent data-[state=checked]:bg-transparent data-[state=checked]:border-emerald-500 data-[state=checked]:text-emerald-600" checked={seleccion.has(i.registro_id)}
+                    onCheckedChange={() => toggleSel(i.registro_id)} />
                   <span className="font-mono tabular-nums font-semibold">{i.n_corte}</span>
                   <span className="font-medium truncate" title={i.modelo}>{i.modelo}</span>
                   <span className="text-muted-foreground truncate">{i.marca}</span>
@@ -303,16 +379,14 @@ export const PublicacionCortes = () => {
                     {i.estado}
                   </span>
                   <span className="text-right tabular-nums">{i.prendas.toLocaleString('es-PE')}</span>
-                  <div className="flex flex-col items-center">
-                    <Checkbox checked={i.tiene_foto} disabled={busy}
-                      onCheckedChange={(c) => toggle(i, 'tiene_foto', !!c)}
-                      data-testid={`foto-${i.registro_id}`} />
+                  <div className="flex flex-col items-center" data-testid={`foto-${i.registro_id}`}>
+                    <MarcaToggle activo={i.tiene_foto} disabled={busy} Icon={Camera} label="Fotografía"
+                      onClick={() => toggle(i, 'tiene_foto', !i.tiene_foto)} />
                     <Firma por={i.foto_por} at={i.foto_at} />
                   </div>
-                  <div className="flex flex-col items-center">
-                    <Checkbox checked={i.en_web} disabled={busy}
-                      onCheckedChange={(c) => toggle(i, 'en_web', !!c)}
-                      data-testid={`web-${i.registro_id}`} />
+                  <div className="flex flex-col items-center" data-testid={`web-${i.registro_id}`}>
+                    <MarcaToggle activo={i.en_web} disabled={busy} Icon={Globe} label="Página web"
+                      onClick={() => toggle(i, 'en_web', !i.en_web)} />
                     <Firma por={i.web_por} at={i.web_at} />
                   </div>
                 </div>
