@@ -290,6 +290,12 @@ async def ensure_startup_migrations():
         await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS division_numero INT DEFAULT 0")
         # Modelo manual (ingresado a mano sin seleccionar del catálogo)
         await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS modelo_manual JSONB")
+        # Parte de una salida que no encontró capa FIFO. stock_actual se
+        # descuenta completo aunque las capas no alcancen; sin este rastro el
+        # descuadre entre Inventario y Transferencias quedaba sin explicación.
+        await conn.execute(
+            "ALTER TABLE prod_inventario_salidas ADD COLUMN IF NOT EXISTS cantidad_sin_respaldo NUMERIC DEFAULT 0"
+        )
         # Fecha de envío a tienda (se captura automáticamente cuando el estado
         # pasa a 'Tienda'; marca el evento de despacho a local comercial).
         await conn.execute("ALTER TABLE prod_registros ADD COLUMN IF NOT EXISTS fecha_envio_tienda TIMESTAMP NULL")

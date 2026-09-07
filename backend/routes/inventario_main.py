@@ -1,5 +1,6 @@
 """Router for inventory management endpoints (items, ingresos, salidas, ajustes, rollos, reservas, reconciliar)."""
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -14,6 +15,8 @@ from helpers import registrar_actividad, row_to_dict, parse_jsonb, validar_regis
 from routes.auditoria import audit_log_safe, get_usuario
 from typing import Optional, List
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 CATEGORIAS_INVENTARIO = ["Telas", "Avios", "Otros"]
 
@@ -1131,6 +1134,7 @@ async def create_salida(
         
         costo_total = 0.0
         detalle_fifo = []
+        sin_respaldo_fifo = 0.0
 
         if input.rollo_id:
             # Ya validamos el rollo arriba, lo obtenemos de nuevo para el ingreso
@@ -1156,6 +1160,20 @@ async def create_salida(
                 detalle_fifo.append({"ingreso_id": ing['id'], "cantidad": consumir, "costo_unitario": costo_unitario})
                 await conn.execute("UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible - $1 WHERE id = $2", consumir, ing['id'])
                 cantidad_restante -= consumir
+
+            # Si las capas FIFO no alcanzaron, el sobrante queda SIN RESPALDO:
+            # el contador (stock_actual) se descuenta completo unas líneas más
+            # abajo, pero ninguna capa cubre ese tramo. Antes se descartaba en
+            # silencio y el descuadre quedaba sin rastro. Ahora se registra en
+            # la salida para poder auditarlo y repararlo después con
+            # /inventario/recalcular-costos-fifo.
+            sin_respaldo_fifo = round(max(0.0, cantidad_restante), 4)
+            if sin_respaldo_fifo > 0:
+                logger.warning(
+                    "Salida sin respaldo FIFO: item=%s cantidad=%s sin_respaldo=%s "
+                    "(el stock_actual baja pero no hay capa que lo cubra)",
+                    input.item_id, input.cantidad, sin_respaldo_fifo,
+                )
         
         salida = SalidaInventario(**input.model_dump())
         salida.costo_total = costo_total
@@ -1176,11 +1194,11 @@ async def create_salida(
         
         # Insertar salida con talla_id, empresa_id y linea_negocio_id
         await conn.execute(
-            """INSERT INTO prod_inventario_salidas (id, item_id, cantidad, registro_id, talla_id, observaciones, rollo_id, costo_total, detalle_fifo, fecha, empresa_id, linea_negocio_id)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)""",
+            """INSERT INTO prod_inventario_salidas (id, item_id, cantidad, registro_id, talla_id, observaciones, rollo_id, costo_total, detalle_fifo, fecha, empresa_id, linea_negocio_id, cantidad_sin_respaldo)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)""",
             salida.id, salida.item_id, salida.cantidad, salida.registro_id, salida.talla_id, salida.observaciones,
             salida.rollo_id, salida.costo_total, json.dumps(salida.detalle_fifo), salida.fecha.replace(tzinfo=None),
-            empresa_id, linea_negocio_id
+            empresa_id, linea_negocio_id, sin_respaldo_fifo
         )
         await conn.execute("UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2", input.cantidad, input.item_id)
 
@@ -1365,6 +1383,7 @@ async def create_salida_extra(
         
         costo_total = 0.0
         detalle_fifo = []
+        sin_respaldo_fifo = 0.0
         
         if input.rollo_id:
             rollo = await conn.fetchrow("SELECT * FROM prod_inventario_rollos WHERE id = $1", input.rollo_id)
@@ -1389,6 +1408,20 @@ async def create_salida_extra(
                 detalle_fifo.append({"ingreso_id": ing['id'], "cantidad": consumir, "costo_unitario": costo_unitario})
                 await conn.execute("UPDATE prod_inventario_ingresos SET cantidad_disponible = cantidad_disponible - $1 WHERE id = $2", consumir, ing['id'])
                 cantidad_restante -= consumir
+
+            # Si las capas FIFO no alcanzaron, el sobrante queda SIN RESPALDO:
+            # el contador (stock_actual) se descuenta completo unas líneas más
+            # abajo, pero ninguna capa cubre ese tramo. Antes se descartaba en
+            # silencio y el descuadre quedaba sin rastro. Ahora se registra en
+            # la salida para poder auditarlo y repararlo después con
+            # /inventario/recalcular-costos-fifo.
+            sin_respaldo_fifo = round(max(0.0, cantidad_restante), 4)
+            if sin_respaldo_fifo > 0:
+                logger.warning(
+                    "Salida sin respaldo FIFO: item=%s cantidad=%s sin_respaldo=%s "
+                    "(el stock_actual baja pero no hay capa que lo cubra)",
+                    input.item_id, input.cantidad, sin_respaldo_fifo,
+                )
         
         salida_id = str(uuid.uuid4())
         fecha = datetime.now(timezone.utc)
@@ -1404,11 +1437,11 @@ async def create_salida_extra(
             empresa_id = item['empresa_id']
         
         await conn.execute(
-            """INSERT INTO prod_inventario_salidas (id, item_id, cantidad, registro_id, talla_id, observaciones, rollo_id, costo_total, detalle_fifo, fecha, empresa_id)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)""",
+            """INSERT INTO prod_inventario_salidas (id, item_id, cantidad, registro_id, talla_id, observaciones, rollo_id, costo_total, detalle_fifo, fecha, empresa_id, cantidad_sin_respaldo)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)""",
             salida_id, input.item_id, input.cantidad, input.registro_id, input.talla_id, observaciones,
             input.rollo_id, costo_total, json.dumps(detalle_fifo), fecha.replace(tzinfo=None),
-            empresa_id
+            empresa_id, sin_respaldo_fifo
         )
         await conn.execute("UPDATE prod_inventario SET stock_actual = stock_actual - $1 WHERE id = $2", input.cantidad, input.item_id)
         
