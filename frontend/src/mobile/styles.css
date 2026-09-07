@@ -3,7 +3,12 @@
  * header arriba + content scrolleable + tab bar abajo.
  */
 
-.m-app {
+/* Los tokens van en :root, NO en .m-app.
+ * Los modales del movil se montan con createPortal(..., document.body), o sea
+ * FUERA del arbol de .m-app. Si los tokens vivieran solo ahi, dentro de un
+ * modal var(--m-brand) y var(--m-border) quedan sin resolver: el texto cae al
+ * color heredado del body y los bordes al valor inicial. */
+:root {
   --m-brand: #0f766e;
   --m-brand-dark: #0d5f5a;
   --m-brand-soft: #f0fdfa;
@@ -11,7 +16,9 @@
   --m-muted: #64748b;
   --m-border: #e5e7eb;
   --m-bg: #f3f4f6;
+}
 
+.m-app {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: var(--m-ink);
   background: var(--m-bg);
@@ -44,6 +51,21 @@
 /* Cuando /m está activo, evitamos scroll del body por las dudas */
 body:has(.m-app) {
   overflow: hidden;
+
+  /* Los modales cuelgan del body via createPortal, no de .m-app, asi que no
+   * heredan su color de texto. Sin esto toman el color por defecto del
+   * navegador: en un celular con tema oscuro ese color es claro y el texto
+   * queda blanco sobre las hojas blancas de los modales. Invisible. */
+  color: var(--m-ink);
+}
+
+/* El movil esta disenado solo en claro (las hojas de los modales llevan
+ * background:'white' en linea). Si no se declara color-scheme, Chrome Android
+ * aplica su "auto dark theme" e invierte los colores heredados, pero respeta
+ * los backgrounds en linea: resultado, texto claro sobre blanco. Declararlo
+ * apaga esa heuristica. Va en html porque es ahi donde Chrome la evalua. */
+html:has(.m-app) {
+  color-scheme: light;
 }
 
 /* ─── Inputs y botones (tap-friendly: ≥48px / ≥16px) ─── */
