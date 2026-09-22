@@ -15,7 +15,7 @@ import {
 import { Badge } from '../components/ui/badge';
 import { formatColorName } from '../lib/utils';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000'}/api`;
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const ALL_VALUE = '_all';
 const NEW_VALUE = '_new';
 
